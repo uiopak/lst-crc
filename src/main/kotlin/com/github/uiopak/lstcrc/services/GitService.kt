@@ -3,6 +3,9 @@ package com.github.uiopak.lstcrc.services
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.vcs.VcsException
+import com.intellij.openapi.vcs.changes.Change
+import git4idea.changes.GitChangeUtils
 import git4idea.commands.Git
 import git4idea.commands.GitCommand
 import git4idea.commands.GitLineHandler
@@ -60,29 +63,16 @@ class GitService(private val project: Project) {
      * - Files deleted in `branchNameToCompare` (present in HEAD) will be `Change.Type.DELETED`.
      * - Files modified will be `Change.Type.MODIFICATION`.
      */
-    fun getChanges(branchNameToCompare: String): List<Pair<String, String>> {
+    fun getChanges(branchNameToCompare: String): List<Change> {
         val repository = getCurrentRepository() ?: return emptyList()
-        val projectRoot = repository.root
 
-        logger.info("Getting changes between HEAD and branch: $branchNameToCompare for repository ${projectRoot.path}")
+        logger.info("Getting changes between HEAD and branch: $branchNameToCompare for repository ${repository.root.path}")
 
-        val handler = GitLineHandler(project, projectRoot, GitCommand.DIFF)
-        handler.setSilent(true)
-        handler.addParameters("--name-status", "HEAD", branchNameToCompare)
-
-        val result = Git.getInstance().runCommand(handler)
-        if (result.success()) {
-            return result.output.mapNotNull { line ->
-                val parts = line.trim().split(Regex("\\s+"), limit = 2)
-                if (parts.size == 2) {
-                    val changeType = parts[0]
-                    val filePath = parts[1]
-                    changeType to filePath
-                } else null
-            }
-        } else {
-            logger.error("Git diff failed: ${result.errorOutput.joinToString()}")
-            return emptyList()
+        return try {
+            GitChangeUtils.getDiff(project, repository.root, "HEAD", branchNameToCompare, null)?.toList() ?: emptyList()
+        } catch (e: VcsException) {
+            logger.error("Error getting diff: ${e.message}", e)
+            emptyList()
         }
     }
 }

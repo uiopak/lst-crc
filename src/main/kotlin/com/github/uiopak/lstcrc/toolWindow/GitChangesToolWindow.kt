@@ -2,14 +2,17 @@ package com.github.uiopak.lstcrc.toolWindow
 
 import com.github.uiopak.lstcrc.services.GitService
 import com.intellij.openapi.components.service
-import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.ui.ComboBox
 import com.intellij.openapi.ui.DialogWrapper
 import com.intellij.openapi.ui.Messages
+import com.intellij.openapi.ui.popup.JBPopupFactory
+import com.intellij.openapi.ui.popup.ListPopup
 import com.intellij.openapi.vcs.changes.Change
+import com.intellij.openapi.vcs.changes.actions.diff.ShowDiffAction
+import com.intellij.ui.SearchTextField
 import com.intellij.ui.JBColor
 import com.intellij.ui.components.JBLabel
+import com.intellij.ui.components.JBList
 import com.intellij.ui.components.JBPanel
 import com.intellij.ui.components.JBScrollPane
 import com.intellij.ui.components.JBTabbedPane
@@ -17,13 +20,16 @@ import com.intellij.ui.treeStructure.Tree
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.tree.TreeUtil
 import java.awt.BorderLayout
-import java.awt.Color
 import java.awt.Component
 import java.awt.Dimension
 import java.awt.FlowLayout
+import java.awt.event.KeyAdapter
+import java.awt.event.KeyEvent
 import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
 import javax.swing.*
+import javax.swing.event.DocumentEvent
+import javax.swing.event.DocumentListener
 import javax.swing.tree.DefaultMutableTreeNode
 import javax.swing.tree.DefaultTreeCellRenderer
 import javax.swing.tree.DefaultTreeModel
@@ -114,33 +120,38 @@ class GitChangesToolWindow(private val project: Project) {
                 row: Int,
                 hasFocus: Boolean
             ): Component {
-                val component = super.getTreeCellRendererComponent(tree, value, selected, expanded, leaf, row, hasFocus)
+                super.getTreeCellRendererComponent(tree, value, selected, expanded, leaf, row, hasFocus)
                 
                 if (value is DefaultMutableTreeNode) {
-                    val userObject = value.userObject
-                    if (userObject is Change) {
-                        // Color based on change type
-                        val foregroundColor = when (userObject.type) {
-                            Change.Type.NEW -> JBColor.GREEN
-                            Change.Type.DELETED -> JBColor.RED
-                            Change.Type.MOVED -> JBColor.ORANGE
-                            else -> JBColor.BLUE
+                    when (val userObject = value.userObject) {
+                        is Change -> { // File node
+                            // Color based on change type
+                            foreground = when (userObject.type) {
+                                Change.Type.NEW -> JBColor.GREEN
+                                Change.Type.DELETED -> JBColor.RED
+                                Change.Type.MOVED -> JBColor.BLUE 
+                                else -> JBColor.BLUE // MODIFICATION
+                            }
+                            
+                            // Get file name
+                            text = userObject.afterRevision?.file?.name 
+                                ?: userObject.beforeRevision?.file?.name 
+                                ?: "Unknown File"
+                            
+                            // Set icon based on type (optional, but good for UX)
+                            // icon = AllIcons.FileTypes.Text // Example
                         }
-                        
-                        component.foreground = foregroundColor
-                        
-                        // Get file path
-                        val filePath = when {
-                            userObject.afterRevision != null -> userObject.afterRevision?.file?.path ?: "Unknown"
-                            userObject.beforeRevision != null -> userObject.beforeRevision?.file?.path ?: "Unknown"
-                            else -> "Unknown"
+                        is String -> { // Directory node
+                            text = userObject
+                            // icon = AllIcons.Nodes.Folder // Example
                         }
-                        
-                        text = filePath
+                        else -> {
+                            // Root node or other unexpected type
+                            text = value.toString()
+                        }
                     }
                 }
-                
-                return component
+                return this
             }
         }
         
@@ -172,64 +183,183 @@ class GitChangesToolWindow(private val project: Project) {
         val changes = gitService.getChanges(branchName)
         
         // Update tree model
-        val root = DefaultMutableTreeNode("Changes")
-        for (change in changes) {
-            root.add(DefaultMutableTreeNode(change))
-        }
-        
-        val model = DefaultTreeModel(root)
-        tree.model = model
+        val rootModelNode = tree.model.root as DefaultMutableTreeNode
+        rootModelNode.removeAllChildren() // Clear previous changes
+
+        buildTreeFromChanges(rootModelNode, changes)
+
+        (tree.model as DefaultTreeModel).reload(rootModelNode)
         TreeUtil.expandAll(tree)
+    }
+
+    private fun buildTreeFromChanges(rootNode: DefaultMutableTreeNode, changes: List<Change>) {
+        for (change in changes) {
+            val filePath = when {
+                change.afterRevision != null -> change.afterRevision?.file?.path
+                change.beforeRevision != null -> change.beforeRevision?.file?.path
+                else -> null
+            } ?: continue // Skip if no path
+
+            // Normalize path separators to '/' for consistent splitting
+            val normalizedPath = filePath.replace('\\', '/')
+            val pathComponents = normalizedPath.split('/').filter { it.isNotEmpty() }
+            var currentNode = rootNode
+
+            for (i in pathComponents.indices) {
+                val componentName = pathComponents[i]
+                val isLastComponent = i == pathComponents.size - 1
+
+                var childNode: DefaultMutableTreeNode? = null
+                for (j in 0 until currentNode.childCount) {
+                    val existingChild = currentNode.getChildAt(j) as DefaultMutableTreeNode
+                    if (isLastComponent && existingChild.userObject is Change) {
+                        val existingChange = existingChild.userObject as Change
+                        // Heuristic to match file: compare file paths if available, or names
+                        val existingChangePath = existingChange.afterRevision?.file?.path ?: existingChange.beforeRevision?.file?.path
+                        if (existingChangePath == filePath) {
+                            childNode = existingChild
+                            break
+                        }
+                    } else if (!isLastComponent && existingChild.userObject is String && existingChild.userObject == componentName) {
+                        childNode = existingChild
+                        break
+                    }
+                }
+                
+                if (childNode == null) {
+                    childNode = if (isLastComponent) {
+                        DefaultMutableTreeNode(change) // File node, userObject is Change
+                    } else {
+                        DefaultMutableTreeNode(componentName) // Directory node, userObject is directory name
+                    }
+                    currentNode.add(childNode)
+                }
+                currentNode = childNode
+            }
+        }
     }
     
     private fun openDiff(change: Change) {
         try {
-            // Get the virtual file
-            val file = when {
-                change.afterRevision != null -> change.afterRevision?.file?.virtualFile
-                change.beforeRevision != null -> change.beforeRevision?.file?.virtualFile
-                else -> null
-            }
-            
-            // Simply open the file in the editor
-            file?.let {
-                FileEditorManager.getInstance(project).openFile(it, true)
-            }
+            ShowDiffAction.showDiffForChange(project, listOf(change))
         } catch (e: Exception) {
-            Messages.showErrorDialog(project, "Error opening file: ${e.message}", "Error")
+            Messages.showErrorDialog(project, "Error opening diff: ${e.message}", "Error")
         }
     }
     
     private fun showBranchSelectionDialog() {
-        val dialog = object : DialogWrapper(project) {
-            private val branchComboBox = ComboBox<String>()
-            
+        val dialog = object : DialogWrapper(project, true) { // true for canBeParent
+            private val searchTextField = SearchTextField()
+            private var listPopup: ListPopup? = null
+            private val allBranches = gitService.getAllBranches().sorted()
+            private val filteredListModel = DefaultListModel<String>()
+
             init {
-                title = "Select Branch"
-                init()
-                
-                // Populate branch list
-                val branches = gitService.getAllBranches()
-                for (branch in branches) {
-                    branchComboBox.addItem(branch)
+                title = "Select Branch to Compare with HEAD"
+                init() // Important to call init() for DialogWrapper
+
+                searchTextField.addDocumentListener(object : DocumentListener {
+                    override fun insertUpdate(e: DocumentEvent?) {
+                        filterAndShowPopup()
+                    }
+
+                    override fun removeUpdate(e: DocumentEvent?) {
+                        filterAndShowPopup()
+                    }
+
+                    override fun changedUpdate(e: DocumentEvent?) {
+                        filterAndShowPopup()
+                    }
+                })
+            }
+
+            private fun filterAndShowPopup() {
+                val searchText = searchTextField.text.trim()
+                filteredListModel.clear()
+                allBranches.filter { it.contains(searchText, ignoreCase = true) }
+                    .forEach { filteredListModel.addElement(it) }
+
+                if (listPopup?.isDisposed == false) {
+                    listPopup?.cancel() // Close previous popup
+                }
+
+                if (filteredListModel.isEmpty && searchText.isNotEmpty()) {
+                    // Optionally show "no results" or hide popup
+                    return
+                }
+                if (filteredListModel.isEmpty && searchText.isEmpty()) {
+                     // Show all branches if search text is empty
+                    allBranches.forEach { filteredListModel.addElement(it) }
+                }
+
+
+                if (filteredListModel.size > 0) {
+                    val jbList = JBList(filteredListModel)
+                    jbList.visibleRowCount = JBUI.scale(10).coerceAtMost(filteredListModel.size)
+
+
+                    listPopup = JBPopupFactory.getInstance()
+                        .createListPopupBuilder(jbList)
+                        .setTitle("Matching Branches")
+                        .setMovable(false)
+                        .setResizable(false)
+                        .setRequestFocus(false) // Keep focus on searchTextField initially
+                        .setItemChoosenCallback {
+                            val selectedValue = jbList.selectedValue
+                            if (selectedValue != null) {
+                                addTab(selectedValue)
+                                close(OK_EXIT_CODE)
+                            }
+                        }
+                        .createPopup()
+
+                    // Handle Enter key on JBList
+                    jbList.addKeyListener(object : KeyAdapter() {
+                        override fun keyPressed(e: KeyEvent) {
+                            if (e.keyCode == KeyEvent.VK_ENTER) {
+                                val selectedValue = jbList.selectedValue
+                                if (selectedValue != null) {
+                                    addTab(selectedValue)
+                                    close(OK_EXIT_CODE)
+                                }
+                            }
+                        }
+                    })
+                    
+                    // Show popup under the search field
+                    listPopup?.showUnderneathOf(searchTextField)
                 }
             }
-            
+
             override fun createCenterPanel(): JComponent {
-                val panel = JBPanel<JBPanel<*>>(BorderLayout())
+                val panel = JBPanel<JBPanel<*>>(BorderLayout(0, JBUI.scale(5)))
                 panel.add(JBLabel("Select branch to compare with HEAD:"), BorderLayout.NORTH)
-                panel.add(branchComboBox, BorderLayout.CENTER)
-                panel.preferredSize = JBUI.size(300, 100)
+                panel.add(searchTextField, BorderLayout.CENTER)
+                panel.preferredSize = JBUI.size(400, 60) // Adjust size as needed, popup will be separate
                 return panel
             }
+
+            override fun getPreferredFocusedComponent(): JComponent? {
+                return searchTextField
+            }
             
+            // We handle action on popup item selection, so default OK might not be needed
+            // or could be triggered programmatically. For now, let popup handle it.
             override fun doOKAction() {
-                super.doOKAction()
-                val selectedBranch = branchComboBox.selectedItem as? String
-                selectedBranch?.let { addTab(it) }
+                // This might be triggered if user presses Enter in the search field
+                // without an active popup or a selection in popup.
+                // We can try to select the first item in filtered list if available.
+                if (listPopup?.isVisible == false && filteredListModel.size > 0) {
+                    addTab(filteredListModel.getElementAt(0))
+                    super.doOKAction()
+                } else if (listPopup?.isVisible == true) {
+                    // Let popup handle it or simulate enter on list
+                } else {
+                    // If no results or popup not shown, maybe do nothing or close
+                    super.doCancelAction() // Or provide feedback
+                }
             }
         }
-        
         dialog.show()
     }
 }
