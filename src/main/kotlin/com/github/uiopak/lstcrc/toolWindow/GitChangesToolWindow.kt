@@ -89,14 +89,7 @@ class GitChangesToolWindow(private val project: Project) {
         // Add a 5px right margin to the label for spacing from the close button
         tabLabel.border = BorderFactory.createEmptyBorder(0, 0, 0, 5)
         
-        // Add a MouseListener to tabLabel to prevent its own hover effects
-        tabLabel.addMouseListener(object : MouseAdapter() {
-            // Override mouse events to prevent default L&F hover painting on the label
-            override fun mouseEntered(e: MouseEvent?) { /* Do nothing */ }
-            override fun mouseExited(e: MouseEvent?) { /* Do nothing */ }
-            override fun mousePressed(e: MouseEvent?) { /* Do nothing */ }
-            override fun mouseReleased(e: MouseEvent?) { /* Do nothing */ }
-        })
+        // The MouseListener previously added to tabLabel has been removed.
         tabPanel.add(tabLabel, BorderLayout.CENTER)
 
         // Panel is not opaque by default, allowing JBTabbedPane to paint selected/focused states
