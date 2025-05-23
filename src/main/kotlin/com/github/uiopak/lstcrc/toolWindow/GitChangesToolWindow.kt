@@ -91,7 +91,7 @@ class GitChangesToolWindow(private val project: Project) {
 
         tabPanel.addMouseListener(object : MouseAdapter() {
             override fun mouseEntered(e: MouseEvent?) {
-                tabPanel.background = JBUI.CurrentTheme.Tabs.HOVER_BACKGROUND
+                tabPanel.background = JBUI.CurrentTheme.TabTheme.HOVER_BACKGROUND // Corrected path
                 tabPanel.repaint()
             }
 
