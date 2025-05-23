@@ -5,6 +5,7 @@ import com.intellij.openapi.components.service
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.DialogWrapper
 import com.intellij.openapi.ui.Messages
+import com.intellij.openapi.ui.popup.JBPopup
 import com.intellij.openapi.ui.popup.JBPopupFactory
 import com.intellij.openapi.ui.popup.ListPopup
 import com.intellij.openapi.vcs.changes.Change
@@ -250,7 +251,7 @@ class GitChangesToolWindow(private val project: Project) {
     private fun showBranchSelectionDialog() {
         val dialog = object : DialogWrapper(project, true) { // true for canBeParent
             private val searchTextField = SearchTextField()
-            private var listPopup: ListPopup? = null
+            private var listPopup: JBPopup? = null
             private val allBranches = gitService.getAllBranches().sorted()
             private val filteredListModel = DefaultListModel<String>()
 
