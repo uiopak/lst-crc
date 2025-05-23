@@ -113,8 +113,8 @@ class GitChangesToolWindow(private val project: Project) {
         val actionButton = ActionButton(
             closeTabAction,
             closeTabAction.templatePresentation,
-            com.intellij.openapi.actionSystem.ActionPlaces.TOOLWINDOW_TAB, // Fully qualified name
-            com.intellij.openapi.actionSystem.impl.ActionButton.DEFAULT_MINIMUM_SIZE // Fully qualified name
+            com.intellij.openapi.actionSystem.ActionPlaces.TOOLWINDOW_TITLE, // Updated place
+            JBUI.size(16, 16) // Updated minimumSize
         )
         tabPanel.add(actionButton, BorderLayout.EAST)
         

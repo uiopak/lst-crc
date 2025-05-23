@@ -17,7 +17,7 @@ class GitService(private val project: Project) {
 
     private val logger = thisLogger()
 
-    private fun getCurrentRepository(): GitRepository? {
+    internal fun getCurrentRepository(): GitRepository? {
         val repositoryManager = GitRepositoryManager.getInstance(project)
         val repositories = repositoryManager.repositories
         return when {
