@@ -12,6 +12,13 @@ import com.intellij.openapi.vcs.changes.Change
 import com.intellij.openapi.vcs.changes.actions.diff.ShowDiffAction
 import com.intellij.openapi.vfs.VfsUtilCore
 import com.intellij.ui.SearchTextField
+
+// Imports for ActionButton
+import com.intellij.icons.AllIcons
+import com.intellij.openapi.actionSystem.AnAction
+import com.intellij.openapi.actionSystem.AnActionEvent
+import com.intellij.openapi.actionSystem.ActionPlaces
+import com.intellij.openapi.actionSystem.impl.ActionButton
 import com.intellij.ui.JBColor
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBList
@@ -73,12 +80,37 @@ class GitChangesToolWindow(private val project: Project) {
         
         // Add the tab with a close button
         val tabPanel = JBPanel<JBPanel<*>>(BorderLayout())
-        tabPanel.add(JBLabel(branchName), BorderLayout.CENTER)
-        
-        val closeButton = JButton("x")
-        closeButton.preferredSize = Dimension(16, 16)
-        closeButton.addActionListener { closeTab(branchName) }
-        tabPanel.add(closeButton, BorderLayout.EAST)
+        // Ensure the label itself is not opaque so it doesn't cover the panel's background
+        val tabLabel = JBLabel(branchName)
+        tabLabel.isOpaque = false 
+        tabPanel.add(tabLabel, BorderLayout.CENTER)
+
+        // Store original background and set panel to opaque for background painting
+        val originalBackground = tabPanel.background
+        tabPanel.isOpaque = true
+
+        tabPanel.addMouseListener(object : MouseAdapter() {
+            override fun mouseEntered(e: MouseEvent?) {
+                tabPanel.background = JBUI.CurrentTheme.Tabs.HOVER_BACKGROUND
+                tabPanel.repaint()
+            }
+
+            override fun mouseExited(e: MouseEvent?) {
+                tabPanel.background = originalBackground
+                tabPanel.repaint()
+            }
+        })
+
+        // Create and add the ActionButton for closing the tab
+        val closeTabAction = CloseTabAction(branchName)
+        // Using DEFAULT_MINIMUM_SIZE first, can be adjusted e.g., JBUI.size(16, 16) or (20,20)
+        val actionButton = ActionButton(
+            closeTabAction,
+            closeTabAction.templatePresentation,
+            ActionPlaces.TOOLWINDOW_TAB, // Or ActionPlaces.EDITOR_TAB, TOOLWINDOW_TITLE are other options
+            ActionButton.DEFAULT_MINIMUM_SIZE
+        )
+        tabPanel.add(actionButton, BorderLayout.EAST)
         
         tabbedPane.addTab(branchName, tabContent) // Use branchName as the tab title
         tabbedPane.setTabComponentAt(tabbedPane.tabCount - 1, tabPanel)
@@ -415,5 +447,20 @@ class GitChangesToolWindow(private val project: Project) {
             }
         }
         dialog.show()
+    }
+
+    private inner class CloseTabAction(private val branchNameToClose: String) :
+        AnAction("Close Tab", "Closes this tab", AllIcons.Actions.Close) {
+
+        override fun actionPerformed(e: AnActionEvent) {
+            // 'this@GitChangesToolWindow' is needed to refer to the outer class instance
+            this@GitChangesToolWindow.closeTab(branchNameToClose)
+        }
+
+        // Optional: Update method for dynamic changes to presentation if needed
+        // override fun update(e: AnActionEvent) {
+        //     super.update(e)
+        //     // Example: e.presentation.isEnabled = shouldBeEnabled()
+        // }
     }
 }
