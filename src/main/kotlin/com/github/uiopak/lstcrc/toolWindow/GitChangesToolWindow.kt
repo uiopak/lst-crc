@@ -21,6 +21,7 @@ import com.intellij.openapi.actionSystem.ActionPlaces
 import com.intellij.openapi.actionSystem.impl.ActionButton
 import com.intellij.ui.JBColor
 import com.intellij.ui.components.JBLabel
+import javax.swing.UIManager // Added for UIManager.getColor
 import com.intellij.ui.components.JBList
 import com.intellij.ui.components.JBPanel
 import com.intellij.ui.components.JBScrollPane
@@ -91,7 +92,8 @@ class GitChangesToolWindow(private val project: Project) {
 
         tabPanel.addMouseListener(object : MouseAdapter() {
             override fun mouseEntered(e: MouseEvent?) {
-                tabPanel.background = JBUI.CurrentTheme.TabTheme.HOVER_BACKGROUND // Corrected path
+                // Robust fallback for hover background color
+                tabPanel.background = UIManager.getColor("TabbedPane.hoverColor") ?: JBColor.namedColor("Tabs.hoverBackground", UIManager.getColor("TabbedPane.focus")?.brighter() ?: JBColor.LIGHT_GRAY)
                 tabPanel.repaint()
             }
 
@@ -107,8 +109,8 @@ class GitChangesToolWindow(private val project: Project) {
         val actionButton = ActionButton(
             closeTabAction,
             closeTabAction.templatePresentation,
-            ActionPlaces.TOOLWINDOW_TAB, // Or ActionPlaces.EDITOR_TAB, TOOLWINDOW_TITLE are other options
-            ActionButton.DEFAULT_MINIMUM_SIZE
+            com.intellij.openapi.actionSystem.ActionPlaces.TOOLWINDOW_TAB, // Fully qualified name
+            com.intellij.openapi.actionSystem.impl.ActionButton.DEFAULT_MINIMUM_SIZE // Fully qualified name
         )
         tabPanel.add(actionButton, BorderLayout.EAST)
         
