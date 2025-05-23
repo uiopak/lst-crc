@@ -10,6 +10,7 @@ import com.intellij.openapi.ui.popup.JBPopupFactory
 import com.intellij.openapi.ui.popup.ListPopup
 import com.intellij.openapi.vcs.changes.Change
 import com.intellij.openapi.vcs.changes.actions.diff.ShowDiffAction
+import com.intellij.openapi.vfs.VfsUtilCore
 import com.intellij.ui.SearchTextField
 import com.intellij.ui.JBColor
 import com.intellij.ui.components.JBLabel
@@ -79,7 +80,7 @@ class GitChangesToolWindow(private val project: Project) {
         closeButton.addActionListener { closeTab(branchName) }
         tabPanel.add(closeButton, BorderLayout.EAST)
         
-        tabbedPane.addTab(null, tabContent)
+        tabbedPane.addTab(branchName, tabContent) // Use branchName as the tab title
         tabbedPane.setTabComponentAt(tabbedPane.tabCount - 1, tabPanel)
         tabbedPane.selectedIndex = tabbedPane.tabCount - 1
         
@@ -194,17 +195,68 @@ class GitChangesToolWindow(private val project: Project) {
     }
 
     private fun buildTreeFromChanges(rootNode: DefaultMutableTreeNode, changes: List<Change>) {
-        for (change in changes) {
-            val filePath = when {
-                change.afterRevision != null -> change.afterRevision?.file?.path
-                change.beforeRevision != null -> change.beforeRevision?.file?.path
-                else -> null
-            } ?: continue // Skip if no path
+        val repositoryRoot = gitService.getCurrentRepository()?.root
 
-            // Normalize path separators to '/' for consistent splitting
-            val normalizedPath = filePath.replace('\\', '/')
+        for (change in changes) {
+            val currentFilePathObj = change.afterRevision?.file ?: change.beforeRevision?.file
+            val rawPath = currentFilePathObj?.path
+            var displayPath: String? = null
+
+            if (currentFilePathObj != null && repositoryRoot != null) {
+                val vf = currentFilePathObj.virtualFile // Attempt to get VirtualFile
+                if (vf != null) {
+                    displayPath = VfsUtilCore.getRelativePath(vf, repositoryRoot, '/')
+                } else if (rawPath != null) {
+                    // Fallback for files not available as VirtualFile (e.g. deleted in HEAD)
+                    // Attempt string manipulation if rawPath is absolute and starts with repo root path
+                    val repoRootPathString = repositoryRoot.path
+                    if (rawPath.startsWith(repoRootPathString + "/")) {
+                        displayPath = rawPath.substring(repoRootPathString.length + 1)
+                    } else if (rawPath.startsWith(repoRootPathString)) { // Handle case where repoRootPathString might not have trailing slash
+                        displayPath = rawPath.substring(repoRootPathString.length).let { if (it.startsWith("/")) it.substring(1) else it }
+                    } else {
+                        displayPath = rawPath // Fallback if not clearly under repo root
+                    }
+                }
+            }
+
+            // If displayPath is still null (e.g. repoRoot was null, or currentFilePathObj was null), use rawPath as fallback
+            if (displayPath == null) {
+                displayPath = rawPath
+            }
+
+            if (displayPath == null) continue // Skip if no path could be determined
+
+            // Normalize path separators (important if string manipulation fallback was used)
+            val normalizedPath = displayPath.replace('\\', '/')
             val pathComponents = normalizedPath.split('/').filter { it.isNotEmpty() }
             var currentNode = rootNode
+
+            // Check if pathComponents is empty, meaning the change is at the repository root itself
+            // This can happen for example if a file at the root is modified.
+            // In such cases, we should directly add the change to the rootNode.
+            if (pathComponents.isEmpty() && currentFilePathObj != null) {
+                 // Ensure that we don't add a directory node if it's a file at root.
+                 // The existing logic for finding/creating child nodes might handle this,
+                 // but this explicit check makes it clearer for root-level files.
+                 var fileNodeExists = false
+                 for (j in 0 until currentNode.childCount) {
+                     val existingChild = currentNode.getChildAt(j) as DefaultMutableTreeNode
+                     if (existingChild.userObject is Change) {
+                         val existingChange = existingChild.userObject as Change
+                         val existingChangePath = existingChange.afterRevision?.file?.path ?: existingChange.beforeRevision?.file?.path
+                         if (existingChangePath == rawPath) { // rawPath is the original full path here
+                             fileNodeExists = true
+                             break
+                         }
+                     }
+                 }
+                 if (!fileNodeExists) {
+                     currentNode.add(DefaultMutableTreeNode(change))
+                 }
+                 continue // Move to the next change
+            }
+
 
             for (i in pathComponents.indices) {
                 val componentName = pathComponents[i]
@@ -215,9 +267,10 @@ class GitChangesToolWindow(private val project: Project) {
                     val existingChild = currentNode.getChildAt(j) as DefaultMutableTreeNode
                     if (isLastComponent && existingChild.userObject is Change) {
                         val existingChange = existingChild.userObject as Change
-                        // Heuristic to match file: compare file paths if available, or names
-                        val existingChangePath = existingChange.afterRevision?.file?.path ?: existingChange.beforeRevision?.file?.path
-                        if (existingChangePath == filePath) {
+                        // Match based on the original full path (rawPath) to ensure uniqueness if multiple
+                        // changes could theoretically have the same relative path (e.g. submodule changes - though less likely here)
+                        val existingChangeOriginalPath = existingChange.afterRevision?.file?.path ?: existingChange.beforeRevision?.file?.path
+                        if (existingChangeOriginalPath == rawPath) { // Compare with rawPath for uniqueness
                             childNode = existingChild
                             break
                         }

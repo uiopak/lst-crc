@@ -66,10 +66,12 @@ class GitService(private val project: Project) {
     fun getChanges(branchNameToCompare: String): List<Change> {
         val repository = getCurrentRepository() ?: return emptyList()
 
-        logger.info("Getting changes between HEAD and branch: $branchNameToCompare for repository ${repository.root.path}")
+        // Log message updated to reflect the new comparison order
+        logger.info("Getting changes in HEAD compared to branch: $branchNameToCompare for repository ${repository.root.path}")
 
         return try {
-            GitChangeUtils.getDiff(project, repository.root, "HEAD", branchNameToCompare, null)?.toList() ?: emptyList()
+            // Arguments swapped: branchNameToCompare is now rev1 (before), "HEAD" is rev2 (after)
+            GitChangeUtils.getDiff(project, repository.root, branchNameToCompare, "HEAD", null)?.toList() ?: emptyList()
         } catch (e: VcsException) {
             logger.error("Error getting diff: ${e.message}", e)
             emptyList()
