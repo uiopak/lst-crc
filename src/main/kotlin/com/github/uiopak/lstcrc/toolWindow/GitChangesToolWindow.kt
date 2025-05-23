@@ -88,6 +88,15 @@ class GitChangesToolWindow(private val project: Project) {
         tabLabel.background = Color(0, 0, 0, 0) // Ensure fully transparent background
         // Add a 5px right margin to the label for spacing from the close button
         tabLabel.border = BorderFactory.createEmptyBorder(0, 0, 0, 5)
+        
+        // Add a MouseListener to tabLabel to prevent its own hover effects
+        tabLabel.addMouseListener(object : MouseAdapter() {
+            // Override mouse events to prevent default L&F hover painting on the label
+            override fun mouseEntered(e: MouseEvent?) { /* Do nothing */ }
+            override fun mouseExited(e: MouseEvent?) { /* Do nothing */ }
+            override fun mousePressed(e: MouseEvent?) { /* Do nothing */ }
+            override fun mouseReleased(e: MouseEvent?) { /* Do nothing */ }
+        })
         tabPanel.add(tabLabel, BorderLayout.CENTER)
 
         // Panel is not opaque by default, allowing JBTabbedPane to paint selected/focused states
@@ -95,14 +104,35 @@ class GitChangesToolWindow(private val project: Project) {
 
         tabPanel.addMouseListener(object : MouseAdapter() {
             override fun mouseEntered(e: MouseEvent?) {
-                tabPanel.background = UIManager.getColor("TabbedPane.hoverColor") ?: JBColor.namedColor("Tabs.hoverBackground", UIManager.getColor("TabbedPane.focus")?.brighter() ?: JBColor.LIGHT_GRAY)
-                tabPanel.isOpaque = true // Make panel opaque to show hover color
+                var hoveredTabIndex = -1
+                for (i in 0 until tabbedPane.tabCount) {
+                    if (tabbedPane.getTabComponentAt(i) == tabPanel) {
+                        hoveredTabIndex = i
+                        break
+                    }
+                }
+                if (hoveredTabIndex == -1) return // Should not happen
+
+                val selectedIndex = tabbedPane.selectedIndex
+
+                if (hoveredTabIndex == selectedIndex) {
+                    // Hovered tab is the selected tab: ensure it's non-opaque, let L&F handle appearance
+                    tabPanel.isOpaque = false
+                    // No change to background, L&F should show selected state
+                    // Optionally, a subtle border or foreground change could be applied here
+                    // For now, we primarily ensure it does not get an opaque hover background
+                } else {
+                    // Hovered tab is not the selected tab: apply opaque hover background
+                    tabPanel.background = UIManager.getColor("TabbedPane.hoverColor") ?: JBColor.namedColor("Tabs.hoverBackground", UIManager.getColor("TabbedPane.focus")?.brighter() ?: JBColor.LIGHT_GRAY)
+                    tabPanel.isOpaque = true
+                }
                 tabPanel.repaint()
             }
 
             override fun mouseExited(e: MouseEvent?) {
-                tabPanel.isOpaque = false // Make panel transparent again
-                tabPanel.background = null // Clear custom background
+                // Reset to non-opaque and clear custom background, allowing L&F to paint
+                tabPanel.isOpaque = false
+                tabPanel.background = null 
                 tabPanel.repaint()
             }
         })
