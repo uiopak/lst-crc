@@ -52,7 +52,7 @@ import javax.swing.tree.DefaultTreeModel
 
 class GitChangesToolWindow(private val project: Project) { // project is Disposable
     private val gitService = project.service<GitService>()
-    private val jbTabs: JBTabs = JBTabsImpl(project, project) // project as parentDisposable
+    private val jbTabs: JBTabsImpl = JBTabsImpl(project, project) // project as parentDisposable, type changed to JBTabsImpl
 
     fun getContent(): JComponent {
         val panel = JBPanel<JBPanel<*>>(BorderLayout())
@@ -90,7 +90,7 @@ class GitChangesToolWindow(private val project: Project) { // project is Disposa
 
         // Create TabInfo
         val tabInfo = TabInfo(tabContentComponent)
-        tabInfo.text = branchName
+        tabInfo.setText(branchName) // Use setter method
 
         // Set Close Action on TabInfo
         val closeAction = object : AnAction("Close Tab", "Close this tab", AllIcons.Actions.Close) {
