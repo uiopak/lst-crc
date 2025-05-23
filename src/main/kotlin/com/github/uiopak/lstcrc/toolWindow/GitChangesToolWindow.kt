@@ -22,6 +22,7 @@ import com.intellij.openapi.actionSystem.impl.ActionButton
 import com.intellij.ui.JBColor
 import com.intellij.ui.components.JBLabel
 import javax.swing.UIManager // Added for UIManager.getColor
+import java.awt.Color // Added for transparent color
 import com.intellij.ui.components.JBList
 import com.intellij.ui.components.JBPanel
 import com.intellij.ui.components.JBScrollPane
@@ -83,35 +84,37 @@ class GitChangesToolWindow(private val project: Project) {
         val tabPanel = JBPanel<JBPanel<*>>(BorderLayout())
         // Ensure the label itself is not opaque so it doesn't cover the panel's background
         val tabLabel = JBLabel(branchName)
-        tabLabel.isOpaque = false 
+        tabLabel.isOpaque = false // Label should be transparent
+        tabLabel.background = Color(0, 0, 0, 0) // Ensure fully transparent background
+        // Add a 5px right margin to the label for spacing from the close button
+        tabLabel.border = BorderFactory.createEmptyBorder(0, 0, 0, 5)
         tabPanel.add(tabLabel, BorderLayout.CENTER)
 
-        // Store original background and set panel to opaque for background painting
-        val originalBackground = tabPanel.background
-        tabPanel.isOpaque = true
+        // Panel is not opaque by default, allowing JBTabbedPane to paint selected/focused states
+        tabPanel.isOpaque = false
 
         tabPanel.addMouseListener(object : MouseAdapter() {
             override fun mouseEntered(e: MouseEvent?) {
-                // Robust fallback for hover background color
                 tabPanel.background = UIManager.getColor("TabbedPane.hoverColor") ?: JBColor.namedColor("Tabs.hoverBackground", UIManager.getColor("TabbedPane.focus")?.brighter() ?: JBColor.LIGHT_GRAY)
+                tabPanel.isOpaque = true // Make panel opaque to show hover color
                 tabPanel.repaint()
             }
 
             override fun mouseExited(e: MouseEvent?) {
-                tabPanel.background = originalBackground
+                tabPanel.isOpaque = false // Make panel transparent again
+                tabPanel.background = null // Clear custom background
                 tabPanel.repaint()
             }
         })
 
         // Create and add the ActionButton for closing the tab
         val closeTabAction = CloseTabAction(branchName)
-        val buttonSize = JBUI.size(16, 16)
-
+        // Using DEFAULT_MINIMUM_SIZE first, can be adjusted e.g., JBUI.size(16, 16) or (20,20)
         val actionButton = ActionButton(
             closeTabAction,
             closeTabAction.templatePresentation,
-            ActionPlaces.TOOLWINDOW_TITLE,
-            buttonSize
+            com.intellij.openapi.actionSystem.ActionPlaces.TOOLWINDOW_TAB, // Fully qualified name
+            com.intellij.openapi.actionSystem.impl.ActionButton.DEFAULT_MINIMUM_SIZE // Fully qualified name
         )
         tabPanel.add(actionButton, BorderLayout.EAST)
         
