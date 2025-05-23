@@ -27,7 +27,11 @@ import javax.swing.SwingUtilities // Added for event conversion
 import com.intellij.ui.components.JBList
 import com.intellij.ui.components.JBPanel
 import com.intellij.ui.components.JBScrollPane
-import com.intellij.ui.components.JBTabbedPane
+// import com.intellij.ui.components.JBTabbedPane // No longer used
+import com.intellij.ui.tabs.JBTabs
+import com.intellij.ui.tabs.TabInfo
+import com.intellij.ui.tabs.impl.JBTabsImpl
+import com.intellij.openapi.actionSystem.DefaultActionGroup
 import com.intellij.ui.treeStructure.Tree
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.tree.TreeUtil
@@ -46,183 +50,67 @@ import javax.swing.tree.DefaultMutableTreeNode
 import javax.swing.tree.DefaultTreeCellRenderer
 import javax.swing.tree.DefaultTreeModel
 
-class GitChangesToolWindow(private val project: Project) {
+class GitChangesToolWindow(private val project: Project) { // project is Disposable
     private val gitService = project.service<GitService>()
-    private val tabbedPane = JBTabbedPane()
-    private val tabsMap = mutableMapOf<String, Component>()
+    private val jbTabs: JBTabs = JBTabsImpl(project, project) // project as parentDisposable
 
     fun getContent(): JComponent {
         val panel = JBPanel<JBPanel<*>>(BorderLayout())
-        
-        // Create the tabbed pane
-        panel.add(tabbedPane, BorderLayout.CENTER)
-        
-        // Add the "+" button to add new tabs
-        val addButton = JButton("+")
-        addButton.addActionListener { showBranchSelectionDialog() }
-        
-        val buttonPanel = JBPanel<JBPanel<*>>(FlowLayout(FlowLayout.LEFT))
-        buttonPanel.add(addButton)
-        panel.add(buttonPanel, BorderLayout.NORTH)
-        
-        // Add a default tab for the current branch
+
+        // Create and set the AddTabAnAction as a trailing component for jbTabs
+        val addTabAction = AddTabAnAction()
+        val addActionButton = ActionButton(
+            addTabAction,
+            addTabAction.templatePresentation,
+            com.intellij.openapi.actionSystem.ActionPlaces.TOOLWINDOW_TOOLBAR, // Using FQN
+            com.intellij.openapi.actionSystem.impl.ActionButton.DEFAULT_MINIMUM_SIZE // Using FQN
+        )
+        jbTabs.setTrailingComponent(addActionButton)
+
+        // Add JBTabs component to the main panel
+        panel.add(jbTabs.component, BorderLayout.CENTER)
+
+        // Restore initial tab addition
         val currentBranch = gitService.getCurrentBranch() ?: "HEAD"
         addTab(currentBranch)
-        
+
         return panel
     }
     
     private fun addTab(branchName: String) {
-        if (tabsMap.containsKey(branchName)) {
-            tabbedPane.selectedIndex = tabbedPane.indexOfTab(branchName)
+        // Check for Existing Tab
+        val existingTab = jbTabs.tabs.find { it.text == branchName }
+        if (existingTab != null) {
+            jbTabs.select(existingTab, true)
             return
         }
+
+        // Create Content Component
+        val tabContentComponent = createTabContent(branchName)
+
+        // Create TabInfo
+        val tabInfo = TabInfo(tabContentComponent)
+        tabInfo.text = branchName
+
+        // Set Close Action on TabInfo
+        val closeAction = object : AnAction("Close Tab", "Close this tab", AllIcons.Actions.Close) {
+            override fun actionPerformed(e: AnActionEvent) {
+                jbTabs.removeTab(tabInfo)
+            }
+        }
+        val actionGroup = DefaultActionGroup(closeAction)
+        // Using FQN for ActionPlaces as per previous fixes, and TAB_LABEL is appropriate
+        tabInfo.setTabLabelActions(actionGroup, com.intellij.openapi.actionSystem.ActionPlaces.TAB_LABEL)
         
-        val tabContent = createTabContent(branchName)
-        tabsMap[branchName] = tabContent
-        
-        // Add the tab with a close button
-        val tabPanel = JBPanel<JBPanel<*>>(BorderLayout())
-        // Ensure the label itself is not opaque so it doesn't cover the panel's background
-        val tabLabel = JBLabel(branchName)
-        tabLabel.isOpaque = false // Label should be transparent
-        tabLabel.background = Color(0, 0, 0, 0) // Ensure fully transparent background
-        // Add a 5px right margin to the label for spacing from the close button
-        tabLabel.border = BorderFactory.createEmptyBorder(0, 0, 0, 5)
-        
-        // Remove previous MouseListener if any (the one forwarding only mousePressed)
-        // (The previous one is effectively replaced by the new one below)
+        // Add and Select Tab
+        jbTabs.addTab(tabInfo)
+        jbTabs.select(tabInfo, true)
 
-        tabLabel.addMouseListener(object : MouseAdapter() {
-            // Helper function defined locally within the MouseAdapter
-            fun redispatchMouseEventToParent(label: JComponent, originalEvent: MouseEvent, newId: Int) {
-                val parent = label.parent as? JComponent ?: return
-                val convertedEvent = SwingUtilities.convertMouseEvent(originalEvent.component, originalEvent, parent) // Use originalEvent.component
-
-                val clickCount: Int
-                val popupTrigger: Boolean
-                val button: Int
-
-                if (newId == MouseEvent.MOUSE_ENTERED || newId == MouseEvent.MOUSE_EXITED) {
-                    clickCount = 0
-                    popupTrigger = false
-                    button = MouseEvent.NOBUTTON
-                } else {
-                    clickCount = originalEvent.clickCount
-                    popupTrigger = originalEvent.isPopupTrigger
-                    button = originalEvent.button
-                }
-                
-                parent.dispatchEvent(MouseEvent(
-                    parent,
-                    newId,
-                    originalEvent.getWhen(),
-                    originalEvent.modifiersEx,
-                    convertedEvent.x,
-                    convertedEvent.y,
-                    clickCount,
-                    popupTrigger,
-                    button
-                ))
-            }
-
-            override fun mousePressed(e: MouseEvent?) {
-                e ?: return
-                val panelComponent = tabLabel.parent as? JComponent ?: return
-                val tabIndex = tabbedPane.indexOfTabComponent(panelComponent)
-                if (tabIndex != -1) {
-                    tabbedPane.selectedIndex = tabIndex
-                }
-                // Also forward the press event to the parent panel so it can react (e.g. for focus, L&F)
-                redispatchMouseEventToParent(tabLabel, e, MouseEvent.MOUSE_PRESSED)
-            }
-
-            override fun mouseEntered(e: MouseEvent?) {
-                e?.let { event ->
-                    redispatchMouseEventToParent(tabLabel, event, MouseEvent.MOUSE_ENTERED)
-                }
-            }
-
-            override fun mouseExited(e: MouseEvent?) {
-                e?.let { event ->
-                    redispatchMouseEventToParent(tabLabel, event, MouseEvent.MOUSE_EXITED)
-                }
-            }
-        })
-        tabPanel.add(tabLabel, BorderLayout.CENTER)
-
-        // Panel is not opaque by default, allowing JBTabbedPane to paint selected/focused states
-        tabPanel.isOpaque = false
-
-        tabPanel.addMouseListener(object : MouseAdapter() {
-            override fun mousePressed(e: MouseEvent?) {
-                e ?: return
-                val tabIndex = tabbedPane.indexOfTabComponent(tabPanel)
-                if (tabIndex != -1) {
-                    tabbedPane.selectedIndex = tabIndex
-                }
-            }
-
-            override fun mouseEntered(e: MouseEvent?) {
-                var hoveredTabIndex = -1 // Keep using loop for safety if direct method has issues with component identity
-                for (i in 0 until tabbedPane.tabCount) {
-                    if (tabbedPane.getTabComponentAt(i) == tabPanel) {
-                        hoveredTabIndex = i
-                        break
-                    }
-                }
-                if (hoveredTabIndex == -1) return // Should not happen
-
-                val selectedIndex = tabbedPane.selectedIndex
-
-                if (hoveredTabIndex == selectedIndex) {
-                    // Hovered tab is the selected tab: ensure it's non-opaque, let L&F handle appearance
-                    tabPanel.isOpaque = false
-                    // No change to background, L&F should show selected state
-                    // Optionally, a subtle border or foreground change could be applied here
-                    // For now, we primarily ensure it does not get an opaque hover background
-                } else {
-                    // Hovered tab is not the selected tab: apply opaque hover background
-                    tabPanel.background = UIManager.getColor("TabbedPane.hoverColor") ?: JBColor.namedColor("Tabs.hoverBackground", UIManager.getColor("TabbedPane.focus")?.brighter() ?: JBColor.LIGHT_GRAY)
-                    tabPanel.isOpaque = true
-                }
-                tabPanel.repaint()
-            }
-
-            override fun mouseExited(e: MouseEvent?) {
-                // Reset to non-opaque and clear custom background, allowing L&F to paint
-                tabPanel.isOpaque = false
-                tabPanel.background = null 
-                tabPanel.repaint()
-            }
-        })
-
-        // Create and add the ActionButton for closing the tab
-        val closeTabAction = CloseTabAction(branchName)
-        // Using DEFAULT_MINIMUM_SIZE first, can be adjusted e.g., JBUI.size(16, 16) or (20,20)
-        val actionButton = ActionButton(
-            closeTabAction,
-            closeTabAction.templatePresentation,
-            com.intellij.openapi.actionSystem.ActionPlaces.TOOLWINDOW_TITLE, // Updated place
-            JBUI.size(16, 16) // Updated minimumSize
-        )
-        tabPanel.add(actionButton, BorderLayout.EAST)
-        
-        tabbedPane.addTab(branchName, tabContent) // Use branchName as the tab title
-        tabbedPane.setTabComponentAt(tabbedPane.tabCount - 1, tabPanel)
-        tabbedPane.selectedIndex = tabbedPane.tabCount - 1
-        
-        // Refresh the tab content
-        refreshTabContent(branchName)
+        // Call refreshTabContent
+        refreshTabContent(branchName, tabInfo)
     }
     
-    private fun closeTab(branchName: String) {
-        val index = tabbedPane.indexOfTab(branchName)
-        if (index >= 0) {
-            tabbedPane.removeTabAt(index)
-            tabsMap.remove(branchName)
-        }
-    }
+    // Removed the old closeTab(branchName: String) method
     
     private fun createTabContent(branchName: String): JComponent {
         val panel = JBPanel<JBPanel<*>>(BorderLayout())
@@ -304,17 +192,27 @@ class GitChangesToolWindow(private val project: Project) {
         return tree
     }
     
-    private fun refreshTabContent(branchName: String) {
-        val component = tabsMap[branchName] ?: return
-        val tree = (component as JBPanel<*>).components.firstOrNull { it is JBScrollPane }
-            ?.let { (it as JBScrollPane).viewport.view as? JTree } ?: return
+    private fun refreshTabContent(branchName: String, currentTabInfo: TabInfo? = null) {
+        val actualTabInfo = currentTabInfo ?: jbTabs.tabs.find { it.text == branchName }
+        if (actualTabInfo == null) {
+            println("Error: TabInfo not found for $branchName in refreshTabContent")
+            return
+        }
+
+        val scrollPane = actualTabInfo.component as? JBScrollPane
+        val tree = scrollPane?.viewport?.view as? JTree
+        
+        if (tree == null) {
+            println("Error: JTree not found in tab $branchName")
+            return
+        }
         
         // Get changes between HEAD and selected branch
         val changes = gitService.getChanges(branchName)
         
         // Update tree model
         val rootModelNode = tree.model.root as DefaultMutableTreeNode
-        rootModelNode.removeAllChildren() // Clear previous changes
+        rootModelNode.removeAllChildren()
 
         buildTreeFromChanges(rootModelNode, changes)
 
@@ -545,18 +443,11 @@ class GitChangesToolWindow(private val project: Project) {
         dialog.show()
     }
 
-    private inner class CloseTabAction(private val branchNameToClose: String) :
-        AnAction("Close Tab", "Closes this tab", AllIcons.Actions.Close) {
+    // private inner class CloseTabAction(...) // Removed
 
+    private inner class AddTabAnAction : AnAction("Add New Tab", "Open dialog to select a branch for comparison", AllIcons.General.Add) {
         override fun actionPerformed(e: AnActionEvent) {
-            // 'this@GitChangesToolWindow' is needed to refer to the outer class instance
-            this@GitChangesToolWindow.closeTab(branchNameToClose)
+            showBranchSelectionDialog()
         }
-
-        // Optional: Update method for dynamic changes to presentation if needed
-        // override fun update(e: AnActionEvent) {
-        //     super.update(e)
-        //     // Example: e.presentation.isEnabled = shouldBeEnabled()
-        // }
     }
 }
