@@ -90,14 +90,62 @@ class GitChangesToolWindow(private val project: Project) {
         // Add a 5px right margin to the label for spacing from the close button
         tabLabel.border = BorderFactory.createEmptyBorder(0, 0, 0, 5)
         
-        // Forward mouse press events from tabLabel to tabPanel to ensure tab selection
+        // Remove previous MouseListener if any (the one forwarding only mousePressed)
+        // (The previous one is effectively replaced by the new one below)
+
         tabLabel.addMouseListener(object : MouseAdapter() {
+            // Helper function defined locally within the MouseAdapter
+            fun redispatchMouseEventToParent(label: JComponent, originalEvent: MouseEvent, newId: Int) {
+                val parent = label.parent as? JComponent ?: return
+                val convertedEvent = SwingUtilities.convertMouseEvent(originalEvent.component, originalEvent, parent) // Use originalEvent.component
+
+                val clickCount: Int
+                val popupTrigger: Boolean
+                val button: Int
+
+                if (newId == MouseEvent.MOUSE_ENTERED || newId == MouseEvent.MOUSE_EXITED) {
+                    clickCount = 0
+                    popupTrigger = false
+                    button = MouseEvent.NOBUTTON
+                } else {
+                    clickCount = originalEvent.clickCount
+                    popupTrigger = originalEvent.isPopupTrigger
+                    button = originalEvent.button
+                }
+                
+                parent.dispatchEvent(MouseEvent(
+                    parent,
+                    newId,
+                    originalEvent.getWhen(),
+                    originalEvent.modifiersEx,
+                    convertedEvent.x,
+                    convertedEvent.y,
+                    clickCount,
+                    popupTrigger,
+                    button
+                ))
+            }
+
             override fun mousePressed(e: MouseEvent?) {
-                if (e == null) return
-                val parent = tabLabel.parent
-                if (parent is JComponent) {
-                    val convertedEvent = SwingUtilities.convertMouseEvent(e.component, e, parent)
-                    parent.dispatchEvent(convertedEvent)
+                e ?: return
+                val panelComponent = tabLabel.parent as? JComponent ?: return
+                val tabIndex = tabbedPane.indexOfTabComponent(panelComponent)
+                if (tabIndex != -1) {
+                    tabbedPane.selectedIndex = tabIndex
+                }
+                // Also forward the press event to the parent panel so it can react (e.g. for focus, L&F)
+                redispatchMouseEventToParent(tabLabel, e, MouseEvent.MOUSE_PRESSED)
+            }
+
+            override fun mouseEntered(e: MouseEvent?) {
+                e?.let { event ->
+                    redispatchMouseEventToParent(tabLabel, event, MouseEvent.MOUSE_ENTERED)
+                }
+            }
+
+            override fun mouseExited(e: MouseEvent?) {
+                e?.let { event ->
+                    redispatchMouseEventToParent(tabLabel, event, MouseEvent.MOUSE_EXITED)
                 }
             }
         })
@@ -107,8 +155,16 @@ class GitChangesToolWindow(private val project: Project) {
         tabPanel.isOpaque = false
 
         tabPanel.addMouseListener(object : MouseAdapter() {
+            override fun mousePressed(e: MouseEvent?) {
+                e ?: return
+                val tabIndex = tabbedPane.indexOfTabComponent(tabPanel)
+                if (tabIndex != -1) {
+                    tabbedPane.selectedIndex = tabIndex
+                }
+            }
+
             override fun mouseEntered(e: MouseEvent?) {
-                var hoveredTabIndex = -1
+                var hoveredTabIndex = -1 // Keep using loop for safety if direct method has issues with component identity
                 for (i in 0 until tabbedPane.tabCount) {
                     if (tabbedPane.getTabComponentAt(i) == tabPanel) {
                         hoveredTabIndex = i
