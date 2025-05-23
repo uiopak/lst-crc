@@ -59,10 +59,15 @@ class GitChangesToolWindow(private val project: Project) { // project is Disposa
 
         // Create the AddTabAnAction
         val addTabAction = AddTabAnAction()
-        // Wrap it in a DefaultActionGroup
-        val addActionGroup = DefaultActionGroup(addTabAction)
-        // Set this group as extra actions for jbTabs
-        jbTabs.setExtraActions(addActionGroup)
+        // Create an ActionButton from the AnAction
+        val addActionButton = ActionButton(
+            addTabAction,
+            addTabAction.templatePresentation,
+            com.intellij.openapi.actionSystem.ActionPlaces.TOOLWINDOW_TITLE, // Fully qualified name
+            JBUI.size(16, 16) // Specific size
+        )
+        // Set this button as a side component for jbTabs
+        jbTabs.setSideComponent(addActionButton)
 
         // Add JBTabs component to the main panel
         panel.add(jbTabs.component, BorderLayout.CENTER)
