@@ -13,12 +13,13 @@ import com.intellij.openapi.vcs.changes.actions.diff.ShowDiffAction
 import com.intellij.openapi.vfs.VfsUtilCore
 import com.intellij.ui.SearchTextField
 
-// Imports for ActionButton
+// Imports for ActionButton & Toolbar
 import com.intellij.icons.AllIcons
+import com.intellij.openapi.actionSystem.ActionManager
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.ActionPlaces
-import com.intellij.openapi.actionSystem.impl.ActionButton
+// import com.intellij.openapi.actionSystem.impl.ActionButton // No longer directly used for add button
 import com.intellij.ui.JBColor
 import com.intellij.ui.components.JBLabel
 import javax.swing.UIManager // Added for UIManager.getColor
@@ -57,20 +58,26 @@ class GitChangesToolWindow(private val project: Project) { // project is Disposa
     fun getContent(): JComponent {
         val panel = JBPanel<JBPanel<*>>(BorderLayout())
 
-        // Create the AddTabAnAction
+        // 1. Create AddTabAnAction instance
         val addTabAction = AddTabAnAction()
-        // Create an ActionButton from the AnAction
-        val addActionButton = ActionButton(
-            addTabAction,
-            addTabAction.templatePresentation,
-            com.intellij.openapi.actionSystem.ActionPlaces.TOOLWINDOW_TITLE, // Fully qualified name
-            JBUI.size(16, 16) // Specific size
-        )
-        // Set this button as a side component for jbTabs
-        jbTabs.setSideComponent(addActionButton)
 
-        // Add JBTabs component to the main panel
-        panel.add(jbTabs.component, BorderLayout.CENTER)
+        // 2. Create DefaultActionGroup
+        val actionGroup = DefaultActionGroup(addTabAction)
+
+        // 3. Create ActionToolbar
+        val actionManager = com.intellij.openapi.actionSystem.ActionManager.getInstance()
+        val toolbar = actionManager.createActionToolbar(
+            com.intellij.openapi.actionSystem.ActionPlaces.TOOLWINDOW_TITLE, // Fully qualified name
+            actionGroup,
+            true // Horizontal
+        )
+
+        // 4. Configure Toolbar
+        toolbar.setTargetComponent(jbTabs.component) // Target the JBTabs component
+
+        // 5. Layout
+        panel.add(toolbar.component, BorderLayout.NORTH) // Toolbar at the top
+        panel.add(jbTabs.component, BorderLayout.CENTER) // JBTabs component below toolbar
 
         // Restore initial tab addition
         val currentBranch = gitService.getCurrentBranch() ?: "HEAD"
