@@ -105,12 +105,13 @@ class GitChangesToolWindow(private val project: Project) {
 
         // Create and add the ActionButton for closing the tab
         val closeTabAction = CloseTabAction(branchName)
-        // Using DEFAULT_MINIMUM_SIZE first, can be adjusted e.g., JBUI.size(16, 16) or (20,20)
+        val buttonSize = JBUI.size(16, 16)
+
         val actionButton = ActionButton(
             closeTabAction,
             closeTabAction.templatePresentation,
-            com.intellij.openapi.actionSystem.ActionPlaces.TOOLWINDOW_TAB, // Fully qualified name
-            com.intellij.openapi.actionSystem.impl.ActionButton.DEFAULT_MINIMUM_SIZE // Fully qualified name
+            ActionPlaces.TOOLWINDOW_TITLE,
+            buttonSize
         )
         tabPanel.add(actionButton, BorderLayout.EAST)
         
