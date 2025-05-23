@@ -108,8 +108,8 @@ class GitChangesToolWindow(private val project: Project) { // project is Disposa
             }
         }
         val actionGroup = DefaultActionGroup(closeAction)
-        // Using FQN for ActionPlaces, corrected to EDITOR_TAB
-        tabInfo.setTabLabelActions(actionGroup, com.intellij.openapi.actionSystem.ActionPlaces.EDITOR_TAB)
+        // Using FQN for ActionPlaces, corrected to TOOLWINDOW_TAB
+        tabInfo.setTabLabelActions(actionGroup, com.intellij.openapi.actionSystem.ActionPlaces.TOOLWINDOW_TAB)
         
         // Add and Select Tab
         jbTabs.addTab(tabInfo)
@@ -208,7 +208,9 @@ class GitChangesToolWindow(private val project: Project) { // project is Disposa
             return
         }
 
-        val scrollPane = actualTabInfo.component as? JBScrollPane
+        // Correctly access the JTree through the panel hierarchy
+        val tabPanel = actualTabInfo.component as? JBPanel<*> // The component from TabInfo is the JBPanel
+        val scrollPane = tabPanel?.getComponent(0) as? JBScrollPane // Assuming JBScrollPane is the first/only component in tabPanel's center
         val tree = scrollPane?.viewport?.view as? JTree
         
         if (tree == null) {
