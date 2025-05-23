@@ -23,6 +23,7 @@ import com.intellij.ui.JBColor
 import com.intellij.ui.components.JBLabel
 import javax.swing.UIManager // Added for UIManager.getColor
 import java.awt.Color // Added for transparent color
+import javax.swing.SwingUtilities // Added for event conversion
 import com.intellij.ui.components.JBList
 import com.intellij.ui.components.JBPanel
 import com.intellij.ui.components.JBScrollPane
@@ -89,7 +90,17 @@ class GitChangesToolWindow(private val project: Project) {
         // Add a 5px right margin to the label for spacing from the close button
         tabLabel.border = BorderFactory.createEmptyBorder(0, 0, 0, 5)
         
-        // The MouseListener previously added to tabLabel has been removed.
+        // Forward mouse press events from tabLabel to tabPanel to ensure tab selection
+        tabLabel.addMouseListener(object : MouseAdapter() {
+            override fun mousePressed(e: MouseEvent?) {
+                if (e == null) return
+                val parent = tabLabel.parent
+                if (parent is JComponent) {
+                    val convertedEvent = SwingUtilities.convertMouseEvent(e.component, e, parent)
+                    parent.dispatchEvent(convertedEvent)
+                }
+            }
+        })
         tabPanel.add(tabLabel, BorderLayout.CENTER)
 
         // Panel is not opaque by default, allowing JBTabbedPane to paint selected/focused states
