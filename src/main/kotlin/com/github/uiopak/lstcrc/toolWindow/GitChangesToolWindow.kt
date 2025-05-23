@@ -57,15 +57,12 @@ class GitChangesToolWindow(private val project: Project) { // project is Disposa
     fun getContent(): JComponent {
         val panel = JBPanel<JBPanel<*>>(BorderLayout())
 
-        // Create and set the AddTabAnAction as a trailing component for jbTabs
+        // Create the AddTabAnAction
         val addTabAction = AddTabAnAction()
-        val addActionButton = ActionButton(
-            addTabAction,
-            addTabAction.templatePresentation,
-            com.intellij.openapi.actionSystem.ActionPlaces.TOOLWINDOW_TOOLBAR, // Using FQN
-            com.intellij.openapi.actionSystem.impl.ActionButton.DEFAULT_MINIMUM_SIZE // Using FQN
-        )
-        jbTabs.setTrailingComponent(addActionButton)
+        // Wrap it in a DefaultActionGroup
+        val addActionGroup = DefaultActionGroup(addTabAction)
+        // Set this group as extra actions for jbTabs
+        jbTabs.setExtraActions(addActionGroup)
 
         // Add JBTabs component to the main panel
         panel.add(jbTabs.component, BorderLayout.CENTER)
@@ -99,8 +96,8 @@ class GitChangesToolWindow(private val project: Project) { // project is Disposa
             }
         }
         val actionGroup = DefaultActionGroup(closeAction)
-        // Using FQN for ActionPlaces as per previous fixes, and TAB_LABEL is appropriate
-        tabInfo.setTabLabelActions(actionGroup, com.intellij.openapi.actionSystem.ActionPlaces.TAB_LABEL)
+        // Using FQN for ActionPlaces, corrected to EDITOR_TAB
+        tabInfo.setTabLabelActions(actionGroup, com.intellij.openapi.actionSystem.ActionPlaces.EDITOR_TAB)
         
         // Add and Select Tab
         jbTabs.addTab(tabInfo)
