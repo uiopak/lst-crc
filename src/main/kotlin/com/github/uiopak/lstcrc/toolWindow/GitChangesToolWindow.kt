@@ -70,24 +70,10 @@ class GitChangesToolWindow(private val project: Project) { // project is Disposa
         // Create and Configure "Plus" Button Toolbar
         val actionManager = ActionManager.getInstance()
         val plusButtonToolbar = actionManager.createActionToolbar(
-            ActionPlaces.TOOLWINDOW_TOOLBAR, // Using a generic place for toolbars
+            ActionPlaces.UNKNOWN, // Using a generic place for toolbars
             actionGroup,
             true // Horizontal toolbar
         )
-
-        // Attempt to configure toolbar for compactness
-        // These methods might not exist on all versions or ActionToolbar types,
-        // so defensive casting/checking is good.
-        if (plusButtonToolbar is ActionToolbarImpl) {
-            plusButtonToolbar.setReservePlaceAutoPopupIcon(false)
-            plusButtonToolbar.setHideDisabledButtons(true)
-        }
-        // ActionToolbar.NOWRAP_LAYOUT_POLICY might be an int constant.
-        // If it's not available, this line would cause a compilation error.
-        // For safety in this environment, we might skip it if unsure of its availability.
-        // Or assume it's available:
-        plusButtonToolbar.layoutPolicy = ActionToolbar.NOWRAP_LAYOUT_POLICY
-
 
         // Add "Plus" Button Toolbar to East
         panel.add(plusButtonToolbar.component, BorderLayout.EAST)
