@@ -19,6 +19,8 @@ import com.intellij.openapi.actionSystem.ActionManager
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.ActionPlaces
+import com.intellij.openapi.actionSystem.impl.ActionButton // Added for Option 1
+import com.intellij.openapi.actionSystem.ActionToolbar // Added for Option 1 (DEFAULT_MINIMUM_BUTTON_SIZE)
 // import com.intellij.openapi.actionSystem.impl.ActionButton // No longer directly used for add button
 import com.intellij.ui.JBColor
 import com.intellij.ui.components.JBLabel
@@ -61,13 +63,18 @@ class GitChangesToolWindow(private val project: Project) { // project is Disposa
         // 1. Create AddTabAnAction instance
         val addTabAction = AddTabAnAction()
 
-        // 2. Create DefaultActionGroup for tab side actions
-        val sideActionsGroup = DefaultActionGroup(addTabAction)
+        // Create ActionButton for the "Add New Tab" action (Option 1)
+        val plusButton = ActionButton(
+            addTabAction,
+            addTabAction.templatePresentation,
+            ActionPlaces.UNKNOWN, // Using a generic place
+            ActionToolbar.DEFAULT_MINIMUM_BUTTON_SIZE
+        )
 
-        // 3. Set tab side actions
-        jbTabs.setTabSideActions(sideActionsGroup)
+        // Set the plusButton as a trailing component to the tabs
+        jbTabs.setTrailingComponent(plusButton)
 
-        // 4. Add JBTabs component to the center
+        // Add JBTabs component to the center
         panel.add(jbTabs.component, BorderLayout.CENTER)
 
         // Restore initial tab addition
@@ -100,7 +107,7 @@ class GitChangesToolWindow(private val project: Project) { // project is Disposa
         }
         val actionGroup = DefaultActionGroup(closeAction)
         // Using FQN for ActionPlaces, corrected to TOOLWINDOW_TAB
-        tabInfo.setTabLabelActions(actionGroup, com.intellij.openapi.actionSystem.ActionPlaces.TOOLWINDOW_TAB)
+        tabInfo.setTabLabelActions(actionGroup, com.intellij.openapi.actionSystem.ActionPlaces.TAB_LABEL)
         
         // Add and Select Tab
         jbTabs.addTab(tabInfo)
