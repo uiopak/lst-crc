@@ -81,38 +81,52 @@ class GitChangesToolWindow(private val project: Project) { // project is Disposa
                 row: Int,
                 hasFocus: Boolean
             ): Component {
-                super.getTreeCellRendererComponent(tree, value, selected, expanded, leaf, row, hasFocus)
-                
+                // 1. Call super method FIRST
+                val component = super.getTreeCellRendererComponent(
+                    tree, value, selected, expanded, leaf, row, hasFocus
+                ) as JLabel
+
+                // 2. Get the text for the node and apply custom foreground if necessary
+                var nodeText: String?
+
                 if (value is DefaultMutableTreeNode) {
-                    when (val userObject = value.userObject) {
-                        is Change -> { // File node
-                            // Color based on change type
-                            foreground = when (userObject.type) {
-                                Change.Type.NEW -> JBColor.GREEN
-                                Change.Type.DELETED -> JBColor.RED
-                                Change.Type.MOVED -> JBColor.BLUE 
-                                else -> JBColor.BLUE // MODIFICATION
-                            }
-                            
-                            // Get file name
-                            text = userObject.afterRevision?.file?.name 
-                                ?: userObject.beforeRevision?.file?.name 
+                    val userObject = value.userObject
+                    when (userObject) {
+                        is Change -> {
+                            nodeText = userObject.afterRevision?.file?.name
+                                ?: userObject.beforeRevision?.file?.name
                                 ?: "Unknown File"
-                            
-                            // Set icon based on type (optional, but good for UX)
-                            // icon = AllIcons.FileTypes.Text // Example
+
+                            // 3. Custom Foreground Color (Applied to the component from super)
+                            if (!selected) { // Only apply custom colors if not selected
+                                component.foreground = when (userObject.type) {
+                                    Change.Type.NEW -> JBColor.GREEN
+                                    Change.Type.DELETED -> JBColor.RED
+                                    Change.Type.MOVED -> JBColor.BLUE
+                                    else -> JBColor.BLUE // MODIFICATION
+                                }
+                            }
+                            // icon = AllIcons.FileTypes.Text // Example icon
                         }
                         is String -> { // Directory node
-                            text = userObject
-                            // icon = AllIcons.Nodes.Folder // Example
+                            nodeText = userObject
+                            // For directories, usually let super() handle foreground color.
+                            // icon = AllIcons.Nodes.Folder // Example icon
                         }
-                        else -> {
-                            // Root node or other unexpected type
-                            text = value.toString()
+                        else -> { // Root node or other
+                            nodeText = value.toString()
+                            // Let super() handle foreground color.
                         }
                     }
+                    component.text = nodeText
+                } else {
+                    component.text = value?.toString() ?: ""
                 }
-                return this
+
+                // 4. Backgrounds and Opaqueness: Handled by super.
+                // 5. Borders: Handled by super.
+
+                return component // Return the component obtained from super and then customized.
             }
         }
         
