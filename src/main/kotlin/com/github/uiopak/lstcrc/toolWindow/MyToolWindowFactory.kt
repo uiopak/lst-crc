@@ -40,7 +40,6 @@ class MyToolWindowFactory : ToolWindowFactory {
     }
 
     override fun createToolWindowContent(project: Project, toolWindow: ToolWindow) {
-        toolWindow.canCloseContents = true // Added this line
 
         val gitChangesUiProvider = GitChangesToolWindow(project)
         val contentFactory = ContentFactory.getInstance()
