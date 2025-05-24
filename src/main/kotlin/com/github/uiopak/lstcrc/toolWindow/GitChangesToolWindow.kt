@@ -14,7 +14,7 @@ import com.intellij.openapi.vfs.VfsUtilCore
 import com.intellij.ui.SearchTextField
 
 // Imports for ActionButton & Toolbar
-// import com.intellij.icons.AllIcons // Removed
+import com.intellij.icons.AllIcons // Re-adding for new renderer
 // import com.intellij.openapi.actionSystem.ActionManager // Removed
 // import com.intellij.openapi.actionSystem.AnAction // Removed
 // import com.intellij.openapi.actionSystem.AnActionEvent // Removed
@@ -41,7 +41,7 @@ import com.intellij.util.ui.tree.TreeUtil
 import java.awt.BorderLayout
 import java.awt.Component
 import java.awt.Dimension
-// import java.awt.FlowLayout // Removed
+import java.awt.FlowLayout // Adding for new renderer
 import java.awt.event.KeyAdapter
 import java.awt.event.KeyEvent
 import java.awt.event.MouseAdapter
@@ -50,8 +50,12 @@ import javax.swing.*
 import javax.swing.event.DocumentEvent
 import javax.swing.event.DocumentListener
 import javax.swing.tree.DefaultMutableTreeNode
-import javax.swing.tree.DefaultTreeCellRenderer
+// import javax.swing.tree.DefaultTreeCellRenderer // No longer used by the new renderer
 import javax.swing.tree.DefaultTreeModel
+import javax.swing.JPanel // For new renderer
+import javax.swing.JLabel // For new renderer (though JBLabel also extends it)
+import javax.swing.Icon // For new renderer
+import javax.swing.tree.TreeCellRenderer // For new renderer
 
 class GitChangesToolWindow(private val project: Project) { // project is Disposable
     private val gitService = project.service<GitService>()
@@ -74,73 +78,77 @@ class GitChangesToolWindow(private val project: Project) { // project is Disposa
         tree.background = javax.swing.UIManager.getColor("Tree.background")
         tree.isOpaque = true
         
-        // Set custom renderer for coloring
-        // tree.cellRenderer = object : DefaultTreeCellRenderer() {
-        //     override fun getTreeCellRendererComponent(
-        //         tree: JTree,
-        //         value: Any?,
-        //         selected: Boolean,
-        //         expanded: Boolean,
-        //         leaf: Boolean,
-        //         row: Int,
-        //         hasFocus: Boolean
-        //     ): Component {
-        //         // 1. Call super method FIRST.
-        //         val component = super.getTreeCellRendererComponent(
-        //             tree, value, selected, expanded, leaf, row, hasFocus
-        //         ) as JLabel
-        //
-        //         // 2. Explicitly manage opacity and L&F default colors.
-        //         if (selected) {
-        //             component.isOpaque = true // Make sure selected item is opaque
-        //             // The super() call should have already set these, but to be absolutely sure:
-        //             component.background = javax.swing.UIManager.getColor("Tree.selectionBackground")
-        //             component.foreground = javax.swing.UIManager.getColor("Tree.selectionForeground")
-        //         } else {
-        //             component.isOpaque = false // Make non-selected items transparent
-        //             // Background for transparent component doesn't matter.
-        //             // Ensure foreground is the default for non-selected items.
-        //             component.foreground = javax.swing.UIManager.getColor("Tree.foreground")
-        //         }
-        //
-        //         // 3. Apply custom text, icon, and conditional foreground for specific node types.
-        //         if (value is DefaultMutableTreeNode) {
-        //             val userObject = value.userObject
-        //             when (userObject) {
-        //                 is Change -> {
-        //                     component.text = userObject.afterRevision?.file?.name 
-        //                         ?: userObject.beforeRevision?.file?.name 
-        //                         ?: "Unknown File"
-        //                     
-        //                     // Apply custom foreground color ONLY if NOT selected.
-        //                     if (!selected) { 
-        //                         component.foreground = when (userObject.type) {
-        //                             Change.Type.NEW -> com.intellij.ui.JBColor.GREEN
-        //                             Change.Type.DELETED -> com.intellij.ui.JBColor.RED
-        //                             Change.Type.MOVED -> com.intellij.ui.JBColor.BLUE 
-        //                             else -> com.intellij.ui.JBColor.BLUE // MODIFICATION
-        //                         }
-        //                     }
-        //                     // Optionally set component.icon here if needed
-        //                 }
-        //                 is String -> { // Directory node
-        //                     component.text = userObject
-        //                     // Foreground already set by selected/non-selected block above.
-        //                     // Optionally set component.icon here if needed (e.g., AllIcons.Nodes.Folder)
-        //                 }
-        //                 else -> { // Root node or other
-        //                     component.text = value.toString()
-        //                     // Foreground already set by selected/non-selected block above.
-        //                 }
-        //             }
-        //         } else {
-        //             component.text = value?.toString() ?: ""
-        //             // Foreground for non-nodes already set by selected/non-selected block.
-        //         }
-        //
-        //         return component
-        //     }
-        // }
+        tree.cellRenderer = object : javax.swing.tree.TreeCellRenderer { // Implement TreeCellRenderer directly
+            private val panel = javax.swing.JPanel()
+            private val iconLabel = javax.swing.JLabel()
+            private val textLabel = javax.swing.JLabel()
+
+            init {
+                panel.layout = java.awt.FlowLayout(java.awt.FlowLayout.LEFT, 0, 0)
+                panel.add(iconLabel)
+                panel.add(textLabel)
+                iconLabel.border = javax.swing.BorderFactory.createEmptyBorder(0,0,0,0)
+                textLabel.border = javax.swing.BorderFactory.createEmptyBorder(0,2,0,0)
+            }
+
+            override fun getTreeCellRendererComponent(
+                tree: JTree, value: Any?, selected: Boolean, expanded: Boolean,
+                leaf: Boolean, row: Int, hasFocus: Boolean
+            ): Component {
+                var currentText: String?
+                var currentIcon: javax.swing.Icon? = null
+
+                if (value is DefaultMutableTreeNode) {
+                    val userObject = value.userObject
+                    when (userObject) {
+                        is Change -> {
+                            currentText = userObject.afterRevision?.file?.name 
+                                ?: userObject.beforeRevision?.file?.name 
+                                ?: "Unknown File"
+                            // currentIcon = ... 
+                        }
+                        is String -> { // Directory node
+                            currentText = userObject
+                            currentIcon = if (expanded) com.intellij.icons.AllIcons.Nodes.FolderOpen else com.intellij.icons.AllIcons.Nodes.Folder
+                        }
+                        else -> { // Root node or other
+                            currentText = value.toString()
+                        }
+                    }
+                } else {
+                    currentText = value?.toString() ?: ""
+                }
+
+                textLabel.text = currentText
+                iconLabel.icon = currentIcon
+                
+                if (selected) {
+                    panel.background = javax.swing.UIManager.getColor("Tree.selectionBackground")
+                    panel.isOpaque = true
+                    textLabel.foreground = javax.swing.UIManager.getColor("Tree.selectionForeground")
+                    iconLabel.foreground = javax.swing.UIManager.getColor("Tree.selectionForeground")
+                } else {
+                    panel.isOpaque = false
+                    textLabel.foreground = javax.swing.UIManager.getColor("Tree.foreground")
+                    iconLabel.foreground = javax.swing.UIManager.getColor("Tree.foreground")
+                }
+
+                if (!selected && value is DefaultMutableTreeNode && value.userObject is Change) {
+                    val change = value.userObject as Change
+                    textLabel.foreground = when (change.type) {
+                        Change.Type.NEW -> com.intellij.ui.JBColor.GREEN
+                        Change.Type.DELETED -> com.intellij.ui.JBColor.RED
+                        Change.Type.MOVED -> com.intellij.ui.JBColor.BLUE 
+                        else -> com.intellij.ui.JBColor.BLUE // MODIFICATION
+                    }
+                }
+                
+                textLabel.font = tree.font
+                iconLabel.font = tree.font
+
+                return panel
+            }
+        }
         
         // Add double-click listener to open diff
         tree.addMouseListener(object : MouseAdapter() {
