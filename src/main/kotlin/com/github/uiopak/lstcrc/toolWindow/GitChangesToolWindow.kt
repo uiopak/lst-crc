@@ -120,12 +120,15 @@ class GitChangesToolWindow(private val project: Project) { // project is Disposa
         tree.addMouseListener(object : MouseAdapter() {
             override fun mouseClicked(e: MouseEvent) {
                 if (e.clickCount == 2) {
-                    val path = tree.getPathForLocation(e.x, e.y)
-                    path?.let {
-                        val node = it.lastPathComponent as? DefaultMutableTreeNode
-                        val userObject = node?.userObject
-                        if (userObject is Change) {
-                            openDiff(userObject)
+                    val row = tree.getRowForLocation(e.x, e.y) // Get row first
+                    if (row != -1) { // Check if click was on a valid row
+                        val path = tree.getPathForRow(row) // Get path for that row
+                        path?.let { // it refers to path
+                            val node = it.lastPathComponent as? DefaultMutableTreeNode
+                            val userObject = node?.userObject
+                            if (userObject is Change) {
+                                openDiff(userObject)
+                            }
                         }
                     }
                 }
