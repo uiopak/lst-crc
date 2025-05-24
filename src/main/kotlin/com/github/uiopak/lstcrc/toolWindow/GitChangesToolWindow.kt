@@ -84,11 +84,11 @@ class GitChangesToolWindow(private val project: Project) { // project is Disposa
             private val textLabel = javax.swing.JLabel()
 
             init {
-                panel.layout = java.awt.FlowLayout(java.awt.FlowLayout.LEFT, 0, 0)
-                panel.add(iconLabel)
-                panel.add(textLabel)
-                iconLabel.border = javax.swing.BorderFactory.createEmptyBorder(0,0,0,0)
-                textLabel.border = javax.swing.BorderFactory.createEmptyBorder(0,2,0,0)
+                panel.layout = java.awt.BorderLayout() // Changed to BorderLayout
+                panel.add(iconLabel, java.awt.BorderLayout.WEST) // Add iconLabel to WEST
+                panel.add(textLabel, java.awt.BorderLayout.CENTER) // Add textLabel to CENTER
+                // iconLabel.border = javax.swing.BorderFactory.createEmptyBorder(0,0,0,0) // Kept or remove, BorderLayout handles spacing. Let's remove for cleaner diff.
+                textLabel.border = javax.swing.BorderFactory.createEmptyBorder(0,2,0,0) // Keep for left margin
             }
 
             override fun getTreeCellRendererComponent(
@@ -109,7 +109,7 @@ class GitChangesToolWindow(private val project: Project) { // project is Disposa
                         }
                         is String -> { // Directory node
                             currentText = userObject
-                            currentIcon = if (expanded) com.intellij.icons.AllIcons.Nodes.FolderOpen else com.intellij.icons.AllIcons.Nodes.Folder
+                            currentIcon = com.intellij.icons.AllIcons.Nodes.Folder // Changed to always use Folder icon
                         }
                         else -> { // Root node or other
                             currentText = value.toString()
@@ -156,12 +156,16 @@ class GitChangesToolWindow(private val project: Project) { // project is Disposa
                 if (e.clickCount == 2) {
                     val row = tree.getRowForLocation(e.x, e.y) // Get row first
                     if (row != -1) { // Check if click was on a valid row
-                        val path = tree.getPathForRow(row) // Get path for that row
-                        path?.let { // it refers to path
-                            val node = it.lastPathComponent as? DefaultMutableTreeNode
-                            val userObject = node?.userObject
-                            if (userObject is Change) {
-                                openDiff(userObject)
+                        val rowBounds = tree.getRowBounds(row)
+                        // Check if the click point is within the actual bounds of the row
+                        if (rowBounds != null && rowBounds.contains(e.point)) { 
+                            val path = tree.getPathForRow(row) // Get path only if click is confirmed within bounds
+                            path?.let { // it refers to path
+                                val node = it.lastPathComponent as? DefaultMutableTreeNode
+                                val userObject = node?.userObject
+                                if (userObject is Change) {
+                                    openDiff(userObject)
+                                }
                             }
                         }
                     }
