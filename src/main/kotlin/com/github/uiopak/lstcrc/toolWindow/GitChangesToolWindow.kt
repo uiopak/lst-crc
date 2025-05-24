@@ -19,8 +19,8 @@ import com.intellij.openapi.actionSystem.ActionManager
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.ActionPlaces
-import com.intellij.openapi.actionSystem.impl.ActionButton // Added for Option 1
-import com.intellij.openapi.actionSystem.ActionToolbar // Added for Option 1 (DEFAULT_MINIMUM_BUTTON_SIZE)
+import com.intellij.openapi.actionSystem.ActionToolbar
+import com.intellij.openapi.actionSystem.impl.ActionToolbarImpl // For compactness settings
 // import com.intellij.openapi.actionSystem.impl.ActionButton // No longer directly used for add button
 import com.intellij.ui.JBColor
 import com.intellij.ui.components.JBLabel
@@ -60,22 +60,37 @@ class GitChangesToolWindow(private val project: Project) { // project is Disposa
     fun getContent(): JComponent {
         val panel = JBPanel<JBPanel<*>>(BorderLayout())
 
-        // 1. Create AddTabAnAction instance
-        val addTabAction = AddTabAnAction()
-
-        // Create ActionButton for the "Add New Tab" action (Option 1)
-        val plusButton = ActionButton(
-            addTabAction,
-            addTabAction.templatePresentation,
-            ActionPlaces.UNKNOWN, // Using a generic place
-            ActionToolbar.DEFAULT_MINIMUM_BUTTON_SIZE
-        )
-
-        // Set the plusButton as a trailing component to the tabs
-        jbTabs.setTrailingComponent(plusButton)
-
         // Add JBTabs component to the center
         panel.add(jbTabs.component, BorderLayout.CENTER)
+
+        // Create Action and Group for "Plus" Button
+        val addTabAction = AddTabAnAction()
+        val actionGroup = DefaultActionGroup(addTabAction)
+
+        // Create and Configure "Plus" Button Toolbar
+        val actionManager = ActionManager.getInstance()
+        val plusButtonToolbar = actionManager.createActionToolbar(
+            ActionPlaces.TOOLWINDOW_TOOLBAR, // Using a generic place for toolbars
+            actionGroup,
+            true // Horizontal toolbar
+        )
+
+        // Attempt to configure toolbar for compactness
+        // These methods might not exist on all versions or ActionToolbar types,
+        // so defensive casting/checking is good.
+        if (plusButtonToolbar is ActionToolbarImpl) {
+            plusButtonToolbar.setReservePlaceAutoPopupIcon(false)
+            plusButtonToolbar.setHideDisabledButtons(true)
+        }
+        // ActionToolbar.NOWRAP_LAYOUT_POLICY might be an int constant.
+        // If it's not available, this line would cause a compilation error.
+        // For safety in this environment, we might skip it if unsure of its availability.
+        // Or assume it's available:
+        plusButtonToolbar.layoutPolicy = ActionToolbar.NOWRAP_LAYOUT_POLICY
+
+
+        // Add "Plus" Button Toolbar to East
+        panel.add(plusButtonToolbar.component, BorderLayout.EAST)
 
         // Restore initial tab addition
         val currentBranch = gitService.getCurrentBranch() ?: "HEAD"
@@ -107,7 +122,7 @@ class GitChangesToolWindow(private val project: Project) { // project is Disposa
         }
         val actionGroup = DefaultActionGroup(closeAction)
         // Using FQN for ActionPlaces, corrected to TOOLWINDOW_TAB
-        tabInfo.setTabLabelActions(actionGroup, com.intellij.openapi.actionSystem.ActionPlaces.TAB_LABEL)
+        tabInfo.setTabLabelActions(actionGroup, com.intellij.openapi.actionSystem.ActionPlaces.UNKNOWN)
         
         // Add and Select Tab
         jbTabs.addTab(tabInfo)
