@@ -30,8 +30,9 @@ class MyToolWindowFactory : ToolWindowFactory {
 
                 val branchUi = uiProvider.createBranchContentView(selectedBranchName)
                 val contentFactory = ContentFactory.getInstance()
-                val content = contentFactory.createContent(branchUi, selectedBranchName, false)
+                val content = contentFactory.createContent(branchUi, selectedBranchName, true) // Changed to true
                 content.isCloseable = true // Make the tab closeable
+                content.isPinned = false // Added this line
                 toolWindow.contentManager.addContent(content)
                 toolWindow.contentManager.setSelectedContent(content, true) // Select the new tab
             }
@@ -46,8 +47,9 @@ class MyToolWindowFactory : ToolWindowFactory {
         val gitService = project.service<GitService>()
         val initialBranchName = gitService.getCurrentBranch() ?: "HEAD"
         val initialBranchUi = gitChangesUiProvider.createBranchContentView(initialBranchName)
-        val initialContent = contentFactory.createContent(initialBranchUi, initialBranchName, false)
+        val initialContent = contentFactory.createContent(initialBranchUi, initialBranchName, true) // Changed to true
         initialContent.isCloseable = true // Make the initial tab closeable
+        initialContent.isPinned = false // Added this line
         toolWindow.contentManager.addContent(initialContent)
 
         // Set "Plus" button action for the tool window title
