@@ -61,23 +61,14 @@ class GitChangesToolWindow(private val project: Project) { // project is Disposa
         // 1. Create AddTabAnAction instance
         val addTabAction = AddTabAnAction()
 
-        // 2. Create DefaultActionGroup
-        val actionGroup = DefaultActionGroup(addTabAction)
+        // 2. Create DefaultActionGroup for tab side actions
+        val sideActionsGroup = DefaultActionGroup(addTabAction)
 
-        // 3. Create ActionToolbar
-        val actionManager = com.intellij.openapi.actionSystem.ActionManager.getInstance()
-        val toolbar = actionManager.createActionToolbar(
-            com.intellij.openapi.actionSystem.ActionPlaces.TOOLWINDOW_TITLE, // Fully qualified name
-            actionGroup,
-            true // Horizontal
-        )
+        // 3. Set tab side actions
+        jbTabs.setTabSideActions(sideActionsGroup)
 
-        // 4. Configure Toolbar
-        toolbar.setTargetComponent(jbTabs.component) // Target the JBTabs component
-
-        // 5. Layout
-        panel.add(toolbar.component, BorderLayout.NORTH) // Toolbar at the top
-        panel.add(jbTabs.component, BorderLayout.CENTER) // JBTabs component below toolbar
+        // 4. Add JBTabs component to the center
+        panel.add(jbTabs.component, BorderLayout.CENTER)
 
         // Restore initial tab addition
         val currentBranch = gitService.getCurrentBranch() ?: "HEAD"
