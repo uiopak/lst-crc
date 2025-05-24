@@ -89,6 +89,8 @@ class GitChangesToolWindow(private val project: Project) { // project is Disposa
                 panel.add(textLabel, java.awt.BorderLayout.CENTER) // Add textLabel to CENTER
                 // iconLabel.border = javax.swing.BorderFactory.createEmptyBorder(0,0,0,0) // Kept or remove, BorderLayout handles spacing. Let's remove for cleaner diff.
                 textLabel.border = javax.swing.BorderFactory.createEmptyBorder(0,2,0,0) // Keep for left margin
+                iconLabel.isOpaque = false // Ensure icon label is transparent
+                textLabel.isOpaque = false // Ensure text label is transparent
             }
 
             override fun getTreeCellRendererComponent(
