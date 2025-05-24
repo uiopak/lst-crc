@@ -156,42 +156,14 @@ class GitChangesToolWindow(private val project: Project) { // project is Disposa
         tree.addMouseListener(object : MouseAdapter() {
             override fun mouseClicked(e: MouseEvent) {
                 if (e.clickCount == 2) {
-                    // Step 1: Determine if the click is on any valid rendered path area.
-                    // Note: tree.getUI() can be null if the tree is not yet shown,
-                    // though unlikely in a mouse click event.
-                    val ui = tree.ui
-                    if (ui == null) return // Should not happen in a click event
-
-                    val pathForClickLocation = ui.getClosestPathForLocation(tree, e.x, e.y)
-                    var clickIsOnValidRenderedPath = false
-                    if (pathForClickLocation != null) {
-                        val pathBounds = tree.getPathBounds(pathForClickLocation)
-                        if (pathBounds != null && pathBounds.contains(e.x, e.y)) {
-                            clickIsOnValidRenderedPath = true
+                    val selectionPath = tree.selectionPath
+                    if (selectionPath != null) {
+                        val node = selectionPath.lastPathComponent as? DefaultMutableTreeNode
+                        val userObject = node?.userObject
+                        if (userObject is Change) {
+                            openDiff(userObject)
                         }
                     }
-
-                    if (clickIsOnValidRenderedPath) {
-                        // Step 2: If click is on a valid area, use the current selectionPath.
-                        // This relies on the first click of the double-click having selected the row.
-                        val selectionPath = tree.selectionPath 
-                        if (selectionPath != null) {
-                            // Sanity check: ensure selectionPath's row is the same as the clicked path's row.
-                            // This confirms the selection is relevant to the actual click area.
-                            val rowOfSelection = tree.getRowForPath(selectionPath)
-                            // pathForClickLocation should be non-null here because clickIsOnValidRenderedPath is true
-                            val rowOfClick = tree.getRowForPath(pathForClickLocation!!) 
-
-                            if (rowOfSelection == rowOfClick) { 
-                                val node = selectionPath.lastPathComponent as? DefaultMutableTreeNode
-                                val userObject = node?.userObject
-                                if (userObject is Change) {
-                                    openDiff(userObject)
-                                }
-                            }
-                        }
-                    }
-                    // If click was not on a valid rendered path area, do nothing.
                 }
             }
         })
