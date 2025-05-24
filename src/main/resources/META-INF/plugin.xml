@@ -10,7 +10,7 @@
     <resource-bundle>messages.MyBundle</resource-bundle>
 
     <extensions defaultExtensionNs="com.intellij">
-        <toolWindow factoryClass="com.github.uiopak.lstcrc.toolWindow.MyToolWindowFactory" id="GitChangesView" anchor="bottom"/>
+        <toolWindow factoryClass="com.github.uiopak.lstcrc.toolWindow.MyToolWindowFactory" id="GitChangesView" anchor="bottom" canCloseContents="true"/>
         <postStartupActivity implementation="com.github.uiopak.lstcrc.startup.MyProjectActivity" />
         <projectService serviceImplementation="com.github.uiopak.lstcrc.services.GitService"/>
     </extensions>
