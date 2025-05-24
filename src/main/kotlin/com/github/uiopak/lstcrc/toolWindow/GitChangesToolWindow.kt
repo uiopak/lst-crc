@@ -14,13 +14,13 @@ import com.intellij.openapi.vfs.VfsUtilCore
 import com.intellij.ui.SearchTextField
 
 // Imports for ActionButton & Toolbar
-import com.intellij.icons.AllIcons
-import com.intellij.openapi.actionSystem.ActionManager
-import com.intellij.openapi.actionSystem.AnAction
-import com.intellij.openapi.actionSystem.AnActionEvent
-import com.intellij.openapi.actionSystem.ActionPlaces
-import com.intellij.openapi.actionSystem.ActionToolbar
-import com.intellij.openapi.actionSystem.impl.ActionToolbarImpl // For compactness settings
+// import com.intellij.icons.AllIcons // Removed
+// import com.intellij.openapi.actionSystem.ActionManager // Removed
+// import com.intellij.openapi.actionSystem.AnAction // Removed
+// import com.intellij.openapi.actionSystem.AnActionEvent // Removed
+// import com.intellij.openapi.actionSystem.ActionPlaces // Removed as no longer directly used
+// import com.intellij.openapi.actionSystem.ActionToolbar // Removed
+// import com.intellij.openapi.actionSystem.impl.ActionToolbarImpl // Removed
 // import com.intellij.openapi.actionSystem.impl.ActionButton // No longer directly used for add button
 import com.intellij.ui.JBColor
 import com.intellij.ui.components.JBLabel
@@ -31,17 +31,17 @@ import com.intellij.ui.components.JBList
 import com.intellij.ui.components.JBPanel
 import com.intellij.ui.components.JBScrollPane
 // import com.intellij.ui.components.JBTabbedPane // No longer used
-import com.intellij.ui.tabs.JBTabs
-import com.intellij.ui.tabs.TabInfo
-import com.intellij.ui.tabs.impl.JBTabsImpl
-import com.intellij.openapi.actionSystem.DefaultActionGroup
+// import com.intellij.ui.tabs.JBTabs // Removed
+// import com.intellij.ui.tabs.TabInfo // Removed
+// import com.intellij.ui.tabs.impl.JBTabsImpl // Removed
+// import com.intellij.openapi.actionSystem.DefaultActionGroup // Removed
 import com.intellij.ui.treeStructure.Tree
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.tree.TreeUtil
 import java.awt.BorderLayout
 import java.awt.Component
 import java.awt.Dimension
-import java.awt.FlowLayout
+// import java.awt.FlowLayout // Removed
 import java.awt.event.KeyAdapter
 import java.awt.event.KeyEvent
 import java.awt.event.MouseAdapter
@@ -55,78 +55,13 @@ import javax.swing.tree.DefaultTreeModel
 
 class GitChangesToolWindow(private val project: Project) { // project is Disposable
     private val gitService = project.service<GitService>()
-    private val jbTabs: JBTabsImpl = JBTabsImpl(project, project) // project as parentDisposable, type changed to JBTabsImpl
 
-    fun getContent(): JComponent {
-        val panel = JBPanel<JBPanel<*>>(BorderLayout())
-
-        // Add JBTabs component to the center
-        panel.add(jbTabs.component, BorderLayout.CENTER)
-
-        // Create Action and Group for "Plus" Button
-        val addTabAction = AddTabAnAction()
-        val actionGroup = DefaultActionGroup(addTabAction)
-
-        // Create and Configure "Plus" Button Toolbar
-        val actionManager = ActionManager.getInstance()
-        val plusButtonToolbar = actionManager.createActionToolbar(
-            ActionPlaces.UNKNOWN, // Using a generic place for toolbars
-            actionGroup,
-            true // Horizontal toolbar
-        )
-
-        // Add "Plus" Button Toolbar to East
-        panel.add(plusButtonToolbar.component, BorderLayout.EAST)
-
-        // Restore initial tab addition
-        val currentBranch = gitService.getCurrentBranch() ?: "HEAD"
-        addTab(currentBranch)
-
-        return panel
-    }
-    
-    private fun addTab(branchName: String) {
-        // Check for Existing Tab
-        val existingTab = jbTabs.tabs.find { it.text == branchName }
-        if (existingTab != null) {
-            jbTabs.select(existingTab, true)
-            return
-        }
-
-        // Create Content Component
-        val tabContentComponent = createTabContent(branchName)
-
-        // Create TabInfo
-        val tabInfo = TabInfo(tabContentComponent)
-        tabInfo.setText(branchName) // Use setter method
-
-        // Set Close Action on TabInfo
-        val closeAction = object : AnAction("Close Tab", "Close this tab", AllIcons.Actions.Close) {
-            override fun actionPerformed(e: AnActionEvent) {
-                jbTabs.removeTab(tabInfo)
-            }
-        }
-        val actionGroup = DefaultActionGroup(closeAction)
-        // Using FQN for ActionPlaces, corrected to TOOLWINDOW_TAB
-        tabInfo.setTabLabelActions(actionGroup, com.intellij.openapi.actionSystem.ActionPlaces.UNKNOWN)
-        
-        // Add and Select Tab
-        jbTabs.addTab(tabInfo)
-        jbTabs.select(tabInfo, true)
-
-        // Call refreshTabContent
-        refreshTabContent(branchName, tabInfo)
-    }
-    
-    // Removed the old closeTab(branchName: String) method
-    
-    private fun createTabContent(branchName: String): JComponent {
-        val panel = JBPanel<JBPanel<*>>(BorderLayout())
-        
-        // Create a tree to display changes
+    fun createBranchContentView(branchName: String): JComponent {
         val tree = createChangesTree()
+        refreshChangesTree(tree, branchName) // Populate the tree with initial data
+
+        val panel = JBPanel<JBPanel<*>>(BorderLayout())
         panel.add(JBScrollPane(tree), BorderLayout.CENTER)
-        
         return panel
     }
     
@@ -200,23 +135,10 @@ class GitChangesToolWindow(private val project: Project) { // project is Disposa
         return tree
     }
     
-    private fun refreshTabContent(branchName: String, currentTabInfo: TabInfo? = null) {
-        val actualTabInfo = currentTabInfo ?: jbTabs.tabs.find { it.text == branchName }
-        if (actualTabInfo == null) {
-            println("Error: TabInfo not found for $branchName in refreshTabContent")
-            return
-        }
+    private fun refreshChangesTree(tree: JTree, branchName: String) {
+        // Logic from old refreshTabContent, but tree is passed directly.
+        // No longer need to find TabInfo or extract tree from component hierarchy.
 
-        // Correctly access the JTree through the panel hierarchy
-        val tabPanel = actualTabInfo.component as? JBPanel<*> // The component from TabInfo is the JBPanel
-        val scrollPane = tabPanel?.getComponent(0) as? JBScrollPane // Assuming JBScrollPane is the first/only component in tabPanel's center
-        val tree = scrollPane?.viewport?.view as? JTree
-        
-        if (tree == null) {
-            println("Error: JTree not found in tab $branchName")
-            return
-        }
-        
         // Get changes between HEAD and selected branch
         val changes = gitService.getChanges(branchName)
         
@@ -337,7 +259,8 @@ class GitChangesToolWindow(private val project: Project) { // project is Disposa
         }
     }
     
-    private fun showBranchSelectionDialog() {
+    // Modified to accept a callback
+    fun showBranchSelectionDialog(onBranchSelected: (branchName: String) -> Unit) {
         val dialog = object : DialogWrapper(project, true) { // true for canBeParent
             private val searchTextField = SearchTextField()
             private var listPopup: JBPopup? = null
@@ -397,7 +320,7 @@ class GitChangesToolWindow(private val project: Project) { // project is Disposa
                         .setItemChoosenCallback {
                             val selectedValue = jbList.selectedValue
                             if (selectedValue != null) {
-                                addTab(selectedValue)
+                                onBranchSelected(selectedValue) // Call the callback
                                 close(OK_EXIT_CODE)
                             }
                         }
@@ -409,7 +332,7 @@ class GitChangesToolWindow(private val project: Project) { // project is Disposa
                             if (e.keyCode == KeyEvent.VK_ENTER) {
                                 val selectedValue = jbList.selectedValue
                                 if (selectedValue != null) {
-                                    addTab(selectedValue)
+                                    onBranchSelected(selectedValue) // Call the callback
                                     close(OK_EXIT_CODE)
                                 }
                             }
@@ -440,10 +363,22 @@ class GitChangesToolWindow(private val project: Project) { // project is Disposa
                 // without an active popup or a selection in popup.
                 // We can try to select the first item in filtered list if available.
                 if (listPopup?.isVisible == false && filteredListModel.size > 0) {
-                    addTab(filteredListModel.getElementAt(0))
-                    super.doOKAction()
+                    val selectedValue = filteredListModel.getElementAt(0)
+                    onBranchSelected(selectedValue) // Call the callback
+                    super.doOKAction() // This will close the dialog with OK_EXIT_CODE
                 } else if (listPopup?.isVisible == true) {
                     // Let popup handle it or simulate enter on list
+                    // If a list item is selected, Enter on the list should trigger its KeyListener above.
+                    // If not, and user presses Enter on search field, this doOKAction might be triggered.
+                    // We could try to take list.selectedValue if any.
+                    val currentListSelection = (listPopup?.content as? JBList<*>)?.selectedValue as? String
+                    if (currentListSelection != null) {
+                        onBranchSelected(currentListSelection)
+                        super.doOKAction()
+                    } else {
+                        // If no selection, and Enter pressed, perhaps do nothing or cancel.
+                        super.doCancelAction() // Or provide feedback that a selection is needed
+                    }
                 } else {
                     // If no results or popup not shown, maybe do nothing or close
                     super.doCancelAction() // Or provide feedback
@@ -455,9 +390,6 @@ class GitChangesToolWindow(private val project: Project) { // project is Disposa
 
     // private inner class CloseTabAction(...) // Removed
 
-    private inner class AddTabAnAction : AnAction("Add New Tab", "Open dialog to select a branch for comparison", AllIcons.General.Add) {
-        override fun actionPerformed(e: AnActionEvent) {
-            showBranchSelectionDialog()
-        }
-    }
+    // AddTabAnAction is no longer needed here, it will be in MyToolWindowFactory
+    // DefaultActionGroup import was also removed as it was only for AddTabAnAction
 }
