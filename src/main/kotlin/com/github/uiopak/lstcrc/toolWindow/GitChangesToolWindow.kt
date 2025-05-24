@@ -69,6 +69,10 @@ class GitChangesToolWindow(private val project: Project) { // project is Disposa
         val root = DefaultMutableTreeNode("Changes")
         val treeModel = DefaultTreeModel(root)
         val tree = Tree(treeModel)
+
+        // Explicitly set tree background and opacity
+        tree.background = javax.swing.UIManager.getColor("Tree.background")
+        tree.isOpaque = true
         
         // Set custom renderer for coloring
         tree.cellRenderer = object : DefaultTreeCellRenderer() {
@@ -81,52 +85,60 @@ class GitChangesToolWindow(private val project: Project) { // project is Disposa
                 row: Int,
                 hasFocus: Boolean
             ): Component {
-                // 1. Call super method FIRST
+                // 1. Call super method FIRST.
                 val component = super.getTreeCellRendererComponent(
                     tree, value, selected, expanded, leaf, row, hasFocus
                 ) as JLabel
 
-                // 2. Get the text for the node and apply custom foreground if necessary
-                var nodeText: String?
+                // 2. Explicitly manage opacity and L&F default colors.
+                if (selected) {
+                    component.isOpaque = true // Make sure selected item is opaque
+                    // The super() call should have already set these, but to be absolutely sure:
+                    component.background = javax.swing.UIManager.getColor("Tree.selectionBackground")
+                    component.foreground = javax.swing.UIManager.getColor("Tree.selectionForeground")
+                } else {
+                    component.isOpaque = false // Make non-selected items transparent
+                    // Background for transparent component doesn't matter.
+                    // Ensure foreground is the default for non-selected items.
+                    component.foreground = javax.swing.UIManager.getColor("Tree.foreground")
+                }
 
+                // 3. Apply custom text, icon, and conditional foreground for specific node types.
                 if (value is DefaultMutableTreeNode) {
                     val userObject = value.userObject
                     when (userObject) {
                         is Change -> {
-                            nodeText = userObject.afterRevision?.file?.name
-                                ?: userObject.beforeRevision?.file?.name
+                            component.text = userObject.afterRevision?.file?.name 
+                                ?: userObject.beforeRevision?.file?.name 
                                 ?: "Unknown File"
-
-                            // 3. Custom Foreground Color (Applied to the component from super)
-                            if (!selected) { // Only apply custom colors if not selected
+                            
+                            // Apply custom foreground color ONLY if NOT selected.
+                            if (!selected) { 
                                 component.foreground = when (userObject.type) {
-                                    Change.Type.NEW -> JBColor.GREEN
-                                    Change.Type.DELETED -> JBColor.RED
-                                    Change.Type.MOVED -> JBColor.BLUE
-                                    else -> JBColor.BLUE // MODIFICATION
+                                    Change.Type.NEW -> com.intellij.ui.JBColor.GREEN
+                                    Change.Type.DELETED -> com.intellij.ui.JBColor.RED
+                                    Change.Type.MOVED -> com.intellij.ui.JBColor.BLUE 
+                                    else -> com.intellij.ui.JBColor.BLUE // MODIFICATION
                                 }
                             }
-                            // icon = AllIcons.FileTypes.Text // Example icon
+                            // Optionally set component.icon here if needed
                         }
                         is String -> { // Directory node
-                            nodeText = userObject
-                            // For directories, usually let super() handle foreground color.
-                            // icon = AllIcons.Nodes.Folder // Example icon
+                            component.text = userObject
+                            // Foreground already set by selected/non-selected block above.
+                            // Optionally set component.icon here if needed (e.g., AllIcons.Nodes.Folder)
                         }
                         else -> { // Root node or other
-                            nodeText = value.toString()
-                            // Let super() handle foreground color.
+                            component.text = value.toString()
+                            // Foreground already set by selected/non-selected block above.
                         }
                     }
-                    component.text = nodeText
                 } else {
                     component.text = value?.toString() ?: ""
+                    // Foreground for non-nodes already set by selected/non-selected block.
                 }
 
-                // 4. Backgrounds and Opaqueness: Handled by super.
-                // 5. Borders: Handled by super.
-
-                return component // Return the component obtained from super and then customized.
+                return component
             }
         }
         
