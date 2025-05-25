@@ -1,47 +1,29 @@
 package com.github.uiopak.lstcrc.toolWindow
 
 import com.github.uiopak.lstcrc.services.GitService
+import com.intellij.icons.AllIcons
 import com.intellij.openapi.components.service
+import com.intellij.openapi.fileTypes.FileTypeManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.DialogWrapper
 import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.ui.popup.JBPopup
 import com.intellij.openapi.ui.popup.JBPopupFactory
-import com.intellij.openapi.ui.popup.ListPopup
 import com.intellij.openapi.vcs.changes.Change
 import com.intellij.openapi.vcs.changes.actions.diff.ShowDiffAction
 import com.intellij.openapi.vfs.VfsUtilCore
-import com.intellij.ui.SearchTextField
-
-// Imports for ActionButton & Toolbar
-import com.intellij.icons.AllIcons // Re-adding for new renderer
-// import com.intellij.openapi.actionSystem.ActionManager // Removed
-// import com.intellij.openapi.actionSystem.AnAction // Removed
-// import com.intellij.openapi.actionSystem.AnActionEvent // Removed
-// import com.intellij.openapi.actionSystem.ActionPlaces // Removed as no longer directly used
-// import com.intellij.openapi.actionSystem.ActionToolbar // Removed
-// import com.intellij.openapi.actionSystem.impl.ActionToolbarImpl // Removed
-// import com.intellij.openapi.actionSystem.impl.ActionButton // No longer directly used for add button
 import com.intellij.ui.JBColor
+import com.intellij.ui.SearchTextField
+import com.intellij.ui.SimpleTextAttributes
 import com.intellij.ui.components.JBLabel
-import javax.swing.UIManager // Added for UIManager.getColor
-import java.awt.Color // Added for transparent color
-import javax.swing.SwingUtilities // Added for event conversion
 import com.intellij.ui.components.JBList
 import com.intellij.ui.components.JBPanel
 import com.intellij.ui.components.JBScrollPane
-// import com.intellij.ui.components.JBTabbedPane // No longer used
-// import com.intellij.ui.tabs.JBTabs // Removed
-// import com.intellij.ui.tabs.TabInfo // Removed
-// import com.intellij.ui.tabs.impl.JBTabsImpl // Removed
-// import com.intellij.openapi.actionSystem.DefaultActionGroup // Removed
 import com.intellij.ui.treeStructure.Tree
+import com.intellij.ui.ColoredTreeCellRenderer
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.tree.TreeUtil
-import java.awt.BorderLayout
-import java.awt.Component
-import java.awt.Dimension
-import java.awt.FlowLayout // Adding for new renderer
+import java.awt.*
 import java.awt.event.KeyAdapter
 import java.awt.event.KeyEvent
 import java.awt.event.MouseAdapter
@@ -50,243 +32,236 @@ import javax.swing.*
 import javax.swing.event.DocumentEvent
 import javax.swing.event.DocumentListener
 import javax.swing.tree.DefaultMutableTreeNode
-// import javax.swing.tree.DefaultTreeCellRenderer // No longer used by the new renderer
 import javax.swing.tree.DefaultTreeModel
-import javax.swing.JPanel // For new renderer
-import javax.swing.JLabel // For new renderer (though JBLabel also extends it)
-import javax.swing.Icon // For new renderer
-import javax.swing.tree.TreeCellRenderer // For new renderer
 
-class GitChangesToolWindow(private val project: Project) { // project is Disposable
+class GitChangesToolWindow(private val project: Project) {
     private val gitService = project.service<GitService>()
 
     fun createBranchContentView(branchName: String): JComponent {
         val tree = createChangesTree()
-        refreshChangesTree(tree, branchName) // Populate the tree with initial data
+        refreshChangesTree(tree, branchName)
 
         val panel = JBPanel<JBPanel<*>>(BorderLayout())
         panel.add(JBScrollPane(tree), BorderLayout.CENTER)
         return panel
     }
-    
-    private fun createChangesTree(): JTree {
+
+    private fun createChangesTree(): Tree {
         val root = DefaultMutableTreeNode("Changes")
         val treeModel = DefaultTreeModel(root)
-        val tree = Tree(treeModel)
 
-        // Explicitly set tree background and opacity
-        tree.background = javax.swing.UIManager.getColor("Tree.background")
-        tree.isOpaque = true
-        
-        tree.cellRenderer = object : javax.swing.tree.TreeCellRenderer { // Implement TreeCellRenderer directly
-            private val panel = javax.swing.JPanel()
-            private val iconLabel = javax.swing.JLabel()
-            private val textLabel = javax.swing.JLabel()
-
-            init {
-                panel.layout = java.awt.BorderLayout() // Changed to BorderLayout
-                panel.add(iconLabel, java.awt.BorderLayout.WEST) // Add iconLabel to WEST
-                panel.add(textLabel, java.awt.BorderLayout.CENTER) // Add textLabel to CENTER
-                // iconLabel.border = javax.swing.BorderFactory.createEmptyBorder(0,0,0,0) // Kept or remove, BorderLayout handles spacing. Let's remove for cleaner diff.
-                textLabel.border = javax.swing.BorderFactory.createEmptyBorder(0,2,0,0) // Keep for left margin
-                iconLabel.isOpaque = false // Ensure icon label is transparent
-                textLabel.isOpaque = false // Ensure text label is transparent
-            }
-
-            override fun getTreeCellRendererComponent(
-                tree: JTree, value: Any?, selected: Boolean, expanded: Boolean,
-                leaf: Boolean, row: Int, hasFocus: Boolean
-            ): Component {
-                var currentText: String?
-                var currentIcon: javax.swing.Icon? = null
-
-                if (value is DefaultMutableTreeNode) {
-                    val userObject = value.userObject
-                    when (userObject) {
-                        is Change -> {
-                            currentText = userObject.afterRevision?.file?.name 
-                                ?: userObject.beforeRevision?.file?.name 
-                                ?: "Unknown File"
-                            // currentIcon = ... 
-                        }
-                        is String -> { // Directory node
-                            currentText = userObject
-                            currentIcon = com.intellij.icons.AllIcons.Nodes.Folder // Changed to always use Folder icon
-                        }
-                        else -> { // Root node or other
-                            currentText = value.toString()
-                        }
-                    }
-                } else {
-                    currentText = value?.toString() ?: ""
-                }
-
-                textLabel.text = currentText
-                iconLabel.icon = currentIcon
-                
-                if (selected) {
-                    panel.background = javax.swing.UIManager.getColor("Tree.selectionBackground")
-                    panel.isOpaque = true
-                    textLabel.foreground = javax.swing.UIManager.getColor("Tree.selectionForeground")
-                    iconLabel.foreground = javax.swing.UIManager.getColor("Tree.selectionForeground")
-                } else {
-                    panel.isOpaque = false
-                    textLabel.foreground = javax.swing.UIManager.getColor("Tree.foreground")
-                    iconLabel.foreground = javax.swing.UIManager.getColor("Tree.foreground")
-                }
-
-                if (!selected && value is DefaultMutableTreeNode && value.userObject is Change) {
-                    val change = value.userObject as Change
-                    textLabel.foreground = when (change.type) {
-                        Change.Type.NEW -> com.intellij.ui.JBColor.GREEN
-                        Change.Type.DELETED -> com.intellij.ui.JBColor.RED
-                        Change.Type.MOVED -> com.intellij.ui.JBColor.BLUE 
-                        else -> com.intellij.ui.JBColor.BLUE // MODIFICATION
-                    }
-                }
-                
-                textLabel.font = tree.font
-                iconLabel.font = tree.font
-
-                return panel
+        val tree = object : Tree(treeModel) {
+            override fun getScrollableTracksViewportWidth(): Boolean {
+                return true
             }
         }
-        
-        // Add double-click listener to open diff
-        tree.addMouseListener(object : MouseAdapter() {
-            override fun mouseClicked(e: MouseEvent) {
-                if (e.clickCount == 2) {
-                    val selectionPath = tree.selectionPath
-                    if (selectionPath != null) {
-                        val node = selectionPath.lastPathComponent as? DefaultMutableTreeNode
-                        val userObject = node?.userObject
-                        if (userObject is Change) {
-                            openDiff(userObject)
+
+        tree.setCellRenderer(object : ColoredTreeCellRenderer() {
+            override fun customizeCellRenderer(
+                jTree: javax.swing.JTree,
+                value: Any?,
+                selected: Boolean,
+                expanded: Boolean,
+                leaf: Boolean,
+                row: Int,
+                hasFocus: Boolean
+            ) {
+                if (value !is DefaultMutableTreeNode) {
+                    append(value?.toString() ?: "")
+                    return
+                }
+
+                val userObject = value.userObject
+
+                when (userObject) {
+                    is Change -> {
+                        val change = userObject
+                        val filePath = change.afterRevision?.file ?: change.beforeRevision?.file
+                        val fileName = filePath?.name ?: "Unknown File"
+
+                        val fgColor: Color = if (selected) {
+                            UIManager.getColor("Tree.selectionForeground")
+                        } else {
+                            when (change.type) {
+                                Change.Type.NEW -> JBColor.namedColor("VersionControl.FileStatus.Added", JBColor.GREEN)
+                                Change.Type.DELETED -> JBColor.namedColor("VersionControl.FileStatus.Deleted", JBColor.RED)
+                                Change.Type.MOVED -> JBColor.namedColor("VersionControl.FileStatus.Modified", JBColor.BLUE)
+                                Change.Type.MODIFICATION -> JBColor.namedColor("VersionControl.FileStatus.Modified", JBColor.BLUE)
+                                else -> UIManager.getColor("Tree.foreground")
+                            } ?: UIManager.getColor("Tree.foreground") // Fallback
                         }
+
+                        val attributes = SimpleTextAttributes(SimpleTextAttributes.STYLE_PLAIN, fgColor)
+                        append(fileName, attributes)
+
+                        var fileIcon: Icon? = null
+                        if (filePath != null) {
+                            val virtualFile = filePath.virtualFile
+                            if (virtualFile != null) {
+                                fileIcon = virtualFile.fileType.icon
+                            }
+                            if (fileIcon == null) {
+                                fileIcon = FileTypeManager.getInstance().getFileTypeByFileName(filePath.name).icon
+                            }
+                        }
+                        icon = fileIcon ?: AllIcons.FileTypes.Unknown
+                    }
+                    is String -> { // Directory node
+                        append(userObject, SimpleTextAttributes.REGULAR_ATTRIBUTES)
+                        icon = AllIcons.Nodes.Folder
+                    }
+                    else -> { // Root node or other
+                        append(value.toString(), SimpleTextAttributes.REGULAR_ATTRIBUTES)
                     }
                 }
             }
         })
-        
+
+        // --- REVERTED MOUSE ADAPTER LOGIC ---
+        tree.addMouseListener(object : MouseAdapter() {
+            override fun mouseClicked(e: MouseEvent) {
+                if (e.clickCount == 2) {
+                    val clickPoint = e.point
+                    var pathToOpen: javax.swing.tree.TreePath? = null
+
+                    System.err.println("------------------- MOUSE CLICKED (Reverted Full Row Logic / File Icons) -------------------")
+                    System.err.println("Click at: $clickPoint")
+                    System.err.println("Tree component: ${tree.javaClass.name}, Size: ${tree.size}, VisibleRect: ${tree.visibleRect}")
+
+                    // Strategy: Use getClosestRowForLocation to find the target row index.
+                    // Then, verify the click's Y is within that row's Y-bounds.
+                    // If so, consider it a hit on that row, as long as X is within tree's visible area.
+                    val row = tree.getClosestRowForLocation(clickPoint.x, clickPoint.y)
+                    System.err.println("1. Row from tree.getClosestRowForLocation(x, y): $row")
+
+                    if (row != -1) {
+                        // tree.getRowBounds(row) gives the bounds of the rendered content (icon + text),
+                        // which is correct for checking the Y-coordinate.
+                        val contentBoundsForRow = tree.getRowBounds(row)
+                        System.err.println("2. Content bounds for row $row (tree.getRowBounds): $contentBoundsForRow")
+
+                        if (contentBoundsForRow != null) {
+                            // Check if Y-coordinate of click is within the Y-span of this row's content
+                            val yWithinRowContent = clickPoint.y >= contentBoundsForRow.y && clickPoint.y < (contentBoundsForRow.y + contentBoundsForRow.height)
+                            System.err.println("3. Is click Y (${clickPoint.y}) within row content Y-bounds ([${contentBoundsForRow.y} - ${contentBoundsForRow.y + contentBoundsForRow.height -1}])? $yWithinRowContent")
+
+                            // Check if X-coordinate is within the tree's actual display width (its visible part)
+                            // This allows clicking anywhere horizontally across the selected row.
+                            val xWithinTreeVisible = clickPoint.x >= tree.visibleRect.x && clickPoint.x < (tree.visibleRect.x + tree.visibleRect.width)
+                            System.err.println("4. Is click X (${clickPoint.x}) within tree's visible X-rect ([${tree.visibleRect.x} - ${tree.visibleRect.x + tree.visibleRect.width -1}])? $xWithinTreeVisible")
+
+                            if (yWithinRowContent && xWithinTreeVisible) {
+                                pathToOpen = tree.getPathForRow(row)
+                                System.err.println("5. Conditions met (Y within content, X within tree visible). Path to open for row $row: $pathToOpen")
+                            } else {
+                                System.err.println("5. Conditions NOT met.")
+                                if (!yWithinRowContent) System.err.println("   - Reason: Click Y ${clickPoint.y} is outside row content Y-bounds [${contentBoundsForRow.y}, ${contentBoundsForRow.y + contentBoundsForRow.height -1}].")
+                                if (!xWithinTreeVisible) System.err.println("   - Reason: Click X ${clickPoint.x} is outside tree visible X-rect [${tree.visibleRect.x}, ${tree.visibleRect.x + tree.visibleRect.width-1}].")
+                            }
+                        } else {
+                            System.err.println("2a. contentBoundsForRow for row $row is null. Cannot determine path this way.")
+                        }
+                    } else {
+                        System.err.println("1a. No closest row found (getClosestRowForLocation returned -1). Click likely outside any row's vertical span.")
+                    }
+                    System.err.println("----------------------------------------------------------------------------------------------------")
+
+                    if (pathToOpen != null) {
+                        val node = pathToOpen.lastPathComponent as? DefaultMutableTreeNode
+                        val userObject = node?.userObject
+                        if (userObject is Change) {
+                            if (tree.selectionPath != pathToOpen) {
+                                tree.selectionPath = pathToOpen
+                            }
+                            openDiff(userObject)
+                        } else {
+                            System.err.println("ERROR: Path $pathToOpen resolved, but userObject is not a Change: $userObject")
+                        }
+                    } else {
+                        System.err.println("No valid path for action determined for click at $clickPoint.")
+                    }
+                }
+            }
+        })
+        // --- END REVERTED MOUSE ADAPTER LOGIC ---
         return tree
     }
-    
-    private fun refreshChangesTree(tree: JTree, branchName: String) {
-        // Logic from old refreshTabContent, but tree is passed directly.
-        // No longer need to find TabInfo or extract tree from component hierarchy.
 
-        // Get changes between HEAD and selected branch
+    private fun refreshChangesTree(tree: javax.swing.JTree, branchName: String) {
         val changes = gitService.getChanges(branchName)
-        
-        // Update tree model
         val rootModelNode = tree.model.root as DefaultMutableTreeNode
         rootModelNode.removeAllChildren()
-
         buildTreeFromChanges(rootModelNode, changes)
-
         (tree.model as DefaultTreeModel).reload(rootModelNode)
         TreeUtil.expandAll(tree)
     }
 
     private fun buildTreeFromChanges(rootNode: DefaultMutableTreeNode, changes: List<Change>) {
         val repositoryRoot = gitService.getCurrentRepository()?.root
-
         for (change in changes) {
             val currentFilePathObj = change.afterRevision?.file ?: change.beforeRevision?.file
             val rawPath = currentFilePathObj?.path
             var displayPath: String? = null
-
             if (currentFilePathObj != null && repositoryRoot != null) {
-                val vf = currentFilePathObj.virtualFile // Attempt to get VirtualFile
+                val vf = currentFilePathObj.virtualFile
                 if (vf != null) {
                     displayPath = VfsUtilCore.getRelativePath(vf, repositoryRoot, '/')
                 } else if (rawPath != null) {
-                    // Fallback for files not available as VirtualFile (e.g. deleted in HEAD)
-                    // Attempt string manipulation if rawPath is absolute and starts with repo root path
                     val repoRootPathString = repositoryRoot.path
                     if (rawPath.startsWith(repoRootPathString + "/")) {
                         displayPath = rawPath.substring(repoRootPathString.length + 1)
-                    } else if (rawPath.startsWith(repoRootPathString)) { // Handle case where repoRootPathString might not have trailing slash
+                    } else if (rawPath.startsWith(repoRootPathString)) {
                         displayPath = rawPath.substring(repoRootPathString.length).let { if (it.startsWith("/")) it.substring(1) else it }
                     } else {
-                        displayPath = rawPath // Fallback if not clearly under repo root
+                        displayPath = rawPath
                     }
                 }
             }
-
-            // If displayPath is still null (e.g. repoRoot was null, or currentFilePathObj was null), use rawPath as fallback
-            if (displayPath == null) {
-                displayPath = rawPath
-            }
-
-            if (displayPath == null) continue // Skip if no path could be determined
-
-            // Normalize path separators (important if string manipulation fallback was used)
+            if (displayPath == null) displayPath = rawPath
+            if (displayPath == null) continue
             val normalizedPath = displayPath.replace('\\', '/')
             val pathComponents = normalizedPath.split('/').filter { it.isNotEmpty() }
             var currentNode = rootNode
-
-            // Check if pathComponents is empty, meaning the change is at the repository root itself
-            // This can happen for example if a file at the root is modified.
-            // In such cases, we should directly add the change to the rootNode.
             if (pathComponents.isEmpty() && currentFilePathObj != null) {
-                 // Ensure that we don't add a directory node if it's a file at root.
-                 // The existing logic for finding/creating child nodes might handle this,
-                 // but this explicit check makes it clearer for root-level files.
-                 var fileNodeExists = false
-                 for (j in 0 until currentNode.childCount) {
-                     val existingChild = currentNode.getChildAt(j) as DefaultMutableTreeNode
-                     if (existingChild.userObject is Change) {
-                         val existingChange = existingChild.userObject as Change
-                         val existingChangePath = existingChange.afterRevision?.file?.path ?: existingChange.beforeRevision?.file?.path
-                         if (existingChangePath == rawPath) { // rawPath is the original full path here
-                             fileNodeExists = true
-                             break
-                         }
-                     }
-                 }
-                 if (!fileNodeExists) {
-                     currentNode.add(DefaultMutableTreeNode(change))
-                 }
-                 continue // Move to the next change
+                var fileNodeExists = false
+                for (j in 0 until currentNode.childCount) {
+                    val existingChild = currentNode.getChildAt(j) as DefaultMutableTreeNode
+                    if (existingChild.userObject is Change) {
+                        val existingChange = existingChild.userObject as Change
+                        val existingChangePath = existingChange.afterRevision?.file?.path ?: existingChange.beforeRevision?.file?.path
+                        if (existingChangePath == rawPath) {
+                            fileNodeExists = true; break
+                        }
+                    }
+                }
+                if (!fileNodeExists) currentNode.add(DefaultMutableTreeNode(change))
+                continue
             }
-
-
             for (i in pathComponents.indices) {
                 val componentName = pathComponents[i]
                 val isLastComponent = i == pathComponents.size - 1
-
                 var childNode: DefaultMutableTreeNode? = null
                 for (j in 0 until currentNode.childCount) {
                     val existingChild = currentNode.getChildAt(j) as DefaultMutableTreeNode
                     if (isLastComponent && existingChild.userObject is Change) {
                         val existingChange = existingChild.userObject as Change
-                        // Match based on the original full path (rawPath) to ensure uniqueness if multiple
-                        // changes could theoretically have the same relative path (e.g. submodule changes - though less likely here)
                         val existingChangeOriginalPath = existingChange.afterRevision?.file?.path ?: existingChange.beforeRevision?.file?.path
-                        if (existingChangeOriginalPath == rawPath) { // Compare with rawPath for uniqueness
-                            childNode = existingChild
-                            break
+                        if (existingChangeOriginalPath == rawPath) {
+                            childNode = existingChild; break
                         }
                     } else if (!isLastComponent && existingChild.userObject is String && existingChild.userObject == componentName) {
-                        childNode = existingChild
-                        break
+                        childNode = existingChild; break
                     }
                 }
-                
                 if (childNode == null) {
-                    childNode = if (isLastComponent) {
-                        DefaultMutableTreeNode(change) // File node, userObject is Change
-                    } else {
-                        DefaultMutableTreeNode(componentName) // Directory node, userObject is directory name
-                    }
+                    childNode = if (isLastComponent) DefaultMutableTreeNode(change) else DefaultMutableTreeNode(componentName)
                     currentNode.add(childNode)
                 }
                 currentNode = childNode
             }
         }
     }
-    
+
     private fun openDiff(change: Change) {
         try {
             ShowDiffAction.showDiffForChange(project, listOf(change))
@@ -294,138 +269,71 @@ class GitChangesToolWindow(private val project: Project) { // project is Disposa
             Messages.showErrorDialog(project, "Error opening diff: ${e.message}", "Error")
         }
     }
-    
-    // Modified to accept a callback
+
     fun showBranchSelectionDialog(onBranchSelected: (branchName: String) -> Unit) {
-        val dialog = object : DialogWrapper(project, true) { // true for canBeParent
+        val dialog = object : DialogWrapper(project, true) {
             private val searchTextField = SearchTextField()
             private var listPopup: JBPopup? = null
             private val allBranches = gitService.getAllBranches().sorted()
             private val filteredListModel = DefaultListModel<String>()
-
             init {
                 title = "Select Branch to Compare with HEAD"
-                init() // Important to call init() for DialogWrapper
-
+                init()
                 searchTextField.addDocumentListener(object : DocumentListener {
-                    override fun insertUpdate(e: DocumentEvent?) {
-                        filterAndShowPopup()
-                    }
-
-                    override fun removeUpdate(e: DocumentEvent?) {
-                        filterAndShowPopup()
-                    }
-
-                    override fun changedUpdate(e: DocumentEvent?) {
-                        filterAndShowPopup()
-                    }
+                    override fun insertUpdate(e: DocumentEvent?) = filterAndShowPopup()
+                    override fun removeUpdate(e: DocumentEvent?) = filterAndShowPopup()
+                    override fun changedUpdate(e: DocumentEvent?) = filterAndShowPopup()
                 })
+                SwingUtilities.invokeLater { filterAndShowPopup() }
             }
-
             private fun filterAndShowPopup() {
                 val searchText = searchTextField.text.trim()
                 filteredListModel.clear()
-                allBranches.filter { it.contains(searchText, ignoreCase = true) }
-                    .forEach { filteredListModel.addElement(it) }
-
-                if (listPopup?.isDisposed == false) {
-                    listPopup?.cancel() // Close previous popup
-                }
-
-                if (filteredListModel.isEmpty && searchText.isNotEmpty()) {
-                    // Optionally show "no results" or hide popup
-                    return
-                }
-                if (filteredListModel.isEmpty && searchText.isEmpty()) {
-                     // Show all branches if search text is empty
-                    allBranches.forEach { filteredListModel.addElement(it) }
-                }
-
-
+                val sourceList = if (searchText.isEmpty()) allBranches else allBranches.filter { it.contains(searchText, ignoreCase = true) }
+                sourceList.forEach { filteredListModel.addElement(it) }
+                if (listPopup?.isDisposed == false) listPopup?.cancel()
+                if (filteredListModel.isEmpty && searchText.isNotEmpty()) return
                 if (filteredListModel.size > 0) {
                     val jbList = JBList(filteredListModel)
-                    jbList.visibleRowCount = JBUI.scale(10).coerceAtMost(filteredListModel.size)
-
-
-                    listPopup = JBPopupFactory.getInstance()
-                        .createListPopupBuilder(jbList)
-                        .setTitle("Matching Branches")
-                        .setMovable(false)
-                        .setResizable(false)
-                        .setRequestFocus(false) // Keep focus on searchTextField initially
-                        .setItemChoosenCallback {
-                            val selectedValue = jbList.selectedValue
-                            if (selectedValue != null) {
-                                onBranchSelected(selectedValue) // Call the callback
-                                close(OK_EXIT_CODE)
-                            }
-                        }
+                    jbList.visibleRowCount = JBUI.scale(10).coerceAtMost(filteredListModel.size).coerceAtLeast(1)
+                    listPopup = JBPopupFactory.getInstance().createListPopupBuilder(jbList)
+                        .setMovable(false).setResizable(false).setRequestFocus(false)
+                        .setItemChoosenCallback { jbList.selectedValue?.let { onBranchSelected(it); close(OK_EXIT_CODE) } }
                         .createPopup()
-
-                    // Handle Enter key on JBList
                     jbList.addKeyListener(object : KeyAdapter() {
                         override fun keyPressed(e: KeyEvent) {
                             if (e.keyCode == KeyEvent.VK_ENTER) {
-                                val selectedValue = jbList.selectedValue
-                                if (selectedValue != null) {
-                                    onBranchSelected(selectedValue) // Call the callback
-                                    close(OK_EXIT_CODE)
-                                }
+                                jbList.selectedValue?.let { onBranchSelected(it); close(OK_EXIT_CODE); e.consume() }
                             }
                         }
                     })
-                    
-                    // Show popup under the search field
-                    listPopup?.showUnderneathOf(searchTextField)
+                    if (searchTextField.isShowing) listPopup?.showUnderneathOf(searchTextField)
                 }
             }
-
             override fun createCenterPanel(): JComponent {
                 val panel = JBPanel<JBPanel<*>>(BorderLayout(0, JBUI.scale(5)))
-                panel.add(JBLabel("Select branch to compare with HEAD:"), BorderLayout.NORTH)
+                panel.add(JBLabel("Search for branch to compare with current HEAD:"), BorderLayout.NORTH)
                 panel.add(searchTextField, BorderLayout.CENTER)
-                panel.preferredSize = JBUI.size(400, 60) // Adjust size as needed, popup will be separate
+                panel.preferredSize = JBUI.size(450, 60)
                 return panel
             }
-
-            override fun getPreferredFocusedComponent(): JComponent? {
-                return searchTextField
-            }
-            
-            // We handle action on popup item selection, so default OK might not be needed
-            // or could be triggered programmatically. For now, let popup handle it.
+            override fun getPreferredFocusedComponent(): JComponent? = searchTextField
             override fun doOKAction() {
-                // This might be triggered if user presses Enter in the search field
-                // without an active popup or a selection in popup.
-                // We can try to select the first item in filtered list if available.
-                if (listPopup?.isVisible == false && filteredListModel.size > 0) {
-                    val selectedValue = filteredListModel.getElementAt(0)
-                    onBranchSelected(selectedValue) // Call the callback
-                    super.doOKAction() // This will close the dialog with OK_EXIT_CODE
-                } else if (listPopup?.isVisible == true) {
-                    // Let popup handle it or simulate enter on list
-                    // If a list item is selected, Enter on the list should trigger its KeyListener above.
-                    // If not, and user presses Enter on search field, this doOKAction might be triggered.
-                    // We could try to take list.selectedValue if any.
-                    val currentListSelection = (listPopup?.content as? JBList<*>)?.selectedValue as? String
-                    if (currentListSelection != null) {
-                        onBranchSelected(currentListSelection)
-                        super.doOKAction()
-                    } else {
-                        // If no selection, and Enter pressed, perhaps do nothing or cancel.
-                        super.doCancelAction() // Or provide feedback that a selection is needed
-                    }
+                if (listPopup?.isVisible == true) {
+                    (listPopup?.content as? JBList<*>)?.selectedValue?.let { onBranchSelected(it as String); super.doOKAction(); return }
+                }
+                if (!filteredListModel.isEmpty) {
+                    onBranchSelected(filteredListModel.getElementAt(0)); super.doOKAction()
                 } else {
-                    // If no results or popup not shown, maybe do nothing or close
-                    super.doCancelAction() // Or provide feedback
+                    if (searchTextField.text.isNotBlank() && filteredListModel.isEmpty) {
+                        Messages.showWarningDialog(project, "No branch found matching '${searchTextField.text}'.", "Branch Not Found")
+                        return
+                    }
+                    super.doCancelAction()
                 }
             }
+            override fun dispose() { listPopup?.cancel(); super.dispose() }
         }
         dialog.show()
     }
-
-    // private inner class CloseTabAction(...) // Removed
-
-    // AddTabAnAction is no longer needed here, it will be in MyToolWindowFactory
-    // DefaultActionGroup import was also removed as it was only for AddTabAnAction
 }
