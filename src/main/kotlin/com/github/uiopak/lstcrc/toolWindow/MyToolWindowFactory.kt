@@ -16,9 +16,10 @@ import com.intellij.ui.content.ContentFactory
 import javax.swing.JComponent
 import javax.swing.JPanel
 import java.awt.FlowLayout
-import com.intellij.ui.components.JButton // Using IntelliJ's JButton for better theme integration
+import javax.swing.JButton // Changed to standard Swing JButton
 import com.intellij.ui.content.ContentManagerListener
 import com.intellij.ui.content.ContentManagerEvent
+import com.intellij.ui.content.ContentManagerEvent.ContentOperation // Explicit import for nested enum
 
 class MyToolWindowFactory : ToolWindowFactory {
 
@@ -37,7 +38,7 @@ class MyToolWindowFactory : ToolWindowFactory {
 
         // Create Button Component
         val buttonPanel = JPanel(FlowLayout(FlowLayout.LEFT, 0, 0))
-        val button = JButton() // Using com.intellij.ui.components.JButton
+        val button = JButton() // Now instantiates javax.swing.JButton
         button.icon = AllIcons.General.Add
         button.isBorderPainted = false
         button.isContentAreaFilled = false
@@ -131,7 +132,7 @@ class MyToolWindowFactory : ToolWindowFactory {
                 val selectedContentFromEvent = event.content
                 // Check if the selected tab is the "button holder tab" (empty display name)
                 if (selectedContentFromEvent.displayName.isNullOrEmpty() &&
-                    event.operation == ContentManagerEvent.ContentOperation.SELECTED) {
+                    event.operation == ContentOperation.SELECTED) { // Use directly imported enum
 
                     val currentContentManager = toolWindow.contentManager // toolWindow is from outer scope
                     val selectionTabName = "Select Branch"
