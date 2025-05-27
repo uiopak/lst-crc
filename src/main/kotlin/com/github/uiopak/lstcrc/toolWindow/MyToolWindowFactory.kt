@@ -16,59 +16,64 @@ import javax.swing.JComponent
 
 class MyToolWindowFactory : ToolWindowFactory {
 
-    private fun createAndAddPlusTab(
-        project: Project,
-        toolWindow: ToolWindow,
-        uiProvider: GitChangesToolWindow,
-        contentFactory: ContentFactory
-    ) {
-        val plusTabContent = uiProvider.createBranchSelectionView { selectedBranchName ->
-            // 1a. Identify the currently active "+" tab
-            // The "current" + tab is the one that contains the branch selection view that triggered this callback.
-            // We need to find it in the content manager. A simple way is to assume it's the last one named "+".
-            // A more robust way would involve passing the Content object to the callback if possible,
-            // but given the current structure, we'll find it by name and assume it's the one.
-            var plusContentTab = toolWindow.contentManager.findContent("+")
+    private inner class OpenBranchSelectionTabAction(
+        private val project: Project,
+        private val toolWindow: ToolWindow,
+        private val uiProvider: GitChangesToolWindow
+    ) : AnAction("Open Branch Selection Tab", "Select a branch to open as a new tab", AllIcons.General.Add) {
+        override fun actionPerformed(e: AnActionEvent) {
+            val selectionTabName = "Select Branch to Compare"
+            val contentManager = toolWindow.contentManager
 
-            // 1b. Check if a tab for the selectedBranchName already exists
-            val existingContent = toolWindow.contentManager.findContent(selectedBranchName)
+            val existingContent = contentManager.findContent(selectionTabName)
             if (existingContent != null) {
-                // 1c. If it exists, select that tab.
-                toolWindow.contentManager.setSelectedContent(existingContent, true)
-                // And remove the now redundant "+" tab
-                if (plusContentTab != null) {
-                    toolWindow.contentManager.removeContent(plusContentTab, true)
+                contentManager.setSelectedContent(existingContent, true)
+                return
+            }
+
+            // If the tab does not exist, create a new one
+            val contentFactory = ContentFactory.getInstance()
+            val branchSelectionUi = uiProvider.createBranchSelectionView { selectedBranchName ->
+                val contentManager = toolWindow.contentManager
+                val selectionTabName = "Select Branch to Compare" // Must match the name used when creating the tab
+
+                // Find the "Select Branch to Compare" tab itself.
+                val selectionTabContent = contentManager.findContent(selectionTabName)
+
+                if (selectionTabContent == null) {
+                    // This case should ideally not happen if the UI flow is correct.
+                    println("Error: Could not find the '${selectionTabName}' tab.")
+                    return@createBranchSelectionView
                 }
-            } else {
-                // 1d. If it does not exist, transform the current "+" tab
-                if (plusContentTab != null) {
-                    // i. Rename it to selectedBranchName
-                    plusContentTab.displayName = selectedBranchName
-                    // ii. Replace its content
-                    val newBranchUi = uiProvider.createBranchContentView(selectedBranchName)
-                    plusContentTab.component = newBranchUi
-                    // iii. Make it closable
-                    plusContentTab.isCloseable = true
-                    // iv. Select this transformed tab
-                    toolWindow.contentManager.setSelectedContent(plusContentTab, true)
+
+                // Check if a tab for the selectedBranchName already exists (excluding the selectionTabContent itself).
+                var existingBranchTab: com.intellij.ui.content.Content? = null
+                for (content in contentManager.contents) {
+                    if (content.displayName == selectedBranchName && content != selectionTabContent) {
+                        existingBranchTab = content
+                        break
+                    }
+                }
+
+                if (existingBranchTab != null) {
+                    // If the branch tab already exists, select it and close the selection tab.
+                    contentManager.setSelectedContent(existingBranchTab, true)
+                    contentManager.removeContent(selectionTabContent, true) // removeContent also disposes it
                 } else {
-                    // Fallback: if somehow the "+" tab wasn't found, create a new one for the branch
-                    // This shouldn't ideally happen if the UI flow is correct.
-                    val newBranchUi = uiProvider.createBranchContentView(selectedBranchName)
-                    val newContent = contentFactory.createContent(newBranchUi, selectedBranchName, false)
-                    newContent.isCloseable = true
-                    toolWindow.contentManager.addContent(newContent)
-                    toolWindow.contentManager.setSelectedContent(newContent, true)
+                    // If the branch tab does not exist, transform the selectionTabContent.
+                    selectionTabContent.displayName = selectedBranchName
+                    selectionTabContent.component = uiProvider.createBranchContentView(selectedBranchName)
+                    // selectionTabContent.isCloseable is already true (set when created).
+                    // Ensure it's still selected (it should be, as it was the active tab).
+                    contentManager.setSelectedContent(selectionTabContent, true)
                 }
             }
-            // v. After transforming/selecting, trigger the creation of a new "+" tab.
-            createAndAddPlusTab(project, toolWindow, uiProvider, contentFactory)
-        }
 
-        val plusContent = contentFactory.createContent(plusTabContent, "+", false)
-        plusContent.isCloseable = false // The "+" tab itself is not closable
-        toolWindow.contentManager.addContent(plusContent)
-        // The new "+" tab should not automatically take focus; focus should remain on the selected/created branch tab.
+            val newContent = contentFactory.createContent(branchSelectionUi, selectionTabName, true) // true for focusable
+            newContent.isCloseable = true
+            contentManager.addContent(newContent)
+            contentManager.setSelectedContent(newContent, true)
+        }
     }
 
     override fun createToolWindowContent(project: Project, toolWindow: ToolWindow) {
@@ -79,13 +84,13 @@ class MyToolWindowFactory : ToolWindowFactory {
         val initialBranchName = gitService.getCurrentBranch() ?: "HEAD"
         val initialBranchUi = gitChangesUiProvider.createBranchContentView(initialBranchName)
         val initialContent = contentFactory.createContent(initialBranchUi, initialBranchName, false)
-        initialContent.isCloseable = true
-        initialContent.isPinned = false // Assuming default behavior, can be true if needed
+        initialContent.isCloseable = true // Initial main branch tab can be closed
+        initialContent.isPinned = false
         toolWindow.contentManager.addContent(initialContent)
-        toolWindow.contentManager.setSelectedContent(initialContent, true) // Select the initial branch tab
+        toolWindow.contentManager.setSelectedContent(initialContent, true)
 
-        // Call the new function to add the initial "+" tab
-        createAndAddPlusTab(project, toolWindow, gitChangesUiProvider, contentFactory)
+        val openSelectionTabAction = OpenBranchSelectionTabAction(project, toolWindow, gitChangesUiProvider)
+        toolWindow.setTitleActions(listOf(openSelectionTabAction))
 
         // --- ADD SETTINGS GROUP DIRECTLY TO THE TOOL WINDOW'S "GEAR" MENU ---
         // Get the ActionGroup that represents your settings section (it's already a popup group)
