@@ -21,7 +21,7 @@ import javax.swing.event.DocumentEvent
 import javax.swing.event.DocumentListener
 
 class BranchSelectionDialogWrapper(
-    project: Project,
+    private val project: Project, // Made project a val
     private val gitService: GitService,
     private val onBranchSelected: (branchName: String) -> Unit
 ) : DialogWrapper(project, true) {
