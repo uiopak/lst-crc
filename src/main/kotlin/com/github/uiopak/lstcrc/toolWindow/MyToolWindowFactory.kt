@@ -45,12 +45,9 @@ class MyToolWindowFactory : ToolWindowFactory {
         button.toolTipText = "Open branch selection tab"
         button.addActionListener {
             // Action listener logic starts here
-            // 1. Access Necessary Variables (already in scope or easily gettable)
-            val currentProject = project // from outer scope
-            val currentToolWindow = toolWindow // from outer scope
-            val currentUiProvider = uiProvider // from outer scope
-            val currentContentManager = currentToolWindow.contentManager
-            val currentContentFactory = ContentFactory.getInstance() // Can also use contentFactory from outer scope
+            // project, toolWindow, gitChangesUiProvider, contentFactory are available from outer scope
+            val currentContentManager = toolWindow.contentManager // toolWindow is from outer scope
+            // val currentContentFactory = contentFactory // contentFactory is from outer scope
 
             // 2. Define Selection Tab Name
             val selectionTabName = "Select Branch"
@@ -61,9 +58,9 @@ class MyToolWindowFactory : ToolWindowFactory {
                 currentContentManager.setSelectedContent(existingSelectionTab, true)
             } else {
                 // 4. Create New "Select Branch" Tab (if it doesn't exist)
-                val branchSelectionUi = currentUiProvider.createBranchSelectionView { selectedBranchName ->
+                val branchSelectionUi = gitChangesUiProvider.createBranchSelectionView { selectedBranchName: String ->
                     // onBranchSelected lambda logic starts here
-                    val manager = currentToolWindow.contentManager // Can also use currentContentManager
+                    val manager = toolWindow.contentManager // toolWindow is from outer scope
                     val selTabName = "Select Branch" // Must match selectionTabName
 
                     val selectionTabContent = manager.findContent(selTabName)
@@ -86,13 +83,13 @@ class MyToolWindowFactory : ToolWindowFactory {
                         manager.removeContent(selectionTabContent, true)
                     } else {
                         selectionTabContent.displayName = selectedBranchName
-                        selectionTabContent.component = currentUiProvider.createBranchContentView(selectedBranchName)
+                        selectionTabContent.component = gitChangesUiProvider.createBranchContentView(selectedBranchName)
                         manager.setSelectedContent(selectionTabContent, true)
                     }
                     // onBranchSelected lambda logic ends here
                 }
 
-                val newSelectionContent = currentContentFactory.createContent(branchSelectionUi, selectionTabName, true) // true for focusable
+                val newSelectionContent = contentFactory.createContent(branchSelectionUi, selectionTabName, true) // true for focusable
                 newSelectionContent.isCloseable = true
                 currentContentManager.addContent(newSelectionContent)
                 currentContentManager.setSelectedContent(newSelectionContent, true)
@@ -134,7 +131,7 @@ class MyToolWindowFactory : ToolWindowFactory {
                 val selectedContentFromEvent = event.content
                 // Check if the selected tab is the "button holder tab" (empty display name)
                 if (selectedContentFromEvent.displayName.isNullOrEmpty() &&
-                    event.operation == ContentManagerEvent.ContentOperation.SELECT) {
+                    event.operation == ContentManagerEvent.ContentOperation.SELECTED) {
 
                     val currentContentManager = toolWindow.contentManager // toolWindow is from outer scope
                     val selectionTabName = "Select Branch"
@@ -148,8 +145,8 @@ class MyToolWindowFactory : ToolWindowFactory {
                         }
                     } else {
                         // "Select Branch" tab does not exist. Duplicate button's ActionListener logic.
-                        // uiProvider and contentFactory are from the outer scope of createToolWindowContent
-                        val branchSelectionUi = uiProvider.createBranchSelectionView { selectedBranchName ->
+                        // gitChangesUiProvider and contentFactory are from the outer scope of createToolWindowContent
+                        val branchSelectionUi = gitChangesUiProvider.createBranchSelectionView { selectedBranchName: String ->
                             // This is the onBranchSelected lambda, duplicated from the button's ActionListener
                             val manager = toolWindow.contentManager // toolWindow from outer scope
                             val selTabName = "Select Branch" // Must match selectionTabName
@@ -174,7 +171,7 @@ class MyToolWindowFactory : ToolWindowFactory {
                                 manager.removeContent(selectionTabContent, true)
                             } else {
                                 selectionTabContent.displayName = selectedBranchName
-                                selectionTabContent.component = uiProvider.createBranchContentView(selectedBranchName)
+                                selectionTabContent.component = gitChangesUiProvider.createBranchContentView(selectedBranchName)
                                 manager.setSelectedContent(selectionTabContent, true)
                             }
                         }
