@@ -12,61 +12,14 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.wm.ToolWindow
 import com.intellij.openapi.wm.ToolWindowFactory
 import com.intellij.ui.content.ContentFactory
-import com.intellij.ui.content.ContentManagerUtil
+// ContentManagerUtil is not used in the modified version.
 import javax.swing.JComponent
 
 class MyToolWindowFactory : ToolWindowFactory {
-    private val logger = thisLogger()
+    // The logger from the inner class is not needed here if OpenBranchSelectionTabAction handles its own logging.
+    // private val logger = thisLogger() // Assuming OpenBranchSelectionTabAction has its own logger if needed.
 
-    private inner class OpenBranchSelectionTabAction(
-        private val project: Project,
-        private val toolWindow: ToolWindow,
-        private val uiProvider: GitChangesToolWindow
-    ) : AnAction("Open Branch Selection", "Open a tab to select a branch for comparison", AllIcons.General.Add) {
-        override fun actionPerformed(e: AnActionEvent) {
-            val selectionTabName = "Select Branch"
-            val contentManager = toolWindow.contentManager
-
-            val existingContent = contentManager.findContent(selectionTabName)
-            if (existingContent != null) {
-                contentManager.setSelectedContent(existingContent, true)
-                return
-            }
-
-            val contentFactory = ContentFactory.getInstance()
-            val branchSelectionUi = uiProvider.createBranchSelectionView { selectedBranchName: String ->
-                val manager = toolWindow.contentManager
-                val selectionTabContent = manager.findContent(selectionTabName)
-
-                if (selectionTabContent == null) {
-                    logger.error("Could not find the '$selectionTabName' tab.")
-                    return@createBranchSelectionView
-                }
-
-                var existingBranchTab: com.intellij.ui.content.Content? = null
-                for (content in manager.contents) {
-                    if (content.displayName == selectedBranchName && content != selectionTabContent) {
-                        existingBranchTab = content
-                        break
-                    }
-                }
-
-                if (existingBranchTab != null) {
-                    manager.setSelectedContent(existingBranchTab, true)
-                    manager.removeContent(selectionTabContent, true)
-                } else {
-                    selectionTabContent.displayName = selectedBranchName
-                    selectionTabContent.component = uiProvider.createBranchContentView(selectedBranchName)
-                    manager.setSelectedContent(selectionTabContent, true)
-                }
-            }
-
-            val newContent = contentFactory.createContent(branchSelectionUi, selectionTabName, true)
-            newContent.isCloseable = true
-            contentManager.addContent(newContent)
-            contentManager.setSelectedContent(newContent, true)
-        }
-    }
+    // OpenBranchSelectionTabAction inner class has been extracted to its own file.
 
     override fun createToolWindowContent(project: Project, toolWindow: ToolWindow) {
         val gitChangesUiProvider = GitChangesToolWindow(project)
@@ -83,7 +36,11 @@ class MyToolWindowFactory : ToolWindowFactory {
         val openSelectionTabAction = OpenBranchSelectionTabAction(project, toolWindow, gitChangesUiProvider)
         toolWindow.setTitleActions(listOf(openSelectionTabAction))
 
-        val pluginSettingsSubMenu: ActionGroup = gitChangesUiProvider.createToolWindowSettingsGroup()
+        // Use ToolWindowSettingsProvider to create the settings group
+        val propertiesComponent = com.intellij.ide.util.PropertiesComponent.getInstance()
+        val settingsProvider = ToolWindowSettingsProvider(propertiesComponent)
+        val pluginSettingsSubMenu: ActionGroup = settingsProvider.createToolWindowSettingsGroup()
+        
         val allGearActionsGroup = DefaultActionGroup()
         allGearActionsGroup.add(pluginSettingsSubMenu)
         toolWindow.setAdditionalGearActions(allGearActionsGroup)
