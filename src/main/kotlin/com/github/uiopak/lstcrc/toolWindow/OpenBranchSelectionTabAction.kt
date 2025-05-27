@@ -29,7 +29,6 @@ class OpenBranchSelectionTabAction(
         }
 
         val contentFactory = ContentFactory.getInstance()
-        // Uses BranchSelectionPanel for the UI of the "Select Branch" tab
         val branchSelectionUi = BranchSelectionPanel(project, project.service<GitService>()) { selectedBranchName: String ->
             val manager = toolWindow.contentManager
             val selectionTabContent = manager.findContent(selectionTabName)
@@ -49,18 +48,16 @@ class OpenBranchSelectionTabAction(
 
             if (existingBranchTab != null) {
                 manager.setSelectedContent(existingBranchTab, true)
-                manager.removeContent(selectionTabContent, true) // Close the "Select Branch" tab
+                manager.removeContent(selectionTabContent, true)
             } else {
-                // Reuse the "Select Branch" tab to display the branch content
                 selectionTabContent.displayName = selectedBranchName
-                // uiProvider is an instance of GitChangesToolWindow, used to create the actual branch content view
                 selectionTabContent.component = uiProvider.createBranchContentView(selectedBranchName)
                 manager.setSelectedContent(selectionTabContent, true)
             }
         }
 
         val newContent = contentFactory.createContent(branchSelectionUi.getPanel(), selectionTabName, true)
-        newContent.isCloseable = true // Allow closing the "Select Branch" tab
+        newContent.isCloseable = true
         contentManager.addContent(newContent)
         contentManager.setSelectedContent(newContent, true)
     }

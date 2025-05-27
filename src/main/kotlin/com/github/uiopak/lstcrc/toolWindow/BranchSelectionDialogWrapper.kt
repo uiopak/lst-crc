@@ -21,25 +21,24 @@ import javax.swing.event.DocumentEvent
 import javax.swing.event.DocumentListener
 
 class BranchSelectionDialogWrapper(
-    private val project: Project, // Made project a val
+    private val project: Project,
     private val gitService: GitService,
     private val onBranchSelected: (branchName: String) -> Unit
 ) : DialogWrapper(project, true) {
 
-    private val searchTextField = SearchTextField(false) // false for history disabled
+    private val searchTextField = SearchTextField(false)
     private var listPopup: JBPopup? = null
     private val allBranches = gitService.getAllBranches().sorted()
     private val filteredListModel = DefaultListModel<String>()
 
     init {
         title = "Select Branch to Compare with HEAD"
-        init() // Calls createCenterPanel() and other DialogWrapper setup
+        init()
         searchTextField.addDocumentListener(object : DocumentListener {
             override fun insertUpdate(e: DocumentEvent?) = filterAndShowPopup()
             override fun removeUpdate(e: DocumentEvent?) = filterAndShowPopup()
             override fun changedUpdate(e: DocumentEvent?) = filterAndShowPopup()
         })
-        // Defer showing popup until UI is ready
         SwingUtilities.invokeLater { filterAndShowPopup() }
     }
 
@@ -49,14 +48,12 @@ class BranchSelectionDialogWrapper(
         val sourceList = if (searchText.isEmpty()) allBranches else allBranches.filter { it.contains(searchText, ignoreCase = true) }
         sourceList.forEach { filteredListModel.addElement(it) }
 
-        // Cancel (dispose) previous popup if it's showing
         if (listPopup?.isDisposed == false) {
             listPopup?.cancel()
         }
 
-        // If no matches and search text exists, don't show popup (or show "no results")
         if (filteredListModel.isEmpty && searchText.isNotEmpty()) {
-            return // Or provide feedback like a "No matches" label
+            return
         }
 
         if (filteredListModel.size > 0) {
@@ -66,8 +63,8 @@ class BranchSelectionDialogWrapper(
             listPopup = JBPopupFactory.getInstance().createListPopupBuilder(jbList)
                 .setMovable(false)
                 .setResizable(false)
-                .setRequestFocus(false) // Keep focus on searchTextField
-                .setItemChoosenCallback { // Called on item click or enter
+                .setRequestFocus(false)
+                .setItemChoosenCallback {
                     jbList.selectedValue?.let {
                         onBranchSelected(it)
                         close(OK_EXIT_CODE)
@@ -81,15 +78,14 @@ class BranchSelectionDialogWrapper(
                         jbList.selectedValue?.let {
                             onBranchSelected(it)
                             close(OK_EXIT_CODE)
-                            e.consume() // Consume event so it doesn't propagate further
+                            e.consume()
                         }
                     }
                 }
             })
 
-            // Show popup only if the search text field is visible and has focus
             if (searchTextField.isShowing) {
-                 // Check if searchTextField has focus, or if focused component is part of listPopup
+                // Check if searchTextField has focus, or if focused component is part of listPopup
                 val focusedComponent = SwingUtilities.getWindowAncestor(searchTextField)?.mostRecentFocusOwner
                 if (focusedComponent == searchTextField || listPopup?.isFocused == true) {
                     listPopup?.showUnderneathOf(searchTextField)
@@ -99,43 +95,38 @@ class BranchSelectionDialogWrapper(
     }
 
     override fun createCenterPanel(): JComponent {
-        val panel = JBPanel<JBPanel<*>>(BorderLayout(0, JBUI.scale(5))) // JBUI.scale for spacing
+        val panel = JBPanel<JBPanel<*>>(BorderLayout(0, JBUI.scale(5)))
         panel.add(JBLabel("Search for branch to compare with current HEAD:"), BorderLayout.NORTH)
         panel.add(searchTextField, BorderLayout.CENTER)
-        panel.preferredSize = JBUI.size(450, 60) // Adjust size as needed
+        panel.preferredSize = JBUI.size(450, 60)
         return panel
     }
 
     override fun getPreferredFocusedComponent(): JComponent? = searchTextField
 
     override fun doOKAction() {
-        // This is called when OK button is clicked OR Enter is pressed in the dialog (if not consumed elsewhere)
         if (listPopup?.isVisible == true) {
-            // If popup is visible, try to use its selected value
             (listPopup?.content as? JBList<*>)?.selectedValue?.let {
                 onBranchSelected(it as String)
-                super.doOKAction() // Closes with OK_EXIT_CODE
+                super.doOKAction()
                 return
             }
         }
-        // If popup not visible or no selection, try to use the first item in the filtered list
         if (!filteredListModel.isEmpty) {
             onBranchSelected(filteredListModel.getElementAt(0))
             super.doOKAction()
         } else {
-            // If list is empty and there was search text, it means no match.
             if (searchTextField.text.isNotBlank() && filteredListModel.isEmpty) {
                 Messages.showWarningDialog(project, "No branch found matching '${searchTextField.text}'.", "Branch Not Found")
                 // Don't close the dialog, let user correct.
                 return
             }
-            // If no search text and list is empty (e.g. no branches at all), or other unhandled cases.
-            super.doCancelAction() // Or handle as an error/empty state
+            super.doCancelAction()
         }
     }
 
     override fun dispose() {
-        listPopup?.cancel() // Important to dispose the popup when dialog is disposed
+        listPopup?.cancel()
         super.dispose()
     }
 }

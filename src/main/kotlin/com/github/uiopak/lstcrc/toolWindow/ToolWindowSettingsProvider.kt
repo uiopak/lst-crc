@@ -22,7 +22,7 @@ class ToolWindowSettingsProvider(private val propertiesComponent: PropertiesComp
         private const val APP_USER_DOUBLE_CLICK_DELAY_KEY = "com.github.uiopak.lstcrc.app.userDoubleClickDelay"
         private const val DELAY_OPTION_SYSTEM_DEFAULT = -1 // Special value to signify using system/default logic
         // Fallback if system is 0 and user hasn't set one (UIManager.getInt("Tree.doubleClickTimeout") might be 0)
-        // const val DEFAULT_USER_DELAY_MS = 300 // This is defined in GitChangesToolWindow, might need to pass or duplicate
+        // Note: DEFAULT_USER_DELAY_MS is used by ChangesTreePanel internally if system default is inadequate.
     }
 
     private fun getSingleClickAction(): String =
@@ -42,9 +42,8 @@ class ToolWindowSettingsProvider(private val propertiesComponent: PropertiesComp
     }
 
     fun createToolWindowSettingsGroup(): ActionGroup {
-        val rootSettingsGroup = DefaultActionGroup("Git Changes View Options", true) // isPopup = true
+        val rootSettingsGroup = DefaultActionGroup("Git Changes View Options", true)
 
-        // --- Action on Single Click SubGroup ---
         val singleClickActionGroup = DefaultActionGroup("Action on Single Click:", true)
         singleClickActionGroup.add(object : ToggleAction("None") {
             override fun isSelected(ev: AnActionEvent) = getSingleClickAction() == ACTION_NONE
@@ -70,7 +69,6 @@ class ToolWindowSettingsProvider(private val propertiesComponent: PropertiesComp
         rootSettingsGroup.add(singleClickActionGroup)
         rootSettingsGroup.addSeparator()
 
-        // --- Action on Double Click SubGroup ---
         val doubleClickActionGroup = DefaultActionGroup("Action on Double Click:", true)
         doubleClickActionGroup.add(object : ToggleAction("None") {
             override fun isSelected(ev: AnActionEvent) = getDoubleClickAction() == ACTION_NONE

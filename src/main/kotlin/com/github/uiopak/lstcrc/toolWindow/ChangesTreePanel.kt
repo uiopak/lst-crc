@@ -34,12 +34,11 @@ class ChangesTreePanel(
     private val gitService: GitService,
     private val propertiesComponent: PropertiesComponent,
     private val branchName: String
-) : JBScrollPane() { // Inherit from JBScrollPane to be a JComponent
+) : JBScrollPane() {
 
     private val logger = thisLogger()
     val tree: Tree
 
-    // Click handling state variables
     private var singleClickTimer: Timer? = null
     private var pendingSingleClickChange: Change? = null
     private var pendingSingleClickNodePath: TreePath? = null
@@ -125,12 +124,8 @@ class ChangesTreePanel(
         })
 
         newTree.addMouseListener(object : MouseAdapter() {
-            private fun logState(event: String, e: MouseEvent?, currentPath: TreePath? = null) {
-                // Logging removed as per previous subtask
-            }
-
+            // Removed logState function and its calls.
             override fun mouseClicked(e: MouseEvent) {
-                logState("mouseClicked ENTER", e)
                 val clickPoint = e.point
                 var currentTargetPath: TreePath? = null
                 val row = newTree.getClosestRowForLocation(clickPoint.x, clickPoint.y)
@@ -144,10 +139,8 @@ class ChangesTreePanel(
                         }
                     }
                 }
-                logState("Path Determined", e, currentTargetPath)
 
                 if (currentTargetPath == null) {
-                    logState("No Valid Target Path", e)
                     singleClickTimer?.stop()
                     pendingSingleClickChange = null
                     pendingSingleClickNodePath = null
@@ -157,19 +150,15 @@ class ChangesTreePanel(
 
                 val node = currentTargetPath.lastPathComponent as? DefaultMutableTreeNode
                 (node?.userObject as? Change)?.let { currentChange ->
-                    logState("Processing Change Node", e, currentTargetPath)
                     if (newTree.selectionPath != currentTargetPath) {
                         newTree.selectionPath = currentTargetPath
-                        logState("  Node Selected", e, currentTargetPath)
                     }
 
                     val singleClickConfiguredAction = getSingleClickAction()
                     val doubleClickConfiguredAction = getDoubleClickAction()
 
                     if (e.clickCount == 1) {
-                        logState("Click Count == 1", e, currentTargetPath)
                         if (pendingSingleClickNodePath != currentTargetPath || singleClickActionHasFiredForPath != null) {
-                            logState("  Resetting for new single click seq", e, currentTargetPath)
                             singleClickTimer?.stop()
                             pendingSingleClickChange = null
                             pendingSingleClickNodePath = null
@@ -177,75 +166,57 @@ class ChangesTreePanel(
                         }
 
                         if (doubleClickConfiguredAction == ACTION_NONE) {
-                            logState("  Optimization: No DblClick", e, currentTargetPath)
                             singleClickTimer?.stop()
                             pendingSingleClickChange = null
                             pendingSingleClickNodePath = null
                             singleClickActionHasFiredForPath = null
                             if (singleClickConfiguredAction != ACTION_NONE) {
-                                logState("    Executing Single (Optimized)", e, currentTargetPath)
                                 performConfiguredAction(currentChange, singleClickConfiguredAction)
                             }
                             return@let
                         }
 
-                        logState("  Setting up Timer", e, currentTargetPath)
                         pendingSingleClickChange = currentChange
                         pendingSingleClickNodePath = currentTargetPath
                         singleClickTimer?.stop()
                         val userConfiguredDelay = getUserDoubleClickDelayMs()
                         singleClickTimer = Timer(userConfiguredDelay) {
-                            logState("TIMER ACTION LISTENER FIRED", null, pendingSingleClickNodePath)
                             val sChange = pendingSingleClickChange
                             val sPath = pendingSingleClickNodePath
                             pendingSingleClickChange = null
                             pendingSingleClickNodePath = null
                             if (sChange != null && sPath != null) {
                                 if (singleClickConfiguredAction != ACTION_NONE) {
-                                    logState("    TIMER: Performing SingleClick", null, sPath)
                                     performConfiguredAction(sChange, singleClickConfiguredAction)
                                     singleClickActionHasFiredForPath = sPath
-                                    logState("    TIMER: FiredPath SET", null, sPath)
                                 }
                             }
                         }
                         singleClickTimer?.isRepeats = false
                         singleClickTimer?.start()
-                        logState("  Timer Started", e, currentTargetPath)
 
                     } else if (e.clickCount >= 2) {
-                        logState("Click Count >= 2", e, currentTargetPath)
                         if (singleClickActionHasFiredForPath == currentTargetPath) {
-                            logState("  DblClick: IGNORED (Single Fired for this path)", e, currentTargetPath)
                             singleClickActionHasFiredForPath = null
                             singleClickTimer?.stop()
                             return@let
                         }
                         if (pendingSingleClickNodePath == currentTargetPath) {
-                            logState("  DblClick: Cancelling PENDING Timer", e, currentTargetPath)
                             singleClickTimer?.stop()
                             pendingSingleClickChange = null
                             pendingSingleClickNodePath = null
-                            logState("    Pending Single Cleared (timer cancelled)", e)
-                        } else {
-                            logState("  DblClick: Path different or no PENDING single", e, currentTargetPath)
                         }
                         if (doubleClickConfiguredAction != ACTION_NONE) {
-                            logState("  DblClick: Performing Action", e, currentTargetPath)
                             performConfiguredAction(currentChange, doubleClickConfiguredAction)
                         }
                         singleClickActionHasFiredForPath = null
-                        logState("  DblClick: FiredPath Reset (post-action/ignore)", e, currentTargetPath)
                     }
                 } ?: run {
-                    logState("Non-Change Node or Invalid Path", e, currentTargetPath)
                     singleClickTimer?.stop()
                     pendingSingleClickChange = null
                     pendingSingleClickNodePath = null
                     singleClickActionHasFiredForPath = null
-                    logState("  State Reset", e)
                 }
-                logState("mouseClicked EXIT", e, currentTargetPath)
             }
         })
         refreshChangesTree(newTree, branchNameForInitialRefresh)

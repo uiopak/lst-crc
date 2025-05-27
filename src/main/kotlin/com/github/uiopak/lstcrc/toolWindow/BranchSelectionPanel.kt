@@ -27,10 +27,10 @@ class BranchSelectionPanel(
     project: Project, // Kept for consistency, though not directly used by this panel's current methods
     private val gitService: GitService,
     private val onBranchSelected: (branchName: String) -> Unit
-) : JBPanel<BranchSelectionPanel>(BorderLayout(0, JBUI.scale(5))) { // Inherit from JBPanel
+) : JBPanel<BranchSelectionPanel>(BorderLayout(0, JBUI.scale(5))) {
 
     private val logger = thisLogger()
-    private val searchTextField = SearchTextField(false) // false for history disabled
+    private val searchTextField = SearchTextField(false)
     private val tree: Tree
 
     init {
@@ -88,56 +88,37 @@ class BranchSelectionPanel(
             }
         })
 
-        newTree.model = buildBranchTreeModel("") // Initial model
+        newTree.model = buildBranchTreeModel("")
         TreeUtil.expandAll(newTree)
 
         newTree.addMouseListener(object : MouseAdapter() {
-            private fun logBranchTreeClick(message: String, additionalInfo: String = "") {
-                // Logging removed as per previous subtask
-            }
-
             override fun mouseClicked(e: MouseEvent) {
-                logBranchTreeClick("START", "- Point(${e.x}, ${e.y}), ClickCount=${e.clickCount}")
                 if (e.clickCount == 1) {
                     val clickPoint = e.point
                     var currentTargetPath: TreePath? = null
                     val row = newTree.getClosestRowForLocation(clickPoint.x, clickPoint.y)
-                    logBranchTreeClick("Row (from getClosestRowForLocation)=$row")
                     if (row != -1) {
                         val rowBounds = newTree.getRowBounds(row)
-                        logBranchTreeClick("RowBounds=$rowBounds")
                         if (rowBounds != null) {
                             val yWithinRowContent = clickPoint.y >= rowBounds.y && clickPoint.y < (rowBounds.y + rowBounds.height)
                             val xWithinTreeVisible = clickPoint.x >= newTree.visibleRect.x && clickPoint.x < (newTree.visibleRect.x + newTree.visibleRect.width)
-                            logBranchTreeClick("yWithinRowContent=$yWithinRowContent, xWithinTreeVisible=$xWithinTreeVisible, newTree.visibleRect=${newTree.visibleRect}")
                             if (yWithinRowContent && xWithinTreeVisible) {
                                 currentTargetPath = newTree.getPathForRow(row)
                             }
                         }
                     }
-                    logBranchTreeClick("CurrentTargetPathDetermined=$currentTargetPath")
                     if (currentTargetPath != null) {
                         val node = currentTargetPath.lastPathComponent as? DefaultMutableTreeNode
-                        logBranchTreeClick("NodeUserObject=${node?.userObject}, IsNodeLeaf=${node?.isLeaf}")
                         if (node != null && node.isLeaf) {
                             val parentNode = node.parent as? DefaultMutableTreeNode
-                            logBranchTreeClick("ParentNodeUserObject=${parentNode?.userObject}")
                             if (parentNode != null && (parentNode.userObject == "Local" || parentNode.userObject == "Remote")) {
                                 (node.userObject as? String)?.let { branchName ->
-                                    logBranchTreeClick("INVOKING onBranchSelected with '$branchName'")
                                     onBranchSelected(branchName)
                                 }
-                            } else {
-                                logBranchTreeClick("Did NOT invoke onBranchSelected (parent check failed or not a String userObject).")
                             }
-                        } else {
-                            logBranchTreeClick("Did NOT invoke onBranchSelected (node was null or not a leaf).")
                         }
-                    } else {
-                        logBranchTreeClick("Did NOT invoke onBranchSelected (currentTargetPath was null).")
                     }
                 }
-                logBranchTreeClick("END")
             }
         })
         return newTree
@@ -166,5 +147,5 @@ class BranchSelectionPanel(
         return DefaultTreeModel(rootNode)
     }
 
-    fun getPanel(): JComponent = this // Expose the panel itself
+    fun getPanel(): JComponent = this
 }
