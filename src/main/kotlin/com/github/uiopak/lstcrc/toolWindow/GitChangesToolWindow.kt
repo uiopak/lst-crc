@@ -599,27 +599,27 @@ class GitChangesToolWindow(private val project: Project) { // project is still n
                 hasFocus: Boolean
             ) {
                 if (value !is DefaultMutableTreeNode) {
-                    append(value?.toString() ?: "")
+                    append(value?.toString() ?: "", SimpleTextAttributes.REGULAR_ATTRIBUTES)
                     return
                 }
 
                 val userObject = value.userObject
                 when (userObject) {
                     "Local" -> {
-                        append(userObject)
+                        append(userObject, SimpleTextAttributes.REGULAR_ATTRIBUTES)
                         icon = AllIcons.Nodes.Folder // Or a more specific icon for local branches
                     }
                     "Remote" -> {
-                        append(userObject)
+                        append(userObject, SimpleTextAttributes.REGULAR_ATTRIBUTES)
                         icon = AllIcons.Nodes.WebFolder // Or a more specific icon for remote branches
                     }
                     is String -> { // This should be a branch name
-                        append(userObject)
+                        append(userObject, SimpleTextAttributes.REGULAR_ATTRIBUTES)
                         // Optionally, set a specific icon for branch nodes if desired
                         icon = AllIcons.Vcs.Branch 
                     }
                     else -> {
-                        append(value.toString())
+                        append(value.toString(), SimpleTextAttributes.REGULAR_ATTRIBUTES)
                     }
                 }
             }
