@@ -582,9 +582,48 @@ class GitChangesToolWindow(private val project: Project) { // project is still n
         val searchTextField = SearchTextField(false)
         panel.add(searchTextField, BorderLayout.NORTH)
 
-        val tree = Tree()
+        val tree = object : Tree() { // Anonymous subclass of com.intellij.ui.treeStructure.Tree
+            override fun getScrollableTracksViewportWidth(): Boolean = true
+        }
         tree.isRootVisible = false
         tree.showsRootHandles = true // Shows handles for top-level nodes if root is invisible
+
+        tree.setCellRenderer(object : ColoredTreeCellRenderer() {
+            override fun customizeCellRenderer(
+                jTree: JTree, // javax.swing.JTree
+                value: Any?,
+                selected: Boolean,
+                expanded: Boolean,
+                leaf: Boolean,
+                row: Int,
+                hasFocus: Boolean
+            ) {
+                if (value !is DefaultMutableTreeNode) {
+                    append(value?.toString() ?: "")
+                    return
+                }
+
+                val userObject = value.userObject
+                when (userObject) {
+                    "Local" -> {
+                        append(userObject)
+                        icon = AllIcons.Nodes.Folder // Or a more specific icon for local branches
+                    }
+                    "Remote" -> {
+                        append(userObject)
+                        icon = AllIcons.Nodes.WebFolder // Or a more specific icon for remote branches
+                    }
+                    is String -> { // This should be a branch name
+                        append(userObject)
+                        // Optionally, set a specific icon for branch nodes if desired
+                        icon = AllIcons.Vcs.Branch 
+                    }
+                    else -> {
+                        append(value.toString())
+                    }
+                }
+            }
+        })
 
         fun buildBranchTreeModel(searchTerm: String): DefaultTreeModel {
             val rootNode = DefaultMutableTreeNode("Root")
