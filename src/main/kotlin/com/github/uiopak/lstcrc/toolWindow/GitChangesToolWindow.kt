@@ -672,43 +672,55 @@ class GitChangesToolWindow(private val project: Project) { // project is still n
         tree.addMouseListener(object : MouseAdapter() {
             override fun mouseClicked(e: MouseEvent) {
                 val timestamp = System.currentTimeMillis()
-                println("[$timestamp] BranchTreeClick: START - Point(${e.x}, ${e.y}), ClickCount=${e.clickCount}")
+                println("[$timestamp] BranchTreeClick: ALIGNED START - Point(${e.x}, ${e.y}), ClickCount=${e.clickCount}")
 
-                if (e.clickCount == 1) { // Only process single clicks
-                    val row = tree.getRowForLocation(e.x, e.y) // Get the row at the click coordinates
-                    println("[$timestamp] BranchTreeClick: Row=$row")
+                if (e.clickCount == 1) { // Process only single clicks
+                    val clickPoint = e.point // Using e.point for clarity with original logic
+                    var currentTargetPath: javax.swing.tree.TreePath? = null
 
-                    if (row != -1) { // Check if a valid row was clicked (not outside any row)
-                        val bounds = tree.getRowBounds(row)
-                        println("[$timestamp] BranchTreeClick: RowBounds=$bounds")
-                        val path = tree.getPathForRow(row) // Get the TreePath for this row
-                        println("[$timestamp] BranchTreeClick: Path=$path")
+                    // Exact logic from diff tree for determining target path
+                    val row = tree.getClosestRowForLocation(clickPoint.x, clickPoint.y)
+                    println("[$timestamp] BranchTreeClick: ALIGNED Row (from getClosestRowForLocation)=$row")
 
-                        val node = path?.lastPathComponent as? DefaultMutableTreeNode // Get the node for this path
-                        println("[$timestamp] BranchTreeClick: NodeUserObject=${node?.userObject}, IsNodeLeaf=${node?.isLeaf}")
-                        
-                        // Existing selection logic starts here
+                    if (row != -1) {
+                        val rowBounds = tree.getRowBounds(row)
+                        println("[$timestamp] BranchTreeClick: ALIGNED RowBounds=$rowBounds")
+                        if (rowBounds != null) {
+                            val yWithinRowContent = clickPoint.y >= rowBounds.y && clickPoint.y < (rowBounds.y + rowBounds.height)
+                            val xWithinTreeVisible = clickPoint.x >= tree.visibleRect.x && clickPoint.x < (tree.visibleRect.x + tree.visibleRect.width)
+
+                            println("[$timestamp] BranchTreeClick: ALIGNED yWithinRowContent=$yWithinRowContent, xWithinTreeVisible=$xWithinTreeVisible, tree.visibleRect=${tree.visibleRect}")
+
+                            if (yWithinRowContent && xWithinTreeVisible) {
+                                currentTargetPath = tree.getPathForRow(row)
+                            }
+                        }
+                    }
+                    println("[$timestamp] BranchTreeClick: ALIGNED CurrentTargetPathDetermined=$currentTargetPath")
+
+                    if (currentTargetPath != null) {
+                        val node = currentTargetPath.lastPathComponent as? DefaultMutableTreeNode
+                        println("[$timestamp] BranchTreeClick: ALIGNED NodeUserObject=${node?.userObject}, IsNodeLeaf=${node?.isLeaf}")
+
                         if (node != null && node.isLeaf) {
-                            // Ensure this leaf node is a branch by checking its parent's userObject
                             val parentNode = node.parent as? DefaultMutableTreeNode
-                            println("[$timestamp] BranchTreeClick: ParentNodeUserObject=${parentNode?.userObject}")
+                            println("[$timestamp] BranchTreeClick: ALIGNED ParentNodeUserObject=${parentNode?.userObject}")
                             if (parentNode != null && (parentNode.userObject == "Local" || parentNode.userObject == "Remote")) {
-                                // If it's a valid branch node, get its name and call the callback
                                 (node.userObject as? String)?.let { branchName ->
-                                    println("[$timestamp] BranchTreeClick: INVOKING onBranchSelected with '$branchName'")
+                                    println("[$timestamp] BranchTreeClick: ALIGNED INVOKING onBranchSelected with '$branchName'")
                                     onBranchSelected(branchName)
                                 }
                             } else {
-                                println("[$timestamp] BranchTreeClick: Did NOT invoke onBranchSelected (parent check failed or not a String userObject).")
+                                println("[$timestamp] BranchTreeClick: ALIGNED Did NOT invoke onBranchSelected (parent check failed or not a String userObject).")
                             }
                         } else {
-                            println("[$timestamp] BranchTreeClick: Did NOT invoke onBranchSelected (node was null or not a leaf).")
+                            println("[$timestamp] BranchTreeClick: ALIGNED Did NOT invoke onBranchSelected (node was null or not a leaf).")
                         }
                     } else {
-                        println("[$timestamp] BranchTreeClick: Did NOT invoke onBranchSelected (row was -1).")
+                        println("[$timestamp] BranchTreeClick: ALIGNED Did NOT invoke onBranchSelected (currentTargetPath was null).")
                     }
                 }
-                println("[$timestamp] BranchTreeClick: END")
+                println("[$timestamp] BranchTreeClick: ALIGNED END")
             }
         })
 
