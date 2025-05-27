@@ -4,8 +4,9 @@ import com.github.uiopak.lstcrc.services.GitService
 import com.intellij.icons.AllIcons
 import com.intellij.ide.DataManager
 import com.intellij.openapi.actionSystem.*
-import com.intellij.ide.util.PropertiesComponent // Application-level PropertiesComponent
+import com.intellij.ide.util.PropertiesComponent
 import com.intellij.openapi.components.service
+import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.fileEditor.OpenFileDescriptor
 import com.intellij.openapi.fileTypes.FileTypeManager
 import com.intellij.openapi.project.DumbAwareAction
@@ -40,20 +41,12 @@ import javax.swing.event.DocumentListener
 import javax.swing.tree.DefaultMutableTreeNode
 import javax.swing.tree.DefaultTreeModel
 import javax.swing.Timer
-// import javax.swing.DefaultListModel // No longer needed
-// import java.awt.event.MouseAdapter // Already imported
-// import javax.swing.event.DocumentListener // Already exists
-// import javax.swing.event.DocumentEvent // Already exists
-// com.intellij.ui.treeStructure.Tree is already imported
-// javax.swing.tree.DefaultMutableTreeNode is already imported
-// javax.swing.tree.DefaultTreeModel is already imported
-// com.intellij.util.ui.tree.TreeUtil is already imported
 
 
-class GitChangesToolWindow(private val project: Project) { // project is still needed for project-specific services like GitService
+class GitChangesToolWindow(private val project: Project) {
     private val gitService = project.service<GitService>()
-    // Use application-level PropertiesComponent for settings
     private val propertiesComponent = PropertiesComponent.getInstance()
+    private val logger = thisLogger()
 
     private var singleClickTimer: Timer? = null
     private var pendingSingleClickChange: Change? = null
@@ -241,14 +234,16 @@ class GitChangesToolWindow(private val project: Project) { // project is still n
 
         tree.addMouseListener(object : MouseAdapter() {
             private fun logState(event: String, e: MouseEvent?, currentPath: javax.swing.tree.TreePath? = null) {
+                if (!logger.isDebugEnabled) return
+
                 val time = System.currentTimeMillis() % 100000
                 val clickInfo = e?.let { "ClickCount=${it.clickCount} @(${it.x},${it.y})" } ?: "N/A"
                 val currentPathStr = currentPath?.lastPathComponent?.toString()?.takeLast(30) ?: "null"
                 val pendingPathStr = pendingSingleClickNodePath?.lastPathComponent?.toString()?.takeLast(30) ?: "null"
-                val firedPathStr = singleClickActionHasFiredForPath?.lastPathComponent?.toString()?.takeLast(30) ?: "null" // Log new state
+                val firedPathStr = singleClickActionHasFiredForPath?.lastPathComponent?.toString()?.takeLast(30) ?: "null"
                 val timerRunning = singleClickTimer?.isRunning ?: false
 
-                println(String.format("[%05d] %-30s | %-20s | Path: %-30s | PendPath: %-30s | FiredPath: %-30s | TimerRun: %s",
+                logger.debug(String.format("[%05d] %-30s | %-20s | Path: %-30s | PendPath: %-30s | FiredPath: %-30s | TimerRun: %s",
                     time, event, clickInfo, currentPathStr, pendingPathStr, firedPathStr, timerRunning))
             }
 
@@ -638,14 +633,14 @@ class GitChangesToolWindow(private val project: Project) { // project is still n
 
             remoteBranches.filter { it.contains(searchTerm, ignoreCase = true) }
                 .forEach { remoteBranchesNode.add(DefaultMutableTreeNode(it)) }
-            
+
             if (localBranchesNode.childCount > 0) {
                 rootNode.add(localBranchesNode)
             }
             if (remoteBranchesNode.childCount > 0) {
                 rootNode.add(remoteBranchesNode)
             }
-            
+
             return DefaultTreeModel(rootNode)
         }
 
@@ -670,9 +665,14 @@ class GitChangesToolWindow(private val project: Project) { // project is still n
         })
 
         tree.addMouseListener(object : MouseAdapter() {
+            private fun logBranchTreeClick(message: String, additionalInfo: String = "") {
+                if (!logger.isDebugEnabled) return
+                val prefix = "BranchTreeClick: ALIGNED"
+                logger.debug("$prefix $message $additionalInfo")
+            }
+
             override fun mouseClicked(e: MouseEvent) {
-                val timestamp = System.currentTimeMillis()
-                println("[$timestamp] BranchTreeClick: ALIGNED START - Point(${e.x}, ${e.y}), ClickCount=${e.clickCount}")
+                logBranchTreeClick("START", "- Point(${e.x}, ${e.y}), ClickCount=${e.clickCount}")
 
                 if (e.clickCount == 1) { // Process only single clicks
                     val clickPoint = e.point // Using e.point for clarity with original logic
@@ -680,47 +680,47 @@ class GitChangesToolWindow(private val project: Project) { // project is still n
 
                     // Exact logic from diff tree for determining target path
                     val row = tree.getClosestRowForLocation(clickPoint.x, clickPoint.y)
-                    println("[$timestamp] BranchTreeClick: ALIGNED Row (from getClosestRowForLocation)=$row")
+                    logBranchTreeClick("Row (from getClosestRowForLocation)=$row")
 
                     if (row != -1) {
                         val rowBounds = tree.getRowBounds(row)
-                        println("[$timestamp] BranchTreeClick: ALIGNED RowBounds=$rowBounds")
+                        logBranchTreeClick("RowBounds=$rowBounds")
                         if (rowBounds != null) {
                             val yWithinRowContent = clickPoint.y >= rowBounds.y && clickPoint.y < (rowBounds.y + rowBounds.height)
                             val xWithinTreeVisible = clickPoint.x >= tree.visibleRect.x && clickPoint.x < (tree.visibleRect.x + tree.visibleRect.width)
 
-                            println("[$timestamp] BranchTreeClick: ALIGNED yWithinRowContent=$yWithinRowContent, xWithinTreeVisible=$xWithinTreeVisible, tree.visibleRect=${tree.visibleRect}")
+                            logBranchTreeClick("yWithinRowContent=$yWithinRowContent, xWithinTreeVisible=$xWithinTreeVisible, tree.visibleRect=${tree.visibleRect}")
 
                             if (yWithinRowContent && xWithinTreeVisible) {
                                 currentTargetPath = tree.getPathForRow(row)
                             }
                         }
                     }
-                    println("[$timestamp] BranchTreeClick: ALIGNED CurrentTargetPathDetermined=$currentTargetPath")
+                    logBranchTreeClick("CurrentTargetPathDetermined=$currentTargetPath")
 
                     if (currentTargetPath != null) {
                         val node = currentTargetPath.lastPathComponent as? DefaultMutableTreeNode
-                        println("[$timestamp] BranchTreeClick: ALIGNED NodeUserObject=${node?.userObject}, IsNodeLeaf=${node?.isLeaf}")
+                        logBranchTreeClick("NodeUserObject=${node?.userObject}, IsNodeLeaf=${node?.isLeaf}")
 
                         if (node != null && node.isLeaf) {
                             val parentNode = node.parent as? DefaultMutableTreeNode
-                            println("[$timestamp] BranchTreeClick: ALIGNED ParentNodeUserObject=${parentNode?.userObject}")
+                            logBranchTreeClick("ParentNodeUserObject=${parentNode?.userObject}")
                             if (parentNode != null && (parentNode.userObject == "Local" || parentNode.userObject == "Remote")) {
                                 (node.userObject as? String)?.let { branchName ->
-                                    println("[$timestamp] BranchTreeClick: ALIGNED INVOKING onBranchSelected with '$branchName'")
+                                    logBranchTreeClick("INVOKING onBranchSelected with '$branchName'")
                                     onBranchSelected(branchName)
                                 }
                             } else {
-                                println("[$timestamp] BranchTreeClick: ALIGNED Did NOT invoke onBranchSelected (parent check failed or not a String userObject).")
+                                logBranchTreeClick("Did NOT invoke onBranchSelected (parent check failed or not a String userObject).")
                             }
                         } else {
-                            println("[$timestamp] BranchTreeClick: ALIGNED Did NOT invoke onBranchSelected (node was null or not a leaf).")
+                            logBranchTreeClick("Did NOT invoke onBranchSelected (node was null or not a leaf).")
                         }
                     } else {
-                        println("[$timestamp] BranchTreeClick: ALIGNED Did NOT invoke onBranchSelected (currentTargetPath was null).")
+                        logBranchTreeClick("Did NOT invoke onBranchSelected (currentTargetPath was null).")
                     }
                 }
-                println("[$timestamp] BranchTreeClick: ALIGNED END")
+                logBranchTreeClick("END")
             }
         })
 
