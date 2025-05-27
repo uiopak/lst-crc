@@ -40,6 +40,15 @@ import javax.swing.event.DocumentListener
 import javax.swing.tree.DefaultMutableTreeNode
 import javax.swing.tree.DefaultTreeModel
 import javax.swing.Timer
+// import javax.swing.DefaultListModel // No longer needed
+// import java.awt.event.MouseAdapter // Already imported
+// import javax.swing.event.DocumentListener // Already exists
+// import javax.swing.event.DocumentEvent // Already exists
+// com.intellij.ui.treeStructure.Tree is already imported
+// javax.swing.tree.DefaultMutableTreeNode is already imported
+// javax.swing.tree.DefaultTreeModel is already imported
+// com.intellij.util.ui.tree.TreeUtil is already imported
+
 
 class GitChangesToolWindow(private val project: Project) { // project is still needed for project-specific services like GitService
     private val gitService = project.service<GitService>()
@@ -566,5 +575,79 @@ class GitChangesToolWindow(private val project: Project) { // project is still n
             override fun dispose() { listPopup?.cancel(); super.dispose() }
         }
         dialog.show()
+    }
+
+    fun createBranchSelectionView(onBranchSelected: (branchName: String) -> Unit): JComponent {
+        val panel = JBPanel<JBPanel<*>>(BorderLayout(0, JBUI.scale(5)))
+        val searchTextField = SearchTextField(false)
+        panel.add(searchTextField, BorderLayout.NORTH)
+
+        val tree = Tree()
+        tree.isRootVisible = false
+        tree.showsRootHandles = true // Shows handles for top-level nodes if root is invisible
+
+        fun buildBranchTreeModel(searchTerm: String): DefaultTreeModel {
+            val rootNode = DefaultMutableTreeNode("Root")
+            val localBranchesNode = DefaultMutableTreeNode("Local")
+            val remoteBranchesNode = DefaultMutableTreeNode("Remote")
+
+            val localBranches = gitService.getLocalBranches().sorted()
+            val remoteBranches = gitService.getRemoteBranches().sorted()
+
+            localBranches.filter { it.contains(searchTerm, ignoreCase = true) }
+                .forEach { localBranchesNode.add(DefaultMutableTreeNode(it)) }
+
+            remoteBranches.filter { it.contains(searchTerm, ignoreCase = true) }
+                .forEach { remoteBranchesNode.add(DefaultMutableTreeNode(it)) }
+            
+            if (localBranchesNode.childCount > 0) {
+                rootNode.add(localBranchesNode)
+            }
+            if (remoteBranchesNode.childCount > 0) {
+                rootNode.add(remoteBranchesNode)
+            }
+            
+            return DefaultTreeModel(rootNode)
+        }
+
+        tree.model = buildBranchTreeModel("")
+        TreeUtil.expandAll(tree)
+
+
+        searchTextField.addDocumentListener(object : DocumentListener {
+            override fun insertUpdate(e: DocumentEvent?) { filterTree() }
+            override fun removeUpdate(e: DocumentEvent?) { filterTree() }
+            override fun changedUpdate(e: DocumentEvent?) { filterTree() }
+
+            private fun filterTree() {
+                val searchTerm = searchTextField.text.trim()
+                tree.model = buildBranchTreeModel(searchTerm)
+                // The TreeUtil.expandAll(tree) needs to be called AFTER the model is updated.
+                // If nodes are removed and re-added, their expansion state might be lost.
+                // We might need to selectively expand if performance is an issue,
+                // but for now, expanding all after model update is simplest.
+                TreeUtil.expandAll(tree)
+            }
+        })
+
+        tree.addMouseListener(object : MouseAdapter() {
+            override fun mouseClicked(e: MouseEvent) {
+                if (e.clickCount == 1) {
+                    val path = tree.getPathForLocation(e.x, e.y)
+                    path?.lastPathComponent?.let { node ->
+                        if (node is DefaultMutableTreeNode && node.isLeaf && node.parent != null) { // Ensure it's a branch node
+                            (node.userObject as? String)?.let { branchName ->
+                                onBranchSelected(branchName)
+                            }
+                        }
+                    }
+                }
+            }
+        })
+
+        val scrollPane = JBScrollPane(tree)
+        panel.add(scrollPane, BorderLayout.CENTER)
+
+        return panel
     }
 }
