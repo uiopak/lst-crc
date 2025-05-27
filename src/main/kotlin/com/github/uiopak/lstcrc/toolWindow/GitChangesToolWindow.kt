@@ -606,11 +606,11 @@ class GitChangesToolWindow(private val project: Project) { // project is still n
                 val userObject = value.userObject
                 when (userObject) {
                     "Local" -> {
-                        append(userObject, SimpleTextAttributes.REGULAR_ATTRIBUTES)
+                        append(userObject.toString(), SimpleTextAttributes.REGULAR_ATTRIBUTES)
                         icon = AllIcons.Nodes.Folder // Or a more specific icon for local branches
                     }
                     "Remote" -> {
-                        append(userObject, SimpleTextAttributes.REGULAR_ATTRIBUTES)
+                        append(userObject.toString(), SimpleTextAttributes.REGULAR_ATTRIBUTES)
                         icon = AllIcons.Nodes.WebFolder // Or a more specific icon for remote branches
                     }
                     is String -> { // This should be a branch name
