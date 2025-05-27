@@ -632,12 +632,22 @@ class GitChangesToolWindow(private val project: Project) { // project is still n
 
         tree.addMouseListener(object : MouseAdapter() {
             override fun mouseClicked(e: MouseEvent) {
-                if (e.clickCount == 1) {
-                    val path = tree.getPathForLocation(e.x, e.y)
-                    path?.lastPathComponent?.let { node ->
-                        if (node is DefaultMutableTreeNode && node.isLeaf && node.parent != null) { // Ensure it's a branch node
-                            (node.userObject as? String)?.let { branchName ->
-                                onBranchSelected(branchName)
+                if (e.clickCount == 1) { // Only process single clicks
+                    val row = tree.getRowForLocation(e.x, e.y) // Get the row at the click coordinates
+                    if (row != -1) { // Check if a valid row was clicked (not outside any row)
+                        val path = tree.getPathForRow(row) // Get the TreePath for this row
+                        if (path != null) {
+                            val node = path.lastPathComponent as? DefaultMutableTreeNode // Get the node for this path
+                            // Check if the node is a leaf (actual item) and not null
+                            if (node != null && node.isLeaf) {
+                                // Ensure this leaf node is a branch by checking its parent's userObject
+                                val parentNode = node.parent as? DefaultMutableTreeNode
+                                if (parentNode != null && (parentNode.userObject == "Local" || parentNode.userObject == "Remote")) {
+                                    // If it's a valid branch node, get its name and call the callback
+                                    (node.userObject as? String)?.let { branchName ->
+                                        onBranchSelected(branchName)
+                                    }
+                                }
                             }
                         }
                     }
