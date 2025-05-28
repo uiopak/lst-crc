@@ -36,7 +36,7 @@ class ChangesTreePanel(
     private val project: Project,
     private val gitService: GitService,
     private val propertiesComponent: PropertiesComponent,
-    private val targetBranchToCompare: String? // Changed from branchName: String
+    private val targetBranchToCompare: String // Changed to non-null
 ) : JBScrollPane() {
 
     private val logger = thisLogger()
@@ -89,8 +89,8 @@ class ChangesTreePanel(
         return if (storedValue > 0) storedValue else DEFAULT_USER_DELAY_MS
     }
 
-    // Changed parameter name and type
-    private fun createChangesTreeInternal(initialTarget: String?): Tree {
+    // Changed parameter type to non-null
+    private fun createChangesTreeInternal(initialTarget: String): Tree {
         val root = DefaultMutableTreeNode("Changes")
         val treeModel = DefaultTreeModel(root)
         val newTree = object : Tree(treeModel) {
@@ -258,35 +258,29 @@ class ChangesTreePanel(
         }
     }
 
-    // Changed parameter name and type, and logic for calling GitService
-    private fun refreshChangesTree(treeToRefresh: JTree, currentTarget: String?) {
+    // Changed parameter type to non-null and simplified logic
+    private fun refreshChangesTree(treeToRefresh: JTree, currentTarget: String) {
         val rootModelNode = treeToRefresh.model.root as DefaultMutableTreeNode
         // Show loading state
         rootModelNode.removeAllChildren()
         rootModelNode.add(DefaultMutableTreeNode("Loading..."))
         (treeToRefresh.model as DefaultTreeModel).reload(rootModelNode)
 
-        val future = if (currentTarget != null) {
-            gitService.getChanges(currentTarget) // For branch-to-HEAD comparison
-        } else {
-            gitService.getLocalChangesAgainstHEAD() // For local changes
-        }
-
-        future.whenCompleteAsync { changes, throwable ->
+        // Directly use currentTarget as it's now non-null and getLocalChangesAgainstHEAD is removed
+        gitService.getChanges(currentTarget).whenCompleteAsync { changes, throwable ->
             ApplicationManager.getApplication().invokeLater {
                 rootModelNode.removeAllChildren() // Clear "Loading..." or old content
                 if (throwable != null) {
-                    val targetDescription = currentTarget ?: "local changes"
-                    logger.error("Error getting changes for $targetDescription", throwable)
-                    val messageNode = DefaultMutableTreeNode("Error loading changes for $targetDescription: ${throwable.message ?: "Unknown error"}")
-                    rootModelNode.add(messageNode)
-                } else if (changes != null) {
-                    val noChangesMessage = if (currentTarget != null) "No changes found between HEAD and $currentTarget" else "No local changes found"
+                    logger.error("Error getting changes for target $currentTarget", throwable)
+                    rootModelNode.add(DefaultMutableTreeNode("Error loading changes for $currentTarget: ${throwable.message ?: "Unknown error"}"))
+                } else if (changes != null) { // changes can still be null if CompletableFuture completes with null
                     if (changes.isEmpty()) {
-                        rootModelNode.add(DefaultMutableTreeNode(noChangesMessage))
+                        rootModelNode.add(DefaultMutableTreeNode("No changes found for $currentTarget"))
                     } else {
-                        buildTreeFromChanges(rootModelNode, changes)
+                        buildTreeFromChanges(rootNode, changes)
                     }
+                } else { // Handle case where changes is null (though ideally future shouldn't complete with null)
+                     rootModelNode.add(DefaultMutableTreeNode("No change data available for $currentTarget"))
                 }
                 (treeToRefresh.model as DefaultTreeModel).reload(rootModelNode)
                 TreeUtil.expandAll(treeToRefresh) // Expand after new content is loaded
