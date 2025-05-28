@@ -7,10 +7,10 @@ import com.intellij.openapi.diagnostic.thisLogger // Keep this, it's used
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.progress.ProgressIndicator
 import com.intellij.openapi.progress.Task
-// FilePath import will be removed as it's no longer needed
+// FilePath import was removed as it's no longer needed
 import com.intellij.openapi.vcs.VcsException
 import com.intellij.openapi.vcs.changes.Change
-import com.intellij.openapi.vcs.changes.ChangeListManager
+// ChangeListManager import is removed as getLocalChangesAgainstHEAD() is removed
 // Keep other Git-related imports
 import git4idea.changes.GitChangeUtils
 import git4idea.commands.Git
@@ -99,31 +99,6 @@ class GitService(private val project: Project) {
                     logger.error("Error getting diff with working tree: ${e.message}", e)
                     future.completeExceptionally(e)
                 }
-            }
-        }.queue()
-
-        return future
-    }
-
-    fun getLocalChangesAgainstHEAD(): CompletableFuture<List<Change>> {
-        val future = CompletableFuture<List<Change>>()
-
-        object : Task.Backgroundable(project, "Fetching Local Changes...", true /* canBeCancelled */) {
-            override fun run(indicator: ProgressIndicator) {
-                try {
-                    indicator.text = "Accessing changelist manager..." // Optional progress text
-                    val changeListManager = ChangeListManager.getInstance(project)
-                    val localChanges = changeListManager.allChanges.toList()
-                    future.complete(localChanges)
-                } catch (e: Exception) {
-                    logger.error("Error fetching local changes", e)
-                    future.completeExceptionally(e)
-                }
-            }
-
-            override fun onCancel() {
-                logger.info("Fetching local changes was cancelled.")
-                future.cancel(true)
             }
         }.queue()
 

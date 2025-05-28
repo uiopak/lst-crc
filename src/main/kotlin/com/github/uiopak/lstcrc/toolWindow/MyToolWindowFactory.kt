@@ -20,12 +20,13 @@ class MyToolWindowFactory : ToolWindowFactory {
         val contentFactory = ContentFactory.getInstance()
         val gitService = project.service<GitService>()
 
-        // Create Permanent "Local Changes" Tab
-        val localChangesView = gitChangesUiProvider.createBranchContentView(null) // null for local changes
-        val localChangesContent = contentFactory.createContent(localChangesView, "Local Changes", false)
-        localChangesContent.isCloseable = false
-        localChangesContent.isPinned = true // Optional but good for a permanent tab
-        toolWindow.contentManager.addContent(localChangesContent)
+        // Create Permanent "HEAD" Tab (now shows current branch/commit vs. working tree)
+        val headTabTargetName = gitService.getCurrentBranch() ?: "HEAD"
+        val headView = gitChangesUiProvider.createBranchContentView(headTabTargetName)
+        val headContent = contentFactory.createContent(headView, "HEAD", false)
+        headContent.isCloseable = false
+        headContent.isPinned = true // Optional but good for a permanent tab
+        toolWindow.contentManager.addContent(headContent)
 
         // Create Initial Closable Tab for Current Branch (Conditional)
         val currentActualBranchName = gitService.getCurrentBranch()
@@ -37,8 +38,8 @@ class MyToolWindowFactory : ToolWindowFactory {
             toolWindow.contentManager.addContent(initialBranchContent)
             toolWindow.contentManager.setSelectedContent(initialBranchContent, true)
         } else {
-            // Select the "Local Changes" tab if no specific branch tab is created
-            toolWindow.contentManager.setSelectedContent(localChangesContent, true)
+            // Select the "HEAD" tab if no specific branch tab is created
+            toolWindow.contentManager.setSelectedContent(headContent, true)
         }
 
         // Existing actions

@@ -9,9 +9,11 @@ import com.intellij.openapi.fileEditor.OpenFileDescriptor
 import com.intellij.openapi.fileTypes.FileTypeManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.Messages
+// ProjectLevelVcsManager and GitRepositoryManager imports will be removed
 import com.intellij.openapi.vcs.changes.Change
 import com.intellij.openapi.vcs.changes.actions.diff.ShowDiffAction
 import com.intellij.openapi.vfs.VfsUtilCore
+// GitRepositoryManager import is removed as it's no longer used here.
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.ui.ColoredTreeCellRenderer
 import com.intellij.ui.JBColor
@@ -293,28 +295,32 @@ class ChangesTreePanel(
     }
 
     private fun buildTreeFromChanges(rootNode: DefaultMutableTreeNode, changes: List<Change>) {
-        val repositoryRoot = gitService.getCurrentRepository()?.root
+        // project is a class field
+        val commonRepositoryRoot = gitService.getCurrentRepository()?.root // Get root once
+
         for (changeItem in changes) {
             val currentFilePathObj = changeItem.afterRevision?.file ?: changeItem.beforeRevision?.file
             val rawPath = currentFilePathObj?.path
             var displayPath: String? = null
-            if (currentFilePathObj != null && repositoryRoot != null) {
-                val vf = currentFilePathObj.virtualFile
-                if (vf != null) {
-                    displayPath = VfsUtilCore.getRelativePath(vf, repositoryRoot, '/')
-                } else if (rawPath != null) {
-                    val repoRootPathString = repositoryRoot.path
-                    if (rawPath.startsWith(repoRootPathString + "/")) {
-                        displayPath = rawPath.substring(repoRootPathString.length + 1)
-                    } else if (rawPath.startsWith(repoRootPathString)) {
-                        displayPath = rawPath.substring(repoRootPathString.length).let { if (it.startsWith("/")) it.substring(1) else it }
-                    } else {
-                        displayPath = rawPath
-                    }
+            val vf = currentFilePathObj?.virtualFile
+
+            if (vf != null && commonRepositoryRoot != null) {
+                displayPath = VfsUtilCore.getRelativePath(vf, commonRepositoryRoot, '/')
+            } else if (rawPath != null && commonRepositoryRoot != null) {
+                // Existing string manipulation fallback
+                val repoRootPathString = commonRepositoryRoot.path
+                if (rawPath.startsWith(repoRootPathString + "/")) {
+                    displayPath = rawPath.substring(repoRootPathString.length + 1)
+                } else if (rawPath.startsWith(repoRootPathString)) {
+                    displayPath = rawPath.substring(repoRootPathString.length).let { if (it.startsWith("/")) it.substring(1) else it }
+                } else {
+                     displayPath = rawPath // Fallback if not under commonRepositoryRoot
                 }
             }
-            if (displayPath == null) displayPath = rawPath
-            if (displayPath == null) continue
+
+            if (displayPath == null) displayPath = rawPath // Final fallback
+
+            if (displayPath == null) continue // Should not happen if rawPath exists, but good for safety
             val normalizedPath = displayPath.replace('\\', '/')
             val pathComponents = normalizedPath.split('/').filter { it.isNotEmpty() }
             var currentNode = rootNode
