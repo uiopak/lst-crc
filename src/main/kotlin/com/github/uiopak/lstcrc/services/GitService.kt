@@ -7,6 +7,7 @@ import com.intellij.openapi.progress.ProgressIndicator
 import com.intellij.openapi.progress.Task
 import com.intellij.openapi.vcs.VcsException
 import com.intellij.openapi.vcs.changes.Change
+import com.intellij.openapi.vcs.changes.ChangeListManager
 import git4idea.changes.GitChangeUtils
 import git4idea.commands.Git
 import git4idea.commands.GitCommand
@@ -77,15 +78,41 @@ class GitService(private val project: Project) {
 
         object : Task.Backgroundable(project, "Loading Git Changes...") {
             override fun run(indicator: ProgressIndicator) {
-                logger.info("Getting changes in HEAD compared to branch: $branchNameToCompare for repository ${repository.root.path}")
+                logger.info("Getting changes in working tree compared to branch: $branchNameToCompare for repository ${repository.root.path}")
                 try {
-                    // Arguments swapped: branchNameToCompare is now rev1 (before), "HEAD" is rev2 (after)
-                    val changes = GitChangeUtils.getDiff(project, repository.root, branchNameToCompare, "HEAD", null)?.toList() ?: emptyList()
+                    // Compare the specified branch with the current working tree state.
+                    // The 'null' argument for filePaths means all files. 'true' is for detectMoves.
+                    val changes = GitChangeUtils.getDiffWithWorkingTree(project, repository.root, branchNameToCompare, null, true)?.toList() ?: emptyList()
                     future.complete(changes)
                 } catch (e: VcsException) {
-                    logger.error("Error getting diff: ${e.message}", e)
+                    logger.error("Error getting diff with working tree: ${e.message}", e)
                     future.completeExceptionally(e)
                 }
+            }
+        }.queue()
+
+        return future
+    }
+
+    fun getLocalChangesAgainstHEAD(): CompletableFuture<List<Change>> {
+        val future = CompletableFuture<List<Change>>()
+
+        object : Task.Backgroundable(project, "Fetching Local Changes...", true /* canBeCancelled */) {
+            override fun run(indicator: ProgressIndicator) {
+                try {
+                    indicator.text = "Accessing changelist manager..." // Optional progress text
+                    val changeListManager = ChangeListManager.getInstance(project)
+                    val localChanges = changeListManager.allChanges.toList()
+                    future.complete(localChanges)
+                } catch (e: Exception) {
+                    logger.error("Error fetching local changes", e)
+                    future.completeExceptionally(e)
+                }
+            }
+
+            override fun onCancel() {
+                logger.info("Fetching local changes was cancelled.")
+                future.cancel(true)
             }
         }.queue()
 

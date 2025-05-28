@@ -18,15 +18,30 @@ class MyToolWindowFactory : ToolWindowFactory {
     override fun createToolWindowContent(project: Project, toolWindow: ToolWindow) {
         val gitChangesUiProvider = GitChangesToolWindow(project)
         val contentFactory = ContentFactory.getInstance()
-
         val gitService = project.service<GitService>()
-        val initialBranchName = gitService.getCurrentBranch() ?: "HEAD"
-        val initialBranchUi = gitChangesUiProvider.createBranchContentView(initialBranchName)
-        val initialContent = contentFactory.createContent(initialBranchUi, initialBranchName, false)
-        initialContent.isCloseable = true
-        initialContent.isPinned = false
-        toolWindow.contentManager.addContent(initialContent)
-        toolWindow.contentManager.setSelectedContent(initialContent, true)
+
+        // Create Permanent "Local Changes" Tab
+        val localChangesView = gitChangesUiProvider.createBranchContentView(null) // null for local changes
+        val localChangesContent = contentFactory.createContent(localChangesView, "Local Changes", false)
+        localChangesContent.isCloseable = false
+        localChangesContent.isPinned = true // Optional but good for a permanent tab
+        toolWindow.contentManager.addContent(localChangesContent)
+
+        // Create Initial Closable Tab for Current Branch (Conditional)
+        val currentActualBranchName = gitService.getCurrentBranch()
+
+        if (currentActualBranchName != null && currentActualBranchName != "HEAD") {
+            val initialBranchView = gitChangesUiProvider.createBranchContentView(currentActualBranchName)
+            val initialBranchContent = contentFactory.createContent(initialBranchView, currentActualBranchName, false)
+            initialBranchContent.isCloseable = true
+            toolWindow.contentManager.addContent(initialBranchContent)
+            toolWindow.contentManager.setSelectedContent(initialBranchContent, true)
+        } else {
+            // Select the "Local Changes" tab if no specific branch tab is created
+            toolWindow.contentManager.setSelectedContent(localChangesContent, true)
+        }
+
+        // Existing actions
         val openSelectionTabAction = OpenBranchSelectionTabAction(project, toolWindow, gitChangesUiProvider)
         toolWindow.setTitleActions(listOf(openSelectionTabAction))
 

@@ -34,11 +34,15 @@ class ChangesTreePanel(
     private val project: Project,
     private val gitService: GitService,
     private val propertiesComponent: PropertiesComponent,
-    private val branchName: String
+    private val targetBranchToCompare: String? // Changed from branchName: String
 ) : JBScrollPane() {
 
     private val logger = thisLogger()
     val tree: Tree
+    // The field `branchName` is effectively replaced by `targetBranchToCompare`
+    // for initial setup. If a specific name for the tab (independent of current target)
+    // was needed, a new field could be introduced, but for now, `targetBranchToCompare`
+    // dictates the initial behavior.
 
     private var singleClickTimer: Timer? = null
     private var pendingSingleClickChange: Change? = null
@@ -62,7 +66,8 @@ class ChangesTreePanel(
     }
 
     init {
-        tree = createChangesTreeInternal(branchName)
+        // Use targetBranchToCompare for the initial setup
+        tree = createChangesTreeInternal(targetBranchToCompare)
         this.setViewportView(tree)
         this.border = null
     }
@@ -82,7 +87,8 @@ class ChangesTreePanel(
         return if (storedValue > 0) storedValue else DEFAULT_USER_DELAY_MS
     }
 
-    private fun createChangesTreeInternal(branchNameForInitialRefresh: String): Tree {
+    // Changed parameter name and type
+    private fun createChangesTreeInternal(initialTarget: String?): Tree {
         val root = DefaultMutableTreeNode("Changes")
         val treeModel = DefaultTreeModel(root)
         val newTree = object : Tree(treeModel) {
@@ -220,7 +226,8 @@ class ChangesTreePanel(
                 }
             }
         })
-        refreshChangesTree(newTree, branchNameForInitialRefresh)
+        // Pass initialTarget to refreshChangesTree
+        refreshChangesTree(newTree, initialTarget)
         return newTree
     }
 
@@ -249,24 +256,32 @@ class ChangesTreePanel(
         }
     }
 
-    private fun refreshChangesTree(treeToRefresh: JTree, branch: String) {
+    // Changed parameter name and type, and logic for calling GitService
+    private fun refreshChangesTree(treeToRefresh: JTree, currentTarget: String?) {
         val rootModelNode = treeToRefresh.model.root as DefaultMutableTreeNode
         // Show loading state
         rootModelNode.removeAllChildren()
         rootModelNode.add(DefaultMutableTreeNode("Loading..."))
         (treeToRefresh.model as DefaultTreeModel).reload(rootModelNode)
 
-        gitService.getChanges(branch).whenCompleteAsync { changes, throwable ->
+        val future = if (currentTarget != null) {
+            gitService.getChanges(currentTarget) // For branch-to-HEAD comparison
+        } else {
+            gitService.getLocalChangesAgainstHEAD() // For local changes
+        }
+
+        future.whenCompleteAsync { changes, throwable ->
             ApplicationManager.getApplication().invokeLater {
                 rootModelNode.removeAllChildren() // Clear "Loading..." or old content
                 if (throwable != null) {
-                    logger.error("Error getting changes for branch $branch", throwable)
-                    // It's good practice to check if the user object is a string before casting and appending
-                    val messageNode = DefaultMutableTreeNode("Error loading changes: ${throwable.message ?: "Unknown error"}")
+                    val targetDescription = currentTarget ?: "local changes"
+                    logger.error("Error getting changes for $targetDescription", throwable)
+                    val messageNode = DefaultMutableTreeNode("Error loading changes for $targetDescription: ${throwable.message ?: "Unknown error"}")
                     rootModelNode.add(messageNode)
                 } else if (changes != null) {
+                    val noChangesMessage = if (currentTarget != null) "No changes found between HEAD and $currentTarget" else "No local changes found"
                     if (changes.isEmpty()) {
-                        rootModelNode.add(DefaultMutableTreeNode("No changes found"))
+                        rootModelNode.add(DefaultMutableTreeNode(noChangesMessage))
                     } else {
                         buildTreeFromChanges(rootModelNode, changes)
                     }
