@@ -5,6 +5,7 @@ import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.progress.ProgressIndicator
 import com.intellij.openapi.progress.Task
+import com.intellij.openapi.vcs.FilePath
 import com.intellij.openapi.vcs.VcsException
 import com.intellij.openapi.vcs.changes.Change
 import com.intellij.openapi.vcs.changes.ChangeListManager
@@ -81,8 +82,8 @@ class GitService(private val project: Project) {
                 logger.info("Getting changes in working tree compared to branch: $branchNameToCompare for repository ${repository.root.path}")
                 try {
                     // Compare the specified branch with the current working tree state.
-                    // The 'null' argument for filePaths means all files. 'true' is for detectMoves.
-                    val changes = GitChangeUtils.getDiffWithWorkingTree(project, repository.root, branchNameToCompare, null, true)?.toList() ?: emptyList()
+                    // Explicitly cast null to Collection<FilePath>? to resolve overload ambiguity.
+                    val changes = GitChangeUtils.getDiffWithWorkingTree(project, repository.root, branchNameToCompare, null as Collection<FilePath>?, true)?.toList() ?: emptyList()
                     future.complete(changes)
                 } catch (e: VcsException) {
                     logger.error("Error getting diff with working tree: ${e.message}", e)

@@ -11,7 +11,7 @@ class GitChangesToolWindow(private val project: Project) {
     private val gitService = project.service<GitService>()
     private val propertiesComponent = PropertiesComponent.getInstance()
 
-    fun createBranchContentView(branchName: String): JComponent {
+    fun createBranchContentView(branchName: String?): JComponent {
         return ChangesTreePanel(project, gitService, propertiesComponent, branchName)
     }
 
