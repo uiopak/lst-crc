@@ -117,8 +117,9 @@ class BranchCompareLineMarkerProvider : LineMarkerProvider {
                     override fun getRevisionDate(): Date? = null // Not always available easily
                     override fun getAuthor(): String? = null
                     override fun getCommitMessage(): String? = null
-                    override fun loadContent(): ByteArray? = branchContent.toByteArray(virtualFile.charset) // Changed from getContent
-                    override fun getChangedRepositoryPath(): RepositoryLocation? = null // Changed return type
+                    override fun loadContent(): ByteArray? = branchContent.toByteArray(virtualFile.charset)
+                    override fun getContent(): ByteArray? = branchContent.toByteArray(virtualFile.charset) // Added this method
+                    override fun getChangedRepositoryPath(): RepositoryLocation? = null
                 }
             }
         }
@@ -170,18 +171,22 @@ class BranchCompareLineMarkerProvider : LineMarkerProvider {
                         if (branchDocLineNumber >= 0 && branchDocLineNumber < fileAnnotation.lineCount) {
                             val revisionInfo = fileAnnotation.getLineRevisionNumber(branchDocLineNumber)
                             val author = fileAnnotation.getAuthorsForLine(branchDocLineNumber)?.firstOrNull()
-                            val date = (revisionInfo as? GitRevisionNumber)?.timestamp?.let { Date(it) }
+                            val date = (revisionInfo as? GitRevisionNumber)?.timestamp?.let { java.util.Date(it) } // Changed Date(it) to java.util.Date(it)
                             // Note: fileAnnotation.getToolTip(branchDocLineNumber) might give a pre-formatted string
                             // Or fileAnnotation.getLineCommitMessage(branchDocLineNumber) if available
                             // For more details, one might need to fetch VcsFullCommitDetails using revisionInfo
                             val commitMessageFirstLine = fileAnnotation.getLineRevision(branchDocLineNumber)?.commitMessage?.lines()?.firstOrNull()?.trim() ?: "N/A"
 
+                            val authorLine = author?.let { "Author: $it\n" } ?: ""
+                            val dateLine = date?.let { formattedDate -> "Date: ${DateFormatUtil.formatPrettyDateTime(formattedDate)}\n" } ?: ""
+                            val commitLine = "Commit: ${revisionInfo?.asString() ?: "N/A"}\n"
+                            val messageLine = "Message: $commitMessageFirstLine"
 
                             tooltipText = "Branch: $selectedBranchName\n" +
-                                    (author?.let { "Author: $it\n" } ?: "") +
-                                    (date?.let { "Date: ${DateFormatUtil.formatPrettyDateTime(it)}\n" } ?: "") +
-                                    "Commit: ${revisionInfo?.asString() ?: "N/A"}\n" +
-                                    "Message: $commitMessageFirstLine"
+                                          authorLine +
+                                          dateLine +
+                                          commitLine +
+                                          messageLine
                         } else {
                             tooltipText = "Branch: $selectedBranchName\nError: Line $branchDocLineNumber out of bounds in branch annotation."
                         }
