@@ -1,7 +1,5 @@
 package com.github.uiopak.lstcrc.lineMarkers
 
-package com.github.uiopak.lstcrc.lineMarkers
-
 import com.github.uiopak.lstcrc.services.SelectedBranchService
 import com.intellij.codeInsight.daemon.LineMarkerInfo
 import com.intellij.codeInsight.daemon.LineMarkerProvider
@@ -12,10 +10,12 @@ import com.intellij.openapi.editor.Document
 import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.progress.EmptyProgressIndicator
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.vcs.FilePathImpl // Added import
 import com.intellij.openapi.vcs.ProjectLevelVcsManager
 import com.intellij.openapi.vcs.actions.AnnotationsSettings
 import com.intellij.openapi.vcs.annotate.FileAnnotation
 import com.intellij.openapi.vcs.changes.ContentRevision
+import com.intellij.openapi.vcs.history.RepositoryLocation // Added import
 import com.intellij.openapi.vcs.history.VcsFileRevision
 import com.intellij.openapi.vcs.history.VcsRevisionNumber
 import com.intellij.openapi.vfs.VirtualFile
@@ -23,6 +23,7 @@ import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiFile
 import com.intellij.util.text.DateFormatUtil
 import git4idea.GitFileRevision
+import git4idea.GitRevisionNumber // Added import
 import git4idea.GitVcs
 import git4idea.history.GitHistoryUtils
 import git4idea.repo.GitRepositoryManager
@@ -69,13 +70,15 @@ class BranchCompareLineMarkerProvider : LineMarkerProvider {
             // For Git, GitHistoryUtils.getCurrentRevision might not be enough for ContentRevision directly.
             // We need a ContentRevision that can provide content.
             // Let's try to get a GitFileRevision
-            val revisions = GitHistoryUtils.history(project, repository.root, virtualFile.path, "$selectedBranchName..$selectedBranchName")
+            val filePath = FilePathImpl(virtualFile)
+            val revisions = GitHistoryUtils.history(project, repository.root, filePath, "$selectedBranchName..$selectedBranchName")
             if (revisions.isNotEmpty() && revisions.first() is GitFileRevision) {
                 revisions.first() as GitFileRevision
             } else {
                  // Fallback or alternative way to get ContentRevision if the above fails
                 val gitVcs = GitVcs.getInstance(project)
-                gitVcs?.vcsHistoryProvider?.createRevision(virtualFile, branchRevisionNumber) ?: return
+                // Use historyProvider as per documentation/API for GitVcs
+                gitVcs?.historyProvider?.createRevision(filePath, branchRevisionNumber) ?: return
             }
         } catch (e: Exception) {
             return
@@ -114,20 +117,20 @@ class BranchCompareLineMarkerProvider : LineMarkerProvider {
                     override fun getRevisionDate(): Date? = null // Not always available easily
                     override fun getAuthor(): String? = null
                     override fun getCommitMessage(): String? = null
-                    override fun getContent(): ByteArray = branchContent.toByteArray(virtualFile.charset)
-                    override fun getChangedRepositoryPath(): String? = null
+                    override fun loadContent(): ByteArray? = branchContent.toByteArray(virtualFile.charset) // Changed from getContent
+                    override fun getChangedRepositoryPath(): RepositoryLocation? = null // Changed return type
                 }
             }
         }
         
         val fileAnnotation: FileAnnotation = try {
             // Disable show authors for this annotation to avoid UI popups if settings are different
-            val originalAuthorsSetting = AnnotationsSettings.getInstance().SHOW_AUTHORS
-            AnnotationsSettings.getInstance().SHOW_AUTHORS = false
+            val originalAuthorsSetting = AnnotationsSettings.getInstance().isShowAuthors
+            AnnotationsSettings.getInstance().setShowAuthors(false)
             try {
                 annotationProvider.annotate(virtualFile, vcsFileRevisionForAnnotation)
             } finally {
-                AnnotationsSettings.getInstance().SHOW_AUTHORS = originalAuthorsSetting
+                AnnotationsSettings.getInstance().setShowAuthors(originalAuthorsSetting)
             }
         } catch (e: Exception) {
              // Log error during annotation
@@ -167,19 +170,18 @@ class BranchCompareLineMarkerProvider : LineMarkerProvider {
                         if (branchDocLineNumber >= 0 && branchDocLineNumber < fileAnnotation.lineCount) {
                             val revisionInfo = fileAnnotation.getLineRevisionNumber(branchDocLineNumber)
                             val author = fileAnnotation.getAuthorsForLine(branchDocLineNumber)?.firstOrNull()
-                            val date = revisionInfo?.timestamp?.let { Date(it) }
+                            val date = (revisionInfo as? GitRevisionNumber)?.timestamp?.let { Date(it) }
                             // Note: fileAnnotation.getToolTip(branchDocLineNumber) might give a pre-formatted string
                             // Or fileAnnotation.getLineCommitMessage(branchDocLineNumber) if available
                             // For more details, one might need to fetch VcsFullCommitDetails using revisionInfo
-                            // This is a simplified version:
-                            val commitMessage = fileAnnotation.getCommitMessage(branchDocLineNumber) ?: "N/A"
+                            val commitMessageFirstLine = fileAnnotation.getLineRevision(branchDocLineNumber)?.commitMessage?.lines()?.firstOrNull()?.trim() ?: "N/A"
 
 
                             tooltipText = "Branch: $selectedBranchName\n" +
                                     (author?.let { "Author: $it\n" } ?: "") +
                                     (date?.let { "Date: ${DateFormatUtil.formatPrettyDateTime(it)}\n" } ?: "") +
                                     "Commit: ${revisionInfo?.asString() ?: "N/A"}\n" +
-                                    "Message: ${commitMessage.lines().firstOrNull() ?: ""}" // First line of commit message
+                                    "Message: $commitMessageFirstLine"
                         } else {
                             tooltipText = "Branch: $selectedBranchName\nError: Line $branchDocLineNumber out of bounds in branch annotation."
                         }
@@ -191,14 +193,12 @@ class BranchCompareLineMarkerProvider : LineMarkerProvider {
                     val renderer = BranchCompareGutterIconRenderer(tooltipText)
                     lines.add(
                         LineMarkerInfo(
-                            firstElementOnLine, // Attach marker to the first element on the line
+                            firstElementOnLine,
                             firstElementOnLine.textRange,
-                            renderer.icon, // Use icon from renderer
-                            null, // Pass.LINE_MARKERS is implicit for collectSlowLineMarkers
-                            { renderer.tooltipText }, // Tooltip provider
-                            null, // No specific navigation handler
-                            renderer.alignment,
-                            { "BranchCompareMarker" }
+                            renderer.icon,
+                            { _ -> renderer.tooltipText }, // Tooltip provider Function<PsiElement, String>
+                            null, // Navigation handler
+                            renderer.alignment
                         )
                     )
                     break // Found the fragment for this line, move to next element/line

@@ -7,7 +7,7 @@ import javax.swing.Icon
 class BranchCompareGutterIconRenderer(private val tooltipText: String) : GutterIconRenderer() {
 
     override fun getIcon(): Icon {
-        return AllIcons.Actions.Modify
+        return AllIcons.Diff.Modified // Changed from AllIcons.Actions.Modify
     }
 
     override fun getTooltipText(): String {
