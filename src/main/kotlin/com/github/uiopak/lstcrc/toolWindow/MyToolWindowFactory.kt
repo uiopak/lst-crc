@@ -20,18 +20,23 @@ class MyToolWindowFactory : ToolWindowFactory {
         val contentFactory = ContentFactory.getInstance()
         val gitService = project.service<GitService>()
 
-        // Create Permanent "HEAD" Tab (now shows current branch/commit vs. working tree)
-        val headTabTargetName = gitService.getCurrentBranch() ?: "HEAD"
+        // New logic for headTabTargetName
+        val currentRepository = gitService.getCurrentRepository()
+        val headTabTargetName = if (currentRepository != null) {
+            currentRepository.currentBranchName ?: currentRepository.currentRevision ?: "HEAD"
+        } else {
+            "HEAD" 
+        }
+        
         val headView = gitChangesUiProvider.createBranchContentView(headTabTargetName)
         val headContent = contentFactory.createContent(headView, "HEAD", false)
         headContent.isCloseable = false
-        headContent.isPinned = true // Optional but good for a permanent tab
+        headContent.isPinned = true
         toolWindow.contentManager.addContent(headContent)
 
-        // Create Initial Closable Tab for Current Branch (Conditional)
-        val currentActualBranchName = gitService.getCurrentBranch()
-
-        if (currentActualBranchName != null && currentActualBranchName != "HEAD") {
+        // Logic for initial closable tab
+        val currentActualBranchName = currentRepository?.currentBranchName // Reuse currentRepository
+        if (currentActualBranchName != null && currentActualBranchName != "HEAD") { // Ensure not detached and not literally "HEAD"
             val initialBranchView = gitChangesUiProvider.createBranchContentView(currentActualBranchName)
             val initialBranchContent = contentFactory.createContent(initialBranchView, currentActualBranchName, false)
             initialBranchContent.isCloseable = true

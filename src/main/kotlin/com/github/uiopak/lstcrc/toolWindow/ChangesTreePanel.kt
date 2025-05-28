@@ -6,6 +6,7 @@ import com.intellij.ide.util.PropertiesComponent
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.fileEditor.OpenFileDescriptor
+import com.intellij.openapi.startup.StartupManager
 import com.intellij.openapi.fileTypes.FileTypeManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.Messages
@@ -68,10 +69,13 @@ class ChangesTreePanel(
     }
 
     init {
-        // Use targetBranchToCompare for the initial setup
-        tree = createChangesTreeInternal(targetBranchToCompare)
+        tree = createChangesTreeInternal(targetBranchToCompare) // This will now set "Loading..."
         this.setViewportView(tree)
         this.border = null
+
+        StartupManager.getInstance(project).runWhenProjectIsInitialized {
+            performInitialRefresh()
+        }
     }
     
     private fun getSingleClickAction(): String =
@@ -228,9 +232,17 @@ class ChangesTreePanel(
                 }
             }
         })
-        // Pass initialTarget to refreshChangesTree
-        refreshChangesTree(newTree, initialTarget)
+        // Set initial "Loading..." state instead of immediate refresh
+        root.removeAllChildren()
+        root.add(DefaultMutableTreeNode("Loading..."))
+        treeModel.reload(root)
         return newTree
+    }
+
+    fun performInitialRefresh() {
+        // targetBranchToCompare is a class field (constructor parameter)
+        // tree is also a class field (initialized by createChangesTreeInternal)
+        refreshChangesTree(this.tree, this.targetBranchToCompare)
     }
 
     private fun performConfiguredAction(change: Change, actionType: String) {
