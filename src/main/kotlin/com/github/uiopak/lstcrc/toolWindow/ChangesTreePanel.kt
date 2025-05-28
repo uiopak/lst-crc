@@ -277,7 +277,7 @@ class ChangesTreePanel(
                     if (changes.isEmpty()) {
                         rootModelNode.add(DefaultMutableTreeNode("No changes found for $currentTarget"))
                     } else {
-                        buildTreeFromChanges(rootNode, changes)
+                        buildTreeFromChanges(rootModelNode, changes) // Corrected: rootModelNode instead of rootNode
                     }
                 } else { // Handle case where changes is null (though ideally future shouldn't complete with null)
                      rootModelNode.add(DefaultMutableTreeNode("No change data available for $currentTarget"))
