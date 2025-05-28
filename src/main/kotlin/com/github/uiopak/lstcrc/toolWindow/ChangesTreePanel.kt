@@ -3,6 +3,7 @@ package com.github.uiopak.lstcrc.toolWindow
 import com.github.uiopak.lstcrc.services.GitService
 import com.intellij.icons.AllIcons
 import com.intellij.ide.util.PropertiesComponent
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.fileEditor.OpenFileDescriptor
 import com.intellij.openapi.fileTypes.FileTypeManager
@@ -249,12 +250,31 @@ class ChangesTreePanel(
     }
 
     private fun refreshChangesTree(treeToRefresh: JTree, branch: String) {
-        val changes = gitService.getChanges(branch)
         val rootModelNode = treeToRefresh.model.root as DefaultMutableTreeNode
+        // Show loading state
         rootModelNode.removeAllChildren()
-        buildTreeFromChanges(rootModelNode, changes)
+        rootModelNode.add(DefaultMutableTreeNode("Loading..."))
         (treeToRefresh.model as DefaultTreeModel).reload(rootModelNode)
-        TreeUtil.expandAll(treeToRefresh)
+
+        gitService.getChanges(branch).whenCompleteAsync { changes, throwable ->
+            ApplicationManager.getApplication().invokeLater {
+                rootModelNode.removeAllChildren() // Clear "Loading..." or old content
+                if (throwable != null) {
+                    logger.error("Error getting changes for branch $branch", throwable)
+                    // It's good practice to check if the user object is a string before casting and appending
+                    val messageNode = DefaultMutableTreeNode("Error loading changes: ${throwable.message ?: "Unknown error"}")
+                    rootModelNode.add(messageNode)
+                } else if (changes != null) {
+                    if (changes.isEmpty()) {
+                        rootModelNode.add(DefaultMutableTreeNode("No changes found"))
+                    } else {
+                        buildTreeFromChanges(rootModelNode, changes)
+                    }
+                }
+                (treeToRefresh.model as DefaultTreeModel).reload(rootModelNode)
+                TreeUtil.expandAll(treeToRefresh) // Expand after new content is loaded
+            }
+        }
     }
 
     private fun buildTreeFromChanges(rootNode: DefaultMutableTreeNode, changes: List<Change>) {

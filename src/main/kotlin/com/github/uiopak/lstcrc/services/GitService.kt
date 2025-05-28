@@ -3,12 +3,15 @@ package com.github.uiopak.lstcrc.services
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.progress.ProgressIndicator
+import com.intellij.openapi.progress.Task
 import com.intellij.openapi.vcs.VcsException
 import com.intellij.openapi.vcs.changes.Change
 import git4idea.changes.GitChangeUtils
 import git4idea.commands.Git
 import git4idea.commands.GitCommand
 import git4idea.commands.GitLineHandler
+import java.util.concurrent.CompletableFuture
 import git4idea.repo.GitRepository
 import git4idea.repo.GitRepositoryManager
 
@@ -63,18 +66,29 @@ class GitService(private val project: Project) {
      * - Files deleted in `branchNameToCompare` (present in HEAD) will be `Change.Type.DELETED`.
      * - Files modified will be `Change.Type.MODIFICATION`.
      */
-    fun getChanges(branchNameToCompare: String): List<Change> {
-        val repository = getCurrentRepository() ?: return emptyList()
+    fun getChanges(branchNameToCompare: String): CompletableFuture<List<Change>> {
+        val future = CompletableFuture<List<Change>>()
+        val repository = getCurrentRepository()
 
-        // Log message updated to reflect the new comparison order
-        logger.info("Getting changes in HEAD compared to branch: $branchNameToCompare for repository ${repository.root.path}")
-
-        return try {
-            // Arguments swapped: branchNameToCompare is now rev1 (before), "HEAD" is rev2 (after)
-            GitChangeUtils.getDiff(project, repository.root, branchNameToCompare, "HEAD", null)?.toList() ?: emptyList()
-        } catch (e: VcsException) {
-            logger.error("Error getting diff: ${e.message}", e)
-            emptyList()
+        if (repository == null) {
+            future.complete(emptyList())
+            return future
         }
+
+        object : Task.Backgroundable(project, "Loading Git Changes...") {
+            override fun run(indicator: ProgressIndicator) {
+                logger.info("Getting changes in HEAD compared to branch: $branchNameToCompare for repository ${repository.root.path}")
+                try {
+                    // Arguments swapped: branchNameToCompare is now rev1 (before), "HEAD" is rev2 (after)
+                    val changes = GitChangeUtils.getDiff(project, repository.root, branchNameToCompare, "HEAD", null)?.toList() ?: emptyList()
+                    future.complete(changes)
+                } catch (e: VcsException) {
+                    logger.error("Error getting diff: ${e.message}", e)
+                    future.completeExceptionally(e)
+                }
+            }
+        }.queue()
+
+        return future
     }
 }
