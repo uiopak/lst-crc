@@ -2,27 +2,13 @@ package com.github.uiopak.lstcrc.services
 
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.diagnostic.thisLogger
-import com.intellij.openapi.components.Service // Keep this, it's used
-import com.intellij.openapi.diagnostic.thisLogger // Keep this, it's used
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.progress.ProgressIndicator
 import com.intellij.openapi.progress.Task
-// FilePath import was removed as it's no longer needed
 import com.intellij.openapi.vcs.VcsException
 import com.intellij.openapi.vcs.changes.Change
-// ChangeListManager import is removed as getLocalChangesAgainstHEAD() is removed
-// Keep other Git-related imports
+// ChangeListManager import removed as getLocalChangesAgainstHEAD() is removed
 import git4idea.changes.GitChangeUtils
-import git4idea.commands.Git
-import git4idea.commands.GitCommand
-import git4idea.commands.GitLineHandler
-import java.util.concurrent.CompletableFuture
-import git4idea.repo.GitRepository
-import git4idea.repo.GitRepositoryManager
-import git4idea.changes.GitChangeUtils
-import git4idea.commands.Git
-import git4idea.commands.GitCommand
-import git4idea.commands.GitLineHandler
 import java.util.concurrent.CompletableFuture
 import git4idea.repo.GitRepository
 import git4idea.repo.GitRepositoryManager
@@ -91,9 +77,7 @@ class GitService(private val project: Project) {
             override fun run(indicator: ProgressIndicator) {
                 logger.info("Getting changes in working tree compared to branch: $branchNameToCompare for repository ${repository.root.path}")
                 try {
-                    // Using the 4-argument overload: getDiffWithWorkingTree(Project, VirtualFile, String, boolean)
-                    // This assumes the method returns a non-nullable Collection<Change> or List<Change>.
-                    val changes = GitChangeUtils.getDiffWithWorkingTree(project, repository.root, branchNameToCompare, true).toList()
+                    val changes = GitChangeUtils.getDiffWithWorkingTree(repository, branchNameToCompare, true)?.toList() ?: emptyList()
                     future.complete(changes)
                 } catch (e: VcsException) {
                     logger.error("Error getting diff with working tree: ${e.message}", e)
