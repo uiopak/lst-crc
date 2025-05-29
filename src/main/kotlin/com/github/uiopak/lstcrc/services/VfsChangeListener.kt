@@ -18,38 +18,32 @@ class VfsChangeListener : BulkFileListener {
     private val logger = thisLogger()
 
     override fun before(events: MutableList<out VFileEvent>) {
-        // logger.error("DIAGNOSTIC: VfsChangeListener (BulkFileListener).before CALLED. Events: ${events.size}") // Optional: log before as well
+        // logger.warn("DIAGNOSTIC: VfsChangeListener (BulkFileListener).before CALLED. Events: ${events.size}") // Optional
     }
 
     override fun after(events: MutableList<out VFileEvent>) {
-        logger.error("DIAGNOSTIC: VfsChangeListener (BulkFileListener).after CALLED. Number of events: ${events.size}")
+        logger.warn("DIAGNOSTIC: VfsChangeListener (BulkFileListener).after CALLED. Number of events: ${events.size}")
 
-        // For now, let's simplify and not process/publish to ensure this listener itself works.
-        // The original logic for iterating events, finding projects, and publishing can be re-added here later.
-        /*
-        // logger.error("DIAGNOSTIC: VfsChangeListener.afterVfsChange CALLED. Number of events: ${events.size}")
-        // logger.info("VFS Change: afterVfsChange invoked with ${events.size} events.") // Original info log
         val projectsToRefresh = mutableSetOf<Project>()
 
         for (event in events) {
-            // logger.error("DIAGNOSTIC: Processing event: ${event::class.java.simpleName}, path: ${event.path}, file: ${event.file?.path}, oldPath: ${(event as? VFileMoveEvent)?.oldPath}")
+            logger.warn("DIAGNOSTIC: Processing event: ${event::class.java.simpleName}, path: ${event.path}, file: ${event.file?.path}, oldPath: ${(event as? VFileMoveEvent)?.oldPath}")
 
             if (!(event is VFileCreateEvent || event is VFileDeleteEvent ||
                   event is VFileContentChangeEvent || event is VFileMoveEvent || event is VFileCopyEvent)) {
-                logger.debug("Ignoring event type: ${event::class.java.simpleName}")
+                logger.debug("Ignoring event type: ${event::class.java.simpleName}") // Keep as debug for less relevant events
                 continue
             }
 
-            val file = event.file // event.file can be null (e.g. for VFileDeleteEvent)
+            val file = event.file 
             var projectForEvent: Project? = null
 
             if (file != null) {
                 projectForEvent = ProjectLocator.getInstance().guessProjectForFile(file)
             } else {
-                // Try to guess by path for events where file might be null (e.g., delete, move)
-                val pathForEventLookup: String? = when (event) { // Renamed to avoid conflict with outer scope 'pathForEvent' if any
+                val pathForEventLookup: String? = when (event) {
                     is VFileDeleteEvent -> event.path
-                    is VFileMoveEvent -> event.oldPath // For move, the source path might be more relevant for project determination
+                    is VFileMoveEvent -> event.oldPath
                     else -> event.path 
                 }
 
@@ -60,22 +54,22 @@ class VfsChangeListener : BulkFileListener {
                         val projectBasePath = p.basePath
                         if (projectBasePath != null && pathForEventLookup.startsWith(projectBasePath + "/")) {
                             projectForEvent = p
-                            logger.debug("Guessed project ${p.name} for path $pathForEventLookup by checking open projects.")
+                            logger.debug("Guessed project ${p.name} for path $pathForEventLookup by checking open projects.") // Keep as debug
                             break
                         } else if (projectBasePath != null && pathForEventLookup == projectBasePath) {
                             projectForEvent = p
-                            logger.debug("Guessed project ${p.name} for path $pathForEventLookup (equals base path).")
+                            logger.debug("Guessed project ${p.name} for path $pathForEventLookup (equals base path).") // Keep as debug
                             break
                         }
                     }
                 }
             }
             
-            // logger.error("DIAGNOSTIC: Determined project for event: ${projectForEvent?.name ?: "null"}")
+            logger.warn("DIAGNOSTIC: Determined project for event: ${projectForEvent?.name ?: "null"}")
 
             if (projectForEvent == null || projectForEvent.isDisposed) {
                 val pathInfo = file?.path ?: event.path
-                logger.debug("Could not determine project for event (file: ${pathInfo}), or project is disposed. Skipping event.")
+                logger.debug("Could not determine project for event (file: ${pathInfo}), or project is disposed. Skipping event.") // Keep as debug
                 continue
             }
             
@@ -83,26 +77,18 @@ class VfsChangeListener : BulkFileListener {
             var isRelevant = false
             val fileForRelevanceCheck = event.file 
 
-            // Specific logging for isInContent check
-            if (fileForRelevanceCheck != null && fileForRelevanceCheck.isValid) { // Check file validity
-                // projectForEvent is already checked for null and not disposed
+            if (fileForRelevanceCheck != null && fileForRelevanceCheck.isValid) {
                 val isInContent = ProjectFileIndex.getInstance(currentProject).isInContent(fileForRelevanceCheck)
-                // logger.error("DIAGNOSTIC: File ${fileForRelevanceCheck.path} isInContent for project ${currentProject.name}: $isInContent")
+                logger.warn("DIAGNOSTIC: File ${fileForRelevanceCheck.path} isInContent for project ${currentProject.name}: $isInContent")
                 if (isInContent) {
                     isRelevant = true
-                    // logger.info("Relevant VFS event in project ${currentProject.name} for file ${fileForRelevanceCheck.path}.") // Original info log
-                } else {
-                    // logger.debug("File ${fileForRelevanceCheck.path} is not in project content for ${currentProject.name}.") // Original debug log
                 }
             } else if (event is VFileDeleteEvent || (event is VFileMoveEvent && fileForRelevanceCheck == null) ) { 
                 isRelevant = true
-                // val pathInfo = if (event is VFileMoveEvent) event.oldPath else event.path // Original info log variable
-                // logger.info("Relevant VFS ${event::class.java.simpleName} event by path in project ${currentProject.name} for path $pathInfo (file object was null or invalid).") // Original info log
-            } else {
-                // logger.debug("Event for file ${file?.path ?: event.path} not considered relevant, or file is invalid and not a delete/move-by-path case.") // Original debug log
+                // No specific isInContent check possible here, relevance is assumed if project is found by path
             }
             
-            // logger.error("DIAGNOSTIC: Event for path ${event.path} (currentProject: ${currentProject.name}) - isRelevant: $isRelevant")
+            logger.warn("DIAGNOSTIC: Event for path ${event.path} (currentProject: ${currentProject.name}) - isRelevant: $isRelevant")
 
             if (isRelevant) {
                 projectsToRefresh.add(currentProject)
@@ -111,13 +97,11 @@ class VfsChangeListener : BulkFileListener {
 
         projectsToRefresh.forEach { project ->
             if (!project.isDisposed) { 
-                // logger.error("DIAGNOSTIC: Attempting to publish FILE_CHANGES_TOPIC for project: ${project.name}")
-                // logger.info("Publishing file change event for project ${project.name}") // Original info log
+                logger.warn("DIAGNOSTIC: Attempting to publish FILE_CHANGES_TOPIC for project: ${project.name}")
                 project.messageBus.syncPublisher(FILE_CHANGES_TOPIC).onFilesChanged()
             } else {
-                logger.warn("Project ${project.name} was disposed before publishing message, skipping.")
+                logger.warn("DIAGNOSTIC: Project ${project.name} was disposed before publishing, skipping.") // Kept this as warn
             }
         }
-        */
     }
 }
