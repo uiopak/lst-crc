@@ -4,6 +4,7 @@ import com.github.uiopak.lstcrc.services.GitService
 import com.intellij.icons.AllIcons
 import com.intellij.ide.util.PropertiesComponent
 import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.Disposable
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.fileEditor.OpenFileDescriptor
 import com.intellij.openapi.startup.StartupManager
@@ -79,7 +80,7 @@ class ChangesTreePanel(
             performInitialRefresh()
         }
 
-        project.messageBus.connect(this).subscribe(FILE_CHANGES_TOPIC, object : FileChangeListener {
+        project.messageBus.connect(this as com.intellij.openapi.Disposable).subscribe(FILE_CHANGES_TOPIC, object : FileChangeListener {
             override fun onFilesChanged() {
                 // Ensure this is called on the EDT if not already guaranteed by MessageBus
                 ApplicationManager.getApplication().invokeLater {
