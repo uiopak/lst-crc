@@ -18,6 +18,7 @@ class VfsChangeListener : AsyncFileListener {
     private val logger = thisLogger()
 
     override fun prepareChange(events: MutableList<out VFileEvent>): AsyncFileListener.ChangeApplier {
+        logger.error("DIAGNOSTIC: VfsChangeListener.prepareChange CALLED. Number of events: ${events.size}") // ADD THIS LINE
         return object : AsyncFileListener.ChangeApplier {
             override fun beforeVfsChange() { /* Nothing specific to do before changes are applied */ }
 
