@@ -22,10 +22,13 @@ class VfsChangeListener : AsyncFileListener {
             override fun beforeVfsChange() { /* Nothing specific to do before changes are applied */ }
 
             override fun afterVfsChange() { // Renamed from afterProcessing
-                logger.info("VFS Change: afterVfsChange invoked with ${events.size} events.")
+                logger.error("DIAGNOSTIC: VfsChangeListener.afterVfsChange CALLED. Number of events: ${events.size}")
+                // logger.info("VFS Change: afterVfsChange invoked with ${events.size} events.") // Original info log
                 val projectsToRefresh = mutableSetOf<Project>()
 
                 for (event in events) {
+                    logger.error("DIAGNOSTIC: Processing event: ${event::class.java.simpleName}, path: ${event.path}, file: ${event.file?.path}, oldPath: ${(event as? VFileMoveEvent)?.oldPath}")
+
                     if (!(event is VFileCreateEvent || event is VFileDeleteEvent ||
                           event is VFileContentChangeEvent || event is VFileMoveEvent || event is VFileCopyEvent)) {
                         logger.debug("Ignoring event type: ${event::class.java.simpleName}")
@@ -39,34 +42,31 @@ class VfsChangeListener : AsyncFileListener {
                         projectForEvent = ProjectLocator.getInstance().guessProjectForFile(file)
                     } else {
                         // Try to guess by path for events where file might be null (e.g., delete, move)
-                        val pathForEvent: String? = when (event) {
+                        val pathForEventLookup: String? = when (event) { // Renamed to avoid conflict with outer scope 'pathForEvent' if any
                             is VFileDeleteEvent -> event.path
                             is VFileMoveEvent -> event.oldPath // For move, the source path might be more relevant for project determination
-                            // For VFileCopyEvent, event.file is new file, event.oldPath is source path.
-                            // For other events like Create, ContentChange, file should ideally not be null.
                             else -> event.path 
                         }
 
-                        if (pathForEvent != null) {
+                        if (pathForEventLookup != null) {
                             val openProjects = ProjectManager.getInstance().openProjects
                             for (p in openProjects) {
                                 if (p.isDisposed) continue
                                 val projectBasePath = p.basePath
-                                // Ensure projectBasePath is not null and pathForEvent starts with it.
-                                // Adding a directory separator to avoid partial name matches (e.g. /foo/bar matching /foo/barbaz)
-                                if (projectBasePath != null && pathForEvent.startsWith(projectBasePath + "/")) {
+                                if (projectBasePath != null && pathForEventLookup.startsWith(projectBasePath + "/")) {
                                     projectForEvent = p
-                                    logger.debug("Guessed project ${p.name} for path $pathForEvent by checking open projects.")
+                                    logger.debug("Guessed project ${p.name} for path $pathForEventLookup by checking open projects.")
                                     break
-                                } else if (projectBasePath != null && pathForEvent == projectBasePath) {
-                                    // case where pathForEvent is the project base path itself
+                                } else if (projectBasePath != null && pathForEventLookup == projectBasePath) {
                                     projectForEvent = p
-                                    logger.debug("Guessed project ${p.name} for path $pathForEvent (equals base path).")
+                                    logger.debug("Guessed project ${p.name} for path $pathForEventLookup (equals base path).")
                                     break
                                 }
                             }
                         }
                     }
+                    
+                    logger.error("DIAGNOSTIC: Determined project for event: ${projectForEvent?.name ?: "null"}")
 
                     if (projectForEvent == null || projectForEvent.isDisposed) {
                         val pathInfo = file?.path ?: event.path
@@ -74,28 +74,30 @@ class VfsChangeListener : AsyncFileListener {
                         continue
                     }
                     
-                    // Now projectForEvent is non-null and not disposed
                     val currentProject = projectForEvent
-
                     var isRelevant = false
-                    // Use event.file directly for isInContent check if available and valid
                     val fileForRelevanceCheck = event.file 
-                    if (fileForRelevanceCheck != null && fileForRelevanceCheck.isValid) {
-                        if (ProjectFileIndex.getInstance(currentProject).isInContent(fileForRelevanceCheck)) {
+
+                    // Specific logging for isInContent check
+                    if (fileForRelevanceCheck != null && fileForRelevanceCheck.isValid) { // Check file validity
+                        // projectForEvent is already checked for null and not disposed
+                        val isInContent = ProjectFileIndex.getInstance(currentProject).isInContent(fileForRelevanceCheck)
+                        logger.error("DIAGNOSTIC: File ${fileForRelevanceCheck.path} isInContent for project ${currentProject.name}: $isInContent")
+                        if (isInContent) {
                             isRelevant = true
-                            logger.info("Relevant VFS event in project ${currentProject.name} for file ${fileForRelevanceCheck.path}.")
+                            // logger.info("Relevant VFS event in project ${currentProject.name} for file ${fileForRelevanceCheck.path}.") // Original info log
                         } else {
-                            logger.debug("File ${fileForRelevanceCheck.path} is not in project content for ${currentProject.name}.")
+                            // logger.debug("File ${fileForRelevanceCheck.path} is not in project content for ${currentProject.name}.") // Original debug log
                         }
                     } else if (event is VFileDeleteEvent || (event is VFileMoveEvent && fileForRelevanceCheck == null) ) { 
-                        // If it's a delete event, or a move event where the new file object might not be available/relevant for old project context
-                        // and we successfully found a project by its path (oldPath for move, path for delete), consider it relevant.
                         isRelevant = true
-                        val pathInfo = if (event is VFileMoveEvent) event.oldPath else event.path
-                        logger.info("Relevant VFS ${event::class.java.simpleName} event by path in project ${currentProject.name} for path $pathInfo (file object was null or invalid).")
+                        // val pathInfo = if (event is VFileMoveEvent) event.oldPath else event.path // Original info log variable
+                        // logger.info("Relevant VFS ${event::class.java.simpleName} event by path in project ${currentProject.name} for path $pathInfo (file object was null or invalid).") // Original info log
                     } else {
-                         logger.debug("Event for file ${file?.path ?: event.path} not considered relevant, or file is invalid and not a delete/move-by-path case.")
+                        // logger.debug("Event for file ${file?.path ?: event.path} not considered relevant, or file is invalid and not a delete/move-by-path case.") // Original debug log
                     }
+                    
+                    logger.error("DIAGNOSTIC: Event for path ${event.path} (currentProject: ${currentProject.name}) - isRelevant: $isRelevant")
 
                     if (isRelevant) {
                         projectsToRefresh.add(currentProject)
@@ -103,13 +105,12 @@ class VfsChangeListener : AsyncFileListener {
                 }
 
                 projectsToRefresh.forEach { project ->
-                    // This check is slightly redundant if the earlier check `projectForEvent.isDisposed` is comprehensive,
-                    // but it's a good safeguard before publishing.
                     if (!project.isDisposed) { 
-                        logger.info("Publishing file change event for project ${project.name}")
+                        logger.error("DIAGNOSTIC: Attempting to publish FILE_CHANGES_TOPIC for project: ${project.name}")
+                        // logger.info("Publishing file change event for project ${project.name}") // Original info log
                         project.messageBus.syncPublisher(FILE_CHANGES_TOPIC).onFilesChanged()
                     } else {
-                         logger.warn("Project ${project.name} was disposed before publishing message, skipping.")
+                        logger.warn("Project ${project.name} was disposed before publishing message, skipping.")
                     }
                 }
             }
