@@ -16,7 +16,7 @@ import javax.swing.JComponent
 
 class MyToolWindowFactory : ToolWindowFactory {
     override fun createToolWindowContent(project: Project, toolWindow: ToolWindow) {
-        val gitChangesUiProvider = GitChangesToolWindow(project)
+        val gitChangesUiProvider = GitChangesToolWindow(project, toolWindow.disposable) // Pass toolWindow.disposable
         val contentFactory = ContentFactory.getInstance()
         val gitService = project.service<GitService>()
 

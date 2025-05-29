@@ -40,7 +40,8 @@ class ChangesTreePanel(
     private val project: Project,
     private val gitService: GitService,
     private val propertiesComponent: PropertiesComponent,
-    private val targetBranchToCompare: String // Changed to non-null
+    private val targetBranchToCompare: String, // Changed to non-null
+    private val parentDisposable: com.intellij.openapi.Disposable
 ) : JBScrollPane() {
 
     private val logger = thisLogger()
@@ -80,7 +81,7 @@ class ChangesTreePanel(
             performInitialRefresh()
         }
 
-        project.messageBus.connect(this as com.intellij.openapi.Disposable).subscribe(FILE_CHANGES_TOPIC, object : FileChangeListener {
+        project.messageBus.connect(parentDisposable).subscribe(FILE_CHANGES_TOPIC, object : FileChangeListener {
             override fun onFilesChanged() {
                 // Ensure this is called on the EDT if not already guaranteed by MessageBus
                 ApplicationManager.getApplication().invokeLater {
