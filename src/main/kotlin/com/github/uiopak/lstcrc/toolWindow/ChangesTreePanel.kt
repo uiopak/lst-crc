@@ -83,9 +83,10 @@ class ChangesTreePanel(
 
         project.messageBus.connect(parentDisposable).subscribe(FILE_CHANGES_TOPIC, object : FileChangeListener {
             override fun onFilesChanged() {
+                logger.error("DIAGNOSTIC: onFilesChanged event received in ChangesTreePanel for target: $targetBranchToCompare. Refreshing tree.") // Added this log
                 // Ensure this is called on the EDT if not already guaranteed by MessageBus
                 ApplicationManager.getApplication().invokeLater {
-                    thisLogger().info("Received file change event, refreshing tree for $targetBranchToCompare")
+                    thisLogger().info("Received file change event, refreshing tree for $targetBranchToCompare") // Original log, can be kept or modified
                     refreshTreeForBranch(targetBranchToCompare)
                 }
             }

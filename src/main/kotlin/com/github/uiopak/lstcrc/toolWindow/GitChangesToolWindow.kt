@@ -1,7 +1,6 @@
 package com.github.uiopak.lstcrc.toolWindow
 
 import com.github.uiopak.lstcrc.services.GitService
-import com.github.uiopak.lstcrc.services.GitService
 import com.intellij.ide.util.PropertiesComponent
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.components.service
