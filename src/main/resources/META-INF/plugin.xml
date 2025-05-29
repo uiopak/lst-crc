@@ -12,5 +12,6 @@
     <extensions defaultExtensionNs="com.intellij">
         <toolWindow factoryClass="com.github.uiopak.lstcrc.toolWindow.MyToolWindowFactory" id="GitChangesView" anchor="bottom" canCloseContents="true"/>
         <projectService serviceImplementation="com.github.uiopak.lstcrc.services.GitService"/>
+        <asyncFileListener implementation="com.github.uiopak.lstcrc.services.VfsChangeListener"/>
     </extensions>
 </idea-plugin>

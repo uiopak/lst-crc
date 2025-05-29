@@ -16,6 +16,8 @@ import com.intellij.openapi.vcs.changes.actions.diff.ShowDiffAction
 import com.intellij.openapi.vfs.VfsUtilCore
 // GitRepositoryManager import is removed as it's no longer used here.
 import com.intellij.openapi.vfs.VirtualFile
+import com.github.uiopak.lstcrc.messaging.FILE_CHANGES_TOPIC
+import com.github.uiopak.lstcrc.messaging.FileChangeListener
 import com.intellij.ui.ColoredTreeCellRenderer
 import com.intellij.ui.JBColor
 import com.intellij.ui.SimpleTextAttributes
@@ -76,6 +78,16 @@ class ChangesTreePanel(
         StartupManager.getInstance(project).runWhenProjectIsInitialized {
             performInitialRefresh()
         }
+
+        project.messageBus.connect(this).subscribe(FILE_CHANGES_TOPIC, object : FileChangeListener {
+            override fun onFilesChanged() {
+                // Ensure this is called on the EDT if not already guaranteed by MessageBus
+                ApplicationManager.getApplication().invokeLater {
+                    thisLogger().info("Received file change event, refreshing tree for $targetBranchToCompare")
+                    refreshTreeForBranch(targetBranchToCompare)
+                }
+            }
+        })
     }
     
     private fun getSingleClickAction(): String =
