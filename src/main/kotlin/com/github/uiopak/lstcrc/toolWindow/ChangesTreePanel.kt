@@ -11,10 +11,12 @@ import com.intellij.openapi.startup.StartupManager
 import com.intellij.openapi.fileTypes.FileTypeManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.Messages
-// ProjectLevelVcsManager and GitRepositoryManager imports will be removed
 import com.intellij.openapi.vcs.changes.Change
 import com.intellij.openapi.vcs.changes.ChangeListListener
 import com.intellij.openapi.vcs.changes.ChangeListManager
+import git4idea.repo.GitRepository // For the GIT_REPO_CHANGE topic and parameter type
+// import git4idea.repo.GitRepositoryManager // No longer needed for direct registration
+import git4idea.repo.GitRepositoryChangeListener
 import com.intellij.openapi.vcs.changes.actions.diff.ShowDiffAction
 import com.intellij.openapi.vfs.VfsUtilCore
 // GitRepositoryManager import is removed as it's no longer used here.
@@ -44,7 +46,7 @@ class ChangesTreePanel(
     private val propertiesComponent: PropertiesComponent,
     private val targetBranchToCompare: String, // Changed to non-null
     parentDisposable: com.intellij.openapi.Disposable // Renamed to avoid conflict with new Disposable interface
-) : JBScrollPane(), com.intellij.openapi.Disposable, ChangeListListener {
+) : JBScrollPane(), com.intellij.openapi.Disposable, ChangeListListener, git4idea.repo.GitRepositoryChangeListener {
 
     private val logger = thisLogger()
     private var refreshDebounceTimer: javax.swing.Timer? = null
@@ -81,10 +83,6 @@ class ChangesTreePanel(
         this.setViewportView(tree)
         this.border = null
 
-        StartupManager.getInstance(project).runWhenProjectIsInitialized {
-            performInitialRefresh()
-        }
-
         project.messageBus.connect(this).subscribe(FILE_CHANGES_TOPIC, object : FileChangeListener {
             override fun onFilesChanged() {
                 // Inside onFilesChanged()
@@ -96,7 +94,22 @@ class ChangesTreePanel(
         // In init block
         val changeListManager = ChangeListManager.getInstance(project)
         changeListManager.addChangeListListener(this, this) // 'this' as the listener, 'this' as the Disposable
+        project.messageBus.connect(this).subscribe(GitRepository.GIT_REPO_CHANGE, this)
         com.intellij.openapi.util.Disposer.register(parentDisposable, this)
+    }
+
+    // GitRepositoryChangeListener implementation
+    override fun repositoryChanged(repository: git4idea.repo.GitRepository) {
+        // Check if the changed repository is relevant to the current project,
+        // though for a project-specific panel, any repository change in that project is likely relevant.
+        if (repository.project == this.project) {
+            logger.warn("DIAGNOSTIC: ChangesTreePanel.GitRepositoryChangeListener.repositoryChanged invoked for repo: ${repository.root.presentableUrl}. Triggering refresh for $targetBranchToCompare.")
+            ApplicationManager.getApplication().invokeLater {
+                refreshTreeForBranch(targetBranchToCompare)
+            }
+        } else {
+            logger.warn("DIAGNOSTIC: ChangesTreePanel.GitRepositoryChangeListener.repositoryChanged invoked for repo: ${repository.root.presentableUrl}, but it's not for the current project (${this.project.name}). Skipping refresh.")
+        }
     }
 
     // ChangeListListener implementations
@@ -411,12 +424,6 @@ class ChangesTreePanel(
         root.add(DefaultMutableTreeNode("Loading..."))
         treeModel.reload(root)
         return newTree
-    }
-
-    fun performInitialRefresh() {
-        // targetBranchToCompare is a class field (constructor parameter)
-        // tree is also a class field (initialized by createChangesTreeInternal)
-        refreshChangesTree(this.tree, this.targetBranchToCompare)
     }
 
     private fun performConfiguredAction(change: Change, actionType: String) {
