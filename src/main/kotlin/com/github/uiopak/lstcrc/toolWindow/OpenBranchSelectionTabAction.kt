@@ -37,15 +37,13 @@ class OpenBranchSelectionTabAction(
         val branchSelectionUi = BranchSelectionPanel(project, project.service<GitService>()) { selectedBranchName: String ->
             logger.info("OpenBranchSelectionTabAction (Callback): Branch '$selectedBranchName' selected from panel.")
 
-            // CRITICAL CHECK: Ensure selectedBranchName is not empty or null
             if (selectedBranchName.isBlank()) {
-                logger.error("OpenBranchSelectionTabAction (Callback): selectedBranchName is blank. Cannot proceed.")
-                // Optionally, remove the "Select Branch" tab or show an error in its place
-                val tempSelectionTab = contentManager.findContent(selectionTabName)
+                logger.error("OpenBranchSelectionTabAction (Callback): selectedBranchName is blank. Throwing exception.")
+                val tempSelectionTab = contentManager.findContent(selectionTabName) // contentManager from outer scope
                 if (tempSelectionTab != null) {
-                    contentManager.removeContent(tempSelectionTab, true)
+                    toolWindow.contentManager.removeContent(tempSelectionTab, true) // manager from outer scope, or toolWindow.contentManager
                 }
-                return@BranchSelectionPanel
+                throw IllegalArgumentException("selectedBranchName is blank inside OpenBranchSelectionTabAction callback!")
             }
 
             val manager: ContentManager = toolWindow.contentManager
@@ -95,8 +93,7 @@ class OpenBranchSelectionTabAction(
 
                 manager.setSelectedContent(selectionTabContent, true)
 
-                // Log the branch name *just before* adding to state service
-                logger.info("OpenBranchSelectionTabAction (Callback): Preparing to add to state. selectedBranchName = '$selectedBranchName'")
+                logger.error("FORCED LOG (Action): Preparing to add to state. selectedBranchName = '$selectedBranchName'") // Changed to logger.error
                 stateService.addTab(selectedBranchName)
 
                 val closableTabs = manager.contents.filter { it.isCloseable }.map { it.displayName }
