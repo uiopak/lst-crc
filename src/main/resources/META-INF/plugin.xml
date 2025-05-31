@@ -12,6 +12,7 @@
     <extensions defaultExtensionNs="com.intellij">
         <toolWindow factoryClass="com.github.uiopak.lstcrc.toolWindow.MyToolWindowFactory" id="GitChangesView" anchor="bottom" canCloseContents="true"/>
         <projectService serviceImplementation="com.github.uiopak.lstcrc.services.GitService"/>
+        <projectService serviceImplementation="com.github.uiopak.lstcrc.services.ToolWindowStateService"/> <!-- Added this line -->
         <postStartupActivity implementation="com.github.uiopak.lstcrc.services.PluginStartupActivity"/>
     </extensions>
 </idea-plugin>
