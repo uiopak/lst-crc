@@ -6,6 +6,7 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.project.ProjectLocator
 import com.intellij.openapi.project.ProjectManager
 import com.intellij.openapi.roots.ProjectFileIndex
+import com.intellij.openapi.vcs.changes.VcsDirtyScopeManager
 import com.intellij.openapi.vfs.newvfs.BulkFileListener
 import com.intellij.openapi.vfs.newvfs.events.VFileContentChangeEvent
 import com.intellij.openapi.vfs.newvfs.events.VFileCreateEvent
@@ -91,7 +92,27 @@ class VfsChangeListener : BulkFileListener {
             logger.warn("DIAGNOSTIC: Event for path ${event.path} (currentProject: ${currentProject.name}) - isRelevant: $isRelevant")
 
             if (isRelevant) {
-                projectsToRefresh.add(currentProject)
+                if (currentProject != null) {
+                    val eventType = event::class.java.simpleName
+                    var shouldMarkDirty = false
+
+                    when (event) {
+                        is VFileCreateEvent,
+                        is VFileDeleteEvent,
+                        is VFileMoveEvent,
+                        is VFileCopyEvent,
+                        is VFileContentChangeEvent -> shouldMarkDirty = true
+                    }
+
+                    if (shouldMarkDirty) {
+                        logger.warn("DIAGNOSTIC: Calling VcsDirtyScopeManager.markEverythingDirty() for project ${currentProject.name} due to $eventType for ${event.path}")
+                        VcsDirtyScopeManager.getInstance(currentProject).markEverythingDirty()
+                    }
+                    projectsToRefresh.add(currentProject)
+                } else {
+                    // Log if currentProject is null but isRelevant was true, as this is unexpected
+                    logger.warn("DIAGNOSTIC: Event for path ${event.path} was relevant but currentProject is null. Skipping markDirty and project refresh for this event.")
+                }
             }
         }
 

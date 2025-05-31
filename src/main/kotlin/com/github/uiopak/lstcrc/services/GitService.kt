@@ -65,6 +65,7 @@ class GitService(private val project: Project) {
      * - Files modified will be `Change.Type.MODIFICATION`.
      */
     fun getChanges(branchNameToCompare: String): CompletableFuture<List<Change>> {
+        logger.warn("DIAGNOSTIC: GitService.getChanges called with branchNameToCompare: $branchNameToCompare")
         val future = CompletableFuture<List<Change>>()
         val repository = getCurrentRepository()
 
@@ -83,20 +84,22 @@ class GitService(private val project: Project) {
                     // If target is current branch or HEAD, prioritize ChangeListManager for live local changes
                     if (branchNameToCompare == currentActualBranchName ||
                         (branchNameToCompare == "HEAD" && currentActualBranchName != null /* i.e., not detached HEAD */)) {
-                        logger.info("Fetching local changes using ChangeListManager for target: $branchNameToCompare (current branch: $currentActualBranchName)")
+                        logger.warn("DIAGNOSTIC: GitService.getChanges - Using ChangeListManager for target: $branchNameToCompare (current actual: $currentActualBranchName)")
                         changes = ChangeListManager.getInstance(project).allChanges.toList()
+                        logger.warn("DIAGNOSTIC: GitService.getChanges - ChangeListManager found ${changes.size} changes.")
                     } else {
                         // Otherwise, compare working tree against the specified branch/commit
                         // This shows "current work vs. other branch/commit"
-                        logger.info("Getting diff with working tree compared to: $branchNameToCompare for repository ${repository.root.path}")
+                        logger.warn("DIAGNOSTIC: GitService.getChanges - Using GitChangeUtils.getDiffWithWorkingTree for target: $branchNameToCompare")
                         changes = GitChangeUtils.getDiffWithWorkingTree(repository, branchNameToCompare, true)?.toList() ?: emptyList()
+                        logger.warn("DIAGNOSTIC: GitService.getChanges - GitChangeUtils.getDiffWithWorkingTree found ${changes.size} changes for target $branchNameToCompare.")
                     }
                     future.complete(changes)
                 } catch (e: VcsException) {
-                    logger.error("Error getting changes: ${e.message}", e)
+                    logger.error("Error getting changes for $branchNameToCompare: ${e.message}", e)
                     future.completeExceptionally(e)
                 } catch (e: Exception) { // Catch other potential exceptions
-                    logger.error("Unexpected error getting changes: ${e.message}", e)
+                    logger.error("Unexpected error getting changes for $branchNameToCompare: ${e.message}", e)
                     future.completeExceptionally(e)
                 }
             }

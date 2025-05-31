@@ -13,6 +13,8 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.Messages
 // ProjectLevelVcsManager and GitRepositoryManager imports will be removed
 import com.intellij.openapi.vcs.changes.Change
+import com.intellij.openapi.vcs.changes.ChangeListListener
+import com.intellij.openapi.vcs.changes.ChangeListManager
 import com.intellij.openapi.vcs.changes.actions.diff.ShowDiffAction
 import com.intellij.openapi.vfs.VfsUtilCore
 // GitRepositoryManager import is removed as it's no longer used here.
@@ -41,17 +43,19 @@ class ChangesTreePanel(
     private val gitService: GitService,
     private val propertiesComponent: PropertiesComponent,
     private val targetBranchToCompare: String, // Changed to non-null
-    private val parentDisposable: com.intellij.openapi.Disposable
-) : JBScrollPane() {
+    parentDisposable: com.intellij.openapi.Disposable // Renamed to avoid conflict with new Disposable interface
+) : JBScrollPane(), com.intellij.openapi.Disposable, ChangeListListener {
 
     private val logger = thisLogger()
+    private var refreshDebounceTimer: javax.swing.Timer? = null
+    private var isVfsChangeRefreshPending = false
     val tree: Tree
     // The field `branchName` is effectively replaced by `targetBranchToCompare`
     // for initial setup. If a specific name for the tab (independent of current target)
     // was needed, a new field could be introduced, but for now, `targetBranchToCompare`
     // dictates the initial behavior.
 
-    private var singleClickTimer: Timer? = null
+    private var singleClickTimer: javax.swing.Timer? = null
     private var pendingSingleClickChange: Change? = null
     private var pendingSingleClickNodePath: TreePath? = null
     private var singleClickActionHasFiredForPath: TreePath? = null
@@ -81,16 +85,171 @@ class ChangesTreePanel(
             performInitialRefresh()
         }
 
-        project.messageBus.connect(parentDisposable).subscribe(FILE_CHANGES_TOPIC, object : FileChangeListener {
+        project.messageBus.connect(this).subscribe(FILE_CHANGES_TOPIC, object : FileChangeListener {
             override fun onFilesChanged() {
-                logger.warn("DIAGNOSTIC: onFilesChanged event received in ChangesTreePanel for target: $targetBranchToCompare. Refreshing tree.")
-                // Ensure this is called on the EDT if not already guaranteed by MessageBus
-                ApplicationManager.getApplication().invokeLater {
-                    thisLogger().info("Received file change event, refreshing tree for $targetBranchToCompare") // Original log, can be kept or modified
-                    refreshTreeForBranch(targetBranchToCompare)
-                }
+                // Inside onFilesChanged()
+                logger.warn("DIAGNOSTIC: ChangesTreePanel.onFilesChanged event received for target: $targetBranchToCompare. Setting isVfsChangeRefreshPending = true.")
+                isVfsChangeRefreshPending = true
+                // Do not trigger refresh directly here. Wait for ChangeListManagerListener.
             }
         })
+        // In init block
+        val changeListManager = ChangeListManager.getInstance(project)
+        changeListManager.addChangeListListener(this, this) // 'this' as the listener, 'this' as the Disposable
+        com.intellij.openapi.util.Disposer.register(parentDisposable, this)
+    }
+
+    // ChangeListListener implementations
+    override fun changeListChanged(changeList: com.intellij.openapi.vcs.changes.ChangeList) {
+        // Inside changeListChanged(changeList: ChangeList)
+        logger.warn("DIAGNOSTIC: ChangesTreePanel.changeListChanged invoked for list: ${changeList.name}. isVfsChangeRefreshPending: $isVfsChangeRefreshPending.")
+
+        // Optional: Add a check if this changeList is relevant to the current view, though the flag handles most cases.
+        // For instance, if project.defaultChangeList != null && changeList.id == project.defaultChangeList.id
+        // However, relying on isVfsChangeRefreshPending is simpler for now.
+
+        if (isVfsChangeRefreshPending) {
+            logger.warn("DIAGNOSTIC: ChangesTreePanel.changeListChanged - isVfsChangeRefreshPending is true. Triggering debounced tree refresh for $targetBranchToCompare due to change in list: ${changeList.name}. Flag will NOT be reset here.")
+
+            refreshDebounceTimer?.stop()
+            refreshDebounceTimer = javax.swing.Timer(100, null).apply {
+                actionListeners.forEach { removeActionListener(it) } // Clear existing
+                addActionListener {
+                    ApplicationManager.getApplication().invokeLater {
+                        thisLogger().info("Debounced refresh via ChangeListListener.changeListChanged triggered for $targetBranchToCompare")
+                        refreshTreeForBranch(targetBranchToCompare)
+                    }
+                }
+                isRepeats = false
+            }
+            refreshDebounceTimer?.start()
+            // DO NOT RESET isVfsChangeRefreshPending = false here
+        } else {
+            logger.warn("DIAGNOSTIC: ChangesTreePanel.changeListChanged - isVfsChangeRefreshPending is false. No specific VFS-triggered refresh scheduled for this list change.")
+        }
+    }
+
+    override fun changesAdded(changes: Collection<com.intellij.openapi.vcs.changes.Change>, changeList: com.intellij.openapi.vcs.changes.ChangeList?) {
+        // Inside changesAdded(changes: Collection<Change>, changeList: ChangeList?)
+        logger.warn("DIAGNOSTIC: ChangesTreePanel.changesAdded invoked. Number of changes: ${changes.size}. isVfsChangeRefreshPending: $isVfsChangeRefreshPending.")
+
+        // Optional: Check if the added changes are relevant to the current view if necessary.
+        // For now, if isVfsChangeRefreshPending is true, any added changes might be the one we're waiting for.
+
+        if (isVfsChangeRefreshPending) {
+            // Check if there are actually changes. It might be an empty collection sometimes.
+            if (changes.isNotEmpty()) {
+                logger.warn("DIAGNOSTIC: ChangesTreePanel.changesAdded - isVfsChangeRefreshPending is true and changes were added. Triggering debounced tree refresh for $targetBranchToCompare.")
+
+                refreshDebounceTimer?.stop()
+                refreshDebounceTimer = javax.swing.Timer(100, null).apply {
+                    actionListeners.forEach { removeActionListener(it) } // Clear existing
+                    addActionListener {
+                        ApplicationManager.getApplication().invokeLater {
+                            thisLogger().info("Debounced refresh via ChangeListListener.changesAdded triggered for $targetBranchToCompare")
+                            refreshTreeForBranch(targetBranchToCompare)
+                        }
+                    }
+                    isRepeats = false
+                }
+                refreshDebounceTimer?.start()
+                isVfsChangeRefreshPending = false // Reset the flag
+            } else {
+                logger.warn("DIAGNOSTIC: ChangesTreePanel.changesAdded - isVfsChangeRefreshPending is true, but the changes collection was empty. Not refreshing yet.")
+                // Do not reset isVfsChangeRefreshPending here, as the actual change might come in a subsequent event.
+                // Or, consider if this state implies the pending refresh should be cancelled.
+                // For now, let's only refresh and reset if changes.isNotEmpty().
+            }
+        } else {
+            logger.warn("DIAGNOSTIC: ChangesTreePanel.changesAdded - isVfsChangeRefreshPending is false. No specific new file refresh scheduled by this panel for this event.")
+            // Consider if a general refresh for any added changes should happen here too,
+            // perhaps if the changes are for the targetBranchToCompare.
+            // For now, only refreshing if isVfsChangeRefreshPending was true.
+        }
+    }
+
+    override fun changesRemoved(changes: Collection<com.intellij.openapi.vcs.changes.Change>, changeList: com.intellij.openapi.vcs.changes.ChangeList?) {
+        // Inside changesRemoved(changes: Collection<Change>, changeList: ChangeList?)
+        logger.warn("DIAGNOSTIC: ChangesTreePanel.changesRemoved invoked. Number of changes: ${changes.size}. isVfsChangeRefreshPending: $isVfsChangeRefreshPending.")
+
+        if (isVfsChangeRefreshPending) {
+            if (changes.isNotEmpty()) {
+                logger.warn("DIAGNOSTIC: ChangesTreePanel.changesRemoved - isVfsChangeRefreshPending is true and changes were removed. Triggering debounced tree refresh for $targetBranchToCompare.")
+
+                refreshDebounceTimer?.stop()
+                refreshDebounceTimer = javax.swing.Timer(100, null).apply {
+                    actionListeners.forEach { removeActionListener(it) } // Clear existing
+                    addActionListener {
+                        ApplicationManager.getApplication().invokeLater {
+                            thisLogger().info("Debounced refresh via ChangeListListener.changesRemoved triggered for $targetBranchToCompare")
+                            refreshTreeForBranch(targetBranchToCompare)
+                        }
+                    }
+                    isRepeats = false
+                }
+                refreshDebounceTimer?.start()
+                isVfsChangeRefreshPending = false // Reset the flag
+            } else {
+                logger.warn("DIAGNOSTIC: ChangesTreePanel.changesRemoved - isVfsChangeRefreshPending is true, but the removed changes collection was empty. Not refreshing yet.")
+                // Do not reset isVfsChangeRefreshPending here.
+            }
+        } else {
+            logger.warn("DIAGNOSTIC: ChangesTreePanel.changesRemoved - isVfsChangeRefreshPending is false. No specific VFS-triggered refresh scheduled for this event.")
+            // Consider if a general refresh for any removed changes should happen here too.
+            // For now, only refreshing if isVfsChangeRefreshPending was true.
+        }
+    }
+
+    override fun changesMoved(changes: Collection<com.intellij.openapi.vcs.changes.Change>, fromChangeList: com.intellij.openapi.vcs.changes.ChangeList, toChangeList: com.intellij.openapi.vcs.changes.ChangeList) {
+        // Empty or minimal logging
+    }
+
+    override fun unchangedFileStatusChanged() {
+        // Inside unchangedFileStatusChanged()
+        logger.warn("DIAGNOSTIC: ChangesTreePanel.unchangedFileStatusChanged invoked. isVfsChangeRefreshPending: $isVfsChangeRefreshPending.")
+
+        if (isVfsChangeRefreshPending) {
+            logger.warn("DIAGNOSTIC: ChangesTreePanel.unchangedFileStatusChanged - isVfsChangeRefreshPending is true. Triggering debounced tree refresh for $targetBranchToCompare. Flag will NOT be reset here.")
+
+            refreshDebounceTimer?.stop()
+            refreshDebounceTimer = javax.swing.Timer(100, null).apply {
+                actionListeners.forEach { removeActionListener(it) } // Clear existing
+                addActionListener {
+                    ApplicationManager.getApplication().invokeLater {
+                        thisLogger().info("Debounced refresh via ChangeListListener.unchangedFileStatusChanged triggered for $targetBranchToCompare")
+                        refreshTreeForBranch(targetBranchToCompare)
+                    }
+                }
+                isRepeats = false
+            }
+            refreshDebounceTimer?.start()
+            // DO NOT RESET isVfsChangeRefreshPending = false here
+        } else {
+            logger.warn("DIAGNOSTIC: ChangesTreePanel.unchangedFileStatusChanged - isVfsChangeRefreshPending is false. No specific VFS-triggered refresh scheduled.")
+        }
+    }
+
+    override fun changeListAdded(changeList: com.intellij.openapi.vcs.changes.ChangeList) {
+        // Empty or minimal logging
+    }
+
+    override fun changeListRemoved(changeList: com.intellij.openapi.vcs.changes.ChangeList) {
+        // Empty or minimal logging
+    }
+
+    override fun changeListRenamed(changeList: com.intellij.openapi.vcs.changes.ChangeList, oldName: String) {
+        // Empty or minimal logging
+    }
+
+    override fun changeListCommentChanged(changeList: com.intellij.openapi.vcs.changes.ChangeList, oldComment: String?) {
+        // Empty or minimal logging
+    }
+
+    // This method is from VcsListener, which ChangeListListener extends.
+    override fun dispose() {
+        refreshDebounceTimer?.stop()
+        refreshDebounceTimer = null
+        // Any other disposables specific to ChangesTreePanel can be cleaned up here.
     }
     
     private fun getSingleClickAction(): String =
