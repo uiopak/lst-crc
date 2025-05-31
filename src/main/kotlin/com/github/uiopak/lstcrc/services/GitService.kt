@@ -8,6 +8,8 @@ import com.intellij.openapi.progress.Task
 import com.intellij.openapi.vcs.VcsException
 import com.intellij.openapi.vcs.changes.Change
 import com.intellij.openapi.vcs.changes.ChangeListManager
+import com.intellij.openapi.vcs.changes.CurrentContentRevision
+import com.intellij.openapi.vfs.VirtualFile
 import git4idea.changes.GitChangeUtils
 import java.util.concurrent.CompletableFuture
 import git4idea.repo.GitRepository
@@ -89,7 +91,22 @@ class GitService(private val project: Project) {
                         // Otherwise, compare working tree against the specified branch/commit
                         // This shows "current work vs. other branch/commit"
                         logger.info("Getting diff with working tree compared to: $branchNameToCompare for repository ${repository.root.path}")
-                        changes = GitChangeUtils.getDiffWithWorkingTree(repository, branchNameToCompare, true)?.toList() ?: emptyList()
+                        val workingTreeChanges = GitChangeUtils.getDiffWithWorkingTree(repository, branchNameToCompare, true)?.toMutableList() ?: mutableListOf()
+
+                        // Add untracked files
+                        val changeListManager = ChangeListManager.getInstance(project)
+                        val untrackedFiles = changeListManager.unversionedFiles
+                        val existingPaths = workingTreeChanges.mapNotNull { it.afterRevision?.file?.path ?: it.beforeRevision?.file?.path }.toSet()
+
+                        for (virtualFile in untrackedFiles) {
+                            if (virtualFile.path !in existingPaths) {
+                                val afterRevision = CurrentContentRevision.create(virtualFile)
+                                val untrackedChange = Change(null, afterRevision, Change.Type.NEW)
+                                workingTreeChanges.add(untrackedChange)
+                                logger.info("Added untracked file to changes: ${virtualFile.path}")
+                            }
+                        }
+                        changes = workingTreeChanges.toList()
                     }
                     future.complete(changes)
                 } catch (e: VcsException) {
