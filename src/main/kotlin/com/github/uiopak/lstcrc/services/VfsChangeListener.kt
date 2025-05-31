@@ -35,7 +35,7 @@ class VfsChangeListener : BulkFileListener {
                 continue
             }
 
-            val file = event.file 
+            val file = event.file
             var projectForEvent: Project? = null
 
             if (file != null) {
@@ -44,7 +44,7 @@ class VfsChangeListener : BulkFileListener {
                 val pathForEventLookup: String? = when (event) {
                     is VFileDeleteEvent -> event.path
                     is VFileMoveEvent -> event.oldPath
-                    else -> event.path 
+                    else -> event.path
                 }
 
                 if (pathForEventLookup != null) {
@@ -64,7 +64,7 @@ class VfsChangeListener : BulkFileListener {
                     }
                 }
             }
-            
+
             logger.warn("DIAGNOSTIC: Determined project for event: ${projectForEvent?.name ?: "null"}")
 
             if (projectForEvent == null || projectForEvent.isDisposed) {
@@ -72,10 +72,10 @@ class VfsChangeListener : BulkFileListener {
                 logger.debug("Could not determine project for event (file: ${pathInfo}), or project is disposed. Skipping event.") // Keep as debug
                 continue
             }
-            
+
             val currentProject = projectForEvent
             var isRelevant = false
-            val fileForRelevanceCheck = event.file 
+            val fileForRelevanceCheck = event.file
 
             if (fileForRelevanceCheck != null && fileForRelevanceCheck.isValid) {
                 val isInContent = ProjectFileIndex.getInstance(currentProject).isInContent(fileForRelevanceCheck)
@@ -83,11 +83,11 @@ class VfsChangeListener : BulkFileListener {
                 if (isInContent) {
                     isRelevant = true
                 }
-            } else if (event is VFileDeleteEvent || (event is VFileMoveEvent && fileForRelevanceCheck == null) ) { 
+            } else if (event is VFileDeleteEvent || (event is VFileMoveEvent && fileForRelevanceCheck == null) ) {
                 isRelevant = true
                 // No specific isInContent check possible here, relevance is assumed if project is found by path
             }
-            
+
             logger.warn("DIAGNOSTIC: Event for path ${event.path} (currentProject: ${currentProject.name}) - isRelevant: $isRelevant")
 
             if (isRelevant) {
@@ -96,7 +96,7 @@ class VfsChangeListener : BulkFileListener {
         }
 
         projectsToRefresh.forEach { project ->
-            if (!project.isDisposed) { 
+            if (!project.isDisposed) {
                 logger.warn("DIAGNOSTIC: Attempting to publish FILE_CHANGES_TOPIC for project: ${project.name}")
                 project.messageBus.syncPublisher(FILE_CHANGES_TOPIC).onFilesChanged()
             } else {

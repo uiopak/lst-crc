@@ -7,7 +7,7 @@ import com.intellij.openapi.progress.ProgressIndicator
 import com.intellij.openapi.progress.Task
 import com.intellij.openapi.vcs.VcsException
 import com.intellij.openapi.vcs.changes.Change
-// ChangeListManager import removed as getLocalChangesAgainstHEAD() is removed
+import com.intellij.openapi.vcs.changes.ChangeListManager
 import git4idea.changes.GitChangeUtils
 import java.util.concurrent.CompletableFuture
 import git4idea.repo.GitRepository
@@ -73,14 +73,30 @@ class GitService(private val project: Project) {
             return future
         }
 
+        // Determine current actual branch name
+        val currentActualBranchName = repository.currentBranchName
+
         object : Task.Backgroundable(project, "Loading Git Changes...") {
             override fun run(indicator: ProgressIndicator) {
-                logger.info("Getting changes in working tree compared to branch: $branchNameToCompare for repository ${repository.root.path}")
                 try {
-                    val changes = GitChangeUtils.getDiffWithWorkingTree(repository, branchNameToCompare, true)?.toList() ?: emptyList()
+                    val changes: List<Change>
+                    // If target is current branch or HEAD, prioritize ChangeListManager for live local changes
+                    if (branchNameToCompare == currentActualBranchName ||
+                        (branchNameToCompare == "HEAD" && currentActualBranchName != null /* i.e., not detached HEAD */)) {
+                        logger.info("Fetching local changes using ChangeListManager for target: $branchNameToCompare (current branch: $currentActualBranchName)")
+                        changes = ChangeListManager.getInstance(project).allChanges.toList()
+                    } else {
+                        // Otherwise, compare working tree against the specified branch/commit
+                        // This shows "current work vs. other branch/commit"
+                        logger.info("Getting diff with working tree compared to: $branchNameToCompare for repository ${repository.root.path}")
+                        changes = GitChangeUtils.getDiffWithWorkingTree(repository, branchNameToCompare, true)?.toList() ?: emptyList()
+                    }
                     future.complete(changes)
                 } catch (e: VcsException) {
-                    logger.error("Error getting diff with working tree: ${e.message}", e)
+                    logger.error("Error getting changes: ${e.message}", e)
+                    future.completeExceptionally(e)
+                } catch (e: Exception) { // Catch other potential exceptions
+                    logger.error("Unexpected error getting changes: ${e.message}", e)
                     future.completeExceptionally(e)
                 }
             }
