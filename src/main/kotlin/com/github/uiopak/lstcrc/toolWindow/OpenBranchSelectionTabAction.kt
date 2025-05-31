@@ -93,7 +93,7 @@ class OpenBranchSelectionTabAction(
 
                 manager.setSelectedContent(selectionTabContent, true)
 
-                logger.error("FORCED LOG (Action): Preparing to add to state. selectedBranchName = '$selectedBranchName'") // Changed to logger.error
+                logger.info("OpenBranchSelectionTabAction (Callback): Preparing to add to state. selectedBranchName = '$selectedBranchName'")
                 stateService.addTab(selectedBranchName)
 
                 val closableTabs = manager.contents.filter { it.isCloseable }.map { it.displayName }

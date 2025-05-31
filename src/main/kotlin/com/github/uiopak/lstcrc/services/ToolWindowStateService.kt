@@ -34,15 +34,13 @@ class ToolWindowStateService(private val project: Project) : PersistentStateComp
     }
 
     fun addTab(branchName: String) {
-        // logger.info("ToolWindowStateService: addTab($branchName) called.") // Old line
-        logger.error("FORCED LOG (Service): addTab('$branchName') called.") // New line
+        logger.info("ToolWindowStateService: addTab('$branchName') called.")
         val currentTabs = myState.openTabs.toMutableList()
         if (currentTabs.none { it.branchName == branchName }) {
             currentTabs.add(TabInfo(branchName))
             myState.openTabs = currentTabs
             myState = myState.copy()
-            // logger.info("ToolWindowStateService: Tab $branchName added. New state: $myState") // Old line
-            logger.error("FORCED LOG (Service): Tab '$branchName' added. New state: $myState") // New line
+            logger.info("ToolWindowStateService: Tab '$branchName' added. New state: $myState")
         } else {
             logger.info("ToolWindowStateService: Tab $branchName already exists.") // This can remain .info
         }
