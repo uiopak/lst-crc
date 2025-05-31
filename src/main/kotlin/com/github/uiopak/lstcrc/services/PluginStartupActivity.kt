@@ -15,6 +15,6 @@ class PluginStartupActivity : ProjectActivity {
         val connection = project.messageBus.connect(project)
         connection.subscribe(VirtualFileManager.VFS_CHANGES, vfsChangeListenerInstance as BulkFileListener) // Explicit cast
 
-        thisLogger().error("DIAGNOSTIC: PluginStartupActivity: VfsChangeListener (BulkFileListener) programmatically registered for project ${project.name}")
+        // Removed the thisLogger().error(...) line
     }
 }
