@@ -18,11 +18,17 @@ import com.intellij.openapi.vfs.newvfs.events.VFileCopyEvent
 class VfsChangeListener : BulkFileListener {
     private val logger = thisLogger()
 
+    init {
+        logger.error("FORCED LOG: VfsChangeListener INSTANTIATED")
+    }
+
     override fun before(events: MutableList<out VFileEvent>) {
         // logger.warn("DIAGNOSTIC: VfsChangeListener (BulkFileListener).before CALLED. Events: ${events.size}") // Optional
     }
 
     override fun after(events: MutableList<out VFileEvent>) {
+        logger.error("FORCED LOG: VfsChangeListener.after() CALLED with ${events.size} events. First event path (if any): ${events.firstOrNull()?.path}")
+
         logger.warn("DIAGNOSTIC: VfsChangeListener (BulkFileListener).after CALLED. Number of events: ${events.size}")
 
         val projectsToRefresh = mutableSetOf<Project>()
