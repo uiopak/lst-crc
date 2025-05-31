@@ -39,6 +39,7 @@ class ToolWindowStateService(private val project: Project) : PersistentStateComp
         if (currentTabs.none { it.branchName == branchName }) {
             currentTabs.add(TabInfo(branchName))
             myState.openTabs = currentTabs // This modification should be detected
+            myState = myState.copy()      // Explicitly create a new instance
             logger.info("ToolWindowStateService: Tab $branchName added. New state: $myState")
         } else {
             logger.info("ToolWindowStateService: Tab $branchName already exists.")
@@ -51,6 +52,7 @@ class ToolWindowStateService(private val project: Project) : PersistentStateComp
         val removed = currentTabs.removeAll { it.branchName == branchName }
         if (removed) {
             myState.openTabs = currentTabs // This modification should be detected
+            myState = myState.copy()      // Explicitly create a new instance
             logger.info("ToolWindowStateService: Tab $branchName removed. New state: $myState")
             // Consider adjusting selectedTabIndex here if necessary, though selectionChanged should also handle it
         } else {
@@ -62,6 +64,7 @@ class ToolWindowStateService(private val project: Project) : PersistentStateComp
         logger.info("ToolWindowStateService: setSelectedTab($index) called.")
         if (myState.selectedTabIndex != index) {
             myState.selectedTabIndex = index // This modification should be detected
+            myState = myState.copy()        // Explicitly create a new instance
             logger.info("ToolWindowStateService: Selected tab index set to $index. New state: $myState")
         } else {
             logger.info("ToolWindowStateService: Selected tab index $index is already set.")
