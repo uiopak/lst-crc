@@ -129,14 +129,17 @@ class ChangesTreePanel(
                 actionListeners.forEach { removeActionListener(it) } // Clear existing
                 addActionListener {
                     ApplicationManager.getApplication().invokeLater {
-                        thisLogger().info("Debounced refresh via ChangeListListener.changeListChanged triggered for $targetBranchToCompare")
-                        refreshTreeForBranch(targetBranchToCompare)
+                        val currentBranch = targetBranchToCompare // Capture current target
+                        logger.error("FORCED LOG (Timer): Debounced refresh for '$currentBranch' about to call refreshTreeForBranch.") // High-visibility log
+                        refreshTreeForBranch(currentBranch)
+                        logger.info("ChangesTreePanel: VFS-triggered refresh for '$currentBranch' (via changeListChanged) done. Resetting isVfsChangeRefreshPending.")
+                        isVfsChangeRefreshPending = false // Reset flag HERE
                     }
                 }
                 isRepeats = false
             }
             refreshDebounceTimer?.start()
-            // DO NOT RESET isVfsChangeRefreshPending = false here
+            // isVfsChangeRefreshPending is now reset inside the timer action
         } else {
             logger.warn("DIAGNOSTIC: ChangesTreePanel.changeListChanged - isVfsChangeRefreshPending is false. No specific VFS-triggered refresh scheduled for this list change.")
         }
@@ -159,14 +162,17 @@ class ChangesTreePanel(
                     actionListeners.forEach { removeActionListener(it) } // Clear existing
                     addActionListener {
                         ApplicationManager.getApplication().invokeLater {
-                            thisLogger().info("Debounced refresh via ChangeListListener.changesAdded triggered for $targetBranchToCompare")
-                            refreshTreeForBranch(targetBranchToCompare)
+                            val currentBranch = targetBranchToCompare // Capture current target
+                            logger.error("FORCED LOG (Timer): Debounced refresh for '$currentBranch' about to call refreshTreeForBranch.") // High-visibility log
+                            refreshTreeForBranch(currentBranch)
+                            logger.info("ChangesTreePanel: VFS-triggered refresh for '$currentBranch' (via changesAdded) done. Resetting isVfsChangeRefreshPending.")
+                            isVfsChangeRefreshPending = false // Reset flag HERE
                         }
                     }
                     isRepeats = false
                 }
                 refreshDebounceTimer?.start()
-                isVfsChangeRefreshPending = false // Reset the flag
+                // isVfsChangeRefreshPending is now reset inside the timer action (if changes.isNotEmpty())
             } else {
                 logger.warn("DIAGNOSTIC: ChangesTreePanel.changesAdded - isVfsChangeRefreshPending is true, but the changes collection was empty. Not refreshing yet.")
                 // Do not reset isVfsChangeRefreshPending here, as the actual change might come in a subsequent event.
@@ -194,14 +200,17 @@ class ChangesTreePanel(
                     actionListeners.forEach { removeActionListener(it) } // Clear existing
                     addActionListener {
                         ApplicationManager.getApplication().invokeLater {
-                            thisLogger().info("Debounced refresh via ChangeListListener.changesRemoved triggered for $targetBranchToCompare")
-                            refreshTreeForBranch(targetBranchToCompare)
+                            val currentBranch = targetBranchToCompare // Capture current target
+                            logger.error("FORCED LOG (Timer): Debounced refresh for '$currentBranch' about to call refreshTreeForBranch.") // High-visibility log
+                            refreshTreeForBranch(currentBranch)
+                            logger.info("ChangesTreePanel: VFS-triggered refresh for '$currentBranch' (via changesRemoved) done. Resetting isVfsChangeRefreshPending.")
+                            isVfsChangeRefreshPending = false // Reset flag HERE
                         }
                     }
                     isRepeats = false
                 }
                 refreshDebounceTimer?.start()
-                isVfsChangeRefreshPending = false // Reset the flag
+                // isVfsChangeRefreshPending is now reset inside the timer action (if changes.isNotEmpty())
             } else {
                 logger.warn("DIAGNOSTIC: ChangesTreePanel.changesRemoved - isVfsChangeRefreshPending is true, but the removed changes collection was empty. Not refreshing yet.")
                 // Do not reset isVfsChangeRefreshPending here.
@@ -229,14 +238,17 @@ class ChangesTreePanel(
                 actionListeners.forEach { removeActionListener(it) } // Clear existing
                 addActionListener {
                     ApplicationManager.getApplication().invokeLater {
-                        thisLogger().info("Debounced refresh via ChangeListListener.unchangedFileStatusChanged triggered for $targetBranchToCompare")
-                        refreshTreeForBranch(targetBranchToCompare)
+                        val currentBranch = targetBranchToCompare // Capture current target
+                        logger.error("FORCED LOG (Timer): Debounced refresh for '$currentBranch' about to call refreshTreeForBranch.") // High-visibility log
+                        refreshTreeForBranch(currentBranch)
+                        logger.info("ChangesTreePanel: VFS-triggered refresh for '$currentBranch' (via unchangedFileStatusChanged) done. Resetting isVfsChangeRefreshPending.")
+                        isVfsChangeRefreshPending = false // Reset flag HERE
                     }
                 }
                 isRepeats = false
             }
             refreshDebounceTimer?.start()
-            // DO NOT RESET isVfsChangeRefreshPending = false here
+            // isVfsChangeRefreshPending is now reset inside the timer action
         } else {
             logger.warn("DIAGNOSTIC: ChangesTreePanel.unchangedFileStatusChanged - isVfsChangeRefreshPending is false. No specific VFS-triggered refresh scheduled.")
         }
