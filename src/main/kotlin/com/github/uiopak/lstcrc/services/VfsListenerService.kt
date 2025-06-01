@@ -14,7 +14,7 @@ class VfsListenerService(private val project: Project) : Disposable {
     private val logger = thisLogger()
 
     init {
-        logger.error("FORCED LOG: VfsListenerService INITIALIZED for project ${project.name}")
+        logger.info("VfsListenerService INITIALIZED for project ${project.name}")
         registerVfsListener()
     }
 

@@ -130,7 +130,7 @@ class ChangesTreePanel(
                 addActionListener {
                     ApplicationManager.getApplication().invokeLater {
                         val currentBranch = targetBranchToCompare // Capture current target
-                        logger.error("FORCED LOG (Timer): Debounced refresh for '$currentBranch' about to call refreshTreeForBranch.") // High-visibility log
+                        logger.info("ChangesTreePanel: Debounced VFS refresh for '$currentBranch' (via changeListChanged) about to call refreshTreeForBranch.")
                         refreshTreeForBranch(currentBranch)
                         logger.info("ChangesTreePanel: VFS-triggered refresh for '$currentBranch' (via changeListChanged) done. Resetting isVfsChangeRefreshPending.")
                         isVfsChangeRefreshPending = false // Reset flag HERE
@@ -163,7 +163,7 @@ class ChangesTreePanel(
                     addActionListener {
                         ApplicationManager.getApplication().invokeLater {
                             val currentBranch = targetBranchToCompare // Capture current target
-                            logger.error("FORCED LOG (Timer): Debounced refresh for '$currentBranch' about to call refreshTreeForBranch.") // High-visibility log
+                            logger.info("ChangesTreePanel: Debounced VFS refresh for '$currentBranch' (via changesAdded) about to call refreshTreeForBranch.")
                             refreshTreeForBranch(currentBranch)
                             logger.info("ChangesTreePanel: VFS-triggered refresh for '$currentBranch' (via changesAdded) done. Resetting isVfsChangeRefreshPending.")
                             isVfsChangeRefreshPending = false // Reset flag HERE
@@ -201,7 +201,7 @@ class ChangesTreePanel(
                     addActionListener {
                         ApplicationManager.getApplication().invokeLater {
                             val currentBranch = targetBranchToCompare // Capture current target
-                            logger.error("FORCED LOG (Timer): Debounced refresh for '$currentBranch' about to call refreshTreeForBranch.") // High-visibility log
+                            logger.info("ChangesTreePanel: Debounced VFS refresh for '$currentBranch' (via changesRemoved) about to call refreshTreeForBranch.")
                             refreshTreeForBranch(currentBranch)
                             logger.info("ChangesTreePanel: VFS-triggered refresh for '$currentBranch' (via changesRemoved) done. Resetting isVfsChangeRefreshPending.")
                             isVfsChangeRefreshPending = false // Reset flag HERE
@@ -239,7 +239,7 @@ class ChangesTreePanel(
                 addActionListener {
                     ApplicationManager.getApplication().invokeLater {
                         val currentBranch = targetBranchToCompare // Capture current target
-                        logger.error("FORCED LOG (Timer): Debounced refresh for '$currentBranch' about to call refreshTreeForBranch.") // High-visibility log
+                        logger.info("ChangesTreePanel: Debounced VFS refresh for '$currentBranch' (via unchangedFileStatusChanged) about to call refreshTreeForBranch.")
                         refreshTreeForBranch(currentBranch)
                         logger.info("ChangesTreePanel: VFS-triggered refresh for '$currentBranch' (via unchangedFileStatusChanged) done. Resetting isVfsChangeRefreshPending.")
                         isVfsChangeRefreshPending = false // Reset flag HERE
