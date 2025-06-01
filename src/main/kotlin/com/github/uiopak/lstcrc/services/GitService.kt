@@ -9,9 +9,13 @@ import com.intellij.openapi.vcs.VcsException
 import com.intellij.openapi.vcs.changes.Change
 import com.intellij.openapi.vcs.changes.ChangeListManager
 import git4idea.changes.GitChangeUtils
-import git4idea.changes.GitShowUtil // Added import for GitShowUtil
+// Removed GitShowUtil import
 import java.util.concurrent.CompletableFuture
 import com.intellij.openapi.vfs.LocalFileSystem
+import com.intellij.openapi.vfs.VfsUtilCore // Added for path relativization
+import git4idea.commands.Git // Added for Git.getInstance()
+import git4idea.commands.GitCommand // Added for GitCommand.SHOW
+import git4idea.commands.GitLineHandler // Added for GitLineHandler
 import git4idea.repo.GitRepository
 import git4idea.repo.GitRepositoryManager
 
@@ -145,16 +149,30 @@ class GitService(private val project: Project) {
                 // We need to check if it existed in HEAD.
                 try {
                     val headRevision = GitChangeUtils.resolveReference(project, repository.root, "HEAD")
-                    // Attempt to get the file's content at the HEAD revision.
-                    // GitShowUtil.getShowOutput will throw VcsException if the file doesn't exist at this revision.
-                    GitShowUtil.getShowOutput(project, repository.root, headRevision.asString(), filePath)
-                    // If no exception, the file existed in HEAD and is now considered deleted from the working tree.
-                    logger.info("File $filePath existed in HEAD (revision ${headRevision.asString()}) but not in working tree. Marking as deleted.")
-                    return "#FF0000" // Red for deleted
-                } catch (e: VcsException) {
-                    // This VcsException likely means the file did not exist at this revision.
-                    logger.warn("File $filePath did not exist in HEAD (revision ${headRevision.asString()}) or other VcsException: ${e.message}")
-                    // Not considered a "deleted from HEAD" case, so no specific color.
+                    val relativeFilePath = VfsUtilCore.getRelativePath(
+                        java.io.File(filePath), // Convert String path to File for VfsUtilCore
+                        repository.root,
+                        '/'
+                    )
+                    if (relativeFilePath == null) {
+                        logger.warn("Could not determine relative path for $filePath against root ${repository.root.path}")
+                        return "" // Cannot proceed
+                    }
+
+                    val handler = GitLineHandler(project, repository.root, GitCommand.SHOW)
+                    handler.addParameters("${headRevision.asString()}:$relativeFilePath")
+                    handler.setSilent(true)
+                    val result = Git.getInstance().runCommand(handler)
+
+                    if (result.exitCode == 0 && result.output.joinToString("").isNotBlank()) { // Success and non-empty output
+                        logger.info("File $relativeFilePath existed in HEAD (revision ${headRevision.asString()}) but not in working tree. Marking as deleted.")
+                        return "#FF0000" // Red for deleted
+                    } else {
+                        logger.warn("File $relativeFilePath did not exist in HEAD (revision ${headRevision.asString()}). Git show exitCode: ${result.exitCode}, errors: ${result.errorOutputAsJoinedString}")
+                        return ""
+                    }
+                } catch (e: VcsException) { // Catches exceptions from resolveReference or runCommand
+                    logger.warn("VcsException while checking if file $filePath existed in HEAD: ${e.message}")
                     return ""
                 }
             }
@@ -187,14 +205,30 @@ class GitService(private val project: Project) {
                 // If yes, it's "deleted from working tree compared to actualComparisonBranch".
                 try {
                     val branchRevision = GitChangeUtils.resolveReference(project, repository.root, actualComparisonBranch)
-                    // Attempt to get the file's content at the branch revision.
-                    GitShowUtil.getShowOutput(project, repository.root, branchRevision.asString(), filePath)
-                    // If no exception, the file existed in the branch and is now considered deleted from the working tree.
-                    logger.info("File $filePath existed in branch $actualComparisonBranch (revision ${branchRevision.asString()}) but not in working tree. Marking as deleted.")
-                    return "#FF0000" // Red for deleted
-                } catch (e: VcsException) {
-                    // This VcsException likely means the file did not exist at this revision in the branch.
-                    logger.warn("File $filePath did not exist in branch $actualComparisonBranch (revision ${branchRevision.asString()}) or other VcsException: ${e.message}")
+                    val relativeFilePath = VfsUtilCore.getRelativePath(
+                        java.io.File(filePath),
+                        repository.root,
+                        '/'
+                    )
+                    if (relativeFilePath == null) {
+                        logger.warn("Could not determine relative path for $filePath against root ${repository.root.path} for branch $actualComparisonBranch")
+                        return ""
+                    }
+
+                    val handler = GitLineHandler(project, repository.root, GitCommand.SHOW)
+                    handler.addParameters("${branchRevision.asString()}:$relativeFilePath")
+                    handler.setSilent(true)
+                    val result = Git.getInstance().runCommand(handler)
+
+                    if (result.exitCode == 0 && result.output.joinToString("").isNotBlank()) {
+                        logger.info("File $relativeFilePath existed in branch $actualComparisonBranch (revision ${branchRevision.asString()}) but not in working tree. Marking as deleted.")
+                        return "#FF0000" // Red for deleted
+                    } else {
+                        logger.warn("File $relativeFilePath did not exist in branch $actualComparisonBranch (revision ${branchRevision.asString()}). Git show exitCode: ${result.exitCode}, errors: ${result.errorOutputAsJoinedString}")
+                        return ""
+                    }
+                } catch (e: VcsException) { // Catches exceptions from resolveReference or runCommand
+                    logger.warn("VcsException while checking if file $filePath existed in branch $actualComparisonBranch: ${e.message}")
                     return ""
                 }
             }
