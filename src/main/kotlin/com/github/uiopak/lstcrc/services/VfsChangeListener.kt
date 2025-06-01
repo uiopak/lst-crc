@@ -27,11 +27,13 @@ class VfsChangeListener : BulkFileListener {
     }
 
     override fun after(events: MutableList<out VFileEvent>) {
-        logger.info("VfsChangeListener.after() CALLED with ${events.size} events. First event path (if any): ${events.firstOrNull()?.path}")
+        logger.warn("OLD_VFS_LISTENER (.services): VfsChangeListener.after() CALLED. This listener is expected to be obsolete for tab coloring. Events: ${events.size}")
+        // return // Option 1: Immediately return to do nothing - Applying this for maximum safety.
+        // All subsequent functional code will be commented out.
 
-        logger.warn("DIAGNOSTIC: VfsChangeListener (BulkFileListener).after CALLED. Number of events: ${events.size}")
-
-        val projectsToRefresh = mutableSetOf<Project>()
+        // logger.info("VfsChangeListener.after() CALLED with ${events.size} events. First event path (if any): ${events.firstOrNull()?.path}")
+        // logger.warn("DIAGNOSTIC: VfsChangeListener (BulkFileListener).after CALLED. Number of events: ${events.size}")
+        // val projectsToRefresh = mutableSetOf<Project>()
 
         for (event in events) {
             logger.warn("DIAGNOSTIC: Processing event: ${event::class.java.simpleName}, path: ${event.path}, file: ${event.file?.path}, oldPath: ${(event as? VFileMoveEvent)?.oldPath}")
@@ -128,13 +130,13 @@ class VfsChangeListener : BulkFileListener {
             }
         }
 
-        projectsToRefresh.forEach { project ->
-            if (!project.isDisposed) {
-                logger.warn("DIAGNOSTIC: Attempting to publish FILE_CHANGES_TOPIC for project: ${project.name}")
-                project.messageBus.syncPublisher(FILE_CHANGES_TOPIC).onFilesChanged()
-            } else {
-                logger.warn("DIAGNOSTIC: Project ${project.name} was disposed before publishing, skipping.") // Kept this as warn
-            }
-        }
+        // projectsToRefresh.forEach { project ->
+        //     if (!project.isDisposed) {
+        //         logger.warn("DIAGNOSTIC: Attempting to publish FILE_CHANGES_TOPIC for project: ${project.name}")
+        //         project.messageBus.syncPublisher(FILE_CHANGES_TOPIC).onFilesChanged()
+        //     } else {
+        //         logger.warn("DIAGNOSTIC: Project ${project.name} was disposed before publishing, skipping.") // Kept this as warn
+        //     }
+        // }
     }
 }

@@ -27,7 +27,8 @@ class ProjectOpenCloseListener : ProjectManagerListener {
         // Using project itself as disposable for the message bus connection.
         val projectDisposable = project as Disposable
         project.messageBus.connect(projectDisposable).subscribe(VirtualFileManager.VFS_CHANGES, TabColorVfsListener(project))
-        logger.info("MMMM_STARTUP_LOGIC: TabColorVfsListener registered for project: ${project.name}")
+        // logger.info("MMMM_STARTUP_LOGIC: TabColorVfsListener registered for project: ${project.name}") // Original log, will be replaced by the more specific one below
+        logger.info("MMMM_STARTUP_LOGIC: Subscription attempt for TabColorVfsListener ('com.github.uiopak.lstcrc.listeners.TabColorVfsListener') to VFS_CHANGES topic completed.")
 
         logger.info("MMMM_STARTUP_LOGIC: Scheduling invokeLater for initial application of current colors.")
         ApplicationManager.getApplication().invokeLater {
