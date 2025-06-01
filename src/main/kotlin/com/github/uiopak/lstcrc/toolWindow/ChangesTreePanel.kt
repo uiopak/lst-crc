@@ -1,10 +1,12 @@
 package com.github.uiopak.lstcrc.toolWindow
 
 import com.github.uiopak.lstcrc.services.GitService
+import com.github.uiopak.lstcrc.services.ProjectActiveDiffDataService
 import com.intellij.icons.AllIcons
 import com.intellij.ide.util.PropertiesComponent
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.Disposable
+import com.intellij.openapi.components.service
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.fileEditor.OpenFileDescriptor
 import com.intellij.openapi.startup.StartupManager
@@ -473,23 +475,35 @@ class ChangesTreePanel(
         (treeToRefresh.model as DefaultTreeModel).reload(rootModelNode)
 
         // Directly use currentTarget as it's now non-null and getLocalChangesAgainstHEAD is removed
-        gitService.getChanges(currentTarget).whenCompleteAsync { changes, throwable ->
+        gitService.getChanges(currentTarget).whenCompleteAsync { changesResponse, throwable -> // Renamed 'changes' to 'changesResponse' for clarity
             ApplicationManager.getApplication().invokeLater {
+                val diffDataService = project.service<ProjectActiveDiffDataService>() // Get service instance
                 rootModelNode.removeAllChildren() // Clear "Loading..." or old content
+
+                val finalChangesToReport: List<Change> // Declare a variable to hold the changes for the service
+
                 if (throwable != null) {
                     logger.error("Error getting changes for target $currentTarget", throwable)
                     rootModelNode.add(DefaultMutableTreeNode("Error loading changes for $currentTarget: ${throwable.message ?: "Unknown error"}"))
-                } else if (changes != null) { // changes can still be null if CompletableFuture completes with null
-                    if (changes.isEmpty()) {
+                    finalChangesToReport = emptyList() // Report empty list on error
+                } else if (changesResponse != null) {
+                    if (changesResponse.isEmpty()) {
                         rootModelNode.add(DefaultMutableTreeNode("No changes found for $currentTarget"))
                     } else {
-                        buildTreeFromChanges(rootModelNode, changes) // Corrected: rootModelNode instead of rootNode
+                        buildTreeFromChanges(rootModelNode, changesResponse)
                     }
-                } else { // Handle case where changes is null (though ideally future shouldn't complete with null)
+                    finalChangesToReport = changesResponse // Report the received changes (could be empty)
+                } else { // changesResponse is null, throwable is null - indicates future completed with null
                      rootModelNode.add(DefaultMutableTreeNode("No change data available for $currentTarget"))
+                     finalChangesToReport = emptyList() // Report empty list for no data
                 }
+
+                // Update the ProjectActiveDiffDataService with the determined changes (or empty list)
+                diffDataService.updateActiveDiff(currentTarget, finalChangesToReport)
+
+                // Reload the tree model and expand
                 (treeToRefresh.model as DefaultTreeModel).reload(rootModelNode)
-                TreeUtil.expandAll(treeToRefresh) // Expand after new content is loaded
+                TreeUtil.expandAll(treeToRefresh)
             }
         }
     }
