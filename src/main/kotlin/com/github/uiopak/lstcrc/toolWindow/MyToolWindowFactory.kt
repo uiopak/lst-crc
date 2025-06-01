@@ -30,7 +30,7 @@ class MyToolWindowFactory : ToolWindowFactory {
         } catch (e: Throwable) {
             logger.error("MyToolWindowFactory: EXCEPTION while trying to get VfsListenerService. VFS updates might not work.", e)
         }
-        logger.info("MyToolWindowFactory: createToolWindowContent called.")
+        logger.info("TOOL_WINDOW_FACTORY: createToolWindowContent called for project: ${project.name}") // Standardized prefix
         val gitChangesUiProvider = GitChangesToolWindow(project, toolWindow.disposable)
         val contentFactory = ContentFactory.getInstance()
         val gitService = project.service<GitService>()

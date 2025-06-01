@@ -26,18 +26,36 @@ class GitService(private val project: Project) {
     private val logger = thisLogger()
 
     internal fun getCurrentRepository(): GitRepository? {
+        logger.info("GIT_REPO_DETECT: getCurrentRepository() called.")
+
         val repositoryManager = GitRepositoryManager.getInstance(project)
+        logger.info("GIT_REPO_DETECT: GitRepositoryManager instance: $repositoryManager")
+
         val repositories = repositoryManager.repositories
+        logger.info("GIT_REPO_DETECT: Found ${repositories.size} repositories by GitRepositoryManager.")
+
+        repositories.forEachIndexed { index, repo ->
+            logger.info("GIT_REPO_DETECT: Repo $index: root=${repo.root.path}, presentableUrl=${repo.root.presentableUrl}, state=${repo.state}")
+        }
+
         return when {
             repositories.isEmpty() -> {
-                logger.warn("No Git repositories found in the project.")
+                logger.warn("GIT_REPO_DETECT: No Git repositories found by manager. Returning null.")
+                // Attempt to get project base path as a fallback clue, though not a repo itself
+                val projectBasePath = project.basePath
+                logger.warn("GIT_REPO_DETECT: Project base path for context: $projectBasePath")
                 null
             }
             repositories.size > 1 -> {
-                logger.info("Multiple Git repositories found. Using the first one: ${repositories.first().root.path}")
-                repositories.first() // Or implement logic to select one
+                logger.info("GIT_REPO_DETECT: Multiple Git repositories found (${repositories.size}). Using the first one: ${repositories.first().root.path}")
+                // Log all available repository roots for diagnostic purposes
+                repositories.forEach { logger.info("GIT_REPO_DETECT: Available repo root: ${it.root.path}") }
+                repositories.first()
             }
-            else -> repositories.first()
+            else -> { // Exactly one repository
+                logger.info("GIT_REPO_DETECT: Exactly one Git repository found: ${repositories.first().root.path}")
+                repositories.first()
+            }
         }
     }
 
