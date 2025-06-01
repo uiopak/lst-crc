@@ -7,6 +7,7 @@ import com.intellij.openapi.fileEditor.FileEditorManagerEvent
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.VirtualFile
 import com.github.uiopak.lstcrc.services.GitService
+import com.github.uiopak.lstcrc.settings.TabColorSettingsState
 
 class TabColorFileEditorManagerListener : FileEditorManagerListener {
 
@@ -24,29 +25,23 @@ class TabColorFileEditorManagerListener : FileEditorManagerListener {
 
         logger.info("Project: ${project.name}, New file: ${newFile.path}")
 
-        val gitService = project.getService(GitService::class.java)
-        if (gitService == null) {
-            logger.warn("GitService not found for project ${project.name}")
-            return
-        }
-
-        val colorHex = gitService.calculateEditorTabColor(newFile.path)
-        logger.info("Calculated color for ${newFile.name}: '$colorHex'")
+        // We don't need to calculate the color or get GitService here.
+        // The provider (GitStatusBasedTabColorProvider) will be called due to updateFilePresentation.
+        // The provider will fetch settings and call GitService.
+        logger.info("Requesting presentation update for file: ${newFile.path}.")
 
         // Trigger a UI update for the tab.
         // This will cause IntelliJ to query registered EditorTabColorProviders.
-        logger.info("Requesting file presentation update for ${newFile.name} to apply potential color changes.")
         FileEditorManager.getInstance(project).updateFilePresentation(newFile)
     }
 
     // Potentially override fileOpened and fileClosed if needed
     // For example, fileOpened could also call updateFilePresentation if needed for initially opened tabs.
     override fun fileOpened(source: FileEditorManager, file: VirtualFile) {
-        // Also update presentation when a file is first opened.
-        logger.info("File opened: ${file.name}. Requesting file presentation update.")
-        source.project.let { project ->
-            FileEditorManager.getInstance(project).updateFilePresentation(file)
-        }
+        val project = source.project
+        // The provider will be invoked and will fetch settings itself.
+        logger.info("File opened: ${file.name} in project ${project.name}. Requesting presentation update.")
+        FileEditorManager.getInstance(project).updateFilePresentation(file)
     }
     // override fun fileClosed(source: FileEditorManager, file: VirtualFile) {}
 }

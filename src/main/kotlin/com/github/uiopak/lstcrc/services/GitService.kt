@@ -201,7 +201,7 @@ class GitService(private val project: Project) {
             // File exists in working tree. Compare it with actualComparisonBranch.
             // We need to find the specific change for `virtualFile` within the diff.
             val changesAgainstBranch: List<Change> = try {
-                GitChangeUtils.getDiffWithWorkingTree(repository, actualComparisonBranch, true) ?: emptyList()
+                GitChangeUtils.getDiffWithWorkingTree(repository, actualComparisonBranch, true)?.toList() ?: emptyList()
             } catch (e: VcsException) {
                 logger.error("Error diffing with $actualComparisonBranch: ${e.message}", e)
                 return "" // Error

@@ -12,7 +12,8 @@ class GitStatusBasedTabColorProvider : EditorTabColorProvider {
 
     private val logger = thisLogger()
 
-    override fun getColor(project: Project, file: VirtualFile): Color? {
+    // Renamed from getColor to getEditorTabColor to match the interface (based on error)
+    override fun getEditorTabColor(project: Project, file: VirtualFile): Color? {
         val settings = TabColorSettingsState.getInstance(project)
         if (!settings.isTabColoringEnabled) {
             logger.info("Tab coloring is disabled in settings. Skipping for file: ${file.name}")
@@ -22,7 +23,7 @@ class GitStatusBasedTabColorProvider : EditorTabColorProvider {
         // For now, colorTarget setting is noted but only background is affected by this provider.
         // If settings.colorTarget != "BACKGROUND", we might return null or log.
         // For this iteration, we proceed regardless of colorTarget, assuming background.
-        logger.info("GitStatusBasedTabColorProvider.getColor for ${file.path}, Target: ${settings.colorTarget}, Branch: ${settings.comparisonBranch}")
+        logger.info("GitStatusBasedTabColorProvider.getEditorTabColor for ${file.path}, Target: ${settings.colorTarget}, Branch: ${settings.comparisonBranch}")
 
 
         val gitService = project.getService(GitService::class.java)
