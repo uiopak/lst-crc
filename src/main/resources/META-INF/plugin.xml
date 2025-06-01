@@ -13,8 +13,24 @@
         <toolWindow factoryClass="com.github.uiopak.lstcrc.toolWindow.MyToolWindowFactory" id="GitChangesView" anchor="bottom" canCloseContents="true"/>
         <projectService serviceImplementation="com.github.uiopak.lstcrc.services.GitService"/>
         <projectService serviceImplementation="com.github.uiopak.lstcrc.services.ToolWindowStateService"/>
+        <projectService serviceImplementation="com.github.uiopak.lstcrc.settings.TabColorSettingsState"/> <!-- Added settings state service -->
         <!-- <projectService serviceImplementation="com.github.uiopak.lstcrc.services.VfsListenerService"/> --> <!-- This line is now removed or commented out -->
-        <!-- <postStartupActivity implementation="com.github.uiopak.lstcrc.services.PluginStartupActivity"/> --> <!-- Commented out -->
         <!-- <vfs.listener class="com.github.uiopak.lstcrc.services.VfsChangeListener"/> --> <!-- This line is now commented out -->
+
+        <editorTabColorProvider implementation="com.github.uiopak.lstcrc.provider.GitStatusBasedTabColorProvider"/>
+        <projectActivity implementation="com.github.uiopak.lstcrc.services.PluginStartupActivity"/> <!-- Corrected registration -->
+        <projectConfigurable
+                instance="com.github.uiopak.lstcrc.settings.TabColorSettingsConfigurable"
+                id="com.github.uiopak.lstcrc.settings.TabColorSettingsConfigurable"
+                displayName="Editor Tab Coloring"/>
     </extensions>
+
+    <applicationListeners>
+        <!-- Add application listeners here -->
+    </applicationListeners>
+
+    <projectListeners>
+        <listener class="com.github.uiopak.lstcrc.listeners.TabColorFileEditorManagerListener"
+                  topic="com.intellij.openapi.fileEditor.FileEditorManagerListener"/>
+    </projectListeners>
 </idea-plugin>
