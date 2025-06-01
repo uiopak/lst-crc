@@ -18,6 +18,18 @@ class MyToolWindowFactory : ToolWindowFactory {
     private val logger = thisLogger() // Initialize logger
 
     override fun createToolWindowContent(project: Project, toolWindow: ToolWindow) {
+        // FORCED DIAGNOSTIC: Attempt to get VfsListenerService
+        try {
+            val retrievedVfsListenerService = project.getService(com.github.uiopak.lstcrc.services.VfsListenerService::class.java)
+            if (retrievedVfsListenerService != null) {
+                logger.error("FORCED LOG (MyToolWindowFactory): Successfully retrieved VfsListenerService instance: $retrievedVfsListenerService")
+                // If the service is retrieved here, its init block (and VfsChangeListener's init) should have already fired or will fire now.
+            } else {
+                logger.error("FORCED LOG (MyToolWindowFactory): project.getService(VfsListenerService::class.java) returned NULL.")
+            }
+        } catch (e: Throwable) {
+            logger.error("FORCED LOG (MyToolWindowFactory): EXCEPTION while trying to get VfsListenerService.", e)
+        }
         logger.info("MyToolWindowFactory: createToolWindowContent called.")
         val gitChangesUiProvider = GitChangesToolWindow(project, toolWindow.disposable)
         val contentFactory = ContentFactory.getInstance()
