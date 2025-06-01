@@ -3,8 +3,11 @@ package com.github.uiopak.lstcrc.services
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.Service
+import com.intellij.openapi.components.service
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.fileEditor.FileEditorManager
+// Explicitly ensure ToolWindowStateService is imported if not in same package
+import com.github.uiopak.lstcrc.services.ToolWindowStateService
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vcs.changes.Change
 
@@ -17,11 +20,20 @@ class ProjectActiveDiffDataService(private val project: Project) : Disposable {
     var activeChanges: List<Change> = emptyList()
         private set // Allow external read, internal write
 
-    fun updateActiveDiff(branchName: String, changes: List<Change>) {
-        logger.info("Updating active diff for branch: $branchName with ${changes.size} changes.")
-        this.activeBranchName = branchName
-        this.activeChanges = changes
-        triggerEditorTabColorRefresh()
+    fun updateActiveDiff(branchNameFromEvent: String, changesFromEvent: List<Change>) {
+        val currentToolWindowBranch = project.service<ToolWindowStateService>().getSelectedTabBranchName()
+
+        // Only update and refresh if the incoming data is for the currently selected branch in the tool window.
+        // This prevents updates for a previously active branch (from a delayed async operation)
+        // from overriding the data for the truly current branch.
+        if (branchNameFromEvent == currentToolWindowBranch) {
+            logger.info("Updating active diff for currently selected tool window branch: $branchNameFromEvent with ${changesFromEvent.size} changes.")
+            this.activeBranchName = branchNameFromEvent
+            this.activeChanges = changesFromEvent
+            triggerEditorTabColorRefresh()
+        } else {
+            logger.info("Received diff update for branch '$branchNameFromEvent', but tool window is currently on '$currentToolWindowBranch'. Ignoring stale update.")
+        }
     }
 
     fun clearActiveDiff() {
@@ -45,6 +57,11 @@ class ProjectActiveDiffDataService(private val project: Project) : Disposable {
                 }
             }
         }
+    }
+
+    fun refreshCurrentColorings() {
+        logger.info("Explicitly refreshing current editor tab colorings for branch: $activeBranchName")
+        triggerEditorTabColorRefresh() // This is the existing private method
     }
 
     override fun dispose() {

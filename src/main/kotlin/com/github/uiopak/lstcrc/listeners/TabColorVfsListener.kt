@@ -59,34 +59,33 @@ class TabColorVfsListener(private val project: Project) : BulkFileListener {
 
             logger.info("VFS Change: Refreshing changes for active tool window branch: $activeBranchName")
             gitService.getChanges(activeBranchName).whenCompleteAsync { changes, throwable ->
-                if (project.isDisposed) { // Check project disposed state again inside async block
-                    logger.info("Project disposed during async git operation, skipping update.")
+                if (project.isDisposed) {
+                    logger.info("Project disposed during async git operation, skipping update for VFS changes on $activeBranchName.")
                     return@whenCompleteAsync
                 }
+
                 if (throwable != null) {
                     logger.error("VFS Change: Error getting changes for branch $activeBranchName: ${throwable.message}", throwable)
-                    // Optionally clear or update service state to reflect error
-                    // For example, if current branch is still activeBranchName, clear its data:
-                    // val stillActiveBranchForError = project.service<ToolWindowStateService>().getSelectedTabBranchName()
-                    // if (stillActiveBranchForError == activeBranchName) {
-                    //    diffDataService.clearActiveDiff() // Or a method to clear for a specific branch if that's desired
+                    // Optional: Explicitly clear for this branch if an error occurs and it's still active.
+                    // However, ProjectActiveDiffDataService.updateActiveDiff won't update if branch mismatches,
+                    // and ToolWindowStateService.setSelectedTab already clears on error.
+                    // So, doing nothing here on error (not calling updateActiveDiff) might be fine.
+                    // Or, to be safe and clear potentially stale data if this was the active branch:
+                    // val currentToolWindowBranch = project.service<ToolWindowStateService>().getSelectedTabBranchName()
+                    // if (currentToolWindowBranch == activeBranchName) {
+                    //    project.service<ProjectActiveDiffDataService>().clearActiveDiff()
                     // }
                 } else if (changes != null) {
-                    // Check if the branch is still the active one, in case it changed during async op
-                    val stillActiveBranch = project.service<ToolWindowStateService>().getSelectedTabBranchName()
-                    if (stillActiveBranch == activeBranchName) {
-                        logger.info("VFS Change: Successfully fetched ${changes.size} changes for $activeBranchName. Updating ProjectActiveDiffDataService.")
-                        diffDataService.updateActiveDiff(activeBranchName, changes)
-                    } else {
-                        logger.info("VFS Change: Branch changed from $activeBranchName to $stillActiveBranch during async git operation. Not updating diff data for $activeBranchName.")
-                    }
+                    logger.info("VFS Change: Successfully fetched ${changes.size} changes for $activeBranchName (branch active when VFS event was debounced). Forwarding to ProjectActiveDiffDataService.")
+                    // Let ProjectActiveDiffDataService decide if these changes are still relevant for the *current* UI state.
+                    diffDataService.updateActiveDiff(activeBranchName, changes)
                 } else {
-                     logger.warn("VFS Change: Fetched changes for $activeBranchName but the list was null.")
-                     // Similar to error case, consider clearing if this branch is still active
-                     // val stillActiveBranchForNull = project.service<ToolWindowStateService>().getSelectedTabBranchName()
-                     // if (stillActiveBranchForNull == activeBranchName) {
-                     //    diffDataService.clearActiveDiff()
-                     // }
+                    logger.warn("VFS Change: Fetched changes for $activeBranchName but the list was null.")
+                    // Similar to error case, could optionally clear if this branch is still active.
+                    // val currentToolWindowBranch = project.service<ToolWindowStateService>().getSelectedTabBranchName()
+                    // if (currentToolWindowBranch == activeBranchName) {
+                    //    project.service<ProjectActiveDiffDataService>().clearActiveDiff()
+                    // }
                 }
             }
         } else {
