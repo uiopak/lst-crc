@@ -9,8 +9,9 @@ import com.intellij.openapi.vcs.VcsException
 import com.intellij.openapi.vcs.changes.Change
 import com.intellij.openapi.vcs.changes.ChangeListManager
 import git4idea.changes.GitChangeUtils
+import git4idea.changes.GitShowUtil // Added import for GitShowUtil
 import java.util.concurrent.CompletableFuture
-import com.intellij.openapi.vfs.LocalFileSystem // Added import
+import com.intellij.openapi.vfs.LocalFileSystem
 import git4idea.repo.GitRepository
 import git4idea.repo.GitRepositoryManager
 
@@ -144,15 +145,17 @@ class GitService(private val project: Project) {
                 // We need to check if it existed in HEAD.
                 try {
                     val headRevision = GitChangeUtils.resolveReference(project, repository.root, "HEAD")
-                    // Try to read the file content at this revision. If it throws VcsException, file didn't exist.
-                    GitChangeUtils.catFile(project, repository.root, headRevision.asString(), filePath)
-                    // If catFile succeeds, the file existed in HEAD and is now deleted from the working tree.
-                    logger.info("File $filePath is DELETED from working tree (was in HEAD at revision ${headRevision.asString()}).")
-                    return "#FF0000" // Red
+                    // Attempt to get the file's content at the HEAD revision.
+                    // GitShowUtil.getShowOutput will throw VcsException if the file doesn't exist at this revision.
+                    GitShowUtil.getShowOutput(project, repository.root, headRevision.asString(), filePath)
+                    // If no exception, the file existed in HEAD and is now considered deleted from the working tree.
+                    logger.info("File $filePath existed in HEAD (revision ${headRevision.asString()}) but not in working tree. Marking as deleted.")
+                    return "#FF0000" // Red for deleted
                 } catch (e: VcsException) {
-                    // File did not exist in HEAD, or other VcsException while trying to catFile.
-                    logger.warn("File $filePath not found in HEAD (or error resolving/catting): ${e.message}")
-                    return "" // Not a "deleted from HEAD" case, or error.
+                    // This VcsException likely means the file did not exist at this revision.
+                    logger.warn("File $filePath did not exist in HEAD (revision ${headRevision.asString()}) or other VcsException: ${e.message}")
+                    // Not considered a "deleted from HEAD" case, so no specific color.
+                    return ""
                 }
             }
 
@@ -184,15 +187,15 @@ class GitService(private val project: Project) {
                 // If yes, it's "deleted from working tree compared to actualComparisonBranch".
                 try {
                     val branchRevision = GitChangeUtils.resolveReference(project, repository.root, actualComparisonBranch)
-                     // Try to read the file content at this revision.
-                    GitChangeUtils.catFile(project, repository.root, branchRevision.asString(), filePath)
-                    // If catFile succeeds, file existed in the target branch and is now deleted from the working tree.
-                    logger.info("File $filePath is DELETED from working tree (exists in $actualComparisonBranch at revision ${branchRevision.asString()}).")
-                    return "#FF0000" // Red
+                    // Attempt to get the file's content at the branch revision.
+                    GitShowUtil.getShowOutput(project, repository.root, branchRevision.asString(), filePath)
+                    // If no exception, the file existed in the branch and is now considered deleted from the working tree.
+                    logger.info("File $filePath existed in branch $actualComparisonBranch (revision ${branchRevision.asString()}) but not in working tree. Marking as deleted.")
+                    return "#FF0000" // Red for deleted
                 } catch (e: VcsException) {
-                    // File did not exist in the target branch, or other VcsException.
-                    logger.warn("File $filePath not found in $actualComparisonBranch (or error resolving/catting): ${e.message}")
-                    return "" // Not a "deleted from target branch" case, or error.
+                    // This VcsException likely means the file did not exist at this revision in the branch.
+                    logger.warn("File $filePath did not exist in branch $actualComparisonBranch (revision ${branchRevision.asString()}) or other VcsException: ${e.message}")
+                    return ""
                 }
             }
 
