@@ -132,7 +132,7 @@ class ChangesTreePanel(
                         val currentBranch = targetBranchToCompare // Capture current target
                         logger.info("ChangesTreePanel: Debounced VFS refresh for '$currentBranch' (via changeListChanged) about to call refreshTreeForBranch.")
                         refreshTreeForBranch(currentBranch)
-                        logger.info("ChangesTreePanel: VFS-triggered refresh for '$currentBranch' (via changeListChanged) done. Resetting isVfsChangeRefreshPending.")
+                        logger.info("ChangesTreePanel: VFS-triggered refresh for '$currentBranch' (via changeListChanged) done. Resetting isVfsChangeRefreshPending in changeListChanged timer.")
                         isVfsChangeRefreshPending = false // Reset flag HERE
                     }
                 }
@@ -165,7 +165,7 @@ class ChangesTreePanel(
                             val currentBranch = targetBranchToCompare // Capture current target
                             logger.info("ChangesTreePanel: Debounced VFS refresh for '$currentBranch' (via changesAdded) about to call refreshTreeForBranch.")
                             refreshTreeForBranch(currentBranch)
-                            logger.info("ChangesTreePanel: VFS-triggered refresh for '$currentBranch' (via changesAdded) done. Resetting isVfsChangeRefreshPending.")
+                            logger.info("ChangesTreePanel: VFS-triggered refresh for '$currentBranch' (via changesAdded) done. Resetting isVfsChangeRefreshPending in changesAdded timer.")
                             isVfsChangeRefreshPending = false // Reset flag HERE
                         }
                     }
@@ -203,7 +203,7 @@ class ChangesTreePanel(
                             val currentBranch = targetBranchToCompare // Capture current target
                             logger.info("ChangesTreePanel: Debounced VFS refresh for '$currentBranch' (via changesRemoved) about to call refreshTreeForBranch.")
                             refreshTreeForBranch(currentBranch)
-                            logger.info("ChangesTreePanel: VFS-triggered refresh for '$currentBranch' (via changesRemoved) done. Resetting isVfsChangeRefreshPending.")
+                            logger.info("ChangesTreePanel: VFS-triggered refresh for '$currentBranch' (via changesRemoved) done. Resetting isVfsChangeRefreshPending in changesRemoved timer.")
                             isVfsChangeRefreshPending = false // Reset flag HERE
                         }
                     }
@@ -241,8 +241,9 @@ class ChangesTreePanel(
                         val currentBranch = targetBranchToCompare // Capture current target
                         logger.info("ChangesTreePanel: Debounced VFS refresh for '$currentBranch' (via unchangedFileStatusChanged) about to call refreshTreeForBranch.")
                         refreshTreeForBranch(currentBranch)
-                        logger.info("ChangesTreePanel: VFS-triggered refresh for '$currentBranch' (via unchangedFileStatusChanged) done. Resetting isVfsChangeRefreshPending.")
-                        isVfsChangeRefreshPending = false // Reset flag HERE
+                        // DO NOT RESET isVfsChangeRefreshPending here for unchangedFileStatusChanged
+                        logger.info("ChangesTreePanel: VFS-triggered refresh for '$currentBranch' (via unchangedFileStatusChanged) done. Flag is NOT reset in this timer for unchangedFileStatusChanged.")
+                        // isVfsChangeRefreshPending = false // Reset flag HERE - THIS LINE IS INTENTIONALLY REMOVED/COMMENTED
                     }
                 }
                 isRepeats = false

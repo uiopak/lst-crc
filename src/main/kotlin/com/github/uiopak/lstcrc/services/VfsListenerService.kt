@@ -1,7 +1,6 @@
 package com.github.uiopak.lstcrc.services
 
 import com.intellij.openapi.Disposable
-import com.intellij.openapi.Disposable
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.VirtualFileManager

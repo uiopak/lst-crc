@@ -84,18 +84,24 @@ class VfsChangeListener : BulkFileListener {
             var isRelevant = false
             val fileForRelevanceCheck = event.file
 
-            if (fileForRelevanceCheck != null && fileForRelevanceCheck.isValid) {
+            if (event is VFileCreateEvent) {
+                isRelevant = fileForRelevanceCheck != null && fileForRelevanceCheck.isValid && currentProject.basePath != null && fileForRelevanceCheck.path.startsWith(currentProject.basePath + "/")
+                logger.warn("DIAGNOSTIC: VFileCreateEvent for ${fileForRelevanceCheck?.path}, isRelevant(basePath check): $isRelevant")
+            } else if (fileForRelevanceCheck != null && fileForRelevanceCheck.isValid) {
                 val isInContent = ProjectFileIndex.getInstance(currentProject).isInContent(fileForRelevanceCheck)
-                logger.warn("DIAGNOSTIC: File ${fileForRelevanceCheck.path} isInContent for project ${currentProject.name}: $isInContent")
+                logger.warn("DIAGNOSTIC: File ${fileForRelevanceCheck.path} isInContent for project ${currentProject.name}: $isInContent (event type: ${event::class.java.simpleName})")
                 if (isInContent) {
                     isRelevant = true
                 }
             } else if (event is VFileDeleteEvent || (event is VFileMoveEvent && fileForRelevanceCheck == null) ) {
-                isRelevant = true
-                // No specific isInContent check possible here, relevance is assumed if project is found by path
+                // For VFileDeleteEvent or VFileMoveEvent where the file might be null (moved/deleted),
+                // we rely on the project being correctly guessed by path earlier.
+                // The isInContent check isn't directly applicable in the same way.
+                isRelevant = true // Assumed relevant if project context was found
+                logger.warn("DIAGNOSTIC: VFileDeleteEvent or VFileMoveEvent (file null), path ${event.path}, assumed isRelevant: $isRelevant")
             }
 
-            logger.warn("DIAGNOSTIC: Event for path ${event.path} (currentProject: ${currentProject.name}) - isRelevant: $isRelevant")
+            logger.warn("DIAGNOSTIC: Event for path ${event.path} (currentProject: ${currentProject.name}) - isRelevant: $isRelevant after all checks")
 
             if (isRelevant) {
                 if (currentProject != null) {
