@@ -14,26 +14,26 @@ class TabColorVfsListenerRegistrationActivity : ProjectActivity {
     private val logger = thisLogger()
 
     override suspend fun execute(project: Project) {
-        logger.info("Executing TabColorVfsListenerRegistrationActivity for project: ${project.name}")
+        logger.info("STARTUP: TabColorVfsListenerRegistrationActivity.execute for project: ${project.name}")
 
         // Register VFS listener
         val disposable = project as Disposable
+        logger.info("STARTUP: Connecting to message bus for VFS_CHANGES.")
         project.messageBus.connect(disposable).subscribe(VirtualFileManager.VFS_CHANGES, TabColorVfsListener(project))
-        logger.info("TabColorVfsListener registered for project: ${project.name}")
+        logger.info("STARTUP: TabColorVfsListener registered for project: ${project.name}")
 
-        // Schedule a refresh of editor tab colors to run after startup processes
+        logger.info("STARTUP: Scheduling invokeLater for initial tab color refresh.")
         ApplicationManager.getApplication().invokeLater {
-            // Consider if a small delay is needed, e.g. SwingUtilities.invokeLater or a short Timer
-            // For now, direct invokeLater.
             if (project.isDisposed) {
-                logger.info("Project ${project.name} is disposed, skipping startup tab color refresh.")
+                logger.info("STARTUP: Project ${project.name} is disposed (in invokeLater), skipping initial tab color refresh.")
                 return@invokeLater
             }
-            logger.info("Attempting to trigger startup refresh for editor tab colors in project: ${project.name}")
+            logger.info("STARTUP: invokeLater running for initial tab color refresh in project: ${project.name}")
             val diffDataService = project.service<ProjectActiveDiffDataService>()
-
-            diffDataService.refreshCurrentColorings() // Call the new public method
-            logger.info("Explicit startup refresh for editor tab colors triggered for project: ${project.name}")
+            logger.info("STARTUP: Calling diffDataService.refreshCurrentColorings().")
+            diffDataService.refreshCurrentColorings()
+            logger.info("STARTUP: Explicit initial refresh for editor tab colors triggered for project: ${project.name}")
         }
+        logger.info("STARTUP: TabColorVfsListenerRegistrationActivity.execute COMPLETED for project: ${project.name}")
     }
 }

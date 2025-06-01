@@ -21,75 +21,79 @@ class TabColorVfsListener(private val project: Project) : BulkFileListener {
     private val DEBOUNCE_DELAY_MS = 750 // milliseconds
 
     override fun after(events: List<VFileEvent>) {
-        if (project.isDisposed) return
-
-        val relevantEvent = events.any { event ->
-            // Only consider events within the project boundaries and of relevant types
-            val file = event.file
-            // Ensure project.basePath is not null before using it in startsWith
-            val projectBasePath = project.basePath
-            file != null && projectBasePath != null && file.path.startsWith(projectBasePath) &&
-            (event is VFileContentChangeEvent || event is VFileCreateEvent || event is VFileDeleteEvent || event is VFileMoveEvent || event is VFileCopyEvent)
+        if (project.isDisposed) {
+            // logger.info("VFS_LISTENER: Project is disposed in after(). Skipping.") // Optional: can be noisy
+            return
         }
 
-        if (relevantEvent) {
-            logger.info("Relevant VFS event detected. Debouncing refresh of active diff for tab colors.")
+        logger.info("VFS_LISTENER: after() called with ${events.size} VFS events.")
+        var eventDetails = events.joinToString { "Path: ${it.path}, Type: ${it.javaClass.simpleName}, IsDirectory: ${it.file?.isDirectory}" }
+        if (eventDetails.length > 500) eventDetails = eventDetails.substring(0, 500) + "..." // Truncate long event lists
+        logger.info("VFS_LISTENER: Event details (first 500 chars): $eventDetails")
+
+
+        val relevantEventFound = events.any { event ->
+            val file = event.file
+            val projectBasePath = project.basePath // Get basePath once
+            val isRelevantType = event is VFileContentChangeEvent || event is VFileCreateEvent || event is VFileDeleteEvent || event is VFileMoveEvent || event is VFileCopyEvent
+            val isInProject = file != null && projectBasePath != null && file.path.startsWith(projectBasePath)
+
+            if (isRelevantType && isInProject) {
+                logger.info("VFS_LISTENER: Found relevant event: Path: ${file?.path}, Type: ${event.javaClass.simpleName}")
+                return@any true
+            }
+            return@any false
+        }
+
+        if (relevantEventFound) {
+            logger.info("VFS_LISTENER: Relevant VFS event(s) detected. Debouncing refresh action (delay: ${DEBOUNCE_DELAY_MS}ms).")
             debounceTimer?.stop()
             debounceTimer = Timer(DEBOUNCE_DELAY_MS) {
+                logger.info("VFS_LISTENER: Debounce Timer Fired. Calling performRefresh().")
                 performRefresh()
             }
             debounceTimer?.isRepeats = false
             debounceTimer?.start()
+        } else {
+            logger.info("VFS_LISTENER: No relevant VFS events detected in this batch for project content.")
         }
     }
 
     private fun performRefresh() {
         if (project.isDisposed) {
-            logger.info("Project disposed, skipping debounced VFS refresh.")
+            logger.info("VFS_LISTENER_REFRESH: Project disposed, skipping debounced VFS refresh.")
             return
         }
-        logger.info("Debounce timer fired. Performing refresh of active diff for tab colors.")
+        logger.info("VFS_LISTENER_REFRESH: performRefresh() called.")
 
         val toolWindowStateService = project.service<ToolWindowStateService>()
         val activeBranchName = toolWindowStateService.getSelectedTabBranchName()
+        logger.info("VFS_LISTENER_REFRESH: Current active tool window branch: '$activeBranchName'.")
 
         if (activeBranchName != null) {
             val gitService = project.service<GitService>()
             val diffDataService = project.service<ProjectActiveDiffDataService>()
 
-            logger.info("VFS Change: Refreshing changes for active tool window branch: $activeBranchName")
+            logger.info("VFS_LISTENER_REFRESH: Fetching changes for branch '$activeBranchName'.")
             gitService.getChanges(activeBranchName).whenCompleteAsync { changes, throwable ->
                 if (project.isDisposed) {
-                    logger.info("Project disposed during async git operation, skipping update for VFS changes on $activeBranchName.")
+                    logger.info("VFS_LISTENER_REFRESH: Project disposed during getChanges for '$activeBranchName'. Aborting update.")
                     return@whenCompleteAsync
                 }
+                logger.info("VFS_LISTENER_REFRESH: getChanges for '$activeBranchName' completed. Error: ${throwable != null}, Changes count: ${changes?.size ?: "null"}")
 
                 if (throwable != null) {
-                    logger.error("VFS Change: Error getting changes for branch $activeBranchName: ${throwable.message}", throwable)
-                    // Optional: Explicitly clear for this branch if an error occurs and it's still active.
-                    // However, ProjectActiveDiffDataService.updateActiveDiff won't update if branch mismatches,
-                    // and ToolWindowStateService.setSelectedTab already clears on error.
-                    // So, doing nothing here on error (not calling updateActiveDiff) might be fine.
-                    // Or, to be safe and clear potentially stale data if this was the active branch:
-                    // val currentToolWindowBranch = project.service<ToolWindowStateService>().getSelectedTabBranchName()
-                    // if (currentToolWindowBranch == activeBranchName) {
-                    //    project.service<ProjectActiveDiffDataService>().clearActiveDiff()
-                    // }
+                    logger.error("VFS_LISTENER_REFRESH: Error getting changes for branch '$activeBranchName': ${throwable.message}", throwable)
                 } else if (changes != null) {
-                    logger.info("VFS Change: Successfully fetched ${changes.size} changes for $activeBranchName (branch active when VFS event was debounced). Forwarding to ProjectActiveDiffDataService.")
-                    // Let ProjectActiveDiffDataService decide if these changes are still relevant for the *current* UI state.
+                    logger.info("VFS_LISTENER_REFRESH: Successfully fetched ${changes.size} changes for '$activeBranchName'. Calling diffDataService.updateActiveDiff.")
                     diffDataService.updateActiveDiff(activeBranchName, changes)
                 } else {
-                    logger.warn("VFS Change: Fetched changes for $activeBranchName but the list was null.")
-                    // Similar to error case, could optionally clear if this branch is still active.
-                    // val currentToolWindowBranch = project.service<ToolWindowStateService>().getSelectedTabBranchName()
-                    // if (currentToolWindowBranch == activeBranchName) {
-                    //    project.service<ProjectActiveDiffDataService>().clearActiveDiff()
-                    // }
+                    logger.warn("VFS_LISTENER_REFRESH: Fetched changes for '$activeBranchName' but the list was null.")
                 }
             }
         } else {
-            logger.info("VFS Change: No active tool window branch selected. Not refreshing diff data.")
+            logger.info("VFS_LISTENER_REFRESH: No active tool window branch selected. Not refreshing diff data.")
         }
+        logger.info("VFS_LISTENER_REFRESH: performRefresh() COMPLETED.")
     }
 }

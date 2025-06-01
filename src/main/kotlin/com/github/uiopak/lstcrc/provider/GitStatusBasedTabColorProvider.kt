@@ -14,48 +14,43 @@ class GitStatusBasedTabColorProvider : EditorTabColorProvider {
     private val logger = thisLogger()
 
     override fun getEditorTabColor(project: Project, file: VirtualFile): Color? {
+        logger.info("PROVIDER_GET_COLOR: getEditorTabColor for project: '${project.name}', file: '${file.path}'")
+
         val settings = TabColorSettingsState.getInstance(project)
+        logger.info("PROVIDER_GET_COLOR: Tab coloring enabled: ${settings.isTabColoringEnabled}")
         if (!settings.isTabColoringEnabled) {
-            // logger.debug("Tab coloring disabled in settings for file ${file.path}")
             return null
         }
 
         val diffDataService = project.service<ProjectActiveDiffDataService>()
-
+        logger.info("PROVIDER_GET_COLOR: DiffDataService active branch: '${diffDataService.activeBranchName}', changes count: ${diffDataService.activeChanges.size}")
         if (diffDataService.activeBranchName == null) {
-            // logger.debug("No active branch data in ProjectActiveDiffDataService for file ${file.path}, no color.")
             return null // No active branch data for coloring
         }
 
-        // logger.debug("File: ${file.path}, Active branch for coloring: ${diffDataService.activeBranchName}, searching in ${diffDataService.activeChanges.size} changes.")
-
         val changeForFile = diffDataService.activeChanges.find { change ->
-            // Check if the file in the editor tab matches either the 'before' or 'after' state's virtual file
-            // ContentRevision.getFile() returns FilePath, then .getVirtualFile()
-            // It's safer to compare VirtualFile objects directly if available and valid.
             val afterVf = change.afterRevision?.file?.virtualFile
             val beforeVf = change.beforeRevision?.file?.virtualFile
-
             (afterVf != null && afterVf.isValid && afterVf == file) || (beforeVf != null && beforeVf.isValid && beforeVf == file)
         }
 
         if (changeForFile == null) {
-            // logger.debug("No specific change found for file ${file.path} in active diff for branch ${diffDataService.activeBranchName}.")
+            logger.info("PROVIDER_GET_COLOR: No specific change found for file '${file.path}' in active diff for branch '${diffDataService.activeBranchName}'.")
             return null
         }
 
-        // logger.info("Change found for file ${file.path}: type ${changeForFile.type}, in branch ${diffDataService.activeBranchName}")
-
+        logger.info("PROVIDER_GET_COLOR: Change found for file '${file.path}': type ${changeForFile.type}, in branch '${diffDataService.activeBranchName}'.")
         val colorHex = when (changeForFile.type) {
             Change.Type.NEW -> "#62B543"        // IntelliJ Green for Added
             Change.Type.MODIFICATION -> "#3684CB" // IntelliJ Blue for Modified
             Change.Type.MOVED -> "#3684CB"      // Treat MOVED as MODIFIED (Blue)
             Change.Type.DELETED -> "#B93437"    // IntelliJ Red for Deleted (Darker Red)
             else -> {
-                // logger.debug("Unhandled change type ${changeForFile.type} for file ${file.path}")
+                logger.info("PROVIDER_GET_COLOR: Unhandled change type ${changeForFile.type} for file ${file.path}")
                 null
             }
         }
+        logger.info("PROVIDER_GET_COLOR: Determined colorHex: '$colorHex' for file '${file.path}'.")
 
         return colorHex?.let { hex ->
             try {

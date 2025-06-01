@@ -69,11 +69,11 @@ class ToolWindowStateService(private val project: Project) : PersistentStateComp
     }
 
     fun setSelectedTab(index: Int) {
-        logger.info("ToolWindowStateService: setSelectedTab($index) called.")
+        logger.info("TOOL_WINDOW_STATE: setSelectedTab called with index: $index. Current state selectedTabIndex: ${myState.selectedTabIndex}")
         if (myState.selectedTabIndex != index) {
             myState.selectedTabIndex = index
             myState = myState.copy() // Ensure state is copied if it's a data class
-            logger.info("ToolWindowStateService: Selected tab index set to $index. New state: $myState")
+            logger.info("TOOL_WINDOW_STATE: Selected tab index set to $index. New state: $myState")
 
             // New logic to update ProjectActiveDiffDataService
             val diffDataService = project.service<ProjectActiveDiffDataService>()
@@ -82,28 +82,29 @@ class ToolWindowStateService(private val project: Project) : PersistentStateComp
             val selectedBranchName = getSelectedTabBranchName() // Uses the new index due to state update
 
             if (selectedBranchName != null) {
-                logger.info("Selected tool window tab changed to: $selectedBranchName. Fetching its changes for editor tab coloring.")
+                logger.info("TOOL_WINDOW_STATE: Tool window tab selection changed to: '$selectedBranchName'. Fetching its changes.")
                 gitService.getChanges(selectedBranchName).whenCompleteAsync { changes, throwable ->
+                    logger.info("TOOL_WINDOW_STATE: getChanges for '$selectedBranchName' completed. Error: ${throwable != null}, Changes count: ${changes?.size ?: "null"}")
                     if (throwable != null) {
-                        logger.error("Error getting changes for branch $selectedBranchName to update editor tab colors: ${throwable.message}", throwable)
+                        logger.error("TOOL_WINDOW_STATE: Error for $selectedBranchName: ${throwable.message}")
                         // Optionally clear diffDataService or mark error state
                         // For now, clearing if an error occurs for the selected branch
                         diffDataService.clearActiveDiff()
                     } else if (changes != null) {
-                        logger.info("Successfully fetched ${changes.size} changes for $selectedBranchName. Updating ProjectActiveDiffDataService.")
+                        logger.info("TOOL_WINDOW_STATE: Successfully fetched ${changes.size} changes for '$selectedBranchName'. Calling diffDataService.updateActiveDiff.")
                         diffDataService.updateActiveDiff(selectedBranchName, changes)
                     } else {
-                        logger.warn("Fetched changes for $selectedBranchName but the list was null. Clearing active diff for coloring.")
+                        logger.warn("TOOL_WINDOW_STATE: Fetched changes for '$selectedBranchName' but list was null. Calling diffDataService.clearActiveDiff.")
                         diffDataService.clearActiveDiff()
                     }
                 }
             } else {
-                logger.info("No branch tab selected in tool window (index: $index). Clearing active diff for editor tab coloring.")
+                logger.info("TOOL_WINDOW_STATE: No branch tab selected (index: $index). Calling diffDataService.clearActiveDiff.")
                 diffDataService.clearActiveDiff()
             }
 
         } else {
-            logger.info("ToolWindowStateService: Selected tab index $index is already set.")
+            logger.info("TOOL_WINDOW_STATE: Selected tab index $index is already set.")
             // Even if index is the same, if branch name could have changed (e.g. list reordered without index change),
             // we might still want to refresh. However, current logic is fine if index directly maps to a stable tab order.
             // Consider if a refresh is needed even if index is same, e.g. by comparing branch name.

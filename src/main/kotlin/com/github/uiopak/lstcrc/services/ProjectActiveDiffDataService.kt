@@ -22,46 +22,51 @@ class ProjectActiveDiffDataService(private val project: Project) : Disposable {
 
     fun updateActiveDiff(branchNameFromEvent: String, changesFromEvent: List<Change>) {
         val currentToolWindowBranch = project.service<ToolWindowStateService>().getSelectedTabBranchName()
+        logger.info("SERVICE_UPDATE_DIFF: updateActiveDiff called. Event branch: '$branchNameFromEvent' (${changesFromEvent.size} changes). Current tool window branch: '$currentToolWindowBranch'.")
 
-        // Only update and refresh if the incoming data is for the currently selected branch in the tool window.
-        // This prevents updates for a previously active branch (from a delayed async operation)
-        // from overriding the data for the truly current branch.
         if (branchNameFromEvent == currentToolWindowBranch) {
-            logger.info("Updating active diff for currently selected tool window branch: $branchNameFromEvent with ${changesFromEvent.size} changes.")
+            logger.info("SERVICE_UPDATE_DIFF: Event branch matches current tool window branch. Updating active data.")
             this.activeBranchName = branchNameFromEvent
             this.activeChanges = changesFromEvent
             triggerEditorTabColorRefresh()
         } else {
-            logger.info("Received diff update for branch '$branchNameFromEvent', but tool window is currently on '$currentToolWindowBranch'. Ignoring stale update.")
+            logger.info("SERVICE_UPDATE_DIFF: Event branch '$branchNameFromEvent' does NOT match current tool window branch '$currentToolWindowBranch'. Ignoring stale update.")
         }
     }
 
     fun clearActiveDiff() {
-        logger.info("Clearing active diff data.")
+        logger.info("SERVICE_CLEAR_DIFF: clearActiveDiff called. Clearing activeBranchName and activeChanges.")
         this.activeBranchName = null
         this.activeChanges = emptyList()
         triggerEditorTabColorRefresh()
     }
 
     private fun triggerEditorTabColorRefresh() {
+        logger.info("SERVICE_REFRESH_TRIGGER: triggerEditorTabColorRefresh() called.")
         ApplicationManager.getApplication().invokeLater {
+            logger.info("SERVICE_REFRESH_TRIGGER: invokeLater running. Project disposed: ${project.isDisposed}")
             if (project.isDisposed) {
-                logger.info("Project is disposed, skipping editor tab color refresh.")
+                logger.info("Project is disposed, skipping editor tab color refresh.") // This log was already here, good.
                 return@invokeLater
             }
             val fileEditorManager = FileEditorManager.getInstance(project)
-            fileEditorManager.openFiles.forEach { vf ->
+            val openFiles = fileEditorManager.openFiles
+            logger.info("SERVICE_REFRESH_TRIGGER: Found ${openFiles.size} open files to update.")
+            openFiles.forEach { vf ->
                 if (vf.isValid) {
-                    logger.debug("Requesting presentation update for file: ${vf.path}")
+                    logger.info("SERVICE_REFRESH_TRIGGER: Requesting presentation update for file: ${vf.path}")
                     fileEditorManager.updateFilePresentation(vf)
+                } else {
+                    logger.info("SERVICE_REFRESH_TRIGGER: File ${vf.path} is invalid, skipping update.")
                 }
             }
+            logger.info("SERVICE_REFRESH_TRIGGER: updateFilePresentation requests sent for all valid open files.")
         }
     }
 
     fun refreshCurrentColorings() {
-        logger.info("Explicitly refreshing current editor tab colorings for branch: $activeBranchName")
-        triggerEditorTabColorRefresh() // This is the existing private method
+        logger.info("SERVICE_REFRESH: refreshCurrentColorings() called. Active branch: $activeBranchName, Changes count: ${activeChanges.size}")
+        triggerEditorTabColorRefresh()
     }
 
     override fun dispose() {
