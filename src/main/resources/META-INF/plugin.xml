@@ -21,6 +21,7 @@
         <editorTabColorProvider implementation="com.github.uiopak.lstcrc.provider.GitStatusBasedTabColorProvider"/>
         <projectActivity implementation="com.github.uiopak.lstcrc.services.PluginStartupActivity"/>
         <projectActivity implementation="com.github.uiopak.lstcrc.listeners.TabColorVfsListenerRegistrationActivity"/> <!-- Added VFS listener registration -->
+        <postStartupActivity implementation="com.github.uiopak.lstcrc.listeners.MySimpleStartupActivity"/> <!-- ZZZZ_TEST_LOG -->
         <projectConfigurable
                 instance="com.github.uiopak.lstcrc.settings.TabColorSettingsConfigurable"
                 id="com.github.uiopak.lstcrc.settings.TabColorSettingsConfigurable"
