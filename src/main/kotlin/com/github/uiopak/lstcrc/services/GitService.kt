@@ -12,10 +12,11 @@ import git4idea.changes.GitChangeUtils
 // Removed GitShowUtil import
 import java.util.concurrent.CompletableFuture
 import com.intellij.openapi.vfs.LocalFileSystem
-import com.intellij.openapi.vfs.VfsUtilCore // Added for path relativization
-import git4idea.commands.Git // Added for Git.getInstance()
-import git4idea.commands.GitCommand // Added for GitCommand.SHOW
-import git4idea.commands.GitLineHandler // Added for GitLineHandler
+// Removed VfsUtilCore import, will use string manipulation
+import com.intellij.openapi.util.SystemInfo // Added for case sensitivity check
+import git4idea.commands.Git
+import git4idea.commands.GitCommand
+import git4idea.commands.GitLineHandler
 import git4idea.repo.GitRepository
 import git4idea.repo.GitRepositoryManager
 
@@ -149,14 +150,16 @@ class GitService(private val project: Project) {
                 // We need to check if it existed in HEAD.
                 try {
                     val headRevision = GitChangeUtils.resolveReference(project, repository.root, "HEAD")
-                    val relativeFilePath = VfsUtilCore.getRelativePath(
-                        java.io.File(filePath), // Convert String path to File for VfsUtilCore
-                        repository.root,
-                        '/'
-                    )
-                    if (relativeFilePath == null) {
-                        logger.warn("Could not determine relative path for $filePath against root ${repository.root.path}")
-                        return "" // Cannot proceed
+
+                    val absoluteFilePath = filePath.replace(java.io.File.separatorChar, '/')
+                    val normalizedRootPath = repository.root.path.replace(java.io.File.separatorChar, '/') + "/"
+
+                    val relativeFilePath: String?
+                    if (absoluteFilePath.startsWith(normalizedRootPath, ignoreCase = !SystemInfo.isFileSystemCaseSensitive)) {
+                        relativeFilePath = absoluteFilePath.substring(normalizedRootPath.length)
+                    } else {
+                        logger.warn("File path $absoluteFilePath does not seem to be under repository root $normalizedRootPath. Cannot determine relative path accurately for git show.")
+                        return "" // Cannot proceed without a relative path likely to work with git
                     }
 
                     val handler = GitLineHandler(project, repository.root, GitCommand.SHOW)
@@ -205,14 +208,16 @@ class GitService(private val project: Project) {
                 // If yes, it's "deleted from working tree compared to actualComparisonBranch".
                 try {
                     val branchRevision = GitChangeUtils.resolveReference(project, repository.root, actualComparisonBranch)
-                    val relativeFilePath = VfsUtilCore.getRelativePath(
-                        java.io.File(filePath),
-                        repository.root,
-                        '/'
-                    )
-                    if (relativeFilePath == null) {
-                        logger.warn("Could not determine relative path for $filePath against root ${repository.root.path} for branch $actualComparisonBranch")
-                        return ""
+
+                    val absoluteFilePath = filePath.replace(java.io.File.separatorChar, '/')
+                    val normalizedRootPath = repository.root.path.replace(java.io.File.separatorChar, '/') + "/"
+
+                    val relativeFilePath: String?
+                    if (absoluteFilePath.startsWith(normalizedRootPath, ignoreCase = !SystemInfo.isFileSystemCaseSensitive)) {
+                        relativeFilePath = absoluteFilePath.substring(normalizedRootPath.length)
+                    } else {
+                        logger.warn("File path $absoluteFilePath does not seem to be under repository root $normalizedRootPath for branch $actualComparisonBranch. Cannot determine relative path accurately for git show.")
+                        return "" // Cannot proceed
                     }
 
                     val handler = GitLineHandler(project, repository.root, GitCommand.SHOW)
