@@ -10,8 +10,8 @@ import com.intellij.util.xmlb.XmlSerializerUtil
 )
 data class TabColorSettingsState(
     var isTabColoringEnabled: Boolean = true,
-    var colorTarget: String = "BACKGROUND", // Options: BACKGROUND, BORDER_TOP, BORDER_RIGHT, BORDER_BOTTOM, BORDER_LEFT
-    var comparisonBranch: String = "HEAD"    // Options: HEAD, current_branch, specific_branch_name
+    var colorTarget: String = "BACKGROUND" // Options: BACKGROUND, BORDER_TOP, BORDER_RIGHT, BORDER_BOTTOM, BORDER_LEFT
+    // Removed: var comparisonBranch: String = "HEAD"
 ) : PersistentStateComponent<TabColorSettingsState> {
 
     override fun getState(): TabColorSettingsState {

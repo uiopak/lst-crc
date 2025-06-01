@@ -115,6 +115,13 @@ class GitService(private val project: Project) {
         return future
     }
 
+    @Deprecated(
+        message = "This method is no longer used by the primary editor tab coloring feature. " +
+                  "Editor tab colors are now determined based on the active diff data managed by ProjectActiveDiffDataService, " +
+                  "which is populated using getChanges().",
+        replaceWith = ReplaceWith(""), // No direct replacement, logic has shifted
+        level = DeprecationLevel.WARNING
+    )
     fun calculateEditorTabColor(filePath: String, comparisonBranch: String): String {
         logger.info("Calculating editor tab color for file: $filePath against branch: $comparisonBranch")
 

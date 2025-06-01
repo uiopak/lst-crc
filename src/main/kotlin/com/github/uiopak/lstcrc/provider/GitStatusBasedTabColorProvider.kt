@@ -1,49 +1,69 @@
 package com.github.uiopak.lstcrc.provider
 
-import com.intellij.openapi.diagnostic.thisLogger
-import com.intellij.openapi.fileEditor.impl.EditorTabColorProvider
-import com.intellij.openapi.project.Project
-import com.intellij.openapi.vfs.VirtualFile
-import com.github.uiopak.lstcrc.services.GitService
+import com.github.uiopak.lstcrc.services.ProjectActiveDiffDataService
 import com.github.uiopak.lstcrc.settings.TabColorSettingsState
+import com.intellij.openapi.components.service
+import com.intellij.openapi.diagnostic.thisLogger
+import com.intellij.openapi.fileEditor.impl.EditorTabColorProvider // Corrected import for EditorTabColorProvider
+import com.intellij.openapi.project.Project
+import com.intellij.openapi.vcs.changes.Change
+import com.intellij.openapi.vfs.VirtualFile
 import java.awt.Color
 
 class GitStatusBasedTabColorProvider : EditorTabColorProvider {
-
     private val logger = thisLogger()
 
-    // Renamed from getColor to getEditorTabColor to match the interface (based on error)
     override fun getEditorTabColor(project: Project, file: VirtualFile): Color? {
         val settings = TabColorSettingsState.getInstance(project)
         if (!settings.isTabColoringEnabled) {
-            logger.info("Tab coloring is disabled in settings. Skipping for file: ${file.name}")
+            // logger.debug("Tab coloring disabled in settings for file ${file.path}")
             return null
         }
 
-        // For now, colorTarget setting is noted but only background is affected by this provider.
-        // If settings.colorTarget != "BACKGROUND", we might return null or log.
-        // For this iteration, we proceed regardless of colorTarget, assuming background.
-        logger.info("GitStatusBasedTabColorProvider.getEditorTabColor for ${file.path}, Target: ${settings.colorTarget}, Branch: ${settings.comparisonBranch}")
+        val diffDataService = project.service<ProjectActiveDiffDataService>()
 
+        if (diffDataService.activeBranchName == null) {
+            // logger.debug("No active branch data in ProjectActiveDiffDataService for file ${file.path}, no color.")
+            return null // No active branch data for coloring
+        }
 
-        val gitService = project.getService(GitService::class.java)
-        if (gitService == null) {
-            logger.warn("GitService not found for project ${project.name}. Cannot determine tab color.")
+        // logger.debug("File: ${file.path}, Active branch for coloring: ${diffDataService.activeBranchName}, searching in ${diffDataService.activeChanges.size} changes.")
+
+        val changeForFile = diffDataService.activeChanges.find { change ->
+            // Check if the file in the editor tab matches either the 'before' or 'after' state's virtual file
+            // ContentRevision.getFile() returns FilePath, then .getVirtualFile()
+            // It's safer to compare VirtualFile objects directly if available and valid.
+            val afterVf = change.afterRevision?.file?.virtualFile
+            val beforeVf = change.beforeRevision?.file?.virtualFile
+
+            (afterVf != null && afterVf.isValid && afterVf == file) || (beforeVf != null && beforeVf.isValid && beforeVf == file)
+        }
+
+        if (changeForFile == null) {
+            // logger.debug("No specific change found for file ${file.path} in active diff for branch ${diffDataService.activeBranchName}.")
             return null
         }
 
-        val colorHex = gitService.calculateEditorTabColor(file.path, settings.comparisonBranch)
-        logger.info("Calculated color hex for ${file.name} (vs ${settings.comparisonBranch}): '$colorHex'")
+        // logger.info("Change found for file ${file.path}: type ${changeForFile.type}, in branch ${diffDataService.activeBranchName}")
 
-        return if (colorHex.isNotBlank()) {
-            try {
-                Color.decode(colorHex)
-            } catch (e: NumberFormatException) {
-                logger.warn("Invalid hex color string: $colorHex for file ${file.name}", e)
+        val colorHex = when (changeForFile.type) {
+            Change.Type.NEW -> "#62B543"        // IntelliJ Green for Added
+            Change.Type.MODIFICATION -> "#3684CB" // IntelliJ Blue for Modified
+            Change.Type.MOVED -> "#3684CB"      // Treat MOVED as MODIFIED (Blue)
+            Change.Type.DELETED -> "#B93437"    // IntelliJ Red for Deleted (Darker Red)
+            else -> {
+                // logger.debug("Unhandled change type ${changeForFile.type} for file ${file.path}")
                 null
             }
-        } else {
-            null // No specific color, use default
+        }
+
+        return colorHex?.let { hex ->
+            try {
+                Color.decode(hex)
+            } catch (e: NumberFormatException) {
+                logger.warn("Failed to decode color hex '$hex' for file ${file.path}", e)
+                null
+            }
         }
     }
 }

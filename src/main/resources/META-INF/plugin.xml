@@ -14,11 +14,13 @@
         <projectService serviceImplementation="com.github.uiopak.lstcrc.services.GitService"/>
         <projectService serviceImplementation="com.github.uiopak.lstcrc.services.ToolWindowStateService"/>
         <projectService serviceImplementation="com.github.uiopak.lstcrc.settings.TabColorSettingsState"/> <!-- Added settings state service -->
+        <projectService serviceImplementation="com.github.uiopak.lstcrc.services.ProjectActiveDiffDataService"/> <!-- Added new diff data service -->
         <!-- <projectService serviceImplementation="com.github.uiopak.lstcrc.services.VfsListenerService"/> --> <!-- This line is now removed or commented out -->
         <!-- <vfs.listener class="com.github.uiopak.lstcrc.services.VfsChangeListener"/> --> <!-- This line is now commented out -->
 
         <editorTabColorProvider implementation="com.github.uiopak.lstcrc.provider.GitStatusBasedTabColorProvider"/>
-        <projectActivity implementation="com.github.uiopak.lstcrc.services.PluginStartupActivity"/> <!-- Corrected registration -->
+        <projectActivity implementation="com.github.uiopak.lstcrc.services.PluginStartupActivity"/>
+        <projectActivity implementation="com.github.uiopak.lstcrc.listeners.TabColorVfsListenerRegistrationActivity"/> <!-- Added VFS listener registration -->
         <projectConfigurable
                 instance="com.github.uiopak.lstcrc.settings.TabColorSettingsConfigurable"
                 id="com.github.uiopak.lstcrc.settings.TabColorSettingsConfigurable"
