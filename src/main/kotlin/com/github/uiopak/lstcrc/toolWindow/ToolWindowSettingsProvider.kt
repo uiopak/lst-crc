@@ -23,6 +23,14 @@ class ToolWindowSettingsProvider(private val propertiesComponent: PropertiesComp
         private const val DELAY_OPTION_SYSTEM_DEFAULT = -1 // Special value to signify using system/default logic
         // Fallback if system is 0 and user hasn't set one (UIManager.getInt("Tree.doubleClickTimeout") might be 0)
         // Note: DEFAULT_USER_DELAY_MS is used by ChangesTreePanel internally if system default is inadequate.
+
+        private const val TAB_COLORING_ENABLED_KEY = "com.github.uiopak.lstcrc.app.tabColoringEnabled"
+        private const val TAB_COLORING_STYLE_KEY = "com.github.uiopak.lstcrc.app.tabColoringStyle"
+        private const val TAB_COLORING_COLOR_KEY = "com.github.uiopak.lstcrc.app.tabColoringColor"
+
+        private const val DEFAULT_TAB_COLORING_ENABLED = true
+        private const val DEFAULT_TAB_COLORING_STYLE = "BACKGROUND"
+        private const val DEFAULT_TAB_COLORING_COLOR = "Default"
     }
 
     private fun getSingleClickAction(): String =
@@ -40,6 +48,24 @@ class ToolWindowSettingsProvider(private val propertiesComponent: PropertiesComp
     private fun setUserDoubleClickDelayMs(delay: Int) {
         propertiesComponent.setValue(APP_USER_DOUBLE_CLICK_DELAY_KEY, delay, DELAY_OPTION_SYSTEM_DEFAULT)
     }
+
+    private fun isTabColoringEnabled(): Boolean =
+        propertiesComponent.getBoolean(TAB_COLORING_ENABLED_KEY, DEFAULT_TAB_COLORING_ENABLED)
+
+    private fun setTabColoringEnabled(enabled: Boolean) =
+        propertiesComponent.setValue(TAB_COLORING_ENABLED_KEY, enabled, DEFAULT_TAB_COLORING_ENABLED)
+
+    private fun getTabColoringStyle(): String =
+        propertiesComponent.getValue(TAB_COLORING_STYLE_KEY, DEFAULT_TAB_COLORING_STYLE)
+
+    private fun setTabColoringStyle(style: String) =
+        propertiesComponent.setValue(TAB_COLORING_STYLE_KEY, style, DEFAULT_TAB_COLORING_STYLE)
+
+    private fun getTabColoringColor(): String =
+        propertiesComponent.getValue(TAB_COLORING_COLOR_KEY, DEFAULT_TAB_COLORING_COLOR)
+
+    private fun setTabColoringColor(color: String) =
+        propertiesComponent.setValue(TAB_COLORING_COLOR_KEY, color, DEFAULT_TAB_COLORING_COLOR)
 
     fun createToolWindowSettingsGroup(): ActionGroup {
         val rootSettingsGroup = DefaultActionGroup("Git Changes View Options", true)
@@ -115,6 +141,43 @@ class ToolWindowSettingsProvider(private val propertiesComponent: PropertiesComp
             })
         }
         rootSettingsGroup.add(delaySpeedGroup)
+
+        rootSettingsGroup.addSeparator()
+
+        // Tab Coloring Settings
+        rootSettingsGroup.add(object : ToggleAction("Enable Tab Coloring") {
+            override fun isSelected(e: AnActionEvent): Boolean = isTabColoringEnabled()
+            override fun setSelected(e: AnActionEvent, state: Boolean) {
+                setTabColoringEnabled(state)
+            }
+            override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
+        })
+
+        val coloringStyleGroup = DefaultActionGroup("Tab Coloring Style", true)
+        val styles = listOf("BACKGROUND", "BORDER_TOP", "BORDER_LEFT", "BORDER_RIGHT", "BORDER_BOTTOM")
+        styles.forEach { style ->
+            coloringStyleGroup.add(object : ToggleAction(style.replace("_", " ").split(' ').joinToString(" ") { it.lowercase().replaceFirstChar(Char::titlecase) }) {
+                override fun isSelected(e: AnActionEvent): Boolean = getTabColoringStyle() == style
+                override fun setSelected(e: AnActionEvent, state: Boolean) {
+                    if (state) setTabColoringStyle(style)
+                }
+                override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
+            })
+        }
+        rootSettingsGroup.add(coloringStyleGroup)
+
+        val coloringColorGroup = DefaultActionGroup("Tab Color", true)
+        val colors = listOf("Default", "Red", "Green", "Blue", "Yellow") // Predefined list of colors
+        colors.forEach { color ->
+            coloringColorGroup.add(object : ToggleAction(color) {
+                override fun isSelected(e: AnActionEvent): Boolean = getTabColoringColor() == color
+                override fun setSelected(e: AnActionEvent, state: Boolean) {
+                    if (state) setTabColoringColor(color)
+                }
+                override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
+            })
+        }
+        rootSettingsGroup.add(coloringColorGroup)
 
         return rootSettingsGroup
     }
