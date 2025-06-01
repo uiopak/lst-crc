@@ -1,11 +1,14 @@
 package com.github.uiopak.lstcrc.services
 
 import com.intellij.openapi.Disposable
+import com.intellij.openapi.Disposable
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.VirtualFileManager
 import com.intellij.openapi.vfs.newvfs.BulkFileListener
+import com.intellij.openapi.components.Service // Added import
 
+@Service(Service.Level.PROJECT) // Added annotation
 class VfsListenerService(private val project: Project) : Disposable {
 
     private val logger = thisLogger()
