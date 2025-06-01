@@ -141,19 +141,18 @@ class GitService(private val project: Project) {
                 // This case is tricky without doing a full diff to see if it *was* in HEAD.
                 // For now, let's assume it would be covered by a diff if comparisonBranch was specific.
                 // If we are comparing to HEAD, and file is null, it is deleted from WT.
-                // We need to check if it existed in HEAD. A simple way:
+                // We need to check if it existed in HEAD.
                 try {
-                    val contentInHead = GitChangeUtils.resolveReference(repository, "HEAD", filePath)
-                    if (contentInHead != null) {
-                         logger.info("File $filePath is DELETED from working tree (was in HEAD).")
-                         return "#FF0000" // Red
-                    } else {
-                         logger.info("File $filePath not in working tree and not in HEAD (likely path error or never existed).")
-                         return "" // Not in HEAD, not in WT.
-                    }
+                    val headRevision = GitChangeUtils.resolveReference(project, repository.root, "HEAD")
+                    // Try to read the file content at this revision. If it throws VcsException, file didn't exist.
+                    GitChangeUtils.catFile(project, repository.root, headRevision.asString(), filePath)
+                    // If catFile succeeds, the file existed in HEAD and is now deleted from the working tree.
+                    logger.info("File $filePath is DELETED from working tree (was in HEAD at revision ${headRevision.asString()}).")
+                    return "#FF0000" // Red
                 } catch (e: VcsException) {
-                    logger.warn("Could not resolve $filePath in HEAD: ${e.message}")
-                    return "" // Error condition
+                    // File did not exist in HEAD, or other VcsException while trying to catFile.
+                    logger.warn("File $filePath not found in HEAD (or error resolving/catting): ${e.message}")
+                    return "" // Not a "deleted from HEAD" case, or error.
                 }
             }
 
@@ -184,17 +183,16 @@ class GitService(private val project: Project) {
                 // File is not in the working tree. Is it in actualComparisonBranch?
                 // If yes, it's "deleted from working tree compared to actualComparisonBranch".
                 try {
-                    val contentInTargetBranch = GitChangeUtils.resolveReference(repository, actualComparisonBranch, filePath)
-                    if (contentInTargetBranch != null) {
-                        logger.info("File $filePath is DELETED from working tree (exists in $actualComparisonBranch).")
-                        return "#FF0000" // Red
-                    } else {
-                        logger.info("File $filePath not in working tree and not in $actualComparisonBranch.")
-                        return "" // Not in target branch, not in WT.
-                    }
+                    val branchRevision = GitChangeUtils.resolveReference(project, repository.root, actualComparisonBranch)
+                     // Try to read the file content at this revision.
+                    GitChangeUtils.catFile(project, repository.root, branchRevision.asString(), filePath)
+                    // If catFile succeeds, file existed in the target branch and is now deleted from the working tree.
+                    logger.info("File $filePath is DELETED from working tree (exists in $actualComparisonBranch at revision ${branchRevision.asString()}).")
+                    return "#FF0000" // Red
                 } catch (e: VcsException) {
-                    logger.warn("Could not resolve $filePath in $actualComparisonBranch: ${e.message}")
-                    return "" // Error condition
+                    // File did not exist in the target branch, or other VcsException.
+                    logger.warn("File $filePath not found in $actualComparisonBranch (or error resolving/catting): ${e.message}")
+                    return "" // Not a "deleted from target branch" case, or error.
                 }
             }
 
