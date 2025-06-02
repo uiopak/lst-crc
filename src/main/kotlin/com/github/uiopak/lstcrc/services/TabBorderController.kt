@@ -11,14 +11,18 @@ import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.service
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.fileEditor.FileEditorManager // Keep for listener signature
+import com.github.uiopak.lstcrc.services.ProjectActiveDiffDataService // Added missing import
 import com.intellij.openapi.fileEditor.FileEditorManagerEvent
 import com.intellij.openapi.fileEditor.FileEditorManagerListener
-// import com.intellij.openapi.fileEditor.ex.FileEditorManagerEx // Not directly used here, EditorWindowHolder is preferred
+import com.intellij.openapi.fileEditor.ex.FileEditorManagerEx
+import com.intellij.openapi.fileEditor.impl.EditorWindow // Verify this is the correct EditorWindow type
+// import com.intellij.openapi.fileEditor.impl.EditorTabbedContainer // Not directly used, access via EditorWindow.tabbedPane
+import com.intellij.ui.tabs.TabInfo // For TabInfo type
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vcs.changes.Change
 import com.intellij.openapi.vfs.VirtualFile
-import com.intellij.openapi.wm.impl.EditorWindowHolder // For accessing editor windows and tabs
-import com.intellij.ui.tabs.JBTabs // For accessing tabbed pane
+// import com.intellij.openapi.wm.impl.EditorWindowHolder // Removed
+// import com.intellij.ui.tabs.JBTabs // Removed
 import java.awt.Color
 import javax.swing.BorderFactory
 import javax.swing.JComponent
@@ -62,24 +66,17 @@ class TabBorderController(private val project: Project) : FileEditorManagerListe
             val settings = TabColorSettingsState.getInstance(project)
             if (!settings.isTabColoringEnabled) {
                 thisLogger().debug("Tab coloring disabled, clearing borders from all tabs.")
-                clearAllBorders() // Call a method to clear borders if feature is off
+                clearAllBorders()
                 return@invokeLater
             }
 
+            val fileEditorManager = FileEditorManagerEx.getInstanceEx(project)
             val diffDataService = project.service<ProjectActiveDiffDataService>()
             val activeChanges = diffDataService.activeChanges
-            val activeBranchName = diffDataService.activeBranchName // Can be null
+            val activeBranchName = diffDataService.activeBranchName
             thisLogger().debug("Active branch: $activeBranchName, ${activeChanges.size} active changes.")
-
-            // Using EditorWindowHolder to get windows, then JBTabs to get tabs.
-            // Note: EditorWindowHolder might not be available or suitable for all IDE versions or UI modes (e.g. new UI vs old UI).
-            // This approach is based on common patterns but might need adjustment for broader compatibility.
-            val windows = try {
-                 EditorWindowHolder.getInstance(project).windows
-            } catch (e: Exception) {
-                thisLogger().warn("Could not get editor windows via EditorWindowHolder: ${e.message}", e)
-                return@invokeLater
-            }
+            
+            val windows: Array<EditorWindow> = fileEditorManager.windows.filterIsInstance<EditorWindow>().toTypedArray()
 
             if (windows.isEmpty()) {
                 thisLogger().debug("No editor windows found.")
@@ -87,21 +84,29 @@ class TabBorderController(private val project: Project) : FileEditorManagerListe
             }
 
             for (win in windows) {
-                val tabs = JBTabs.findTabbedPane(win.component) as? JBTabs ?: continue
-                thisLogger().debug("Processing window with ${tabs.tabCount} tabs.")
-                for (tabInfo in tabs.allTabs) {
-                    val file = tabInfo.getObject() as? VirtualFile
+                val tabbedPane = win.tabbedPane ?: continue
+                thisLogger().debug("Processing window ${win.displayName} with ${tabbedPane.tabCount} tabs.")
+                for (i in 0 until tabbedPane.tabCount) {
+                    val tabInfo = tabbedPane.getTabAt(i) ?: continue 
+                    val tabComponent = tabbedPane.getTabComponentAt(i) as? JComponent ?: continue
+                    
+                    val file = tabInfo.file 
                     if (file == null) {
                         thisLogger().trace("TabInfo ${tabInfo.text} has no VirtualFile, clearing its border.")
-                        clearBorderForTab(tabInfo.component)
+                        clearBorderForTab(tabComponent)
                         continue
                     }
                     thisLogger().trace("Processing tab for file: ${file.path}")
 
                     if (settings.borderSide.isNullOrBlank() || settings.borderSide == "NONE") {
                         thisLogger().trace("Border side is NONE for ${file.path}, clearing border.")
-                        clearBorderForTab(tabInfo.component)
+                        clearBorderForTab(tabComponent)
                         continue
+                    }
+                   
+                    if (activeBranchName == null) {
+                        thisLogger().trace("No active branch selected in plugin context, leaving border as is for ${file.path}.")
+                        continue 
                     }
 
                     val changeForFile = activeChanges.find { change ->
@@ -109,23 +114,15 @@ class TabBorderController(private val project: Project) : FileEditorManagerListe
                         val beforeVf = change.beforeRevision?.file?.virtualFile
                         (afterVf != null && afterVf.isValid && afterVf == file) || (beforeVf != null && beforeVf.isValid && beforeVf == file)
                     }
-                    
-                    if (activeBranchName == null) { // No branch selected in our custom view
-                         thisLogger().trace("No active branch selected in plugin, leaving border as is for ${file.path}.")
-                         // We intentionally do not clear borders here to avoid flickering when the tool window is not active.
-                         // Borders will be cleared/set when a branch becomes active or settings change.
-                         continue 
-                    }
 
-                    if (changeForFile == null) { // Branch is active, but file not in changes
+                    if (changeForFile == null) { 
                         thisLogger().trace("No active change for ${file.path} in branch $activeBranchName, clearing border.")
-                        clearBorderForTab(tabInfo.component)
+                        clearBorderForTab(tabComponent)
                         continue
                     }
-                    
-                    val statusType = changeForFile.type // changeForFile is non-null here due to above continue
+                   
+                    val statusType = changeForFile.type 
                     var finalColorHex: String? = null
-
                     if (settings.useDefaultBorderColor) {
                         finalColorHex = when (statusType) {
                             Change.Type.NEW -> settings.newFileBorderColor ?: TabColorSettingsConfigurable.DEFAULT_BORDER_COLOR_NEW_HEX
@@ -142,7 +139,7 @@ class TabBorderController(private val project: Project) : FileEditorManagerListe
 
                     if (finalColorHex.isNullOrBlank()) {
                         thisLogger().trace("Final border color hex is blank for ${file.path}, clearing border.")
-                        clearBorderForTab(tabInfo.component)
+                        clearBorderForTab(tabComponent)
                         continue
                     }
 
@@ -150,31 +147,29 @@ class TabBorderController(private val project: Project) : FileEditorManagerListe
                         Color.decode(finalColorHex)
                     } catch (e: NumberFormatException) {
                         thisLogger().warn("Failed to decode border color hex '$finalColorHex' for file ${file.path}", e)
-                        clearBorderForTab(tabInfo.component)
+                        clearBorderForTab(tabComponent)
                         continue
                     }
 
                     val borderThickness = 2 
-                    thisLogger().debug("Applying border to ${file.path}: Side: ${settings.borderSide}, Color: $borderColor, Thickness: $borderThickness")
-                    applyBorderToTabComponent(tabInfo.component, borderColor, settings.borderSide!!, borderThickness)
+                    thisLogger().debug("Applying border to ${file.path}: Side: ${settings.borderSide!!}, Color: $borderColor, Thickness: $borderThickness")
+                    applyBorderToTabComponent(tabComponent, borderColor, settings.borderSide!!, borderThickness)
                 }
             }
             thisLogger().debug("Finished updateAllTabBorders.")
         }
     }
-
+    
     private fun clearAllBorders() {
         invokeLater {
-            val windows = try {
-                 EditorWindowHolder.getInstance(project).windows
-            } catch (e: Exception) {
-                thisLogger().warn("Could not get editor windows via EditorWindowHolder for clearAllBorders: ${e.message}", e)
-                return@invokeLater
-            }
+            val fileEditorManager = FileEditorManagerEx.getInstanceEx(project)
+            val windows: Array<EditorWindow> = fileEditorManager.windows.filterIsInstance<EditorWindow>().toTypedArray()
+
             for (win in windows) {
-                val tabs = JBTabs.findTabbedPane(win.component) as? JBTabs ?: continue
-                for (tabInfo in tabs.allTabs) {
-                    clearBorderForTab(tabInfo.component)
+                val tabbedPane = win.tabbedPane ?: continue
+                for (i in 0 until tabbedPane.tabCount) {
+                    val tabComponent = tabbedPane.getTabComponentAt(i) as? JComponent ?: continue
+                    clearBorderForTab(tabComponent)
                 }
             }
             thisLogger().info("Cleared borders from all tabs as feature is disabled.")
@@ -191,7 +186,7 @@ class TabBorderController(private val project: Project) : FileEditorManagerListe
             "BOTTOM" -> BorderFactory.createMatteBorder(0, 0, thickness, 0, color)
             "LEFT" -> BorderFactory.createMatteBorder(0, thickness, 0, 0, color)
             "RIGHT" -> BorderFactory.createMatteBorder(0, 0, 0, thickness, color)
-            "ALL" -> BorderFactory.createMatteBorder(thickness, thickness, thickness, thickness, color)
+            "ALL" -> BorderFactory.createMatteBorder(thickness, thickness, thickness, thickness, color) 
             else -> {
                 thisLogger().warn("Invalid border side: $side, clearing border for component ${tabComponent.name}")
                 null 
