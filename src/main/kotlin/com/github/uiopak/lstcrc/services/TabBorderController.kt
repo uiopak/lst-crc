@@ -90,7 +90,7 @@ class TabBorderController(private val project: Project) : FileEditorManagerListe
                 for (tabInfo in jbTabs.tabs) { // Iterate List<TabInfo>
                     val tabComponent = jbTabs.getTabLabel(tabInfo) as? JComponent ?: continue // Get component for this TabInfo
                     
-                    val file = tabInfo.getObject() as? VirtualFile // Get VirtualFile from TabInfo's object
+                    val file = tabInfo.`object` as? VirtualFile // Use backticks for object property
                     
                     if (file == null) {
                         thisLogger().trace("TabInfo ${tabInfo.text} has no VirtualFile, clearing its border.")
