@@ -53,10 +53,10 @@ class GitStatusBasedTabColorProvider : EditorTabColorProvider {
         }
 
         // Default background color logic (based on Git status)
-        logger.trace("PROVIDER: Using default background color based on Git status.")
+        logger.trace("PROVIDER: Using Git status to determine background color.")
         val diffDataService = project.service<ProjectActiveDiffDataService>()
         if (diffDataService.activeBranchName == null) {
-            logger.trace("PROVIDER: No active branch data available in DiffDataService.")
+            logger.trace("PROVIDER: No active branch data available in DiffDataService for file '${file.path}'.")
             return null // No active branch data for coloring
         }
 
@@ -67,20 +67,37 @@ class GitStatusBasedTabColorProvider : EditorTabColorProvider {
         }
 
         if (changeForFile == null) {
-            logger.trace("PROVIDER: No specific Git change found for file '${file.path}' in branch '${diffDataService.activeBranchName}'.")
+            logger.trace("PROVIDER: No specific Git change found for file '${file.path}' in branch '${diffDataService.activeBranchName}'. No color applied.")
             return null
         }
 
-        logger.trace("PROVIDER: Git change found for file '${file.path}': type ${changeForFile.type}.")
-        val colorHex = defaultColorMappings[changeForFile.type]
+        val statusType = changeForFile.type
+        logger.trace("PROVIDER: Git change found for file '${file.path}': type $statusType.")
 
-        if (colorHex == null) {
-            logger.trace("PROVIDER: No default color mapping for change type ${changeForFile.type} for file ${file.path}")
-            return null
+        val userDefinedColorHex = when (statusType) {
+            Change.Type.NEW -> settings.newFileColor
+            Change.Type.MODIFICATION -> settings.modifiedFileColor
+            Change.Type.DELETED -> settings.deletedFileColor
+            Change.Type.MOVED -> settings.movedFileColor
+            else -> null // Should not happen for known types in defaultColorMappings
         }
 
-        logger.trace("PROVIDER: Determined default background colorHex: '$colorHex' for file '${file.path}'.")
-        return parseHexColor(colorHex, file.path)
+        val colorToApplyHex: String?
+        if (!userDefinedColorHex.isNullOrBlank()) {
+            logger.trace("PROVIDER: Using user-defined color for status $statusType: '$userDefinedColorHex' for file '${file.path}'.")
+            colorToApplyHex = userDefinedColorHex
+        } else {
+            val factoryDefaultHex = defaultColorMappings[statusType]
+            if (factoryDefaultHex != null) {
+                logger.trace("PROVIDER: User-defined color for status $statusType is not set or blank. Using factory default: '$factoryDefaultHex' for file '${file.path}'.")
+                colorToApplyHex = factoryDefaultHex
+            } else {
+                logger.trace("PROVIDER: No user-defined color and no factory default mapping for status $statusType for file '${file.path}'. No color applied.")
+                colorToApplyHex = null
+            }
+        }
+        
+        return parseHexColor(colorToApplyHex, file.path)
 
         // Border Color Logic:
         // As per research, applying borders directly via EditorTabColorProvider is not straightforward.
