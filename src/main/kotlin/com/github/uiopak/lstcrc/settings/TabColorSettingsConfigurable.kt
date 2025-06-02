@@ -288,9 +288,9 @@ class TabColorSettingsConfigurable(private val project: Project) : Configurable 
             try {
                 // Ensure UI thread for specific manager calls if necessary, though updateFilePresentation is usually safe.
                 // Forcing a more specific repaint if issues persist:
-                // manager.repaintEditor(virtualFile) // This is not a public API, use with caution or alternatives.
-                // manager.refreshIcons() // Might be relevant if icons are part of the presentation.
-                manager.updateFilePresentation(virtualFile)
+                // fileEditorManager.repaintEditor(virtualFile) // This is not a public API, use with caution or alternatives.
+                // fileEditorManager.refreshIcons() // Might be relevant if icons are part of the presentation.
+                fileEditorManager.updateFilePresentation(virtualFile)
             } catch (e: Exception) {
                 logger.error("CONFIG: Exception during updateFilePresentation for ${virtualFile.path}", e)
             }
