@@ -2,12 +2,15 @@ package com.github.uiopak.lstcrc.settings
 
 import com.intellij.openapi.options.Configurable
 import com.intellij.openapi.project.Project
+import com.intellij.ui.ColorPanel
 import com.intellij.ui.components.JBCheckBox
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBRadioButton
-import com.intellij.ui.components.JBTextField
+// import com.intellij.ui.components.JBTextField // Not used anymore
 import com.intellij.util.ui.FormBuilder
+import java.awt.Color
 import javax.swing.ButtonGroup
+import javax.swing.JComboBox
 import javax.swing.JComponent
 import javax.swing.JPanel
 
@@ -15,19 +18,26 @@ class TabColorSettingsConfigurable(private val project: Project) : Configurable 
 
     private val settingsState: TabColorSettingsState = TabColorSettingsState.getInstance(project)
 
+    // Existing components
     private val enableCheckBox = JBCheckBox("Enable editor tab coloring", settingsState.isTabColoringEnabled)
 
-    private val colorTargetLabel = JBLabel("Color target:")
-    private val backgroundRadioButton = JBRadioButton("Background", settingsState.colorTarget == "BACKGROUND")
-    private val borderTopRadioButton = JBRadioButton("Border Top", settingsState.colorTarget == "BORDER_TOP")
-    // Add other border options if pursuing them, for now focusing on background
-    // For simplicity, only BACKGROUND is fully wired up initially. Others are UI placeholders.
+    // Background color components
+    private val useDefaultBackgroundColorCheckBox = JBCheckBox("Use default background color based on Git status", settingsState.useDefaultBackgroundColor)
+    private val tabBackgroundColorPicker = ColorPanel()
+    private val tabBackgroundColorLabel = JBLabel("Custom background color:")
 
-    // Removed UI components for comparisonBranch
-    // private val comparisonBranchLabel = JBLabel("Compare working tree against:")
-    // private val headRadioButton = JBRadioButton("HEAD of current branch", ...)
-    // private val specificBranchRadioButton = JBRadioButton("Specific branch:", ...)
-    // private val specificBranchTextField = JBTextField(...)
+    // Border color and side components
+    private val borderSettingsLabel = JBLabel("Border settings:")
+    private val borderSideComboBox = JComboBox(arrayOf("NONE", "TOP", "RIGHT", "BOTTOM", "LEFT"))
+    private val useDefaultBorderColorCheckBox = JBCheckBox("Use default border color based on Git status", settingsState.useDefaultBorderColor)
+    private val borderColorPicker = ColorPanel()
+    private val borderColorLabel = JBLabel("Custom border color:")
+
+    // Old colorTarget components (backgroundRadioButton might be redundant, borderTopRadioButton is commented out)
+    private val colorTargetLabel = JBLabel("Color target (legacy):")
+    private val backgroundRadioButton = JBRadioButton("Background", settingsState.colorTarget == "BACKGROUND")
+    // private val borderTopRadioButton = JBRadioButton("Border Top", settingsState.colorTarget == "BORDER_TOP")
+
 
     private var mainPanel: JPanel? = null
 
@@ -35,10 +45,37 @@ class TabColorSettingsConfigurable(private val project: Project) : Configurable 
         // Group radio buttons for colorTarget
         ButtonGroup().apply {
             add(backgroundRadioButton)
-            add(borderTopRadioButton)
+            // add(borderTopRadioButton)
         }
-        // Removed ButtonGroup for comparisonBranch
-        // Removed change listener for specificBranchRadioButton
+
+        // Set initial states for color pickers
+        tabBackgroundColorPicker.selectedColor = settingsState.tabBackgroundColor?.let { Color.decode(it) }
+        borderColorPicker.selectedColor = settingsState.borderColor?.let { Color.decode(it) }
+
+        // Add listeners to manage enabled state of color pickers
+        useDefaultBackgroundColorCheckBox.addActionListener {
+            tabBackgroundColorPicker.isEnabled = !useDefaultBackgroundColorCheckBox.isSelected
+            tabBackgroundColorLabel.isEnabled = !useDefaultBackgroundColorCheckBox.isSelected
+        }
+
+        borderSideComboBox.addActionListener {
+            val borderEnabled = borderSideComboBox.selectedItem != "NONE"
+            useDefaultBorderColorCheckBox.isEnabled = borderEnabled
+            borderColorLabel.isEnabled = borderEnabled && !useDefaultBorderColorCheckBox.isSelected
+            borderColorPicker.isEnabled = borderEnabled && !useDefaultBorderColorCheckBox.isSelected
+            // If border becomes NONE, ensure default border color checkbox is also updated
+            if (!borderEnabled) {
+                useDefaultBorderColorCheckBox.isSelected = true // Or reflect settingsState.useDefaultBorderColor
+                borderColorLabel.isEnabled = false
+                borderColorPicker.isEnabled = false
+            }
+        }
+
+        useDefaultBorderColorCheckBox.addActionListener {
+            val borderEnabled = borderSideComboBox.selectedItem != "NONE"
+            borderColorPicker.isEnabled = borderEnabled && !useDefaultBorderColorCheckBox.isSelected
+            borderColorLabel.isEnabled = borderEnabled && !useDefaultBorderColorCheckBox.isSelected
+        }
     }
 
     override fun getDisplayName(): String = "Editor Tab Git Status Coloring"
@@ -48,12 +85,27 @@ class TabColorSettingsConfigurable(private val project: Project) : Configurable 
             val formBuilder = FormBuilder.createFormBuilder()
                 .addComponent(enableCheckBox)
                 .addVerticalGap(10)
+
+                // Background color settings
+                .addComponent(useDefaultBackgroundColorCheckBox)
+                .addLabeledComponent(tabBackgroundColorLabel, tabBackgroundColorPicker)
+                .addVerticalGap(10)
+
+                // Border settings
+                .addComponent(borderSettingsLabel)
+                .addLabeledComponent(JBLabel("Border side:"), borderSideComboBox)
+                .addComponent(useDefaultBorderColorCheckBox)
+                .addLabeledComponent(borderColorLabel, borderColorPicker)
+                .addVerticalGap(10)
+
+                // Legacy colorTarget (optional, can be removed later)
                 .addComponent(colorTargetLabel)
                 .addComponent(backgroundRadioButton)
-            // .addComponent(borderTopRadioButton) // Uncomment if/when border coloring is implemented
-            // Removed comparisonBranch components from layout
+                // .addComponent(borderTopRadioButton) // Commented out
 
             mainPanel = formBuilder.panel
+            // Initialize enabled states after panel is created
+            reset()
         }
         return mainPanel
     }
@@ -61,35 +113,65 @@ class TabColorSettingsConfigurable(private val project: Project) : Configurable 
     override fun isModified(): Boolean {
         val selectedColorTarget = when {
             backgroundRadioButton.isSelected -> "BACKGROUND"
-            // borderTopRadioButton.isSelected -> "BORDER_TOP" // Uncomment when implemented
-            else -> "BACKGROUND" // Default if somehow none selected
+            // borderTopRadioButton.isSelected -> "BORDER_TOP"
+            else -> settingsState.colorTarget // Keep existing if none of the old radio buttons are touched
         }
-        // Removed comparisonBranch logic from isModified
+        // Convert Color object to hex string for comparison, or null if no color selected
+        val currentTabBackgroundColor = tabBackgroundColorPicker.selectedColor?.let { "#%06X".format(0xFFFFFF and it.rgb) }
+        val currentBorderColor = borderColorPicker.selectedColor?.let { "#%06X".format(0xFFFFFF and it.rgb) }
+
         return enableCheckBox.isSelected != settingsState.isTabColoringEnabled ||
-               selectedColorTarget != settingsState.colorTarget
+               useDefaultBackgroundColorCheckBox.isSelected != settingsState.useDefaultBackgroundColor ||
+               currentTabBackgroundColor != settingsState.tabBackgroundColor ||
+               borderSideComboBox.selectedItem as String != settingsState.borderSide ||
+               useDefaultBorderColorCheckBox.isSelected != settingsState.useDefaultBorderColor ||
+               currentBorderColor != settingsState.borderColor ||
+               selectedColorTarget != settingsState.colorTarget // Legacy setting
     }
 
     override fun apply() {
         settingsState.isTabColoringEnabled = enableCheckBox.isSelected
+        settingsState.useDefaultBackgroundColor = useDefaultBackgroundColorCheckBox.isSelected
+        settingsState.tabBackgroundColor = tabBackgroundColorPicker.selectedColor?.let { "#%06X".format(0xFFFFFF and it.rgb) }
 
+        settingsState.borderSide = borderSideComboBox.selectedItem as String
+        settingsState.useDefaultBorderColor = useDefaultBorderColorCheckBox.isSelected
+        settingsState.borderColor = borderColorPicker.selectedColor?.let { "#%06X".format(0xFFFFFF and it.rgb) }
+
+        // Legacy setting
         settingsState.colorTarget = when {
             backgroundRadioButton.isSelected -> "BACKGROUND"
-            // borderTopRadioButton.isSelected -> "BORDER_TOP" // Uncomment when implemented
-            else -> "BACKGROUND"
+            // borderTopRadioButton.isSelected -> "BORDER_TOP"
+            else -> settingsState.colorTarget // Preserve if not explicitly changed by these radio buttons
         }
-        // Removed comparisonBranch logic from apply
     }
 
     override fun reset() {
         enableCheckBox.isSelected = settingsState.isTabColoringEnabled
 
+        useDefaultBackgroundColorCheckBox.isSelected = settingsState.useDefaultBackgroundColor
+        tabBackgroundColorPicker.selectedColor = settingsState.tabBackgroundColor?.let { Color.decode(it) }
+        tabBackgroundColorPicker.isEnabled = !settingsState.useDefaultBackgroundColor
+        tabBackgroundColorLabel.isEnabled = !settingsState.useDefaultBackgroundColor
+
+        borderSideComboBox.selectedItem = settingsState.borderSide
+        val borderEnabled = settingsState.borderSide != "NONE"
+        useDefaultBorderColorCheckBox.isSelected = settingsState.useDefaultBorderColor
+        useDefaultBorderColorCheckBox.isEnabled = borderEnabled
+
+        borderColorPicker.selectedColor = settingsState.borderColor?.let { Color.decode(it) }
+        borderColorPicker.isEnabled = borderEnabled && !settingsState.useDefaultBorderColor
+        borderColorLabel.isEnabled = borderEnabled && !settingsState.useDefaultBorderColor
+
+
+        // Legacy settings
         backgroundRadioButton.isSelected = settingsState.colorTarget == "BACKGROUND"
-        // borderTopRadioButton.isSelected = settingsState.colorTarget == "BORDER_TOP" // Uncomment when implemented
-        // Ensure only one is selected or provide a fallback
+        // borderTopRadioButton.isSelected = settingsState.colorTarget == "BORDER_TOP"
         if (!backgroundRadioButton.isSelected /* && !borderTopRadioButton.isSelected */) {
-             backgroundRadioButton.isSelected = true // Default
+            // If settingsState.colorTarget is something else and those radio buttons are removed,
+            // this logic might need adjustment. For now, if it's not BACKGROUND, nothing else is selected.
+            // Consider if backgroundRadioButton should be forced selected if colorTarget is not BORDER_TOP.
         }
-        // Removed comparisonBranch logic from reset
     }
 
     override fun disposeUIResources() {
