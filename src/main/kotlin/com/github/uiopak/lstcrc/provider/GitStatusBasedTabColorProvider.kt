@@ -23,9 +23,9 @@ class GitStatusBasedTabColorProvider : EditorTabColorProvider {
 
     // Updated parseHexColor function for robustness
     private fun parseHexColor(hex: String?, contextFilePath: String? = null): Color? {
-        val context = if (contextFilePath != null) "for file $contextFilePath" else ""
+        val context = if (contextFilePath != null) " for file $contextFilePath" else "" // Added space for better formatting
         if (hex.isNullOrBlank()) {
-            logger.trace { "PROVIDER: parseHexColor: Input hex is null or blank $context." }
+            logger.trace("PROVIDER: parseHexColor: Input hex is null or blank$context.")
             return null
         }
 
@@ -34,10 +34,10 @@ class GitStatusBasedTabColorProvider : EditorTabColorProvider {
         if (!processedHex.startsWith("#")) {
             // Regex for 6-digit hex or 3-digit hex (shorthand)
             if (processedHex.matches(Regex("^[0-9a-fA-F]{6}$")) || processedHex.matches(Regex("^[0-9a-fA-F]{3}$"))) {
-                logger.trace { "PROVIDER: parseHexColor: Input hex '$processedHex' $context is missing '#', prepending." }
+                logger.trace("PROVIDER: parseHexColor: Input hex '$processedHex'$context is missing '#', prepending.")
                 processedHex = "#$processedHex"
             } else {
-                logger.warn { "PROVIDER: parseHexColor: Input hex '$processedHex' $context is malformed (not 3 or 6 hex digits) and does not start with '#'." }
+                logger.warn("PROVIDER: parseHexColor: Input hex '$processedHex'$context is malformed (not 3 or 6 hex digits) and does not start with '#'.")
                 return null
             }
         }
@@ -45,9 +45,7 @@ class GitStatusBasedTabColorProvider : EditorTabColorProvider {
         return try {
             Color.decode(processedHex)
         } catch (e: NumberFormatException) {
-            // It's good practice to include the exception in the log if the logger supports it.
-            // For thisLogger() which maps to IJ's logger, a separate throwable parameter is typical.
-            logger.warn("PROVIDER: parseHexColor: Failed to decode color hex '$processedHex' $context.", e)
+            logger.warn("PROVIDER: parseHexColor: Failed to decode color hex '$processedHex'$context.", e)
             null
         }
     }
