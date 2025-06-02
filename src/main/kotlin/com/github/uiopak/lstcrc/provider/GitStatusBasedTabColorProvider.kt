@@ -41,10 +41,10 @@ class GitStatusBasedTabColorProvider : EditorTabColorProvider {
 
         logger.info("PROVIDER_GET_COLOR: Change found for file '${file.path}': type ${changeForFile.type}, in branch '${diffDataService.activeBranchName}'.")
         val colorHex = when (changeForFile.type) {
-            Change.Type.NEW -> "#62B543"        // IntelliJ Green for Added
-            Change.Type.MODIFICATION -> "#3684CB" // IntelliJ Blue for Modified
-            Change.Type.MOVED -> "#3684CB"      // Treat MOVED as MODIFIED (Blue)
-            Change.Type.DELETED -> "#B93437"    // IntelliJ Red for Deleted (Darker Red)
+            Change.Type.NEW -> "#273828"        // IntelliJ Green for Added
+            Change.Type.MODIFICATION -> "#1d3d3b" // IntelliJ Blue for Modified
+            Change.Type.MOVED -> "#35363b"      // Treat MOVED as MODIFIED (Blue)
+            Change.Type.DELETED -> "#472b2b"    // IntelliJ Red for Deleted (Darker Red)
             else -> {
                 logger.info("PROVIDER_GET_COLOR: Unhandled change type ${changeForFile.type} for file ${file.path}")
                 null
