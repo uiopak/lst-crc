@@ -204,30 +204,7 @@ class TabColorSettingsConfigurable(private val project: Project) : Configurable 
                 .addComponent(modifiedFilePanel)
                 .addComponent(deletedFilePanel)
                 .addComponent(movedFilePanel)
-            perStatusColorPanel = perStatusFormBuilder.panel
-
-            val formBuilder = FormBuilder.createFormBuilder()
-                .addComponent(enableCheckBox)
-                .addVerticalGap(10)
-                // Background color settings
-                .addComponent(useDefaultBackgroundColorCheckBox)
-                // Single override color (initially may be hidden by reset())
-                .addLabeledComponent(tabBackgroundColorLabel, tabBackgroundColorPicker)
-                // Per-status colors (initially may be hidden by reset())
-                .addComponent(perStatusColorPanel)
-                .addVerticalGap(10)
-                // Border settings
-                .addComponent(borderSettingsLabel)
-                .addLabeledComponent(JBLabel("Border side:"), borderSideComboBox)
-                .addComponent(useDefaultBorderColorCheckBox)
-                // Per-status border colors (logic for visibility in reset() and listeners)
-                .addComponent(perStatusBorderColorPanel) // This will be initialized with border pickers
-                // Single custom border color (logic for visibility in reset() and listeners)
-                .addLabeledComponent(borderColorLabel, borderColorPicker)
-                .addVerticalGap(10)
-                // Legacy colorTarget
-                .addComponent(colorTargetLabel)
-                .addComponent(backgroundRadioButton)
+            this.perStatusColorPanel = perStatusFormBuilder.panel // Initialize background status panel
 
             // Panels for per-status border color pickers
             val newFileBorderPanel = JPanel(java.awt.FlowLayout(java.awt.FlowLayout.LEFT)).apply {
@@ -257,8 +234,31 @@ class TabColorSettingsConfigurable(private val project: Project) : Configurable 
                 .addComponent(modifiedFileBorderPanel)
                 .addComponent(deletedFileBorderPanel)
                 .addComponent(movedFileBorderPanel)
-            perStatusBorderColorPanel = perStatusBorderFormBuilder.panel // Initialize the lateinit var
+            this.perStatusBorderColorPanel = perStatusBorderFormBuilder.panel // Initialize border status panel
 
+            // Now define the main formBuilder
+            val formBuilder = FormBuilder.createFormBuilder()
+                .addComponent(enableCheckBox)
+                .addVerticalGap(10)
+                // Background color settings
+                .addComponent(useDefaultBackgroundColorCheckBox)
+                // Single override color (initially may be hidden by reset())
+                .addLabeledComponent(tabBackgroundColorLabel, tabBackgroundColorPicker)
+                // Per-status colors (initially may be hidden by reset())
+                .addComponent(perStatusColorPanel)
+                .addVerticalGap(10)
+                // Border settings
+                .addComponent(borderSettingsLabel)
+                .addLabeledComponent(JBLabel("Border side:"), borderSideComboBox)
+                .addComponent(useDefaultBorderColorCheckBox)
+                // Per-status border colors (logic for visibility in reset() and listeners)
+                .addComponent(this.perStatusBorderColorPanel) // Use 'this.' for clarity
+                // Single custom border color (logic for visibility in reset() and listeners)
+                .addLabeledComponent(borderColorLabel, borderColorPicker)
+                .addVerticalGap(10)
+                // Legacy colorTarget
+                .addComponent(colorTargetLabel)
+                .addComponent(backgroundRadioButton)
 
             mainPanel = formBuilder.panel
             reset() // Call reset to set initial states and visibility, including new border sections
