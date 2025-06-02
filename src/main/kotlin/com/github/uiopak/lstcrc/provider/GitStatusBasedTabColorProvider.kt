@@ -9,9 +9,17 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.vcs.changes.Change
 import com.intellij.openapi.vfs.VirtualFile
 import java.awt.Color
+import com.intellij.openapi.fileEditor.FileEditorManager
+import com.intellij.openapi.fileEditor.ex.FileEditorManagerEx
+import com.intellij.openapi.fileEditor.impl.EditorComposite // May need to be more generic like JComponent or specific EditorWithProviderComposite
+import com.intellij.util.ui.JBUI
+import com.intellij.ui.JBColor
+import javax.swing.JComponent
+
 
 class GitStatusBasedTabColorProvider : EditorTabColorProvider {
     private val logger = thisLogger()
+    private val appliedBorders = mutableSetOf<VirtualFile>() // To prevent over-applying in PoC
 
     // Default colors based on Git status
     private val defaultColorMappings = mapOf(
@@ -132,19 +140,65 @@ class GitStatusBasedTabColorProvider : EditorTabColorProvider {
         
         val resultColor = parseHexColor(finalColorHexToParse, file.path)
         logger.info("PROVIDER: Final chosen hex: '$finalColorHexToParse'. Parsed color: ${resultColor?.toString() ?: "null"}. Source: $determinedColorSource. File: '${file.path}'")
-        return resultColor
+        
+        // --- PoC: Try to apply border ---
+        // Attempt only once per file for this PoC to avoid excessive logging/processing if it's called frequently
+        if (!appliedBorders.contains(file)) {
+            try {
+                logger.info("POC_BORDER: Attempting to find and border tab for ${file.path}")
+                val fem = FileEditorManager.getInstance(project) as? FileEditorManagerEx
+                if (fem == null) {
+                    logger.info("POC_BORDER: FileEditorManagerEx is null.")
+                } else {
+                    var foundMatchingComposite: JComponent? = null
+                    
+                    // Iterate through all editor windows (splits)
+                    for (window in fem.windows) {
+                        logger.info("POC_BORDER: Checking window: ${window.javaClass.name}, ${window.displayName}. Number of editors: ${window.tabCount}")
+                        // Iterate through editor composites (tabs) in the current window
+                        window.editors.forEachIndexed { index, composite ->
+                            logger.info("POC_BORDER:   Editor composite $index: ${composite.javaClass.name}, File: ${composite.file?.path}")
+                            if (composite.file == file) {
+                                logger.info("POC_BORDER:     Found matching EditorComposite for ${file.path}")
+                                if (composite is JComponent) {
+                                    foundMatchingComposite = composite
+                                    logger.info("POC_BORDER:       EditorComposite is a JComponent. Class: ${composite::class.java.name}")
+                                } else {
+                                    logger.info("POC_BORDER:       EditorComposite is NOT a JComponent. Class: ${composite::class.java.name}")
+                                }
+                                // Break or return from forEach is tricky, rely on outer loop controls or boolean flags if needed
+                            }
+                        }
+                        if (foundMatchingComposite != null) break // Found in this window
+                    }
 
-        // Border Color Logic:
-        // As per research, applying borders directly via EditorTabColorProvider is not straightforward.
-        // This section would require a different approach, possibly interacting with tab UI components directly
-        // or using a different extension point (e.g., a TabPainter).
-        // This will be noted in the subtask report.
-        // Example of what it might look like if settings.borderSide != "NONE":
-        // val borderColorToApply = if (settings.useDefaultBorderColor) {
-        //     // determine default border color from git status, potentially a new map
-        // } else {
-        //     parseHexColor(settings.borderColor, file.path)
-        // }
-        // If (borderColorToApply != null) { /* ... apply border ... */ }
+                    if (foundMatchingComposite != null) {
+                        logger.info("POC_BORDER: Applying border to ${foundMatchingComposite?.javaClass?.name} for ${file.path}")
+                        foundMatchingComposite?.setBorder(JBUI.Borders.customLine(JBColor.RED, 2, 0, 0, 0)) // Top border, 2px
+                        // Forcing repaint on the component itself, though tab UI refresh is complex
+                        foundMatchingComposite?.repaint() 
+                        appliedBorders.add(file) // Mark as processed for this PoC
+                        logger.info("POC_BORDER: Border possibly applied for ${file.path}. Repaint called.")
+
+                        // Log children if any, for further investigation
+                        // This can be very verbose
+                        // if (foundMatchingComposite is JComponent) {
+                        //    (foundMatchingComposite as JComponent).components.forEach { child ->
+                        //        logger.info("POC_BORDER: Child of target composite: ${child.javaClass.name}")
+                        //    }
+                        // }
+
+                    } else {
+                        logger.info("POC_BORDER: Did not find matching EditorComposite JComponent for ${file.path}")
+                    }
+                }
+            } catch (e: Exception) {
+                logger.error("POC_BORDER: Error during border application PoC for ${file.path}", e)
+                appliedBorders.add(file) // Also mark as processed to avoid repeated errors
+            }
+        }
+        // --- End PoC ---
+
+        return resultColor
     }
 }
