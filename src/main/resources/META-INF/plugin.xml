@@ -36,5 +36,7 @@
     <projectListeners>
         <listener class="com.github.uiopak.lstcrc.listeners.TabColorFileEditorManagerListener"
                   topic="com.intellij.openapi.fileEditor.FileEditorManagerListener"/>
+        <listener class="com.github.uiopak.lstcrc.listeners.FileTabBorderPainterListener"
+                  topic="com.intellij.openapi.fileEditor.FileEditorManagerListener"/>
     </projectListeners>
 </idea-plugin>

@@ -64,13 +64,20 @@ class GitStatusBasedTabColorProvider : EditorTabColorProvider {
         logger.info("  modifiedFileColor: ${settings.modifiedFileColor}")
         logger.info("  deletedFileColor: ${settings.deletedFileColor}")
         logger.info("  movedFileColor: ${settings.movedFileColor}")
+        logger.info("  borderSide: ${settings.borderSide}")
         // logger.info("  borderColor: ${settings.borderColor}") // For future border logic
-        // logger.info("  borderSide: ${settings.borderSide}") // For future border logic
         // logger.info("  useDefaultBorderColor: ${settings.useDefaultBorderColor}") // For future border logic
 
         if (!settings.isTabColoringEnabled) {
             logger.info("PROVIDER: Tab coloring disabled in settings. Returning null.")
             return null
+        }
+
+        val borderSide = settings.borderSide
+        // Check if border highlighting is active for this tab
+        if (!borderSide.isNullOrBlank() && borderSide != "NONE") {
+            logger.info("PROVIDER: Border highlighting is active (side: $borderSide) for file '${file.path}'. Returning null for background color.")
+            return null // Do not provide a background color if a border is to be shown
         }
 
         var determinedColorSource = "Unknown" // To track where the color decision came from

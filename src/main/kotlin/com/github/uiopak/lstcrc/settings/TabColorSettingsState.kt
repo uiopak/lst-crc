@@ -20,7 +20,12 @@ data class TabColorSettingsState(
     var newFileColor: String? = null,
     var modifiedFileColor: String? = null,
     var deletedFileColor: String? = null,
-    var movedFileColor: String? = null
+    var movedFileColor: String? = null,
+    // Per-status custom border colors
+    var newFileBorderColor: String? = null,
+    var modifiedFileBorderColor: String? = null,
+    var deletedFileBorderColor: String? = null,
+    var movedFileBorderColor: String? = null
     // Removed: var comparisonBranch: String = "HEAD"
 ) : PersistentStateComponent<TabColorSettingsState> {
 
