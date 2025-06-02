@@ -83,7 +83,7 @@ class FileTabBorderPainterListener : FileEditorManagerListener {
         }
 
         private fun isTabComponent(component: JComponent, file: VirtualFile): Boolean {
-            val componentName = component.javaClass.name.toLowerCase()
+            val componentName = component.javaClass.name.lowercase()
             val isPotentialTabLabel = componentName.contains("tablabel") ||
                                     componentName.contains("tabinfo") ||
                                     componentName.contains("head") || 
