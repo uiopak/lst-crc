@@ -154,9 +154,10 @@ class GitStatusBasedTabColorProvider : EditorTabColorProvider {
                     
                     // Iterate through all editor windows (splits)
                     for (window in fem.windows) {
-                        logger.info("POC_BORDER: Checking window: ${window.javaClass.name}, ${window.displayName}. Number of editors: ${window.tabCount}")
+                        // Fixed: Removed .displayName, corrected iteration to use allComposites
+                        logger.info("POC_BORDER: Checking window: ${window.javaClass.name}. Number of editors in window: ${window.tabCount}") 
                         // Iterate through editor composites (tabs) in the current window
-                        window.editors.forEachIndexed { index, composite ->
+                        window.allComposites.forEachIndexed { index, composite -> // Changed from window.editors
                             logger.info("POC_BORDER:   Editor composite $index: ${composite.javaClass.name}, File: ${composite.file?.path}")
                             if (composite.file == file) {
                                 logger.info("POC_BORDER:     Found matching EditorComposite for ${file.path}")
