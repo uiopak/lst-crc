@@ -60,8 +60,8 @@ class GitStatusBasedTabColorProvider : EditorTabColorProvider {
 
 
     override fun getEditorTabColor(project: Project, file: VirtualFile): Color? {
-        // Phase 1 Logging:
-        logger.info("PROVIDER: Invoked for project: '${project.name}' (hashCode: ${project.hashCode()}), file: '${file.path}'")
+        // Enhanced Logging:
+        logger.info("PROVIDER_ENTRY: getEditorTabColor called for project: '${project.name}', file: '${file.name}' (path: ${file.path})")
 
         val settings = TabColorSettingsState.getInstance(project)
         logger.info("PROVIDER: Loaded settings state for project '${project.name}':")
@@ -142,10 +142,13 @@ class GitStatusBasedTabColorProvider : EditorTabColorProvider {
         logger.info("PROVIDER: Final chosen hex: '$finalColorHexToParse'. Parsed color: ${resultColor?.toString() ?: "null"}. Source: $determinedColorSource. File: '${file.path}'")
         
         // --- PoC: Try to apply border ---
-        // Attempt only once per file for this PoC to avoid excessive logging/processing if it's called frequently
+        logger.info("PROVIDER_POC_CHECK: Checking border PoC eligibility for file: '${file.name}' (path: ${file.path})")
+        logger.info("PROVIDER_POC_CHECK: Current appliedBorders set: ${appliedBorders.map { it.name }.joinToString()}")
+        logger.info("PROVIDER_POC_CHECK: Does appliedBorders contain '${file.name}'? ${appliedBorders.contains(file)}")
+
         if (!appliedBorders.contains(file)) {
             try {
-                logger.info("POC_BORDER: Attempting to find and border tab for ${file.path}")
+                logger.info("POC_BORDER: Attempting to find and border tab for ${file.name} (path: ${file.path})")
                 val fem = FileEditorManager.getInstance(project) as? FileEditorManagerEx
                 if (fem == null) {
                     logger.info("POC_BORDER: FileEditorManagerEx is null.")
@@ -197,6 +200,8 @@ class GitStatusBasedTabColorProvider : EditorTabColorProvider {
                 logger.error("POC_BORDER: Error during border application PoC for ${file.path}", e)
                 appliedBorders.add(file) // Also mark as processed to avoid repeated errors
             }
+        } else {
+            logger.info("PROVIDER_POC_SKIP: Skipping border PoC for '${file.name}' (path: ${file.path}) because it's already in appliedBorders.")
         }
         // --- End PoC ---
 
