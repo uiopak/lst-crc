@@ -21,16 +21,37 @@ class GitStatusBasedTabColorProvider : EditorTabColorProvider {
         Change.Type.DELETED to "#472b2b"      // IntelliJ Red for Deleted (Darker Red)
     )
 
-    private fun parseHexColor(hexColor: String?, filePathForLogging: String): Color? {
-        return hexColor?.let { hex ->
-            try {
-                Color.decode(hex)
-            } catch (e: NumberFormatException) {
-                logger.warn("PROVIDER: Failed to decode color hex '$hex' for file $filePathForLogging", e)
-                null
+    // Updated parseHexColor function for robustness
+    private fun parseHexColor(hex: String?, contextFilePath: String? = null): Color? {
+        val context = if (contextFilePath != null) "for file $contextFilePath" else ""
+        if (hex.isNullOrBlank()) {
+            logger.trace { "PROVIDER: parseHexColor: Input hex is null or blank $context." }
+            return null
+        }
+
+        var processedHex = hex.trim()
+
+        if (!processedHex.startsWith("#")) {
+            // Regex for 6-digit hex or 3-digit hex (shorthand)
+            if (processedHex.matches(Regex("^[0-9a-fA-F]{6}$")) || processedHex.matches(Regex("^[0-9a-fA-F]{3}$"))) {
+                logger.trace { "PROVIDER: parseHexColor: Input hex '$processedHex' $context is missing '#', prepending." }
+                processedHex = "#$processedHex"
+            } else {
+                logger.warn { "PROVIDER: parseHexColor: Input hex '$processedHex' $context is malformed (not 3 or 6 hex digits) and does not start with '#'." }
+                return null
             }
         }
+
+        return try {
+            Color.decode(processedHex)
+        } catch (e: NumberFormatException) {
+            // It's good practice to include the exception in the log if the logger supports it.
+            // For thisLogger() which maps to IJ's logger, a separate throwable parameter is typical.
+            logger.warn("PROVIDER: parseHexColor: Failed to decode color hex '$processedHex' $context.", e)
+            null
+        }
     }
+
 
     override fun getEditorTabColor(project: Project, file: VirtualFile): Color? {
         // Phase 1 Logging:
