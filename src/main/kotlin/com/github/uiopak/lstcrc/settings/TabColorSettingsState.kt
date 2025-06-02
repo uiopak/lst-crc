@@ -9,9 +9,8 @@ import com.intellij.util.xmlb.XmlSerializerUtil
     storages = [Storage("lstcrcTabColorSettings.xml")]
 )
 data class TabColorSettingsState(
-    var isTabColoringEnabled: Boolean = true,
-    var colorTarget: String = "BACKGROUND" // Options: BACKGROUND, BORDER_TOP, BORDER_RIGHT, BORDER_BOTTOM, BORDER_LEFT
-    // Removed: var comparisonBranch: String = "HEAD"
+    var isTabColoringEnabled: Boolean = true
+    // colorTarget property removed
 ) : PersistentStateComponent<TabColorSettingsState> {
 
     override fun getState(): TabColorSettingsState {

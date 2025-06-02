@@ -39,26 +39,22 @@ class GitStatusBasedTabColorProvider : EditorTabColorProvider {
             return null
         }
 
-        logger.info("PROVIDER_GET_COLOR: Change found for file '${file.path}': type ${changeForFile.type}, in branch '${diffDataService.activeBranchName}'.")
-        val colorHex = when (changeForFile.type) {
-            Change.Type.NEW -> "#62B543"        // IntelliJ Green for Added
-            Change.Type.MODIFICATION -> "#3684CB" // IntelliJ Blue for Modified
-            Change.Type.MOVED -> "#3684CB"      // Treat MOVED as MODIFIED (Blue)
-            Change.Type.DELETED -> "#B93437"    // IntelliJ Red for Deleted (Darker Red)
-            else -> {
-                logger.info("PROVIDER_GET_COLOR: Unhandled change type ${changeForFile.type} for file ${file.path}")
-                null
-            }
-        }
-        logger.info("PROVIDER_GET_COLOR: Determined colorHex: '$colorHex' for file '${file.path}'.")
+        // Get the FileStatus object from the Change
+        val fileStatus = changeForFile.fileStatus // Removed explicit type FileStatus for brevity
+        logger.info("PROVIDER_GET_COLOR: File '${file.path}' has status ${fileStatus.id} in branch '${diffDataService.activeBranchName}'.")
 
-        return colorHex?.let { hex ->
-            try {
-                Color.decode(hex)
-            } catch (e: NumberFormatException) {
-                logger.warn("Failed to decode color hex '$hex' for file ${file.path}", e)
-                null
-            }
+        // Get the theme-aware color from the FileStatus
+        val themedColor: Color? = fileStatus.color
+
+        if (themedColor != null) {
+            logger.info("PROVIDER_GET_COLOR: Using theme color ${themedColor} for status ${fileStatus.id} on file '${file.path}'.")
+            return themedColor
+        } else {
+            // This case should be rare for standard statuses like ADDED, MODIFIED, DELETED,
+            // as they usually have a color defined. If a status genuinely has no theme color,
+            // then no color will be applied by this provider.
+            logger.info("PROVIDER_GET_COLOR: No theme color defined for status ${fileStatus.id} for file '${file.path}'. Returning null.")
+            return null
         }
     }
 }
