@@ -12,12 +12,15 @@ import java.awt.Color
 import javax.swing.*
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.fileEditor.ex.FileEditorManagerEx
+import com.intellij.openapi.diagnostic.Logger
 
 class TabColorSettingsConfigurable(private val project: Project) : Configurable {
 
     private val settingsState: TabColorSettingsState = TabColorSettingsState.getInstance(project)
+    private val logger = Logger.getInstance(TabColorSettingsConfigurable::class.java)
 
     companion object {
+        private val LOG = Logger.getInstance(TabColorSettingsConfigurable::class.java) // Companion logger if needed for static methods
         // Defaults from GitStatusBasedTabColorProvider prior to this change
         val DEFAULT_COLOR_NEW_HEX: String = "#273828"
         val DEFAULT_COLOR_MODIFIED_HEX: String = "#1d3d3b"
@@ -225,6 +228,22 @@ class TabColorSettingsConfigurable(private val project: Project) : Configurable 
 
 
     override fun apply() {
+        logger.info("CONFIG: Apply called. Project: ${project.name}")
+
+        // Log values from UI pickers before saving
+        logger.info("CONFIG: UI Picker Values Before Save:")
+        logger.info("  enableCheckBox.isSelected: ${enableCheckBox.isSelected}")
+        logger.info("  useDefaultBackgroundColorCheckBox.isSelected: ${useDefaultBackgroundColorCheckBox.isSelected}")
+        logger.info("  tabBackgroundColorPicker.selectedColor (hex): ${colorToHex(tabBackgroundColorPicker.selectedColor)}")
+        logger.info("  newFileColorPicker.selectedColor (hex): ${colorToHex(newFileColorPicker.selectedColor)}")
+        logger.info("  modifiedFileColorPicker.selectedColor (hex): ${colorToHex(modifiedFileColorPicker.selectedColor)}")
+        logger.info("  deletedFileColorPicker.selectedColor (hex): ${colorToHex(deletedFileColorPicker.selectedColor)}")
+        logger.info("  movedFileColorPicker.selectedColor (hex): ${colorToHex(movedFileColorPicker.selectedColor)}")
+        logger.info("  borderSideComboBox.selectedItem: ${borderSideComboBox.selectedItem}")
+        logger.info("  useDefaultBorderColorCheckBox.isSelected: ${useDefaultBorderColorCheckBox.isSelected}")
+        logger.info("  borderColorPicker.selectedColor (hex): ${colorToHex(borderColorPicker.selectedColor)}")
+        logger.info("  backgroundRadioButton.isSelected (for legacy colorTarget): ${backgroundRadioButton.isSelected}")
+
         settingsState.isTabColoringEnabled = enableCheckBox.isSelected
         settingsState.useDefaultBackgroundColor = useDefaultBackgroundColorCheckBox.isSelected
         
@@ -242,14 +261,44 @@ class TabColorSettingsConfigurable(private val project: Project) : Configurable 
 
         settingsState.colorTarget = if (backgroundRadioButton.isSelected) "BACKGROUND" else settingsState.colorTarget
 
-        // Trigger a refresh of open editor tabs
+        // Log values stored in settingsState after saving
+        logger.info("CONFIG: SettingsState Values After Save:")
+        logger.info("  settingsState.isTabColoringEnabled: ${settingsState.isTabColoringEnabled}")
+        logger.info("  settingsState.useDefaultBackgroundColor: ${settingsState.useDefaultBackgroundColor}")
+        logger.info("  settingsState.tabBackgroundColor: ${settingsState.tabBackgroundColor}")
+        logger.info("  settingsState.newFileColor: ${settingsState.newFileColor}")
+        logger.info("  settingsState.modifiedFileColor: ${settingsState.modifiedFileColor}")
+        logger.info("  settingsState.deletedFileColor: ${settingsState.deletedFileColor}")
+        logger.info("  settingsState.movedFileColor: ${settingsState.movedFileColor}")
+        logger.info("  settingsState.borderSide: ${settingsState.borderSide}")
+        logger.info("  settingsState.useDefaultBorderColor: ${settingsState.useDefaultBorderColor}")
+        logger.info("  settingsState.borderColor: ${settingsState.borderColor}")
+        logger.info("  settingsState.colorTarget: ${settingsState.colorTarget}")
+        
+        logger.info("CONFIG: Attempting to refresh open editor tabs for project: ${project.name} (hashCode: ${project.hashCode()})")
         val fileEditorManager = FileEditorManager.getInstance(project) as? FileEditorManagerEx
-        fileEditorManager?.let { manager ->
-            for (virtualFile in manager.openFiles) {
-                manager.updateFilePresentation(virtualFile)
-            }
-            // Consider also manager.repaintEditorWindows() if updateFilePresentation is not enough
+        if (fileEditorManager == null) {
+            logger.warn("CONFIG: FileEditorManagerEx is null for project ${project.name}. Cannot refresh tabs.")
+            return
         }
+
+        logger.info("CONFIG: Starting refresh loop for ${fileEditorManager.openFiles.size} open files.")
+        fileEditorManager.openFiles.forEachIndexed { index, virtualFile ->
+            logger.info("CONFIG: Refreshing presentation for (${index + 1}/${fileEditorManager.openFiles.size}): ${virtualFile.path}")
+            try {
+                // Ensure UI thread for specific manager calls if necessary, though updateFilePresentation is usually safe.
+                // Forcing a more specific repaint if issues persist:
+                // manager.repaintEditor(virtualFile) // This is not a public API, use with caution or alternatives.
+                // manager.refreshIcons() // Might be relevant if icons are part of the presentation.
+                manager.updateFilePresentation(virtualFile)
+            } catch (e: Exception) {
+                logger.error("CONFIG: Exception during updateFilePresentation for ${virtualFile.path}", e)
+            }
+        }
+        logger.info("CONFIG: Finished refresh loop.")
+        // Example of a more global repaint, if needed:
+        // com.intellij.openapi.fileEditor.ex.FileEditorManagerEx.getInstanceEx(project).repaintEditorWindows()
+        // logger.info("CONFIG: Called repaintEditorWindows if necessary.")
     }
 
     private fun getAppliedColorHex(selectedColor: Color?, defaultHex: String): String? {

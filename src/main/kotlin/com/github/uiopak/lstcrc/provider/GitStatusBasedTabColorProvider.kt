@@ -33,71 +33,87 @@ class GitStatusBasedTabColorProvider : EditorTabColorProvider {
     }
 
     override fun getEditorTabColor(project: Project, file: VirtualFile): Color? {
-        logger.trace("PROVIDER: Evaluating tab color for project: '${project.name}', file: '${file.path}'")
+        // Phase 1 Logging:
+        logger.info("PROVIDER: Invoked for project: '${project.name}' (hashCode: ${project.hashCode()}), file: '${file.path}'")
 
         val settings = TabColorSettingsState.getInstance(project)
+        logger.info("PROVIDER: Loaded settings state for project '${project.name}':")
+        logger.info("  isTabColoringEnabled: ${settings.isTabColoringEnabled}")
+        logger.info("  useDefaultBackgroundColor: ${settings.useDefaultBackgroundColor}")
+        logger.info("  tabBackgroundColor (override): ${settings.tabBackgroundColor}")
+        logger.info("  newFileColor: ${settings.newFileColor}")
+        logger.info("  modifiedFileColor: ${settings.modifiedFileColor}")
+        logger.info("  deletedFileColor: ${settings.deletedFileColor}")
+        logger.info("  movedFileColor: ${settings.movedFileColor}")
+        // logger.info("  borderColor: ${settings.borderColor}") // For future border logic
+        // logger.info("  borderSide: ${settings.borderSide}") // For future border logic
+        // logger.info("  useDefaultBorderColor: ${settings.useDefaultBorderColor}") // For future border logic
+
         if (!settings.isTabColoringEnabled) {
-            logger.trace("PROVIDER: Tab coloring disabled in settings.")
+            logger.info("PROVIDER: Tab coloring disabled in settings. Returning null.")
             return null
         }
+
+        var determinedColorSource = "Unknown" // To track where the color decision came from
+        var finalColorHexToParse: String? = null
 
         // Background Color Logic
         if (!settings.useDefaultBackgroundColor) {
-            logger.trace("PROVIDER: Using custom background color. Provided hex: '${settings.tabBackgroundColor}'")
-            return settings.tabBackgroundColor?.let {
-                parseHexColor(it, file.path)
-            } ?: run {
-                logger.trace("PROVIDER: Custom background color is null, no color applied.")
-                null
-            }
-        }
-
-        // Default background color logic (based on Git status)
-        logger.trace("PROVIDER: Using Git status to determine background color.")
-        val diffDataService = project.service<ProjectActiveDiffDataService>()
-        if (diffDataService.activeBranchName == null) {
-            logger.trace("PROVIDER: No active branch data available in DiffDataService for file '${file.path}'.")
-            return null // No active branch data for coloring
-        }
-
-        val changeForFile = diffDataService.activeChanges.find { change ->
-            val afterVf = change.afterRevision?.file?.virtualFile
-            val beforeVf = change.beforeRevision?.file?.virtualFile
-            (afterVf != null && afterVf.isValid && afterVf == file) || (beforeVf != null && beforeVf.isValid && beforeVf == file)
-        }
-
-        if (changeForFile == null) {
-            logger.trace("PROVIDER: No specific Git change found for file '${file.path}' in branch '${diffDataService.activeBranchName}'. No color applied.")
-            return null
-        }
-
-        val statusType = changeForFile.type
-        logger.trace("PROVIDER: Git change found for file '${file.path}': type $statusType.")
-
-        val userDefinedColorHex = when (statusType) {
-            Change.Type.NEW -> settings.newFileColor
-            Change.Type.MODIFICATION -> settings.modifiedFileColor
-            Change.Type.DELETED -> settings.deletedFileColor
-            Change.Type.MOVED -> settings.movedFileColor
-            else -> null // Should not happen for known types in defaultColorMappings
-        }
-
-        val colorToApplyHex: String?
-        if (!userDefinedColorHex.isNullOrBlank()) {
-            logger.trace("PROVIDER: Using user-defined color for status $statusType: '$userDefinedColorHex' for file '${file.path}'.")
-            colorToApplyHex = userDefinedColorHex
+            finalColorHexToParse = settings.tabBackgroundColor
+            determinedColorSource = if (finalColorHexToParse != null) "Single Override Color" else "Single Override Color (null)"
+            logger.info("PROVIDER: Using single override color logic. Color hex: '$finalColorHexToParse'. Source: $determinedColorSource")
         } else {
-            val factoryDefaultHex = defaultColorMappings[statusType]
-            if (factoryDefaultHex != null) {
-                logger.trace("PROVIDER: User-defined color for status $statusType is not set or blank. Using factory default: '$factoryDefaultHex' for file '${file.path}'.")
-                colorToApplyHex = factoryDefaultHex
+            logger.info("PROVIDER: Using Git status to determine background color for file '${file.path}'.")
+            val diffDataService = project.service<ProjectActiveDiffDataService>()
+            if (diffDataService.activeBranchName == null) {
+                logger.info("PROVIDER: No active branch data in DiffDataService for file '${file.path}'. Returning null.")
+                return null // No active branch data for coloring
+            }
+
+            val changeForFile = diffDataService.activeChanges.find { change ->
+                val afterVf = change.afterRevision?.file?.virtualFile
+                val beforeVf = change.beforeRevision?.file?.virtualFile
+                (afterVf != null && afterVf.isValid && afterVf == file) || (beforeVf != null && beforeVf.isValid && beforeVf == file)
+            }
+
+            if (changeForFile == null) {
+                logger.info("PROVIDER: No specific Git change found for file '${file.path}' in branch '${diffDataService.activeBranchName}'. Returning null.")
+                return null
+            }
+
+            val statusType = changeForFile.type
+            logger.info("PROVIDER: Git change type for file '${file.path}' is $statusType.")
+
+            val userDefinedColorHex = when (statusType) {
+                Change.Type.NEW -> settings.newFileColor
+                Change.Type.MODIFICATION -> settings.modifiedFileColor
+                Change.Type.DELETED -> settings.deletedFileColor
+                Change.Type.MOVED -> settings.movedFileColor
+                else -> {
+                    logger.info("PROVIDER: Unhandled Git change type $statusType for file '${file.path}'.")
+                    null
+                }
+            }
+
+            if (!userDefinedColorHex.isNullOrBlank()) {
+                finalColorHexToParse = userDefinedColorHex
+                determinedColorSource = "User-defined for status $statusType"
+                logger.info("PROVIDER: Using user-defined color for status $statusType: '$finalColorHexToParse' for file '${file.path}'. Source: $determinedColorSource")
             } else {
-                logger.trace("PROVIDER: No user-defined color and no factory default mapping for status $statusType for file '${file.path}'. No color applied.")
-                colorToApplyHex = null
+                finalColorHexToParse = defaultColorMappings[statusType]
+                if (finalColorHexToParse != null) {
+                    determinedColorSource = "Factory default for status $statusType"
+                    logger.info("PROVIDER: User-defined color for $statusType is not set/blank. Using factory default: '$finalColorHexToParse' for file '${file.path}'. Source: $determinedColorSource")
+                } else {
+                    determinedColorSource = "No user-defined and no factory default for status $statusType"
+                    logger.info("PROVIDER: No user-defined and no factory default for status $statusType for file '${file.path}'. No color to apply. Source: $determinedColorSource")
+                }
             }
         }
         
-        return parseHexColor(colorToApplyHex, file.path)
+        val resultColor = parseHexColor(finalColorHexToParse, file.path)
+        logger.info("PROVIDER: Final chosen hex: '$finalColorHexToParse'. Parsed color: ${resultColor?.toString() ?: "null"}. Source: $determinedColorSource. File: '${file.path}'")
+        return resultColor
 
         // Border Color Logic:
         // As per research, applying borders directly via EditorTabColorProvider is not straightforward.
