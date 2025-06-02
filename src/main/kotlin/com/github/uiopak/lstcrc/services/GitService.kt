@@ -26,30 +26,34 @@ class GitService(private val project: Project) {
     private val logger = thisLogger()
 
     internal fun getCurrentRepository(): GitRepository? {
-        logger.info("GIT_REPO_DETECT: getCurrentRepository() called.")
+        logger.info("GIT_REPO_DETECT: getCurrentRepository called for project: '${project.name}', basePath: '${project.basePath}'")
 
         val repositoryManager = GitRepositoryManager.getInstance(project)
-        logger.info("GIT_REPO_DETECT: GitRepositoryManager instance: $repositoryManager")
+        logger.info("GIT_REPO_DETECT: GitRepositoryManager instance: $repositoryManager (isNull: ${repositoryManager == null})")
 
-        val repositories = repositoryManager.repositories
-        logger.info("GIT_REPO_DETECT: Found ${repositories.size} repositories by GitRepositoryManager.")
-
+        val repositories = repositoryManager.repositories // This call can be expensive if it needs to discover
+        if (repositories.isNullOrEmpty()) { // Check for both null and empty, though .repositories usually returns empty list not null
+            logger.warn("GIT_REPO_DETECT: GitRepositoryManager.repositories is null or empty. Found 0 repositories.")
+            // Attempt to get project base path as a fallback clue, though not a repo itself
+            val projectBasePath = project.basePath
+            logger.warn("GIT_REPO_DETECT: Project base path for context: $projectBasePath")
+            logger.warn("GIT_REPO_DETECT: Project.baseDir (if different): ${project.baseDir?.path}") // Log project.baseDir as requested
+            return null
+        }
+        
+        logger.info("GIT_REPO_DETECT: GitRepositoryManager.repositories returned ${repositories.size} repositories.")
         repositories.forEachIndexed { index, repo ->
-            logger.info("GIT_REPO_DETECT: Repo $index: root=${repo.root.path}, presentableUrl=${repo.root.presentableUrl}, state=${repo.state}")
+            logger.info("GIT_REPO_DETECT: Repo $index: rootPath='${repo.root.path}', presentableUrl='${repo.root.presentableUrl}', state='${repo.state}', isDisposed='${repo.isDisposed}'")
         }
 
+        // The existing when block logic for selecting one repo is fine.
         return when {
-            repositories.isEmpty() -> {
-                logger.warn("GIT_REPO_DETECT: No Git repositories found by manager. Returning null.")
-                // Attempt to get project base path as a fallback clue, though not a repo itself
-                val projectBasePath = project.basePath
-                logger.warn("GIT_REPO_DETECT: Project base path for context: $projectBasePath")
+            repositories.isEmpty() -> { // Should be caught by above isNullOrEmpty, but as a safeguard
+                logger.warn("GIT_REPO_DETECT: (Safeguard) No Git repositories found by manager after initial check. Returning null.")
                 null
             }
             repositories.size > 1 -> {
                 logger.info("GIT_REPO_DETECT: Multiple Git repositories found (${repositories.size}). Using the first one: ${repositories.first().root.path}")
-                // Log all available repository roots for diagnostic purposes
-                repositories.forEach { logger.info("GIT_REPO_DETECT: Available repo root: ${it.root.path}") }
                 repositories.first()
             }
             else -> { // Exactly one repository
@@ -90,14 +94,19 @@ class GitService(private val project: Project) {
      * - Files modified will be `Change.Type.MODIFICATION`.
      */
     fun getChanges(branchNameToCompare: String): CompletableFuture<List<Change>> {
-        logger.warn("DIAGNOSTIC: GitService.getChanges called with branchNameToCompare: $branchNameToCompare")
-        val future = CompletableFuture<List<Change>>()
-        val repository = getCurrentRepository()
+        val currentRepo = getCurrentRepository() // Call it once
+        logger.info("GIT_SERVICE_CHANGES: getChanges called for project '${project.name}'. Current repository found: ${currentRepo?.root?.path ?: "None"}. Comparing with branch: '$branchNameToCompare'")
+        // logger.warn("DIAGNOSTIC: GitService.getChanges called with branchNameToCompare: $branchNameToCompare") // Redundant with above
 
-        if (repository == null) {
+        val future = CompletableFuture<List<Change>>()
+        // val repository = getCurrentRepository() // Already fetched as currentRepo
+
+        if (currentRepo == null) {
+            logger.warn("GIT_SERVICE_CHANGES: No current repository, completing with empty list of changes.")
             future.complete(emptyList())
             return future
         }
+        val repository = currentRepo // Use the fetched repo
 
         // Determine current actual branch name
         val currentActualBranchName = repository.currentBranchName
