@@ -26,6 +26,7 @@
                 instance="com.github.uiopak.lstcrc.settings.TabColorSettingsConfigurable"
                 id="com.github.uiopak.lstcrc.settings.TabColorSettingsConfigurable"
                 displayName="Editor Tab Coloring"/>
+        <projectService serviceImplementation="com.github.uiopak.lstcrc.services.TabBorderController"/>
     </extensions>
 
     <applicationListeners>
@@ -35,8 +36,6 @@
 
     <projectListeners>
         <listener class="com.github.uiopak.lstcrc.listeners.TabColorFileEditorManagerListener"
-                  topic="com.intellij.openapi.fileEditor.FileEditorManagerListener"/>
-        <listener class="com.github.uiopak.lstcrc.listeners.FileTabBorderPainterListener"
                   topic="com.intellij.openapi.fileEditor.FileEditorManagerListener"/>
     </projectListeners>
 </idea-plugin>

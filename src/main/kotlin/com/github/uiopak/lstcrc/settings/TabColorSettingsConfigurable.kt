@@ -13,6 +13,8 @@ import javax.swing.*
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.fileEditor.ex.FileEditorManagerEx
 import com.intellij.openapi.diagnostic.Logger
+import com.intellij.openapi.components.service // Added for project.service<T>()
+import com.github.uiopak.lstcrc.services.TabBorderController // Added for TabBorderController
 
 class TabColorSettingsConfigurable(private val project: Project) : Configurable {
 
@@ -400,17 +402,16 @@ class TabColorSettingsConfigurable(private val project: Project) : Configurable 
         }
         logger.info("CONFIG: Finished refresh loop.")
 
-        // New explicit border refresh
-        logger.info("CONFIG: Explicitly refreshing borders for all open tabs due to settings change.")
-        fileEditorManager.openFiles.forEach { virtualFile ->
-            try {
-                logger.info("CONFIG: Calling applyBorderToTab for ${virtualFile.path}")
-                com.github.uiopak.lstcrc.listeners.FileTabBorderPainterListener.applyBorderToTab(project, virtualFile)
-            } catch (e: Exception) {
-                logger.error("CONFIG: Exception during applyBorderToTab for ${virtualFile.path} from settings apply", e)
-            }
+        // New call to TabBorderController to update all borders
+        logger.info("CONFIG: Requesting TabBorderController to update all tab borders due to settings change.")
+        try {
+            val tabBorderController = project.service<com.github.uiopak.lstcrc.services.TabBorderController>()
+            tabBorderController.updateAllTabBorders()
+            logger.info("CONFIG: TabBorderController finished updating tab borders.")
+        } catch (e: Exception) {
+            logger.error("CONFIG: Exception when calling TabBorderController.updateAllTabBorders from settings apply", e)
         }
-        logger.info("CONFIG: Finished explicitly refreshing borders.")
+        
         // Example of a more global repaint, if needed:
         // com.intellij.openapi.fileEditor.ex.FileEditorManagerEx.getInstanceEx(project).repaintEditorWindows()
         // logger.info("CONFIG: Called repaintEditorWindows if necessary.")
