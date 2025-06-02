@@ -10,6 +10,8 @@ import com.intellij.ui.components.JBRadioButton
 import com.intellij.util.ui.FormBuilder
 import java.awt.Color
 import javax.swing.*
+import com.intellij.openapi.fileEditor.FileEditorManager
+import com.intellij.openapi.fileEditor.ex.FileEditorManagerEx
 
 class TabColorSettingsConfigurable(private val project: Project) : Configurable {
 
@@ -40,19 +42,18 @@ class TabColorSettingsConfigurable(private val project: Project) : Configurable 
     private val perStatusColorSettingsLabel = JBLabel("Define background colors per Git status:")
     private val newFileColorPicker = ColorPanel()
     private val newFileColorLabel = JBLabel("New files:")
+    private val newFileResetButton = JButton("Reset")
     private val modifiedFileColorPicker = ColorPanel()
     private val modifiedFileColorLabel = JBLabel("Modified files:")
+    private val modifiedFileResetButton = JButton("Reset")
     private val deletedFileColorPicker = ColorPanel()
     private val deletedFileColorLabel = JBLabel("Deleted files:")
+    private val deletedFileResetButton = JButton("Reset")
     private val movedFileColorPicker = ColorPanel()
     private val movedFileColorLabel = JBLabel("Moved files:")
+    private val movedFileResetButton = JButton("Reset")
 
-    private val perStatusColorPickersAndLabels: List<Pair<ColorPanel, JBLabel>> = listOf(
-        newFileColorPicker to newFileColorLabel,
-        modifiedFileColorPicker to modifiedFileColorLabel,
-        deletedFileColorPicker to deletedFileColorLabel,
-        movedFileColorPicker to movedFileColorLabel
-    )
+    // Removed perStatusColorPickersAndLabels list as it's not used with new layout structure
 
     // Border color and side components
     private val borderSettingsLabel = JBLabel("Border settings (experimental):")
@@ -80,6 +81,12 @@ class TabColorSettingsConfigurable(private val project: Project) : Configurable 
         useDefaultBackgroundColorCheckBox.addActionListener {
             updateBackgroundColorSectionsVisibility()
         }
+
+        // Add ActionListeners for Reset buttons
+        newFileResetButton.addActionListener { newFileColorPicker.selectedColor = hexToColor(DEFAULT_COLOR_NEW_HEX) }
+        modifiedFileResetButton.addActionListener { modifiedFileColorPicker.selectedColor = hexToColor(DEFAULT_COLOR_MODIFIED_HEX) }
+        deletedFileResetButton.addActionListener { deletedFileColorPicker.selectedColor = hexToColor(DEFAULT_COLOR_DELETED_HEX) }
+        movedFileResetButton.addActionListener { movedFileColorPicker.selectedColor = hexToColor(DEFAULT_COLOR_MOVED_HEX) }
 
         // Listeners for border controls (unchanged from previous version)
         borderSideComboBox.addActionListener {
@@ -117,12 +124,34 @@ class TabColorSettingsConfigurable(private val project: Project) : Configurable 
 
     override fun createComponent(): JComponent? {
         if (mainPanel == null) {
+            // Build rows for per-status color pickers with their reset buttons
+            val newFilePanel = JPanel(java.awt.FlowLayout(java.awt.FlowLayout.LEFT)).apply {
+                add(newFileColorLabel)
+                add(newFileColorPicker)
+                add(newFileResetButton)
+            }
+            val modifiedFilePanel = JPanel(java.awt.FlowLayout(java.awt.FlowLayout.LEFT)).apply {
+                add(modifiedFileColorLabel)
+                add(modifiedFileColorPicker)
+                add(modifiedFileResetButton)
+            }
+            val deletedFilePanel = JPanel(java.awt.FlowLayout(java.awt.FlowLayout.LEFT)).apply {
+                add(deletedFileColorLabel)
+                add(deletedFileColorPicker)
+                add(deletedFileResetButton)
+            }
+            val movedFilePanel = JPanel(java.awt.FlowLayout(java.awt.FlowLayout.LEFT)).apply {
+                add(movedFileColorLabel)
+                add(movedFileColorPicker)
+                add(movedFileResetButton)
+            }
+
             val perStatusFormBuilder = FormBuilder.createFormBuilder()
                 .addComponent(perStatusColorSettingsLabel)
-                .addLabeledComponent(newFileColorLabel, newFileColorPicker)
-                .addLabeledComponent(modifiedFileColorLabel, modifiedFileColorPicker)
-                .addLabeledComponent(deletedFileColorLabel, deletedFileColorPicker)
-                .addLabeledComponent(movedFileColorLabel, movedFileColorPicker)
+                .addComponent(newFilePanel)
+                .addComponent(modifiedFilePanel)
+                .addComponent(deletedFilePanel)
+                .addComponent(movedFilePanel)
             perStatusColorPanel = perStatusFormBuilder.panel
 
             val formBuilder = FormBuilder.createFormBuilder()
@@ -212,6 +241,15 @@ class TabColorSettingsConfigurable(private val project: Project) : Configurable 
         settingsState.borderColor = colorToHex(borderColorPicker.selectedColor)
 
         settingsState.colorTarget = if (backgroundRadioButton.isSelected) "BACKGROUND" else settingsState.colorTarget
+
+        // Trigger a refresh of open editor tabs
+        val fileEditorManager = FileEditorManager.getInstance(project) as? FileEditorManagerEx
+        fileEditorManager?.let { manager ->
+            for (virtualFile in manager.openFiles) {
+                manager.updateFilePresentation(virtualFile)
+            }
+            // Consider also manager.repaintEditorWindows() if updateFilePresentation is not enough
+        }
     }
 
     private fun getAppliedColorHex(selectedColor: Color?, defaultHex: String): String? {
