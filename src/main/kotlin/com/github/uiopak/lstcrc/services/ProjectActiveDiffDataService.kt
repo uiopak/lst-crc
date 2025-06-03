@@ -10,6 +10,7 @@ import com.intellij.openapi.fileEditor.FileEditorManager
 import com.github.uiopak.lstcrc.services.ToolWindowStateService
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vcs.changes.Change
+import com.intellij.openapi.vfs.VirtualFile
 
 @Service(Service.Level.PROJECT)
 class ProjectActiveDiffDataService(private val project: Project) : Disposable {
@@ -19,15 +20,30 @@ class ProjectActiveDiffDataService(private val project: Project) : Disposable {
         private set // Allow external read, internal write
     var activeChanges: List<Change> = emptyList()
         private set // Allow external read, internal write
+    var createdFiles: List<VirtualFile> = emptyList()
+        private set
+    var modifiedFiles: List<VirtualFile> = emptyList()
+        private set
+    var movedFiles: List<VirtualFile> = emptyList()
+        private set
 
-    fun updateActiveDiff(branchNameFromEvent: String, changesFromEvent: List<Change>) {
+    fun updateActiveDiff(
+        branchNameFromEvent: String,
+        changesFromEvent: List<Change>,
+        createdFilesFromEvent: List<VirtualFile>,
+        modifiedFilesFromEvent: List<VirtualFile>,
+        movedFilesFromEvent: List<VirtualFile>
+    ) {
         val currentToolWindowBranch = project.service<ToolWindowStateService>().getSelectedTabBranchName()
-        logger.info("SERVICE_UPDATE_DIFF: updateActiveDiff called. Event branch: '$branchNameFromEvent' (${changesFromEvent.size} changes). Current tool window branch: '$currentToolWindowBranch'.")
+        logger.info("SERVICE_UPDATE_DIFF: updateActiveDiff called. Event branch: '$branchNameFromEvent' (${changesFromEvent.size} changes, ${createdFilesFromEvent.size} created, ${modifiedFilesFromEvent.size} modified, ${movedFilesFromEvent.size} moved). Current tool window branch: '$currentToolWindowBranch'.")
 
         if (branchNameFromEvent == currentToolWindowBranch) {
-            logger.info("SERVICE_UPDATE_DIFF: Event branch matches current tool window branch. Updating active data.")
+            logger.info("SERVICE_UPDATE_DIFF: Event branch matches current tool window branch. Updating active data. Created: ${createdFilesFromEvent.size}, Modified: ${modifiedFilesFromEvent.size}, Moved: ${movedFilesFromEvent.size}")
             this.activeBranchName = branchNameFromEvent
             this.activeChanges = changesFromEvent
+            this.createdFiles = createdFilesFromEvent
+            this.modifiedFiles = modifiedFilesFromEvent
+            this.movedFiles = movedFilesFromEvent
             triggerEditorTabColorRefresh()
         } else {
             logger.info("SERVICE_UPDATE_DIFF: Event branch '$branchNameFromEvent' does NOT match current tool window branch '$currentToolWindowBranch'. Ignoring stale update.")
@@ -35,9 +51,12 @@ class ProjectActiveDiffDataService(private val project: Project) : Disposable {
     }
 
     fun clearActiveDiff() {
-        logger.info("SERVICE_CLEAR_DIFF: clearActiveDiff called. Clearing activeBranchName and activeChanges.")
+        logger.info("SERVICE_CLEAR_DIFF: clearActiveDiff called. Clearing activeBranchName, activeChanges, createdFiles, modifiedFiles, and movedFiles.")
         this.activeBranchName = null
         this.activeChanges = emptyList()
+        this.createdFiles = emptyList()
+        this.modifiedFiles = emptyList()
+        this.movedFiles = emptyList()
         triggerEditorTabColorRefresh()
     }
 
@@ -70,8 +89,11 @@ class ProjectActiveDiffDataService(private val project: Project) : Disposable {
     }
 
     override fun dispose() {
-        logger.info("Disposing ProjectActiveDiffDataService, clearing changes.")
+        logger.info("Disposing ProjectActiveDiffDataService, clearing changes and file lists.")
         activeChanges = emptyList()
         activeBranchName = null
+        createdFiles = emptyList()
+        modifiedFiles = emptyList()
+        movedFiles = emptyList()
     }
 }

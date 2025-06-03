@@ -1,11 +1,14 @@
 package com.github.uiopak.lstcrc.listeners
 
+import com.github.uiopak.lstcrc.services.CategorizedChanges
 import com.github.uiopak.lstcrc.services.GitService
 import com.github.uiopak.lstcrc.services.ProjectActiveDiffDataService
 import com.github.uiopak.lstcrc.services.ToolWindowStateService
 import com.intellij.openapi.components.service
+import com.intellij.openapi.vcs.changes.Change
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.openapi.vfs.newvfs.BulkFileListener
 import com.intellij.openapi.vfs.newvfs.events.VFileContentChangeEvent
 import com.intellij.openapi.vfs.newvfs.events.VFileCreateEvent
@@ -75,20 +78,30 @@ class TabColorVfsListener(private val project: Project) : BulkFileListener {
             val diffDataService = project.service<ProjectActiveDiffDataService>()
 
             logger.info("VFS_LISTENER_REFRESH: Fetching changes for branch '$activeBranchName'.")
-            gitService.getChanges(activeBranchName).whenCompleteAsync { changes, throwable ->
+            gitService.getChanges(activeBranchName).whenCompleteAsync { categorizedChanges, throwable ->
                 if (project.isDisposed) {
                     logger.info("VFS_LISTENER_REFRESH: Project disposed during getChanges for '$activeBranchName'. Aborting update.")
                     return@whenCompleteAsync
                 }
-                logger.info("VFS_LISTENER_REFRESH: getChanges for '$activeBranchName' completed. Error: ${throwable != null}, Changes count: ${changes?.size ?: "null"}")
+                logger.info("VFS_LISTENER_REFRESH: getChanges for '$activeBranchName' completed. Error: ${throwable != null}, Total changes count: ${categorizedChanges?.allChanges?.size ?: "null"}")
 
                 if (throwable != null) {
                     logger.error("VFS_LISTENER_REFRESH: Error getting changes for branch '$activeBranchName': ${throwable.message}", throwable)
-                } else if (changes != null) {
-                    logger.info("VFS_LISTENER_REFRESH: Successfully fetched ${changes.size} changes for '$activeBranchName'. Calling diffDataService.updateActiveDiff.")
-                    diffDataService.updateActiveDiff(activeBranchName, changes)
-                } else {
-                    logger.warn("VFS_LISTENER_REFRESH: Fetched changes for '$activeBranchName' but the list was null.")
+                    // Clear active diff data on error by passing empty lists
+                    diffDataService.updateActiveDiff(activeBranchName, emptyList(), emptyList(), emptyList(), emptyList())
+                } else if (categorizedChanges != null) {
+                    logger.info("VFS_LISTENER_REFRESH: Successfully fetched ${categorizedChanges.allChanges.size} total changes, ${categorizedChanges.createdFiles.size} created, ${categorizedChanges.modifiedFiles.size} modified, ${categorizedChanges.movedFiles.size} moved for '$activeBranchName'. Calling diffDataService.updateActiveDiff.")
+                    diffDataService.updateActiveDiff(
+                        activeBranchName,
+                        categorizedChanges.allChanges,
+                        categorizedChanges.createdFiles,
+                        categorizedChanges.modifiedFiles,
+                        categorizedChanges.movedFiles
+                    )
+                } else { // categorizedChanges is null and throwable is null
+                    logger.warn("VFS_LISTENER_REFRESH: Fetched changes for '$activeBranchName' but the CategorizedChanges object was null. Clearing active diff.")
+                    // Clear active diff data by passing empty lists
+                    diffDataService.updateActiveDiff(activeBranchName, emptyList(), emptyList(), emptyList(), emptyList())
                 }
             }
         } else {

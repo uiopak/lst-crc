@@ -1,5 +1,8 @@
 package com.github.uiopak.lstcrc.provider
 
+import com.github.uiopak.lstcrc.scopes.CreatedFilesScope
+import com.github.uiopak.lstcrc.scopes.ModifiedFilesScope
+import com.github.uiopak.lstcrc.scopes.MovedFilesScope
 import com.github.uiopak.lstcrc.services.ProjectActiveDiffDataService
 import com.github.uiopak.lstcrc.settings.TabColorSettingsState
 import com.intellij.openapi.components.service
@@ -84,24 +87,47 @@ class GitStatusBasedTabColorProvider : EditorTabColorProvider {
         } else {
             logger.info("PROVIDER: Using Git status to determine background color for file '${file.path}'.")
             val diffDataService = project.service<ProjectActiveDiffDataService>()
+
             if (diffDataService.activeBranchName == null) {
                 logger.info("PROVIDER: No active branch data in DiffDataService for file '${file.path}'. Returning null.")
                 return null // No active branch data for coloring
             }
 
-            val changeForFile = diffDataService.activeChanges.find { change ->
-                val afterVf = change.afterRevision?.file?.virtualFile
-                val beforeVf = change.beforeRevision?.file?.virtualFile
-                (afterVf != null && afterVf.isValid && afterVf == file) || (beforeVf != null && beforeVf.isValid && beforeVf == file)
-            }
+            // Determine status type based on scope membership
+            // The scope's `contains` method will internally use ProjectActiveDiffDataService
+            var statusType: Change.Type? = null
 
-            if (changeForFile == null) {
-                logger.info("PROVIDER: No specific Git change found for file '${file.path}' in branch '${diffDataService.activeBranchName}'. Returning null.")
+            if (CreatedFilesScope().contains(file, project, null)) { // Pass null for NamedScopesHolder for now
+                statusType = Change.Type.NEW
+                logger.info("PROVIDER: File '${file.path}' found in CreatedFilesScope.")
+            } else if (ModifiedFilesScope().contains(file, project, null)) {
+                statusType = Change.Type.MODIFICATION
+                logger.info("PROVIDER: File '${file.path}' found in ModifiedFilesScope.")
+            } else if (MovedFilesScope().contains(file, project, null)) {
+                statusType = Change.Type.MOVED
+                logger.info("PROVIDER: File '${file.path}' found in MovedFilesScope.")
+            }
+            // Note: We don't check DeletedFilesScope here as the file is open in an editor tab,
+            // so it exists. If a file was deleted and the tab is still open (e.g. before IDE refresh),
+            // it wouldn't typically be in these scopes of current changes.
+            // The original logic also relied on 'activeChanges' which would include DELETED types.
+            // If a file *was* deleted from the branch (compared to HEAD), it would be in activeChanges with type DELETED.
+            // The new scope model focuses on files *present* in created, modified, moved lists.
+            // We need to consider how to handle files that were part of the diff as DELETED.
+            // For now, this logic will only color based on created, modified, moved status of *open, existing* files.
+            // This is a potential difference from the original logic if a "deleted" file's tab remained open.
+            // However, the issue asks for scopes for "created, modified, moved, and one combined 'changed files'".
+            // It doesn't explicitly ask for coloring "deleted" files via scopes.
+            // The `ProjectActiveDiffDataService.activeChanges` still holds all changes including DELETED.
+            // If coloring for DELETED is still desired through this provider, we might need a separate check or a DeletedFilesScope.
+            // For this step, we'll stick to the scopes mentioned.
+
+            if (statusType == null) {
+                logger.info("PROVIDER: File '${file.path}' not found in Created, Modified, or Moved scopes for branch '${diffDataService.activeBranchName}'. Returning null.")
                 return null
             }
 
-            val statusType = changeForFile.type
-            logger.info("PROVIDER: Git change type for file '${file.path}' is $statusType.")
+            logger.info("PROVIDER: Scope-determined status type for file '${file.path}' is $statusType.")
 
             val userDefinedColorHex = when (statusType) {
                 Change.Type.NEW -> settings.newFileColor

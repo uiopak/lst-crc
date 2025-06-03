@@ -19,6 +19,13 @@
         <!-- <vfs.listener class="com.github.uiopak.lstcrc.services.VfsChangeListener"/> --> <!-- This line is now commented out -->
 
         <editorTabColorProvider implementation="com.github.uiopak.lstcrc.provider.GitStatusBasedTabColorProvider"/>
+
+        <!-- Added Named Scope Providers -->
+        <namedScopeProvider implementation="com.github.uiopak.lstcrc.scopes.CreatedFilesScope" />
+        <namedScopeProvider implementation="com.github.uiopak.lstcrc.scopes.ModifiedFilesScope" />
+        <namedScopeProvider implementation="com.github.uiopak.lstcrc.scopes.MovedFilesScope" />
+        <namedScopeProvider implementation="com.github.uiopak.lstcrc.scopes.ChangedFilesScope" />
+
 <!--        <projectActivity implementation="com.github.uiopak.lstcrc.services.PluginStartupActivity"/>-->
         <!-- Removed TabColorVfsListenerRegistrationActivity -->
         <!-- Removed MySimpleStartupActivity -->
