@@ -6,11 +6,13 @@ import com.intellij.openapi.components.PersistentStateComponent
 import com.intellij.openapi.components.State
 import com.intellij.openapi.components.Storage
 import com.github.uiopak.lstcrc.toolWindow.ChangesTreePanel
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.wm.ToolWindowManager
 import com.intellij.util.xmlb.XmlSerializerUtil
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.components.service
+import javax.swing.Timer
 
 @State(
     name = "com.github.uiopak.lstcrc.services.ToolWindowStateService",
@@ -19,10 +21,22 @@ import com.intellij.openapi.components.service
 class ToolWindowStateService(private val project: Project) : PersistentStateComponent<ToolWindowState> {
 
     private var myState = ToolWindowState()
-    private val logger = thisLogger() // Initialize logger
+    private val logger = thisLogger()
+
+    private var refreshDebounceTimer: Timer? = null
+    private var pendingRefreshBranchName: String? = null
+
+    companion object {
+        private const val HEAD_BRANCH_NAME = "HEAD"
+        private const val REFRESH_DEBOUNCE_DELAY_MS = 300
+
+        fun getInstance(project: Project): ToolWindowStateService {
+            return project.getService(ToolWindowStateService::class.java)
+        }
+    }
 
     override fun getState(): ToolWindowState {
-        logger.debug("getState() called. Current state: $myState")
+        logger.trace("getState() called. Current state: $myState")
         return myState
     }
 
@@ -65,104 +79,110 @@ class ToolWindowStateService(private val project: Project) : PersistentStateComp
 
     fun setSelectedTab(index: Int) {
         logger.debug("setSelectedTab called with index: $index. Current state selectedTabIndex: ${myState.selectedTabIndex}")
+
+        // Cancel any pending debounced refresh before changing the tab
+        refreshDebounceTimer?.stop()
+        pendingRefreshBranchName = null
+        logger.debug("Debounced refresh timer stopped and pending branch name cleared due to tab selection change.")
+
         if (myState.selectedTabIndex != index) {
             myState.selectedTabIndex = index
-            myState = myState.copy() // Ensure state is copied if it's a data class
+            myState = myState.copy()
             logger.info("Selected tab index set to $index. New state: $myState")
 
-            // New logic to update ProjectActiveDiffDataService
-            val diffDataService = project.service<ProjectActiveDiffDataService>()
-            val gitService = project.service<GitService>()
+            val newSelectedBranchName = if (index == -1) HEAD_BRANCH_NAME else getSelectedTabBranchName()
 
-            val selectedBranchName = getSelectedTabBranchName() // Uses the new index due to state update
-
-            if (selectedBranchName != null) {
-                logger.info("Tool window tab selection changed to: '$selectedBranchName'. Fetching its changes.")
-                gitService.getChanges(selectedBranchName).whenCompleteAsync { categorizedChanges, throwable ->
-                    logger.debug("getChanges for '$selectedBranchName' completed. Error: ${throwable != null}, Changes count: ${categorizedChanges?.allChanges?.size ?: "null"}")
-                    if (throwable != null) {
-                        logger.error("Error for $selectedBranchName: ${throwable.message}")
-                        diffDataService.clearActiveDiff() // Keep clearing on error
-                    } else if (categorizedChanges != null) {
-                        logger.debug("Successfully fetched ${categorizedChanges.allChanges.size} total changes for '$selectedBranchName'. Calling diffDataService.updateActiveDiff.")
-                        diffDataService.updateActiveDiff(
-                            selectedBranchName,
-                            categorizedChanges.allChanges,
-                            categorizedChanges.createdFiles,
-                            categorizedChanges.modifiedFiles,
-                            categorizedChanges.movedFiles
-                        )
-                        // Update the UI panel
-                        getActiveChangesTreePanel(project)?.displayChanges(categorizedChanges, selectedBranchName)
-                            ?: logger.warn("No active ChangesTreePanel found after fetching changes for '$selectedBranchName'. UI might not update.")
-                    } else { // categorizedChanges is null and throwable is null
-                        logger.warn("Fetched changes for '$selectedBranchName' but CategorizedChanges object was null. Calling diffDataService.clearActiveDiff.")
-                        diffDataService.clearActiveDiff() // Keep clearing if no data
-                        // Update the UI panel to show no data / error state
-                        getActiveChangesTreePanel(project)?.displayChanges(null, selectedBranchName)
-                            ?: logger.warn("No active ChangesTreePanel found for '$selectedBranchName' (no data/error case). UI might not update.")
-                    }
-                }
-            } else { // selectedBranchName is null (e.g. "HEAD" or no tab if index was invalid)
-                logger.debug("No specific branch tab selected (index: $index). Clearing active diff and updating panel.")
-                diffDataService.clearActiveDiff()
-                // Update the UI panel (likely HEAD panel) to show no data / error state
-                val headBranchName = "HEAD" // Default for this scenario
-                getActiveChangesTreePanel(project)?.displayChanges(null, headBranchName)
-                    ?: logger.warn("No active ChangesTreePanel found (no branch selected case). UI might not update.")
+            if (newSelectedBranchName != null) {
+                logger.info("Tab selection changed to: '$newSelectedBranchName'. Fetching its changes directly.")
+                fetchAndDisplayChangesForBranch(newSelectedBranchName)
+            } else {
+                // This case should ideally not happen if index is valid or -1.
+                // If index is invalid (e.g. out of bounds for actual tabs after HEAD),
+                // getSelectedTabBranchName() would return null.
+                logger.warn("No branch name determined for selected index $index. Clearing active diff.")
+                project.service<ProjectActiveDiffDataService>().clearActiveDiff()
+                getActiveChangesTreePanel(project)?.displayChanges(null, HEAD_BRANCH_NAME) // Show empty/error in HEAD panel
             }
-
         } else {
-            logger.debug("Selected tab index $index is already set. No data fetch or UI update initiated from setSelectedTab.")
-            // Even if index is the same, if branch name could have changed (e.g. list reordered without index change),
-            // we might still want to refresh. However, current logic is fine if index directly maps to a stable tab order.
-            // Consider if a refresh is needed even if index is same, e.g. by comparing branch name.
-            // For now, if index is same, assume no change needed for active diff.
+            logger.debug("Selected tab index $index is already set. No data fetch or UI update initiated from setSelectedTab, but pending refresh was cancelled.")
         }
     }
 
     fun getSelectedTabBranchName(): String? {
-        // This is a read-only operation, no logging needed unless for specific debugging
         if (myState.selectedTabIndex >= 0 && myState.selectedTabIndex < myState.openTabs.size) {
             return myState.openTabs[myState.selectedTabIndex].branchName
         }
         return null
     }
 
-    fun refreshDataForActiveTabIfMatching(eventBranchName: String) {
-        logger.debug("refreshDataForActiveTabIfMatching called with eventBranchName: $eventBranchName")
-        val currentSelectedBranch = getSelectedTabBranchName()
+    fun requestRefreshForBranch(branchName: String) {
+        logger.debug("requestRefreshForBranch('$branchName') called.")
+        val currentSelectedBranch = if (myState.selectedTabIndex == -1) HEAD_BRANCH_NAME else getSelectedTabBranchName()
 
-        if (currentSelectedBranch != null && eventBranchName == currentSelectedBranch) {
-            logger.debug("Event branch '$eventBranchName' matches current active tab '$currentSelectedBranch'. Refreshing data.")
+        if (branchName == currentSelectedBranch) {
+            logger.debug("Request to refresh branch '$branchName' matches current active tab. Debouncing refresh.")
+            pendingRefreshBranchName = branchName
+            refreshDebounceTimer?.stop() // Stop any existing timer
+            refreshDebounceTimer = Timer(REFRESH_DEBOUNCE_DELAY_MS) {
+                pendingRefreshBranchName?.let {
+                    logger.info("Debounced timer fired for branch '$it'. Fetching and displaying changes.")
+                    fetchAndDisplayChangesForBranch(it)
+                }
+                pendingRefreshBranchName = null // Clear after fetching (or attempting to)
+            }.apply {
+                isRepeats = false
+                start()
+            }
+            logger.debug("Debounce timer (re)started for branch '$branchName'.")
+        } else {
+            logger.debug("Request to refresh branch '$branchName' does not match current active tab ('$currentSelectedBranch'). No refresh initiated.")
+        }
+    }
 
-            val gitService = project.service<GitService>()
-            val diffDataService = project.service<ProjectActiveDiffDataService>()
+    private fun fetchAndDisplayChangesForBranch(branchName: String) {
+        logger.info("fetchAndDisplayChangesForBranch called for branch: $branchName")
+        val activePanel = getActiveChangesTreePanel(project)
+        // It's generally safe to call showLoadingStateAndPrepareForData unconditionally.
+        // The panel itself can ensure it doesn't do redundant work if it's already loading.
+        activePanel?.showLoadingStateAndPrepareForData()
 
-            gitService.getChanges(currentSelectedBranch).whenCompleteAsync { categorizedChanges, throwable ->
-                val activePanel = getActiveChangesTreePanel(project)
+        val gitService = project.service<GitService>()
+        val diffDataService = project.service<ProjectActiveDiffDataService>()
+
+        gitService.getChanges(branchName).whenCompleteAsync { categorizedChanges, throwable ->
+            ApplicationManager.getApplication().invokeLater { // Ensure UI updates are on EDT
+                logger.debug("getChanges for '$branchName' completed. Error: ${throwable != null}, Changes count: ${categorizedChanges?.allChanges?.size ?: "null"}")
                 if (throwable != null) {
-                    logger.error("Error refreshing data for active tab '$currentSelectedBranch': ${throwable.message}", throwable)
-                    activePanel?.displayChanges(null, currentSelectedBranch)
+                    logger.error("Error fetching changes for $branchName: ${throwable.message}", throwable)
+                    // Optionally clear active diff or set an error state in ProjectActiveDiffDataService
+                    if (branchName == (if (myState.selectedTabIndex == -1) HEAD_BRANCH_NAME else getSelectedTabBranchName())) {
+                         diffDataService.clearActiveDiff()
+                    }
+                    activePanel?.displayChanges(null, branchName) // Show error/empty state
                 } else if (categorizedChanges != null) {
-                    logger.debug("Successfully refreshed data for active tab '$currentSelectedBranch'. ${categorizedChanges.allChanges.size} changes. Updating ProjectActiveDiffDataService.")
-                    diffDataService.updateActiveDiff(
-                        currentSelectedBranch, // branchNameFromEvent
-                        categorizedChanges.allChanges,
-                        categorizedChanges.createdFiles,
-                        categorizedChanges.modifiedFiles,
-                        categorizedChanges.movedFiles
-                    )
-                    // Update the UI panel
-                    activePanel?.displayChanges(categorizedChanges, currentSelectedBranch)
-                        ?: logger.warn("No active ChangesTreePanel found after refreshing data for '$currentSelectedBranch'. UI might not update.")
+                    logger.debug("Successfully fetched ${categorizedChanges.allChanges.size} total changes for '$branchName'.")
+                     // Update ProjectActiveDiffDataService only if the fetched branch is still the active one
+                    if (branchName == (if (myState.selectedTabIndex == -1) HEAD_BRANCH_NAME else getSelectedTabBranchName())) {
+                        logger.debug("Updating ProjectActiveDiffDataService for active branch '$branchName'.")
+                        diffDataService.updateActiveDiff(
+                            branchName,
+                            categorizedChanges.allChanges,
+                            categorizedChanges.createdFiles,
+                            categorizedChanges.modifiedFiles,
+                            categorizedChanges.movedFiles
+                        )
+                    } else {
+                        logger.debug("Fetched data for '$branchName', but it's no longer the active tab. ProjectActiveDiffDataService not updated.")
+                    }
+                    activePanel?.displayChanges(categorizedChanges, branchName)
                 } else { // categorizedChanges is null and throwable is null
-                    logger.warn("Refreshed data for '$currentSelectedBranch', but CategorizedChanges was null (and no error). ProjectActiveDiffDataService not updated. Updating panel to reflect no/error state.")
-                    activePanel?.displayChanges(null, currentSelectedBranch)
+                    logger.warn("Fetched changes for '$branchName' but CategorizedChanges object was null (and no error).")
+                    if (branchName == (if (myState.selectedTabIndex == -1) HEAD_BRANCH_NAME else getSelectedTabBranchName())) {
+                        diffDataService.clearActiveDiff() // Clear if no data for active tab
+                    }
+                    activePanel?.displayChanges(null, branchName) // Show empty/error state
                 }
             }
-        } else {
-            logger.debug("Event branch '$eventBranchName' does not match current active tab '$currentSelectedBranch' (actual: '$currentSelectedBranch'). No refresh initiated from refreshDataForActiveTabIfMatching.")
         }
     }
 
@@ -188,9 +208,5 @@ class ToolWindowStateService(private val project: Project) : PersistentStateComp
         }
     }
 
-    companion object {
-        fun getInstance(project: Project): ToolWindowStateService {
-            return project.getService(ToolWindowStateService::class.java)
-        }
-    }
+    // refreshDataForActiveTabIfMatching is removed
 }

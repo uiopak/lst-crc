@@ -66,15 +66,8 @@ class OpenBranchSelectionTabAction(
                 logger.info("OpenBranchSelectionTabAction (Callback): Tab for '$selectedBranchName' already exists. Selecting it and removing '$selectionTabName' tab.")
                 manager.setSelectedContent(existingBranchTabForSelectedName, true)
                 manager.removeContent(selectionTabContent, true)
-
-                val closableTabs = manager.contents.filter { it.isCloseable }.map { it.displayName }
-                val selectedIndex = closableTabs.indexOf(selectedBranchName)
-                if (selectedIndex != -1) {
-                    logger.info("OpenBranchSelectionTabAction (Callback): Calling stateService.setSelectedTab($selectedIndex) for existing branch '$selectedBranchName'.")
-                    stateService.setSelectedTab(selectedIndex)
-                } else {
-                    logger.warn("OpenBranchSelectionTabAction (Callback): Could not find existing branch '$selectedBranchName' in closable tabs for setSelectedTab after selecting it.")
-                }
+                // stateService.setSelectedTab will be called by selectionChanged listener in MyToolWindowFactory
+                logger.info("OpenBranchSelectionTabAction (Callback): Selected existing tab for '$selectedBranchName"' and removed selection tab. State update deferred to selectionChanged listener.")
             } else {
                 logger.info("OpenBranchSelectionTabAction (Callback): Repurposing '$selectionTabName' tab to '$selectedBranchName'.")
                 selectionTabContent.displayName = selectedBranchName
@@ -82,28 +75,14 @@ class OpenBranchSelectionTabAction(
                 // Create the new component (ChangesTreePanel)
                 val newBranchContentView = uiProvider.createBranchContentView(selectedBranchName)
                 selectionTabContent.component = newBranchContentView
-
-                // Explicitly refresh the new ChangesTreePanel
-                if (newBranchContentView is ChangesTreePanel) {
-                    logger.info("OpenBranchSelectionTabAction (Callback): Explicitly calling requestRefreshData() on new ChangesTreePanel for branch '$selectedBranchName'.")
-                    newBranchContentView.requestRefreshData()
-                } else {
-                    logger.warn("OpenBranchSelectionTabAction (Callback): newBranchContentView is not a ChangesTreePanel. Cannot call requestRefreshData. Type: ${newBranchContentView::class.java.name}")
-                }
+                // Data refresh will be triggered by selectionChanged listener via ToolWindowStateService.setSelectedTab
 
                 manager.setSelectedContent(selectionTabContent, true)
 
-                logger.info("OpenBranchSelectionTabAction (Callback): Preparing to add to state. selectedBranchName = '$selectedBranchName'")
+                logger.info("OpenBranchSelectionTabAction (Callback): Adding tab '$selectedBranchName' to stateService.")
                 stateService.addTab(selectedBranchName)
-
-                val closableTabs = manager.contents.filter { it.isCloseable }.map { it.displayName }
-                val newTabIndex = closableTabs.indexOf(selectedBranchName)
-                if (newTabIndex != -1) {
-                    logger.info("OpenBranchSelectionTabAction (Callback): Calling stateService.setSelectedTab($newTabIndex) for new/repurposed branch '$selectedBranchName'.")
-                    stateService.setSelectedTab(newTabIndex)
-                } else {
-                    logger.warn("OpenBranchSelectionTabAction (Callback): Could not find new/repurposed branch '$selectedBranchName' in closable tabs for setSelectedTab.")
-                }
+                // stateService.setSelectedTab will be called by selectionChanged listener in MyToolWindowFactory
+                logger.info("OpenBranchSelectionTabAction (Callback): Repurposed and selected tab for '$selectedBranchName'. State update and data refresh deferred to selectionChanged listener.")
             }
         }
 
