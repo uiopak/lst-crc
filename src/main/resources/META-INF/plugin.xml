@@ -20,11 +20,8 @@
 
         <editorTabColorProvider implementation="com.github.uiopak.lstcrc.provider.GitStatusBasedTabColorProvider"/>
 
-        <!-- Added Named Scope Providers -->
-        <namedScopeProvider implementation="com.github.uiopak.lstcrc.scopes.CreatedFilesScope" />
-        <namedScopeProvider implementation="com.github.uiopak.lstcrc.scopes.ModifiedFilesScope" />
-        <namedScopeProvider implementation="com.github.uiopak.lstcrc.scopes.MovedFilesScope" />
-        <namedScopeProvider implementation="com.github.uiopak.lstcrc.scopes.ChangedFilesScope" />
+        <!-- Replaced individual scope providers with a single aggregate provider -->
+        <namedScopeProvider implementation="com.github.uiopak.lstcrc.scopes.LstCrcScopeProvider" />
 
 <!--        <projectActivity implementation="com.github.uiopak.lstcrc.services.PluginStartupActivity"/>-->
         <!-- Removed TabColorVfsListenerRegistrationActivity -->
