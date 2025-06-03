@@ -2,6 +2,7 @@ package com.github.uiopak.lstcrc.services
 
 // Imports will be consolidated here by the IDE or manually cleaned if necessary
 // For the purpose of this operation, we list the unique necessary imports.
+import com.github.uiopak.lstcrc.services.CategorizedChanges
 import com.github.uiopak.lstcrc.state.TabInfo
 import com.github.uiopak.lstcrc.state.ToolWindowState
 import com.intellij.openapi.components.PersistentStateComponent
@@ -83,19 +84,23 @@ class ToolWindowStateService(private val project: Project) : PersistentStateComp
 
             if (selectedBranchName != null) {
                 logger.info("TOOL_WINDOW_STATE: Tool window tab selection changed to: '$selectedBranchName'. Fetching its changes.")
-                gitService.getChanges(selectedBranchName).whenCompleteAsync { changes, throwable ->
-                    logger.info("TOOL_WINDOW_STATE: getChanges for '$selectedBranchName' completed. Error: ${throwable != null}, Changes count: ${changes?.size ?: "null"}")
+                gitService.getChanges(selectedBranchName).whenCompleteAsync { categorizedChanges, throwable ->
+                    logger.info("TOOL_WINDOW_STATE: getChanges for '$selectedBranchName' completed. Error: ${throwable != null}, Changes count: ${categorizedChanges?.allChanges?.size ?: "null"}")
                     if (throwable != null) {
                         logger.error("TOOL_WINDOW_STATE: Error for $selectedBranchName: ${throwable.message}")
-                        // Optionally clear diffDataService or mark error state
-                        // For now, clearing if an error occurs for the selected branch
-                        diffDataService.clearActiveDiff()
-                    } else if (changes != null) {
-                        logger.info("TOOL_WINDOW_STATE: Successfully fetched ${changes.size} changes for '$selectedBranchName'. Calling diffDataService.updateActiveDiff.")
-                        diffDataService.updateActiveDiff(selectedBranchName, changes)
-                    } else {
-                        logger.warn("TOOL_WINDOW_STATE: Fetched changes for '$selectedBranchName' but list was null. Calling diffDataService.clearActiveDiff.")
-                        diffDataService.clearActiveDiff()
+                        diffDataService.clearActiveDiff() // Keep clearing on error
+                    } else if (categorizedChanges != null) {
+                        logger.info("TOOL_WINDOW_STATE: Successfully fetched ${categorizedChanges.allChanges.size} total changes, ${categorizedChanges.createdFiles.size} created, ${categorizedChanges.modifiedFiles.size} modified, ${categorizedChanges.movedFiles.size} moved for '$selectedBranchName'. Calling diffDataService.updateActiveDiff.")
+                        diffDataService.updateActiveDiff(
+                            selectedBranchName,
+                            categorizedChanges.allChanges,
+                            categorizedChanges.createdFiles,
+                            categorizedChanges.modifiedFiles,
+                            categorizedChanges.movedFiles
+                        )
+                    } else { // categorizedChanges is null and throwable is null
+                        logger.warn("TOOL_WINDOW_STATE: Fetched changes for '$selectedBranchName' but CategorizedChanges object was null. Calling diffDataService.clearActiveDiff.")
+                        diffDataService.clearActiveDiff() // Keep clearing if no data
                     }
                 }
             } else {

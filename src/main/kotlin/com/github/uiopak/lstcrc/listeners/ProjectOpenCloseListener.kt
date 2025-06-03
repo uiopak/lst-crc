@@ -1,5 +1,6 @@
 package com.github.uiopak.lstcrc.listeners
 
+import com.github.uiopak.lstcrc.services.CategorizedChanges
 import com.github.uiopak.lstcrc.services.GitService
 import com.github.uiopak.lstcrc.services.ProjectActiveDiffDataService
 import com.github.uiopak.lstcrc.services.ToolWindowStateService
@@ -77,19 +78,28 @@ class ProjectOpenCloseListener : ProjectManagerListener {
                      if (selectedBranchName != null) {
                          if (diffDataService.activeBranchName != selectedBranchName || diffDataService.activeChanges.isEmpty()) {
                              logger.info("MMMM_STARTUP_LOGIC_DELAYED: Attempting to load changes for initially selected tool window branch: '$selectedBranchName' because current activeBranchName is '${diffDataService.activeBranchName}' or activeChanges is empty.")
-                             gitService.getChanges(selectedBranchName).whenCompleteAsync { changes, throwable ->
+                             gitService.getChanges(selectedBranchName).whenCompleteAsync { categorizedChanges, throwable ->
                                  if (project.isDisposed) {
                                      logger.info("MMMM_STARTUP_LOGIC_DELAYED: Project ${project.name} disposed during getChanges for '$selectedBranchName'.")
                                      return@whenCompleteAsync
                                  }
-                                 logger.info("MMMM_STARTUP_LOGIC_DELAYED: getChanges for '$selectedBranchName' completed. Error: ${throwable != null}, Changes count: ${changes?.size ?: "null"}")
+                                 logger.info("MMMM_STARTUP_LOGIC_DELAYED: getChanges for '$selectedBranchName' completed. Error: ${throwable != null}, Changes count: ${categorizedChanges?.allChanges?.size ?: "null"}")
                                  if (throwable != null) {
                                      logger.error("MMMM_STARTUP_LOGIC_DELAYED: Error getting changes for branch '$selectedBranchName': ${throwable.message}", throwable)
-                                 } else if (changes != null) {
-                                     logger.info("MMMM_STARTUP_LOGIC_DELAYED: Successfully fetched ${changes.size} changes for '$selectedBranchName'. Updating ProjectActiveDiffDataService.")
-                                     diffDataService.updateActiveDiff(selectedBranchName, changes)
-                                 } else {
-                                     logger.warn("MMMM_STARTUP_LOGIC_DELAYED: Fetched changes for '$selectedBranchName' but list was null.")
+                                     // Optionally, clear diff data on error
+                                     diffDataService.updateActiveDiff(selectedBranchName, emptyList(), emptyList(), emptyList(), emptyList())
+                                 } else if (categorizedChanges != null) {
+                                     logger.info("MMMM_STARTUP_LOGIC_DELAYED: Successfully fetched ${categorizedChanges.allChanges.size} total changes, ${categorizedChanges.createdFiles.size} created, ${categorizedChanges.modifiedFiles.size} modified, ${categorizedChanges.movedFiles.size} moved for '$selectedBranchName'. Updating ProjectActiveDiffDataService.")
+                                     diffDataService.updateActiveDiff(
+                                         selectedBranchName,
+                                         categorizedChanges.allChanges,
+                                         categorizedChanges.createdFiles,
+                                         categorizedChanges.modifiedFiles,
+                                         categorizedChanges.movedFiles
+                                     )
+                                 } else { // categorizedChanges is null and throwable is null
+                                     logger.warn("MMMM_STARTUP_LOGIC_DELAYED: Fetched changes for '$selectedBranchName' but CategorizedChanges object was null. Clearing diff data.")
+                                     diffDataService.updateActiveDiff(selectedBranchName, emptyList(), emptyList(), emptyList(), emptyList())
                                  }
                              }
                          } else {
