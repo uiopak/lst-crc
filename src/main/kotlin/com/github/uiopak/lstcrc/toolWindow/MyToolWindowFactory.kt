@@ -101,7 +101,9 @@ class MyToolWindowFactory : ToolWindowFactory {
                 val newTabIndexInState = stateService.state.openTabs.indexOfFirst { it.branchName == currentActualBranchName }
                 if (newTabIndexInState != -1) {
                      logger.debug("Setting selected tab in state service to $newTabIndexInState for $currentActualBranchName.")
-                    stateService.setSelectedTab(newTabIndexInClosable)
+                    stateService.setSelectedTab(newTabIndexInState)
+                } else {
+                    logger.warn("Could not find newly added tab '$currentActualBranchName' in state service's openTabs list immediately after adding it. Selection persistence might be affected.")
                 }
 
             } else {
