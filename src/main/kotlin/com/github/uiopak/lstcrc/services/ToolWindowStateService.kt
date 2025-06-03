@@ -1,8 +1,5 @@
 package com.github.uiopak.lstcrc.services
 
-// Imports will be consolidated here by the IDE or manually cleaned if necessary
-// For the purpose of this operation, we list the unique necessary imports.
-import com.github.uiopak.lstcrc.services.CategorizedChanges
 import com.github.uiopak.lstcrc.state.TabInfo
 import com.github.uiopak.lstcrc.state.ToolWindowState
 import com.intellij.openapi.components.PersistentStateComponent
@@ -11,12 +8,7 @@ import com.intellij.openapi.components.Storage
 import com.intellij.openapi.project.Project
 import com.intellij.util.xmlb.XmlSerializerUtil
 import com.intellij.openapi.diagnostic.thisLogger
-import com.intellij.openapi.components.service // For project.service<>()
-// java.util.concurrent.CompletableFuture is not directly used here but through GitService.getChanges().
-// If GitService methods used in this file require its types in this file's signature, it would be needed.
-// However, whenCompleteAsync is a method on CompletableFuture itself, so the type is inferred.
-// Let's keep it for clarity if complex lambda signatures were to be used, though likely not strictly needed here now.
-import java.util.concurrent.CompletableFuture
+import com.intellij.openapi.components.service
 
 @State(
     name = "com.github.uiopak.lstcrc.services.ToolWindowStateService",

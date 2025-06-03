@@ -6,8 +6,6 @@ import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.service
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.fileEditor.FileEditorManager
-// Explicitly ensure ToolWindowStateService is imported if not in same package
-import com.github.uiopak.lstcrc.services.ToolWindowStateService
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vcs.changes.Change
 import com.intellij.openapi.vfs.VirtualFile

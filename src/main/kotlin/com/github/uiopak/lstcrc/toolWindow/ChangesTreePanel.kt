@@ -1,28 +1,22 @@
 package com.github.uiopak.lstcrc.toolWindow
 
-import com.github.uiopak.lstcrc.services.CategorizedChanges
 import com.github.uiopak.lstcrc.services.GitService
 import com.github.uiopak.lstcrc.services.ProjectActiveDiffDataService
 import com.intellij.icons.AllIcons
 import com.intellij.ide.util.PropertiesComponent
 import com.intellij.openapi.application.ApplicationManager
-import com.intellij.openapi.Disposable
 import com.intellij.openapi.components.service
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.fileEditor.OpenFileDescriptor
-import com.intellij.openapi.startup.StartupManager
 import com.intellij.openapi.fileTypes.FileTypeManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.vcs.changes.Change
 import com.intellij.openapi.vcs.changes.ChangeListListener
 import com.intellij.openapi.vcs.changes.ChangeListManager
-import git4idea.repo.GitRepository // For the GIT_REPO_CHANGE topic and parameter type
-// import git4idea.repo.GitRepositoryManager // No longer needed for direct registration
-import git4idea.repo.GitRepositoryChangeListener
+import git4idea.repo.GitRepository
 import com.intellij.openapi.vcs.changes.actions.diff.ShowDiffAction
 import com.intellij.openapi.vfs.VfsUtilCore
-// GitRepositoryManager import is removed as it's no longer used here.
 import com.intellij.openapi.vfs.VirtualFile
 import com.github.uiopak.lstcrc.messaging.FILE_CHANGES_TOPIC
 import com.github.uiopak.lstcrc.messaging.FileChangeListener
@@ -35,7 +29,6 @@ import com.intellij.util.ui.tree.TreeUtil
 import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
 import javax.swing.Icon
-import javax.swing.JComponent
 import javax.swing.JTree
 import javax.swing.Timer
 import javax.swing.UIManager
@@ -225,10 +218,6 @@ class ChangesTreePanel(
         }
     }
 
-    override fun changesMoved(changes: Collection<com.intellij.openapi.vcs.changes.Change>, fromChangeList: com.intellij.openapi.vcs.changes.ChangeList, toChangeList: com.intellij.openapi.vcs.changes.ChangeList) {
-        // Empty or minimal logging
-    }
-
     override fun unchangedFileStatusChanged() {
         // Inside unchangedFileStatusChanged()
         logger.warn("DIAGNOSTIC: ChangesTreePanel.unchangedFileStatusChanged invoked. isVfsChangeRefreshPending: $isVfsChangeRefreshPending.")
@@ -256,22 +245,6 @@ class ChangesTreePanel(
         } else {
             logger.warn("DIAGNOSTIC: ChangesTreePanel.unchangedFileStatusChanged - isVfsChangeRefreshPending is false. No specific VFS-triggered refresh scheduled.")
         }
-    }
-
-    override fun changeListAdded(changeList: com.intellij.openapi.vcs.changes.ChangeList) {
-        // Empty or minimal logging
-    }
-
-    override fun changeListRemoved(changeList: com.intellij.openapi.vcs.changes.ChangeList) {
-        // Empty or minimal logging
-    }
-
-    override fun changeListRenamed(changeList: com.intellij.openapi.vcs.changes.ChangeList, oldName: String) {
-        // Empty or minimal logging
-    }
-
-    override fun changeListCommentChanged(changeList: com.intellij.openapi.vcs.changes.ChangeList, oldComment: String?) {
-        // Empty or minimal logging
     }
 
     // This method is from VcsListener, which ChangeListListener extends.

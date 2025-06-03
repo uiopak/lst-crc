@@ -1,6 +1,5 @@
 package com.github.uiopak.lstcrc.listeners
 
-import com.github.uiopak.lstcrc.services.CategorizedChanges
 import com.github.uiopak.lstcrc.services.GitService
 import com.github.uiopak.lstcrc.services.ProjectActiveDiffDataService
 import com.github.uiopak.lstcrc.services.ToolWindowStateService
@@ -10,8 +9,6 @@ import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.project.DumbService
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.project.ProjectManagerListener
-import com.intellij.openapi.vfs.VirtualFileManager
-// Required for project.messageBus.connect(projectDisposable) -> projectDisposable needs to be Disposable
 import com.intellij.openapi.Disposable
 
 class ProjectOpenCloseListener : ProjectManagerListener {
@@ -27,7 +24,7 @@ class ProjectOpenCloseListener : ProjectManagerListener {
         // Register VFS listener
         // Using project itself as disposable for the message bus connection.
         val projectDisposable = project as Disposable
-        project.messageBus.connect(projectDisposable).subscribe(VirtualFileManager.VFS_CHANGES, TabColorVfsListener(project))
+        //project.messageBus.connect(projectDisposable).subscribe(VirtualFileManager.VFS_CHANGES, TabColorVfsListener(project))
         logger.info("MMMM_STARTUP_LOGIC: TabColorVfsListener registered for project: ${project.name}")
 
         logger.info("MMMM_STARTUP_LOGIC: Scheduling invokeLater for initial application of current colors.")
