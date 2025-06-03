@@ -41,10 +41,10 @@ class GitService(private val project: Project) {
 
         return when (repositories.size) {
             0 -> {
-                logger.warn("No Git repositories found by manager. Returning null.")
+                logger.info("No Git repositories found by manager. Returning null.")
                 // Attempt to get project base path as a fallback clue, though not a repo itself
                 val projectBasePath = project.basePath
-                logger.warn("Project base path for context: $projectBasePath")
+                logger.info("Project base path for context: $projectBasePath")
                 null
             }
             1 -> {
