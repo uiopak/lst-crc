@@ -85,10 +85,10 @@ class OpenBranchSelectionTabAction(
 
                 // Explicitly refresh the new ChangesTreePanel
                 if (newBranchContentView is ChangesTreePanel) {
-                    logger.info("OpenBranchSelectionTabAction (Callback): Explicitly calling refreshTreeForBranch('$selectedBranchName') on new ChangesTreePanel.")
-                    newBranchContentView.refreshTreeForBranch(selectedBranchName)
+                    logger.info("OpenBranchSelectionTabAction (Callback): Explicitly calling requestRefreshData() on new ChangesTreePanel for branch '$selectedBranchName'.")
+                    newBranchContentView.requestRefreshData()
                 } else {
-                    logger.warn("OpenBranchSelectionTabAction (Callback): newBranchContentView is not a ChangesTreePanel. Cannot call refreshTreeForBranch. Type: ${newBranchContentView::class.java.name}")
+                    logger.warn("OpenBranchSelectionTabAction (Callback): newBranchContentView is not a ChangesTreePanel. Cannot call requestRefreshData. Type: ${newBranchContentView::class.java.name}")
                 }
 
                 manager.setSelectedContent(selectionTabContent, true)
