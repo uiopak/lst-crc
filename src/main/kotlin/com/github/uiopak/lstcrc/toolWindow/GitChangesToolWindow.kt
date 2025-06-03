@@ -20,10 +20,6 @@ class GitChangesToolWindow(
         return ChangesTreePanel(project, gitService, propertiesComponent, branchName, toolWindowDisposable)
     }
 
-    fun showBranchSelectionDialog(onBranchSelected: (branchName: String) -> Unit) {
-        BranchSelectionDialogWrapper(project, gitService, onBranchSelected).show()
-    }
-
     fun createBranchSelectionView(onBranchSelected: (branchName: String) -> Unit): JComponent {
         return BranchSelectionPanel(project, gitService, onBranchSelected).getPanel()
     }

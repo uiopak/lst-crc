@@ -11,15 +11,15 @@
 
     <extensions defaultExtensionNs="com.intellij">
         <toolWindow factoryClass="com.github.uiopak.lstcrc.toolWindow.MyToolWindowFactory" id="GitChangesView" anchor="bottom" canCloseContents="true"/>
-        <projectService serviceImplementation="com.github.uiopak.lstcrc.services.GitService"/>
+<!--        <projectService serviceImplementation="com.github.uiopak.lstcrc.services.GitService"/>-->
         <projectService serviceImplementation="com.github.uiopak.lstcrc.services.ToolWindowStateService"/>
         <projectService serviceImplementation="com.github.uiopak.lstcrc.settings.TabColorSettingsState"/> <!-- Added settings state service -->
-        <projectService serviceImplementation="com.github.uiopak.lstcrc.services.ProjectActiveDiffDataService"/> <!-- Added new diff data service -->
+<!--        <projectService serviceImplementation="com.github.uiopak.lstcrc.services.ProjectActiveDiffDataService"/> &lt;!&ndash; Added new diff data service &ndash;&gt;-->
         <!-- <projectService serviceImplementation="com.github.uiopak.lstcrc.services.VfsListenerService"/> --> <!-- This line is now removed or commented out -->
         <!-- <vfs.listener class="com.github.uiopak.lstcrc.services.VfsChangeListener"/> --> <!-- This line is now commented out -->
 
         <editorTabColorProvider implementation="com.github.uiopak.lstcrc.provider.GitStatusBasedTabColorProvider"/>
-        <projectActivity implementation="com.github.uiopak.lstcrc.services.PluginStartupActivity"/>
+<!--        <projectActivity implementation="com.github.uiopak.lstcrc.services.PluginStartupActivity"/>-->
         <!-- Removed TabColorVfsListenerRegistrationActivity -->
         <!-- Removed MySimpleStartupActivity -->
         <projectConfigurable
