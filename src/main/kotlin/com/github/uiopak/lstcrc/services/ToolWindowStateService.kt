@@ -168,7 +168,7 @@ class ToolWindowStateService(private val project: Project) : PersistentStateComp
 
     private fun getActiveChangesTreePanel(project: Project): ChangesTreePanel? {
         // The Tool Window ID, ensure this matches the ID in plugin.xml
-        val toolWindowId = "LstCrc" // Standard ID for the LstCrc tool window.
+        val toolWindowId = "GitChangesView" // Corrected ID for the tool window.
         val toolWindowManager = ToolWindowManager.getInstance(project)
         val toolWindow = toolWindowManager.getToolWindow(toolWindowId) ?: run {
             logger.warn("Tool window with ID '$toolWindowId' not found.")
