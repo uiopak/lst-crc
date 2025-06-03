@@ -33,10 +33,10 @@ class ProjectActiveDiffDataService(private val project: Project) : Disposable {
         movedFilesFromEvent: List<VirtualFile>
     ) {
         val currentToolWindowBranch = project.service<ToolWindowStateService>().getSelectedTabBranchName()
-        logger.info("SERVICE_UPDATE_DIFF: updateActiveDiff called. Event branch: '$branchNameFromEvent' (${changesFromEvent.size} changes, ${createdFilesFromEvent.size} created, ${modifiedFilesFromEvent.size} modified, ${movedFilesFromEvent.size} moved). Current tool window branch: '$currentToolWindowBranch'.")
+        logger.debug("updateActiveDiff called. Event branch: '$branchNameFromEvent' (${changesFromEvent.size} changes, ${createdFilesFromEvent.size} created, ${modifiedFilesFromEvent.size} modified, ${movedFilesFromEvent.size} moved). Current tool window branch: '$currentToolWindowBranch'.")
 
         if (branchNameFromEvent == currentToolWindowBranch) {
-            logger.info("SERVICE_UPDATE_DIFF: Event branch matches current tool window branch. Updating active data. Created: ${createdFilesFromEvent.size}, Modified: ${modifiedFilesFromEvent.size}, Moved: ${movedFilesFromEvent.size}")
+            logger.debug("Event branch matches current tool window branch. Updating active data. Created: ${createdFilesFromEvent.size}, Modified: ${modifiedFilesFromEvent.size}, Moved: ${movedFilesFromEvent.size}")
             this.activeBranchName = branchNameFromEvent
             this.activeChanges = changesFromEvent
             this.createdFiles = createdFilesFromEvent
@@ -44,12 +44,12 @@ class ProjectActiveDiffDataService(private val project: Project) : Disposable {
             this.movedFiles = movedFilesFromEvent
             triggerEditorTabColorRefresh()
         } else {
-            logger.info("SERVICE_UPDATE_DIFF: Event branch '$branchNameFromEvent' does NOT match current tool window branch '$currentToolWindowBranch'. Ignoring stale update.")
+            logger.debug("Event branch '$branchNameFromEvent' does NOT match current tool window branch '$currentToolWindowBranch'. Ignoring stale update.")
         }
     }
 
     fun clearActiveDiff() {
-        logger.info("SERVICE_CLEAR_DIFF: clearActiveDiff called. Clearing activeBranchName, activeChanges, createdFiles, modifiedFiles, and movedFiles.")
+        logger.debug("clearActiveDiff called. Clearing activeBranchName, activeChanges, createdFiles, modifiedFiles, and movedFiles.")
         this.activeBranchName = null
         this.activeChanges = emptyList()
         this.createdFiles = emptyList()
@@ -59,30 +59,31 @@ class ProjectActiveDiffDataService(private val project: Project) : Disposable {
     }
 
     private fun triggerEditorTabColorRefresh() {
-        logger.info("SERVICE_REFRESH_TRIGGER: triggerEditorTabColorRefresh() called.")
+        logger.debug("triggerEditorTabColorRefresh() called.")
         ApplicationManager.getApplication().invokeLater {
-            logger.info("SERVICE_REFRESH_TRIGGER: invokeLater running. Project disposed: ${project.isDisposed}")
+            logger.debug("invokeLater for triggerEditorTabColorRefresh running. Project disposed: ${project.isDisposed}")
             if (project.isDisposed) {
-                logger.info("Project is disposed, skipping editor tab color refresh.") // This log was already here, good.
+                logger.info("Project is disposed, skipping editor tab color refresh.")
                 return@invokeLater
             }
             val fileEditorManager = FileEditorManager.getInstance(project)
             val openFiles = fileEditorManager.openFiles
-            logger.info("SERVICE_REFRESH_TRIGGER: Found ${openFiles.size} open files to update.")
+            logger.debug("Found ${openFiles.size} open files to update for tab color refresh.")
             openFiles.forEach { vf ->
                 if (vf.isValid) {
-                    logger.info("SERVICE_REFRESH_TRIGGER: Requesting presentation update for file: ${vf.path}")
+                    // This can be very noisy if many files are open. Changed to trace, but debug is fallback.
+                    logger.trace("Requesting presentation update for file: ${vf.path}")
                     fileEditorManager.updateFilePresentation(vf)
                 } else {
-                    logger.info("SERVICE_REFRESH_TRIGGER: File ${vf.path} is invalid, skipping update.")
+                    logger.debug("File ${vf.path} is invalid, skipping presentation update.")
                 }
             }
-            logger.info("SERVICE_REFRESH_TRIGGER: updateFilePresentation requests sent for all valid open files.")
+            logger.debug("updateFilePresentation requests sent for all valid open files.")
         }
     }
 
     fun refreshCurrentColorings() {
-        logger.info("SERVICE_REFRESH: refreshCurrentColorings() called. Active branch: $activeBranchName, Changes count: ${activeChanges.size}")
+        logger.debug("refreshCurrentColorings() called. Active branch: $activeBranchName, Changes count: ${activeChanges.size}")
         triggerEditorTabColorRefresh()
     }
 

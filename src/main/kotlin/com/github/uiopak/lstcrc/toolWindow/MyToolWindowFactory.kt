@@ -18,104 +18,99 @@ class MyToolWindowFactory : ToolWindowFactory {
     private val logger = thisLogger() // Initialize logger
 
     override fun createToolWindowContent(project: Project, toolWindow: ToolWindow) {
-        // FORCED DIAGNOSTIC: Attempt to get VfsListenerService
         try {
-            val retrievedVfsListenerService = project.getService(com.github.uiopak.lstcrc.services.VfsListenerService::class.java)
-            if (retrievedVfsListenerService != null) {
-                logger.info("MyToolWindowFactory: Successfully retrieved VfsListenerService instance.")
-                // If the service is retrieved here, its init block (and VfsChangeListener's init) should have already fired or will fire now.
-            } else {
-                logger.warn("MyToolWindowFactory: project.getService(VfsListenerService::class.java) returned NULL. VFS updates might not work.")
-            }
+            project.getService(com.github.uiopak.lstcrc.services.VfsListenerService::class.java)?.let {
+                logger.info("VfsListenerService instance successfully retrieved during tool window creation.")
+            } ?: logger.warn("VfsListenerService is null after attempting to retrieve it. VFS-based updates might not function as expected.")
         } catch (e: Throwable) {
-            logger.error("MyToolWindowFactory: EXCEPTION while trying to get VfsListenerService. VFS updates might not work.", e)
+            logger.error("EXCEPTION while trying to initialize or retrieve VfsListenerService. VFS updates likely impacted.", e)
         }
-        logger.info("TOOL_WINDOW_FACTORY: createToolWindowContent called for project: ${project.name}") // Standardized prefix
+
+        logger.info("createToolWindowContent called for project: ${project.name}")
         val gitChangesUiProvider = GitChangesToolWindow(project, toolWindow.disposable)
         val contentFactory = ContentFactory.getInstance()
         val gitService = project.service<GitService>()
         val stateService = ToolWindowStateService.getInstance(project)
-        logger.info("MyToolWindowFactory: ToolWindowStateService instance obtained.")
+        logger.debug("ToolWindowStateService instance obtained.")
         val persistedState = stateService.state // This will call getState()
-        logger.info("MyToolWindowFactory: Initial persistedState loaded: $persistedState")
+        logger.debug("Initial persistedState loaded: $persistedState")
 
         val contentManager = toolWindow.contentManager
 
         val currentRepository = gitService.getCurrentRepository()
-        val headTabTargetName = if (currentRepository != null) {
-            currentRepository.currentBranchName ?: currentRepository.currentRevision ?: "HEAD"
-        } else {
-            "HEAD"
-        }
-        logger.info("MyToolWindowFactory: headTabTargetName is $headTabTargetName")
+        val headTabTargetName = currentRepository?.currentBranchName ?: currentRepository?.currentRevision ?: "HEAD"
+        logger.debug("headTabTargetName is $headTabTargetName")
 
         val headView = gitChangesUiProvider.createBranchContentView(headTabTargetName)
-        val headContent = contentFactory.createContent(headView, "HEAD", false)
-        headContent.isCloseable = false
-        headContent.isPinned = true
+        val headContent = contentFactory.createContent(headView, "HEAD", false).apply {
+            isCloseable = false
+            isPinned = true
+        }
         contentManager.addContent(headContent)
-        logger.info("MyToolWindowFactory: 'HEAD' tab added to content manager.")
+        logger.info("'HEAD' tab added to content manager.")
 
         var selectedContentRestored = false
 
         if (persistedState.openTabs.isNotEmpty()) {
-            logger.info("MyToolWindowFactory: Persisted state has ${persistedState.openTabs.size} open tabs. Restoring them.")
+            logger.info("Persisted state has ${persistedState.openTabs.size} open tabs. Restoring them.")
             persistedState.openTabs.forEach { tabInfo ->
                 if (tabInfo.branchName != "HEAD" && tabInfo.branchName != headTabTargetName) {
-                    logger.info("MyToolWindowFactory: Restoring tab for branch ${tabInfo.branchName}")
+                    logger.debug("Restoring tab for branch ${tabInfo.branchName}")
                     val branchView = gitChangesUiProvider.createBranchContentView(tabInfo.branchName)
-                    val branchContent = contentFactory.createContent(branchView, tabInfo.branchName, false)
-                    branchContent.isCloseable = true
+                    val branchContent = contentFactory.createContent(branchView, tabInfo.branchName, false).apply {
+                        isCloseable = true
+                    }
                     contentManager.addContent(branchContent)
                 } else {
-                    logger.info("MyToolWindowFactory: Skipping restoration of tab ${tabInfo.branchName} as it's HEAD or equivalent.")
+                    logger.debug("Skipping restoration of tab ${tabInfo.branchName} as it's HEAD or equivalent.")
                 }
             }
 
             if (persistedState.selectedTabIndex >= 0 && persistedState.selectedTabIndex < persistedState.openTabs.size) {
                 val selectedBranchNameFromState = persistedState.openTabs[persistedState.selectedTabIndex].branchName
-                logger.info("MyToolWindowFactory: Attempting to restore selected tab: $selectedBranchNameFromState (index ${persistedState.selectedTabIndex})")
+                logger.debug("Attempting to restore selected tab: $selectedBranchNameFromState (index ${persistedState.selectedTabIndex})")
                 val contentToSelect = contentManager.contents.find { it.displayName == selectedBranchNameFromState && it.isCloseable }
                 if (contentToSelect != null) {
-                    contentManager.setSelectedContent(contentToSelect, true)
+                    contentManager.setSelectedContent(contentToSelect, true) // true to request focus
                     selectedContentRestored = true
-                    logger.info("MyToolWindowFactory: Successfully restored selection to $selectedBranchNameFromState.")
+                    logger.info("Successfully restored selection to $selectedBranchNameFromState.")
                 } else {
-                    logger.warn("MyToolWindowFactory: Could not find content for persisted selected branch $selectedBranchNameFromState to restore selection.")
+                    logger.warn("Could not find content for persisted selected branch $selectedBranchNameFromState to restore selection.")
                 }
             } else {
-                 logger.info("MyToolWindowFactory: No valid selectedTabIndex in persisted state (${persistedState.selectedTabIndex}).")
+                 logger.debug("No valid selectedTabIndex in persisted state (${persistedState.selectedTabIndex}).")
             }
         } else {
-            logger.info("MyToolWindowFactory: No persisted tabs found in state. Performing initial branch tab setup if needed.")
+            logger.info("No persisted tabs found in state. Performing initial branch tab setup if needed.")
             val currentActualBranchName = currentRepository?.currentBranchName
             if (currentActualBranchName != null && currentActualBranchName != "HEAD" && currentActualBranchName != headTabTargetName) {
-                logger.info("MyToolWindowFactory: Creating initial tab for current branch $currentActualBranchName.")
+                logger.info("Creating initial tab for current branch $currentActualBranchName.")
                 val initialBranchView = gitChangesUiProvider.createBranchContentView(currentActualBranchName)
-                val initialBranchContent = contentFactory.createContent(initialBranchView, currentActualBranchName, false)
-                initialBranchContent.isCloseable = true
+                val initialBranchContent = contentFactory.createContent(initialBranchView, currentActualBranchName, false).apply {
+                    isCloseable = true
+                }
                 contentManager.addContent(initialBranchContent)
-                contentManager.setSelectedContent(initialBranchContent, true)
+                contentManager.setSelectedContent(initialBranchContent, true) // true to request focus
                 selectedContentRestored = true // Mark that we've set a selection
 
-                // Also add this initial tab to the state service
-                // This was a potential gap: initial tab wasn't added to state.
-                logger.info("MyToolWindowFactory: Adding initial tab $currentActualBranchName to state service.")
+                logger.debug("Adding initial tab $currentActualBranchName to state service.")
                 stateService.addTab(currentActualBranchName)
-                val closableTabs = contentManager.contents.filter { it.isCloseable }.map { it.displayName }
-                val newTabIndexInClosable = closableTabs.indexOf(currentActualBranchName)
-                if (newTabIndexInClosable != -1) {
-                     logger.info("MyToolWindowFactory: Setting selected tab in state service to $newTabIndexInClosable for $currentActualBranchName.")
+                // Find the index of the newly added closable tab.
+                // Note: This assumes 'openTabs' in stateService reflects only closable tabs for indexing.
+                // If stateService.addTab made it the last one, its index would be stateService.state.openTabs.size - 1
+                val newTabIndexInState = stateService.state.openTabs.indexOfFirst { it.branchName == currentActualBranchName }
+                if (newTabIndexInState != -1) {
+                     logger.debug("Setting selected tab in state service to $newTabIndexInState for $currentActualBranchName.")
                     stateService.setSelectedTab(newTabIndexInClosable)
                 }
 
             } else {
-                logger.info("MyToolWindowFactory: Current branch is HEAD or equivalent, no initial closable tab created.")
+                logger.debug("Current branch is HEAD or equivalent, no initial closable tab created.")
             }
         }
 
         if (!selectedContentRestored) {
-            logger.info("MyToolWindowFactory: No specific tab restored or set as selected, selecting 'HEAD' tab.")
+            logger.info("No specific tab restored or set as selected, selecting 'HEAD' tab.")
             contentManager.setSelectedContent(headContent, true)
             // If HEAD is selected, ensure state service reflects this.
             stateService.setSelectedTab(-1)
@@ -123,14 +118,14 @@ class MyToolWindowFactory : ToolWindowFactory {
 
         contentManager.addContentManagerListener(object : ContentManagerListener {
             override fun contentAdded(event: ContentManagerEvent) {
-                logger.debug("MyToolWindowFactory.ContentManagerListener: contentAdded - ${event.content.displayName}")
+                logger.debug("ContentManagerListener: contentAdded - ${event.content.displayName}")
                 // Logic for contentAdded was primarily for selection.
                 // Tab additions themselves are handled by OpenBranchSelectionTabAction or initial load.
                 // If a newly added tab is selected, selectionChanged should handle state update.
                 val addedContent = event.content
                 if (addedContent.isCloseable && contentManager.isSelected(addedContent)) {
                     val branchName = addedContent.displayName
-                    logger.info("MyToolWindowFactory.ContentManagerListener: A closable tab $branchName was added and selected.")
+                    logger.debug("A closable tab $branchName was added and selected.")
                     // This might be redundant if OpenBranchSelectionTabAction already set it.
                     // Or if initial tab setup handled it.
                     // But it acts as a catch-all for selection.
@@ -138,30 +133,30 @@ class MyToolWindowFactory : ToolWindowFactory {
                     val indexInPersistedList = closableTabsInState.indexOf(branchName)
                     if (indexInPersistedList != -1) {
                         if (stateService.state.selectedTabIndex != indexInPersistedList) {
-                           logger.info("MyToolWindowFactory.ContentManagerListener: Updating selected tab in state to $indexInPersistedList for $branchName due to contentAdded+selected.")
+                           logger.debug("Updating selected tab in state to $indexInPersistedList for $branchName due to contentAdded+selected.")
                            stateService.setSelectedTab(indexInPersistedList)
                         }
                     } else {
                         // This could happen if a tab is added by means other than our action, and it's not yet in state.
                         // For now, we assume tabs are added via our action or initial load.
-                        logger.warn("MyToolWindowFactory.ContentManagerListener: Selected tab $branchName (from contentAdded) not found in state's openTabs.")
+                        logger.warn("Selected tab $branchName (from contentAdded) not found in state's openTabs.")
                     }
                 }
             }
 
             override fun contentRemoved(event: ContentManagerEvent) {
-                logger.info("MyToolWindowFactory.ContentManagerListener: contentRemoved - ${event.content.displayName}, isCloseable: ${event.content.isCloseable}")
+                logger.debug("ContentManagerListener: contentRemoved - ${event.content.displayName}, isCloseable: ${event.content.isCloseable}")
                 if (event.content.isCloseable) {
                     val branchName = event.content.displayName
-                    logger.info("MyToolWindowFactory.ContentManagerListener: Calling stateService.removeTab($branchName).")
+                    logger.debug("Calling stateService.removeTab($branchName).")
                     stateService.removeTab(branchName)
 
                     if (contentManager.contentCount > 0 && contentManager.contents.none { it.isCloseable }) {
-                        logger.info("MyToolWindowFactory.ContentManagerListener: No closable tabs left. Selecting HEAD and setting state selectedTab to -1.")
+                        logger.debug("No closable tabs left. Selecting HEAD and setting state selectedTab to -1.")
                         contentManager.setSelectedContent(contentManager.getContent(0)!!, true)
                         stateService.setSelectedTab(-1)
                     } else if (contentManager.contentCount == 0) {
-                        logger.warn("MyToolWindowFactory.ContentManagerListener: All tabs removed (should not happen if HEAD is pinned). Setting state selectedTab to -1.")
+                        logger.warn("All tabs removed (should not happen if HEAD is pinned). Setting state selectedTab to -1.")
                         stateService.setSelectedTab(-1)
                     }
                     // If another closable tab is auto-selected, selectionChanged will handle updating the state.
@@ -170,27 +165,27 @@ class MyToolWindowFactory : ToolWindowFactory {
 
             override fun selectionChanged(event: ContentManagerEvent) {
                 val selectedContent = event.content
-                logger.info("MyToolWindowFactory.ContentManagerListener: selectionChanged - new selection: ${selectedContent.displayName}, isCloseable: ${selectedContent.isCloseable}")
+                logger.debug("ContentManagerListener: selectionChanged - new selection: ${selectedContent.displayName}, isCloseable: ${selectedContent.isCloseable}")
                 if (selectedContent.isCloseable) {
                     val branchName = selectedContent.displayName
                     val closableTabsInState = stateService.state.openTabs.map { it.branchName }
                     val indexInPersistedList = closableTabsInState.indexOf(branchName)
 
                     if (indexInPersistedList != -1) {
-                        logger.info("MyToolWindowFactory.ContentManagerListener: Selected closable tab $branchName. Calling stateService.setSelectedTab($indexInPersistedList).")
+                        logger.debug("Selected closable tab $branchName. Calling stateService.setSelectedTab($indexInPersistedList).")
                         stateService.setSelectedTab(indexInPersistedList)
                     } else {
-                        logger.warn("MyToolWindowFactory.ContentManagerListener: Selected closable tab $branchName not found in stateService's openTabs. This might be an issue if it wasn't added correctly.")
+                        logger.warn("Selected closable tab $branchName not found in stateService's openTabs. This might be an issue if it wasn't added correctly.")
                         // Potentially, if a tab is created and selected by some other means, it might not be in the state.
                         // For now, we only set selected if it's a known tab.
                     }
                 } else {
-                    logger.info("MyToolWindowFactory.ContentManagerListener: Non-closable tab ${selectedContent.displayName} (likely HEAD) selected. Calling stateService.setSelectedTab(-1).")
+                    logger.debug("Non-closable tab ${selectedContent.displayName} (likely HEAD) selected. Calling stateService.setSelectedTab(-1).")
                     stateService.setSelectedTab(-1)
                 }
             }
         })
-        logger.info("MyToolWindowFactory: ContentManagerListener added.")
+        logger.debug("ContentManagerListener added.")
 
         val openSelectionTabAction = OpenBranchSelectionTabAction(project, toolWindow, gitChangesUiProvider)
         toolWindow.setTitleActions(listOf(openSelectionTabAction))
@@ -202,8 +197,8 @@ class MyToolWindowFactory : ToolWindowFactory {
         val allGearActionsGroup = DefaultActionGroup()
         allGearActionsGroup.add(pluginSettingsSubMenu)
         toolWindow.setAdditionalGearActions(allGearActionsGroup) // Corrected typo here
-        logger.info("MyToolWindowFactory: Additional gear actions set.")
-        logger.info("MyToolWindowFactory: createToolWindowContent finished.")
+        logger.debug("Additional gear actions set.")
+        logger.info("createToolWindowContent finished.")
     }
 
     override fun shouldBeAvailable(project: Project) = true

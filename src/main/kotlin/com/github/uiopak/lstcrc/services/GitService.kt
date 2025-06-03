@@ -27,34 +27,34 @@ class GitService(private val project: Project) {
     private val logger = thisLogger()
 
     internal fun getCurrentRepository(): GitRepository? {
-        logger.info("GIT_REPO_DETECT: getCurrentRepository() called.")
+        logger.debug("getCurrentRepository() called.")
 
         val repositoryManager = GitRepositoryManager.getInstance(project)
-        logger.info("GIT_REPO_DETECT: GitRepositoryManager instance: $repositoryManager")
+        logger.debug("GitRepositoryManager instance: $repositoryManager")
 
         val repositories = repositoryManager.repositories
-        logger.info("GIT_REPO_DETECT: Found ${repositories.size} repositories by GitRepositoryManager.")
+        logger.debug("Found ${repositories.size} repositories by GitRepositoryManager.")
 
-        repositories.forEachIndexed { index, repo ->
-            logger.info("GIT_REPO_DETECT: Repo $index: root=${repo.root.path}, presentableUrl=${repo.root.presentableUrl}, state=${repo.state}")
+        repositories.forEach { repo ->
+            logger.debug("Repo: root=${repo.root.path}, presentableUrl=${repo.root.presentableUrl}, state=${repo.state}")
         }
 
-        return when {
-            repositories.isEmpty() -> {
-                logger.warn("GIT_REPO_DETECT: No Git repositories found by manager. Returning null.")
+        return when (repositories.size) {
+            0 -> {
+                logger.warn("No Git repositories found by manager. Returning null.")
                 // Attempt to get project base path as a fallback clue, though not a repo itself
                 val projectBasePath = project.basePath
-                logger.warn("GIT_REPO_DETECT: Project base path for context: $projectBasePath")
+                logger.warn("Project base path for context: $projectBasePath")
                 null
             }
-            repositories.size > 1 -> {
-                logger.info("GIT_REPO_DETECT: Multiple Git repositories found (${repositories.size}). Using the first one: ${repositories.first().root.path}")
-                // Log all available repository roots for diagnostic purposes
-                repositories.forEach { logger.info("GIT_REPO_DETECT: Available repo root: ${it.root.path}") }
+            1 -> {
+                logger.info("Exactly one Git repository found: ${repositories.first().root.path}")
                 repositories.first()
             }
-            else -> { // Exactly one repository
-                logger.info("GIT_REPO_DETECT: Exactly one Git repository found: ${repositories.first().root.path}")
+            else -> { // More than one repository
+                logger.warn("Multiple Git repositories found (${repositories.size}). Using the first one: ${repositories.first().root.path}")
+                // Log all available repository roots for diagnostic purposes
+                repositories.forEach { logger.debug("Available repo root: ${it.root.path}") }
                 repositories.first()
             }
         }
@@ -91,7 +91,7 @@ class GitService(private val project: Project) {
      * - Files modified will be `Change.Type.MODIFICATION`.
      */
     fun getChanges(branchNameToCompare: String): CompletableFuture<CategorizedChanges> {
-        logger.warn("DIAGNOSTIC: GitService.getChanges called with branchNameToCompare: $branchNameToCompare")
+        logger.debug("getChanges called with branchNameToCompare: $branchNameToCompare")
         val future = CompletableFuture<CategorizedChanges>()
         val repository = getCurrentRepository()
 
@@ -110,15 +110,15 @@ class GitService(private val project: Project) {
                     // If target is current branch or HEAD, prioritize ChangeListManager for live local changes
                     if (branchNameToCompare == currentActualBranchName ||
                         (branchNameToCompare == "HEAD" && currentActualBranchName != null /* i.e., not detached HEAD */)) {
-                        logger.warn("DIAGNOSTIC: GitService.getChanges - Using ChangeListManager for target: $branchNameToCompare (current actual: $currentActualBranchName)")
+                        logger.debug("Using ChangeListManager for target: $branchNameToCompare (current actual: $currentActualBranchName)")
                         changes = ChangeListManager.getInstance(project).allChanges.toList()
-                        logger.warn("DIAGNOSTIC: GitService.getChanges - ChangeListManager found ${changes.size} total changes.")
+                        logger.debug("ChangeListManager found ${changes.size} total changes.")
                     } else {
                         // Otherwise, compare working tree against the specified branch/commit
                         // This shows "current work vs. other branch/commit"
-                        logger.warn("DIAGNOSTIC: GitService.getChanges - Using GitChangeUtils.getDiffWithWorkingTree for target: $branchNameToCompare")
+                        logger.debug("Using GitChangeUtils.getDiffWithWorkingTree for target: $branchNameToCompare")
                         changes = GitChangeUtils.getDiffWithWorkingTree(repository, branchNameToCompare, true)?.toList() ?: emptyList()
-                        logger.warn("DIAGNOSTIC: GitService.getChanges - GitChangeUtils.getDiffWithWorkingTree found ${changes.size} total changes for target $branchNameToCompare.")
+                        logger.debug("GitChangeUtils.getDiffWithWorkingTree found ${changes.size} total changes for target $branchNameToCompare.")
                     }
 
                     val createdFiles = mutableListOf<VirtualFile>()
@@ -136,9 +136,13 @@ class GitService(private val project: Project) {
                             Change.Type.MOVED -> {
                                 change.afterRevision?.file?.virtualFile?.let { movedFiles.add(it) }
                             }
+                            Change.Type.DELETED -> {
+                                // DELETED changes are part of allChanges, but typically not directly used for tab coloring
+                                // of existing (now deleted) editor tabs, as those tabs would likely be closed.
+                                // No specific action needed here for created/modified/moved lists.
+                            }
                             else -> {
-                                // Handle other types like DELETED if necessary, though for tab coloring
-                                // we are mostly interested in files that currently exist or are new/modified/moved.
+                                // Other change types (e.g., UNVERSIONED) are ignored for now.
                             }
                         }
                     }
