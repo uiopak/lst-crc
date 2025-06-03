@@ -1,7 +1,7 @@
 package com.github.uiopak.lstcrc.scopes
 
 import com.intellij.psi.search.scope.packageSet.NamedScope
-import com.intellij.psi.search.scope.packageSet.NamedScopeProvider
+import com.intellij.psi.search.scope.packageSet.NamedScopeProvider // Added this import
 
 class LstCrcScopeProvider : NamedScopeProvider {
     override fun getScopes(): Array<NamedScope> {
