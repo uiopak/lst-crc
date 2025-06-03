@@ -13,22 +13,16 @@
         <toolWindow factoryClass="com.github.uiopak.lstcrc.toolWindow.MyToolWindowFactory" id="GitChangesView" anchor="bottom" canCloseContents="true"/>
 <!--        <projectService serviceImplementation="com.github.uiopak.lstcrc.services.GitService"/>-->
         <projectService serviceImplementation="com.github.uiopak.lstcrc.services.ToolWindowStateService"/>
-        <projectService serviceImplementation="com.github.uiopak.lstcrc.settings.TabColorSettingsState"/> <!-- Added settings state service -->
-<!--        <projectService serviceImplementation="com.github.uiopak.lstcrc.services.ProjectActiveDiffDataService"/> &lt;!&ndash; Added new diff data service &ndash;&gt;-->
+        <projectService serviceImplementation="com.github.uiopak.lstcrc.services.ProjectActiveDiffDataService"/> <!-- Vital for scopes -->
         <!-- <projectService serviceImplementation="com.github.uiopak.lstcrc.services.VfsListenerService"/> --> <!-- This line is now removed or commented out -->
         <!-- <vfs.listener class="com.github.uiopak.lstcrc.services.VfsChangeListener"/> --> <!-- This line is now commented out -->
 
-        <editorTabColorProvider implementation="com.github.uiopak.lstcrc.provider.GitStatusBasedTabColorProvider"/>
 
         <customScopesProvider implementation="com.github.uiopak.lstcrc.scopes.LstCrcScopeProvider" />
 
 <!--        <projectActivity implementation="com.github.uiopak.lstcrc.services.PluginStartupActivity"/>-->
         <!-- Removed TabColorVfsListenerRegistrationActivity -->
         <!-- Removed MySimpleStartupActivity -->
-        <projectConfigurable
-                instance="com.github.uiopak.lstcrc.settings.TabColorSettingsConfigurable"
-                id="com.github.uiopak.lstcrc.settings.TabColorSettingsConfigurable"
-                displayName="Editor Tab Coloring"/>
     </extensions>
 
     <applicationListeners>
@@ -37,7 +31,6 @@
     </applicationListeners>
 
     <projectListeners>
-        <listener class="com.github.uiopak.lstcrc.listeners.TabColorFileEditorManagerListener"
-                  topic="com.intellij.openapi.fileEditor.FileEditorManagerListener"/>
+        <!-- Listener for TabColorFileEditorManagerListener removed -->
     </projectListeners>
 </idea-plugin>
