@@ -55,8 +55,10 @@ lst-crc/
    - Tracks open tabs and selected tab index
 
 3. **ProjectActiveDiffDataService** (`services/ProjectActiveDiffDataService.kt`):
-   - Maintains the current set of changed files
+   - Maintains the current set of changed files (created, modified, moved)
    - Provides data for IDE scopes
+   - Manages file status notifications to update IDE colorings
+   - Handles editor tab color refresh
 
 ### UI Components
 
@@ -69,6 +71,7 @@ lst-crc/
    - Color-codes files based on change type
    - Handles file selection and diff viewing
    - Implements auto-refresh on Git changes
+   - Uses ChangeListListener for efficient change detection and refresh
 
 3. **BranchSelectionPanel** (`toolWindow/BranchSelectionPanel.kt`):
    - Provides UI for selecting Git branches
@@ -82,6 +85,8 @@ The `scopes/FileStatusScopes.kt` defines custom IDE scopes based on file status:
 - **ModifiedFilesScope**: Files changed in the compared branch
 - **MovedFilesScope**: Files renamed or relocated in the compared branch
 - **ChangedFilesScope**: Combination of all changed files
+
+Each scope includes detailed logging to track scope checks and performance.
 
 ### State Management
 
