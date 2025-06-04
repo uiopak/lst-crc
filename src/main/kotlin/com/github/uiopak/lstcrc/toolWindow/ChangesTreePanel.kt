@@ -47,19 +47,19 @@ class ChangesTreePanel(
 
     private val logger = thisLogger()
     private var refreshDebounceTimer: Timer? = null
+    // isVfsChangeRefreshPending is no longer the primary driver for ChangeListListener refreshes
+    // but can be kept if VfsChangeListener has other uses or as a secondary check.
+    // For now, we will make ChangeListListener events directly trigger refreshes.
     private var isVfsChangeRefreshPending = false
     val tree: Tree
-
-    // targetBranchToCompare dictates the branch this panel is responsible for displaying.
-    // Listeners will use this name to tell ToolWindowStateService which branch's data to potentially refresh.
 
     private var singleClickTimer: Timer? = null
     private var pendingSingleClickChange: Change? = null
     private var pendingSingleClickNodePath: TreePath? = null
     private var singleClickActionHasFiredForPath: TreePath? = null
-    
-    // Constants for click actions and preferences (must match GitChangesToolWindow and ToolWindowSettingsProvider)
+
     companion object {
+        // ... (companion object constants remain the same)
         private const val ACTION_NONE = "NONE"
         private const val ACTION_OPEN_DIFF = "OPEN_DIFF"
         private const val ACTION_OPEN_SOURCE = "OPEN_SOURCE"
@@ -68,126 +68,57 @@ class ChangesTreePanel(
         private const val APP_SINGLE_CLICK_ACTION_KEY = "com.github.uiopak.lstcrc.app.singleClickAction"
         private const val APP_DOUBLE_CLICK_ACTION_KEY = "com.github.uiopak.lstcrc.app.doubleClickAction"
         private const val APP_USER_DOUBLE_CLICK_DELAY_KEY = "com.github.uiopak.lstcrc.app.userDoubleClickDelay"
-        
+
         private const val DEFAULT_SINGLE_CLICK_ACTION = ACTION_NONE
         private const val DEFAULT_DOUBLE_CLICK_ACTION = ACTION_OPEN_DIFF
         private const val DELAY_OPTION_SYSTEM_DEFAULT = -1
     }
 
     init {
-        tree = createChangesTreeInternal(targetBranchToCompare) // This will now set "Loading..."
+        tree = createChangesTreeInternal(targetBranchToCompare)
         this.setViewportView(tree)
         this.border = null
 
         project.messageBus.connect(this).subscribe(FILE_CHANGES_TOPIC, object : FileChangeListener {
             override fun onFilesChanged() {
-                logger.debug("onFilesChanged event received for target: $targetBranchToCompare. Setting isVfsChangeRefreshPending = true.")
+                logger.debug("onFilesChanged event received from VFS for target: $targetBranchToCompare. Setting isVfsChangeRefreshPending = true.")
                 isVfsChangeRefreshPending = true
-                // Do not trigger refresh directly here. Wait for ChangeListManagerListener.
+                // We primarily rely on ChangeListListener now, but this flag might be useful for other diagnostics or fine-tuning.
             }
         })
-        // In init block
+
         val changeListManager = ChangeListManager.getInstance(project)
-        changeListManager.addChangeListListener(this, this) // 'this' as the listener, 'this' as the Disposable
+        changeListManager.addChangeListListener(this, this)
         project.messageBus.connect(this).subscribe(GitRepository.GIT_REPO_CHANGE, this)
         com.intellij.openapi.util.Disposer.register(parentDisposable, this)
     }
 
-    // GitRepositoryChangeListener implementation
     override fun repositoryChanged(repository: git4idea.repo.GitRepository) {
-        // Check if the changed repository is relevant to the current project,
-        // though for a project-specific panel, any repository change in that project is likely relevant.
         if (repository.project == this.project) {
-            logger.debug("GitRepositoryChangeListener.repositoryChanged invoked for repo: ${repository.root.presentableUrl}. Requesting refresh for $targetBranchToCompare.")
+            logger.debug("GitRepositoryChangeListener.repositoryChanged for repo: ${repository.root.presentableUrl}. Requesting refresh for $targetBranchToCompare.")
+            // This directly calls ToolWindowStateService, which is fine.
             ApplicationManager.getApplication().invokeLater {
-                // Call the new centralized refresh mechanism
                 project.service<ToolWindowStateService>().refreshDataForActiveTabIfMatching(targetBranchToCompare)
             }
         } else {
-            logger.debug("GitRepositoryChangeListener.repositoryChanged invoked for repo: ${repository.root.presentableUrl}, but it's not for the current project (${this.project.name}). Skipping request.")
+            logger.debug("GitRepositoryChangeListener.repositoryChanged for repo: ${repository.root.presentableUrl}, but not current project. Skipping.")
         }
     }
 
-    // ChangeListListener implementations
-    override fun changeListChanged(changeList: com.intellij.openapi.vcs.changes.ChangeList) {
-        logger.debug("changeListChanged invoked for list: ${changeList.name}. isVfsChangeRefreshPending: $isVfsChangeRefreshPending.")
-
-        // Optional: Add a check if this changeList is relevant to the current view.
-        // However, relying on isVfsChangeRefreshPending handles most cases.
-        if (isVfsChangeRefreshPending) {
-            logger.debug("changeListChanged - isVfsChangeRefreshPending is true. Triggering debounced VFS-related refresh for $targetBranchToCompare.")
-            triggerDebouncedVfsRefresh {
-                // Reset flag inside the debounced action after ToolWindowStateService is called.
-                isVfsChangeRefreshPending = false
-                logger.debug("isVfsChangeRefreshPending reset to false in changeListChanged timer for $targetBranchToCompare.")
-            }
-        } else {
-            logger.debug("changeListChanged - isVfsChangeRefreshPending is false. No VFS-triggered refresh scheduled.")
-        }
-    }
-
-    override fun changesAdded(changes: Collection<Change>, changeList: com.intellij.openapi.vcs.changes.ChangeList?) {
-        logger.debug("changesAdded invoked. Number of changes: ${changes.size}. isVfsChangeRefreshPending: $isVfsChangeRefreshPending.")
-        if (isVfsChangeRefreshPending) {
-            if (changes.isNotEmpty()) {
-                logger.debug("changesAdded - isVfsChangeRefreshPending is true and changes were added. Triggering debounced VFS-related refresh for $targetBranchToCompare.")
-                triggerDebouncedVfsRefresh {
-                    // Reset flag inside the debounced action.
-                    isVfsChangeRefreshPending = false
-                    logger.debug("isVfsChangeRefreshPending reset to false in changesAdded timer for $targetBranchToCompare.")
-                }
-            } else {
-                logger.debug("changesAdded - isVfsChangeRefreshPending is true, but the changes collection was empty. Not refreshing yet, flag not reset.")
-            }
-        } else {
-            logger.debug("changesAdded - isVfsChangeRefreshPending is false. No VFS-triggered refresh scheduled.")
-        }
-    }
-
-    override fun changesRemoved(changes: Collection<Change>, changeList: com.intellij.openapi.vcs.changes.ChangeList?) {
-        logger.debug("changesRemoved invoked. Number of changes: ${changes.size}. isVfsChangeRefreshPending: $isVfsChangeRefreshPending.")
-        if (isVfsChangeRefreshPending) {
-            if (changes.isNotEmpty()) {
-                logger.debug("changesRemoved - isVfsChangeRefreshPending is true and changes were removed. Triggering debounced VFS-related refresh for $targetBranchToCompare.")
-                triggerDebouncedVfsRefresh {
-                    // Reset flag inside the debounced action.
-                    isVfsChangeRefreshPending = false
-                    logger.debug("isVfsChangeRefreshPending reset to false in changesRemoved timer for $targetBranchToCompare.")
-                }
-            } else {
-                logger.debug("changesRemoved - isVfsChangeRefreshPending is true, but the removed changes collection was empty. Not refreshing yet, flag not reset.")
-            }
-        } else {
-            logger.debug("changesRemoved - isVfsChangeRefreshPending is false. No VFS-triggered refresh scheduled.")
-        }
-    }
-
-    override fun unchangedFileStatusChanged() {
-        logger.debug("unchangedFileStatusChanged invoked. isVfsChangeRefreshPending: $isVfsChangeRefreshPending.")
-        if (isVfsChangeRefreshPending) {
-            logger.debug("unchangedFileStatusChanged - isVfsChangeRefreshPending is true. Triggering debounced VFS-related refresh for $targetBranchToCompare. Flag will NOT be reset by this specific timer action.")
-            triggerDebouncedVfsRefresh {
-                // DO NOT RESET isVfsChangeRefreshPending here for unchangedFileStatusChanged.
-                // The flag should be reset by a subsequent, more definitive event like changeListChanged or changesAdded/Removed.
-                logger.debug("VFS-triggered refresh request (via unchangedFileStatusChanged) for $targetBranchToCompare done. Flag is NOT reset in this timer.")
-            }
-        } else {
-            logger.debug("unchangedFileStatusChanged - isVfsChangeRefreshPending is false. No VFS-triggered refresh scheduled.")
-        }
-    }
-
-    // Helper function to centralize debounced refresh logic for VFS changes.
-    // The onRefreshComplete action is executed *after* the call to ToolWindowStateService.
-    private fun triggerDebouncedVfsRefresh(onRefreshComplete: () -> Unit) {
+    // Renamed for clarity and made lambda optional
+    private fun triggerDebouncedDataRefresh() {
         refreshDebounceTimer?.stop()
-        refreshDebounceTimer = Timer(100, null).apply {
-            actionListeners.forEach { removeActionListener(it) } // Clear existing
+        refreshDebounceTimer = Timer(100, null).apply { // 100ms debounce
+            actionListeners.forEach { removeActionListener(it) }
             addActionListener {
                 ApplicationManager.getApplication().invokeLater {
-                    val currentBranch = targetBranchToCompare // Capture current target
-                    logger.debug("Debounced VFS refresh timer action for '$currentBranch': Calling ToolWindowStateService.")
+                    if (project.isDisposed) {
+                        logger.info("Project disposed, skipping debounced data refresh for $targetBranchToCompare")
+                        return@invokeLater
+                    }
+                    val currentBranch = targetBranchToCompare
+                    logger.debug("Debounced data refresh timer action for '$currentBranch': Calling ToolWindowStateService.")
                     project.service<ToolWindowStateService>().refreshDataForActiveTabIfMatching(currentBranch)
-                    onRefreshComplete() // Execute the specific post-refresh action (e.g., resetting the flag)
                 }
             }
             isRepeats = false
@@ -195,13 +126,50 @@ class ChangesTreePanel(
         refreshDebounceTimer?.start()
     }
 
-    // This method is from Disposable (indirectly via ChangeListListener).
+    // ChangeListListener implementations: Now directly trigger refresh
+    override fun changeListChanged(changeList: com.intellij.openapi.vcs.changes.ChangeList) {
+        logger.debug("ChangeListListener: changeListChanged for list: ${changeList.name}. Triggering debounced refresh for $targetBranchToCompare.")
+        triggerDebouncedDataRefresh()
+        isVfsChangeRefreshPending = false // Reset flag as ChangeListManager has processed it.
+    }
+
+    override fun changesAdded(changes: Collection<Change>, changeList: com.intellij.openapi.vcs.changes.ChangeList?) {
+        if (changes.isNotEmpty()) {
+            logger.debug("ChangeListListener: changesAdded (${changes.size}). Triggering debounced refresh for $targetBranchToCompare.")
+            triggerDebouncedDataRefresh()
+        } else {
+            logger.debug("ChangeListListener: changesAdded called with 0 changes.")
+        }
+        isVfsChangeRefreshPending = false // Reset flag
+    }
+
+    override fun changesRemoved(changes: Collection<Change>, changeList: com.intellij.openapi.vcs.changes.ChangeList?) {
+        if (changes.isNotEmpty()) {
+            logger.debug("ChangeListListener: changesRemoved (${changes.size}). Triggering debounced refresh for $targetBranchToCompare.")
+            triggerDebouncedDataRefresh()
+        } else {
+            logger.debug("ChangeListListener: changesRemoved called with 0 changes.")
+        }
+        isVfsChangeRefreshPending = false // Reset flag
+    }
+
+    override fun unchangedFileStatusChanged() {
+        logger.debug("ChangeListListener: unchangedFileStatusChanged. Triggering debounced refresh for $targetBranchToCompare.")
+        triggerDebouncedDataRefresh()
+        isVfsChangeRefreshPending = false // Reset flag
+    }
+
     override fun dispose() {
         refreshDebounceTimer?.stop()
         refreshDebounceTimer = null
-        // Any other disposables specific to ChangesTreePanel can be cleaned up here.
+        // Other disposals
+        logger.debug("ChangesTreePanel for $targetBranchToCompare disposed.")
     }
-    
+
+    // ... (rest of the ChangesTreePanel class: getSingleClickAction, getDoubleClickAction, getUserDoubleClickDelayMs, createChangesTreeInternal, performConfiguredAction, openSource, showLoadingStateAndPrepareForData, displayChanges, buildTreeFromChanges, openDiff, requestRefreshData)
+    // NO CHANGES NEEDED IN THE REST OF THE METHODS FOR THIS SPECIFIC ISSUE.
+    // Ensure methods like createChangesTreeInternal, displayChanges, etc., remain as they were.
+
     private fun getSingleClickAction(): String =
         propertiesComponent.getValue(APP_SINGLE_CLICK_ACTION_KEY, DEFAULT_SINGLE_CLICK_ACTION)
 
@@ -217,7 +185,6 @@ class ChangesTreePanel(
         return if (storedValue > 0) storedValue else DEFAULT_USER_DELAY_MS
     }
 
-    // Changed parameter type to non-null
     private fun createChangesTreeInternal(initialTarget: String): Tree {
         val root = DefaultMutableTreeNode("Changes")
         val treeModel = DefaultTreeModel(root)
@@ -261,7 +228,6 @@ class ChangesTreePanel(
         })
 
         newTree.addMouseListener(object : MouseAdapter() {
-            // Removed logState function and its calls.
             override fun mouseClicked(e: MouseEvent) {
                 val clickPoint = e.point
                 var currentTargetPath: TreePath? = null
@@ -356,7 +322,6 @@ class ChangesTreePanel(
                 }
             }
         })
-        // Set initial "Loading..." state instead of immediate refresh
         root.removeAllChildren()
         root.add(DefaultMutableTreeNode("Loading..."))
         treeModel.reload(root)
@@ -388,29 +353,29 @@ class ChangesTreePanel(
         }
     }
 
-    // Renamed from refreshChangesTree. Its role is now just to set the loading state.
     fun showLoadingStateAndPrepareForData() {
         logger.debug("showLoadingStateAndPrepareForData for target $targetBranchToCompare")
         val rootModelNode = tree.model.root as DefaultMutableTreeNode
-        // Show loading state
         rootModelNode.removeAllChildren()
         rootModelNode.add(DefaultMutableTreeNode("Loading..."))
         (tree.model as DefaultTreeModel).reload(rootModelNode)
     }
 
-    // New method to be called by ToolWindowStateService with fetched data
     fun displayChanges(categorizedChanges: CategorizedChanges?, forBranchName: String) {
         logger.debug("displayChanges called for branch '$forBranchName'. Current panel target: '$targetBranchToCompare'. Has data: ${categorizedChanges != null}")
 
-        // Ensure this update is for the branch this panel is currently displaying
         if (forBranchName != targetBranchToCompare) {
             logger.warn("displayChanges received data for '$forBranchName', but panel is for '$targetBranchToCompare'. Ignoring.")
             return
         }
 
         ApplicationManager.getApplication().invokeLater {
+            if (project.isDisposed) {
+                logger.info("Project disposed, skipping displayChanges for $targetBranchToCompare")
+                return@invokeLater
+            }
             val rootModelNode = tree.model.root as DefaultMutableTreeNode
-            rootModelNode.removeAllChildren() // Clear "Loading..." or old content
+            rootModelNode.removeAllChildren()
 
             if (categorizedChanges == null) {
                 logger.warn("No categorized changes provided (possibly due to error) for $forBranchName.")
@@ -423,7 +388,6 @@ class ChangesTreePanel(
                 buildTreeFromChanges(rootModelNode, categorizedChanges.allChanges)
             }
 
-            // Reload the tree model and expand
             (tree.model as DefaultTreeModel).reload(rootModelNode)
             TreeUtil.expandAll(tree)
             logger.debug("Tree display updated for $forBranchName.")
@@ -431,8 +395,7 @@ class ChangesTreePanel(
     }
 
     private fun buildTreeFromChanges(rootNode: DefaultMutableTreeNode, changes: List<Change>) {
-        // project is a class field
-        val commonRepositoryRoot = gitService.getCurrentRepository()?.root // Get root once
+        val commonRepositoryRoot = gitService.getCurrentRepository()?.root
 
         for (changeItem in changes) {
             val currentFilePathObj = changeItem.afterRevision?.file ?: changeItem.beforeRevision?.file
@@ -443,20 +406,19 @@ class ChangesTreePanel(
             if (vf != null && commonRepositoryRoot != null) {
                 displayPath = VfsUtilCore.getRelativePath(vf, commonRepositoryRoot, '/')
             } else if (rawPath != null && commonRepositoryRoot != null) {
-                // Existing string manipulation fallback
                 val repoRootPathString = commonRepositoryRoot.path
                 if (rawPath.startsWith(repoRootPathString + "/")) {
                     displayPath = rawPath.substring(repoRootPathString.length + 1)
                 } else if (rawPath.startsWith(repoRootPathString)) {
                     displayPath = rawPath.substring(repoRootPathString.length).let { if (it.startsWith("/")) it.substring(1) else it }
                 } else {
-                     displayPath = rawPath // Fallback if not under commonRepositoryRoot
+                    displayPath = rawPath
                 }
             }
 
-            if (displayPath == null) displayPath = rawPath // Final fallback
+            if (displayPath == null) displayPath = rawPath
 
-            if (displayPath == null) continue // Should not happen if rawPath exists, but good for safety
+            if (displayPath == null) continue
             val normalizedPath = displayPath.replace('\\', '/')
             val pathComponents = normalizedPath.split('/').filter { it.isNotEmpty() }
             var currentNode = rootNode
@@ -508,10 +470,9 @@ class ChangesTreePanel(
         }
     }
 
-    // Renamed from refreshTreeForBranch. Now signals ToolWindowStateService to fetch data.
     fun requestRefreshData() {
         logger.debug("requestRefreshData called for target: $targetBranchToCompare. Signaling ToolWindowStateService.")
-        showLoadingStateAndPrepareForData() // Show loading state immediately
+        showLoadingStateAndPrepareForData()
         project.service<ToolWindowStateService>().refreshDataForActiveTabIfMatching(targetBranchToCompare)
     }
 }
