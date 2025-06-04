@@ -1,128 +1,139 @@
-# Development Guidelines for lst-crc
 
-This document provides guidelines and information for developers working on the lst-crc IntelliJ Platform plugin project.
+# lst-crc: Git Branch Comparison Tool for JetBrains IDEs
 
-## Build/Configuration Instructions
+## Project Overview
 
-### Prerequisites
-- JDK 21 or later
-- Gradle 8.13 or compatible version
-- IntelliJ IDEA or Rider for development
+lst-crc is a JetBrains IDE plugin that provides a specialized tool window for comparing changes between Git branches. The plugin allows developers to:
 
-### Setting Up the Development Environment
-1. Clone the repository:
-   ```
-   git clone https://github.com/uiopak/lst-crc.git
-   ```
+1. View differences between the current HEAD and any selected Git branch
+2. Open multiple branch comparisons in separate tabs
+3. Visualize file changes with color-coded indicators (green for new files, blue for modified files, etc.)
+4. Quickly navigate to changed files and view diffs
+5. Create IDE scopes based on file status for improved navigation and search filtering
 
-2. Import the project into IntelliJ IDEA or Rider as a Gradle project.
+The plugin enhances Git workflow by making it easier to track and review changes across branches without switching contexts.
 
-3. Sync the Gradle project to download dependencies.
+## Project Structure
 
-### Building the Plugin
-To build the plugin, run:
+The project follows a standard Kotlin/IntelliJ Platform plugin structure:
+
 ```
-./gradlew build
-```
-
-This will compile the code, run tests, and create a plugin distribution in the `build/distributions` directory.
-
-### Running the Plugin
-To run the plugin in a development instance of IntelliJ IDEA or Rider:
-```
-./gradlew runIde
-```
-
-For UI testing, use:
-```
-./gradlew runIdeForUiTests
-```
-
-### Plugin Configuration
-The plugin is configured in the following files:
-- `gradle.properties`: Contains plugin metadata, version, and platform compatibility information
-- `build.gradle.kts`: Contains build configuration, dependencies, and plugin tasks
-
-## Testing Information
-
-### Running Tests
-To run all tests:
-```
-./gradlew test
+lst-crc/
+├── src/
+│   ├── main/
+│   │   ├── kotlin/
+│   │   │   └── com/github/uiopak/lstcrc/
+│   │   │       ├── listeners/       # Event listeners
+│   │   │       ├── messaging/       # Internal messaging system
+│   │   │       ├── scopes/          # IDE scope definitions
+│   │   │       ├── services/        # Core services
+│   │   │       ├── state/           # State management
+│   │   │       └── toolWindow/      # UI components
+│   │   └── resources/
+│   │       ├── messages/            # Localization files
+│   │       └── META-INF/
+│   │           └── plugin.xml       # Plugin configuration
+│   └── test/
+│       ├── kotlin/                  # Test classes
+│       └── testData/                # Test resources
+├── build.gradle.kts                 # Build configuration
+└── gradle.properties                # Plugin metadata
 ```
 
-To run a specific test class:
-```
-./gradlew test --tests "com.github.uiopak.lstcrc.services.GitServiceTest"
-```
+## Key Components
 
-### Test Structure
-Tests are located in the `src/test/kotlin` directory and follow the same package structure as the main code.
+### Services
 
-The project uses the IntelliJ Platform Test Framework, which provides utilities for testing plugins. Tests extend `BasePlatformTestCase` to access these utilities.
+1. **GitService** (`services/GitService.kt`):
+   - Core service for Git operations
+   - Retrieves local and remote branches
+   - Fetches changes between branches
+   - Categorizes changes by type (created, modified, moved)
 
-### Adding New Tests
-1. Create a new test class in the appropriate package in `src/test/kotlin`.
-2. Extend `BasePlatformTestCase` to access IntelliJ Platform test utilities.
-3. Use the `@Test` annotation for test methods.
-4. Use the `myFixture` object provided by `BasePlatformTestCase` to set up test environments.
+2. **ToolWindowStateService** (`services/ToolWindowStateService.kt`):
+   - Manages persistent state of the tool window
+   - Tracks open tabs and selected tab index
 
-### Example Test
-Here's an example of a simple test for the GitService class:
+3. **ProjectActiveDiffDataService** (`services/ProjectActiveDiffDataService.kt`):
+   - Maintains the current set of changed files
+   - Provides data for IDE scopes
 
-```kotlin
-// Example test for GitService
-class GitServiceTest : BasePlatformTestCase() {
+### UI Components
 
-    @Test
-    fun testGetLocalBranches() {
-        val gitService = GitService(project)
-        val branches = gitService.getLocalBranches()
+1. **MyToolWindowFactory** (`toolWindow/MyToolWindowFactory.kt`):
+   - Creates and initializes the tool window
+   - Manages tab creation and content
 
-        // Verify that the local branches list is not empty
-        assertFalse("Local branches list should not be empty", branches.isEmpty())
+2. **ChangesTreePanel** (`toolWindow/ChangesTreePanel.kt`):
+   - Displays a tree view of changed files
+   - Color-codes files based on change type
+   - Handles file selection and diff viewing
+   - Implements auto-refresh on Git changes
 
-        // Verify that the local branches list contains "main"
-        assertTrue("Local branches list should contain 'main'", branches.contains("main"))
-    }
-}
-```
+3. **BranchSelectionPanel** (`toolWindow/BranchSelectionPanel.kt`):
+   - Provides UI for selecting Git branches
+   - Includes search functionality for filtering branches
+   - Organizes branches into local and remote categories
 
-### Known Testing Issues
-- When running tests for Rider plugins, you may encounter the error "solution can't be null [Plugin: com.intellij]". This is because Rider tests require a solution (project) to be properly set up. Make sure your test environment is correctly configured for Rider.
+### Scopes
 
-## Additional Development Information
+The `scopes/FileStatusScopes.kt` defines custom IDE scopes based on file status:
+- **CreatedFilesScope**: Files newly added in the compared branch
+- **ModifiedFilesScope**: Files changed in the compared branch
+- **MovedFilesScope**: Files renamed or relocated in the compared branch
+- **ChangedFilesScope**: Combination of all changed files
 
-### Project Structure
-- `src/main/kotlin`: Contains the main Kotlin source code
-- `src/main/resources`: Contains resources like icons, messages, and plugin.xml
-- `src/test/kotlin`: Contains test code
-- `src/test/testData`: Contains test data files
+### State Management
 
-### Key Components
-- `GitService`: Provides Git-related functionality like retrieving branches and changes
-- `GitChangesToolWindow`: Implements the tool window UI for displaying Git changes
-- `MyToolWindowFactory`: Factory class for creating the tool window
+The `state/ToolWindowState.kt` defines the persistent state model:
+- Tracks open tabs (branch comparisons)
+- Maintains selected tab index
+- Persists state between IDE restarts
 
-### Current Task
-The current task is to modify the plugin tool window to:
-1. Display a tree with changes between HEAD and selected reference
-2. Add tabs and a plus button at the top
-3. Allow the plus button to display a modal/select with search to select Git branches
-4. Enable opening multiple tabs and closing them
-5. Color files/folders in the tree based on their status (green for new, blue for modified, etc.)
-6. Open a diff view when a file is clicked
-
-### Code Style
-- Follow Kotlin coding conventions
-- Use meaningful variable and method names
-- Add comments for complex logic
-- Write unit tests for new functionality
-
-### Debugging
-- Use `thisLogger().info()` or `thisLogger().debug()` for logging
-- Run the plugin in debug mode using `./gradlew runIde --debug-jvm`
-- Check the IDE log files for error messages
+## Technical Implementation
 
 ### Git Integration
-The plugin uses the Git4Idea plugin for Git integration. Make sure this plugin is included in your development environment.
+The plugin leverages the Git4Idea API (JetBrains' Git integration) to:
+- Access Git repositories
+- Retrieve branch information
+- Calculate diffs between branches
+- Monitor file status changes
+
+### UI Architecture
+- Uses IntelliJ's component system for UI elements
+- Implements custom tree renderers for visual indicators
+- Employs background tasks for non-blocking Git operations
+- Utilizes the IntelliJ messaging system for component communication
+
+### State Persistence
+- Stores tool window state using IntelliJ's persistence framework
+- Maintains tab configuration across IDE restarts
+- Preserves user preferences and branch selections
+
+## Development Workflow
+
+### Building and Running
+- Uses Gradle for build automation
+- JDK 21+ required for development
+- Supports running in development mode with `./gradlew runIde`
+- Includes UI testing capabilities with `./gradlew runIdeForUiTests`
+
+### Testing
+- Tests are currently only for reference and not fully implemented,
+- When making changes, only test is checked for compilation.
+- Tests will be performed manually by checking the functionality in the IDE.
+
+### Debugging
+- Utilizes IntelliJ's logging system via `thisLogger()`
+- Supports debug mode with `./gradlew runIde --debug-jvm`
+- Logs detailed information about Git operations and UI events
+
+## Current Development Focus
+
+The current development efforts are focused on:
+1. Enhancing changes detection and updating diffs and scopes in real-time
+2. Improving performance for large repositories with many branches (tracking only the selected branch and getting changes for another branch when its tab is selected)
+3. Enabling custom plugin scopes in all places where IDE supports scopes (currently implemented only for file coloring)
+4. Making the IDE display line gutters according to selected branch changes
+
+This plugin provides developers with a powerful tool for tracking and reviewing changes across Git branches without the need to switch contexts, improving productivity and code review workflows.
