@@ -3,100 +3,99 @@ package com.github.uiopak.lstcrc.scopes
 import com.github.uiopak.lstcrc.services.ProjectActiveDiffDataService
 import com.intellij.icons.AllIcons
 import com.intellij.openapi.components.service
+import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.psi.search.scope.packageSet.NamedScope
 import com.intellij.psi.search.scope.packageSet.NamedScopesHolder
 import com.intellij.psi.search.scope.packageSet.PackageSet
 import com.intellij.psi.search.scope.packageSet.PackageSetBase
-import com.intellij.openapi.diagnostic.thisLogger // Import logger
 
-// Defines a scope for files that have been newly created in the active branch comparison.
+// --- Base PackageSet for LSTCRC Scopes ---
+private abstract class LstCrcPackageSet(
+    // The description will be used for getText(), which appears in the "Pattern" field
+    // of the Scopes dialog.
+    private val description: String
+) : PackageSetBase() {
+    // Using the simple class name for the logger category makes it identifiable.
+    protected val logger: Logger = Logger.getInstance("#${LstCrcPackageSet::class.java.name}.${this::class.simpleName}")
+
+    abstract fun getRelevantFiles(service: ProjectActiveDiffDataService): Set<VirtualFile>
+
+    override fun contains(file: VirtualFile, project: Project, holder: NamedScopesHolder?): Boolean {
+        if (project.isDisposed) return false
+        val diffDataService = project.service<ProjectActiveDiffDataService>()
+        val relevantFiles = getRelevantFiles(diffDataService)
+        val result = file in relevantFiles
+        // Example for debugging, consider using trace level:
+        // logger.trace("ScopeCheck (${this::class.simpleName}): '${file.name}' in scope? $result. (Service has ${relevantFiles.size} files. Active branch: ${diffDataService.activeBranchName})")
+        return result
+    }
+
+    /**
+     * Returns the text representation of the package set.
+     * This text is displayed in the "Pattern" field of the Scopes dialog.
+     */
+    override fun getText(): String = description
+
+    override fun getNodePriority(): Int = 1 // Custom scopes, typically higher priority than 0 (built-ins)
+}
+
+// --- Specific PackageSet Implementations ---
+private class CreatedFilesPackageSet : LstCrcPackageSet(
+    description = "Files newly added in the current LSTCRC branch comparison."
+) {
+    override fun getRelevantFiles(service: ProjectActiveDiffDataService): Set<VirtualFile> = service.createdFiles.toSet()
+    override fun createCopy(): PackageSet = CreatedFilesPackageSet()
+}
+
+private class ModifiedFilesPackageSet : LstCrcPackageSet(
+    description = "Files modified in the current LSTCRC branch comparison."
+) {
+    override fun getRelevantFiles(service: ProjectActiveDiffDataService): Set<VirtualFile> = service.modifiedFiles.toSet()
+    override fun createCopy(): PackageSet = ModifiedFilesPackageSet()
+}
+
+private class MovedFilesPackageSet : LstCrcPackageSet(
+    description = "Files moved or renamed in the current LSTCRC branch comparison."
+) {
+    override fun getRelevantFiles(service: ProjectActiveDiffDataService): Set<VirtualFile> = service.movedFiles.toSet()
+    override fun createCopy(): PackageSet = MovedFilesPackageSet()
+}
+
+private class ChangedFilesPackageSet : LstCrcPackageSet(
+    description = "All files created, modified, or moved in the current LSTCRC branch comparison."
+) {
+    // Overriding getRelevantFiles for combined logic
+    override fun getRelevantFiles(service: ProjectActiveDiffDataService): Set<VirtualFile> {
+        return (service.createdFiles + service.modifiedFiles + service.movedFiles).toSet()
+    }
+    override fun createCopy(): PackageSet = ChangedFilesPackageSet()
+}
+
+
+// --- NamedScope Definitions (using prefixed IDs) ---
+// The 'name' parameter is the Scope ID and its default display name in UI lists.
 class CreatedFilesScope : NamedScope(
-    "Created Files", // Name displayed in the UI
-    AllIcons.General.Information, // Icon for the scope
-    object : PackageSetBase() { // Logic to determine if a file is in this scope
-        private val scopeLogger = thisLogger() // Logger for this specific PackageSet
-
-        override fun contains(file: VirtualFile, project: Project, holder: NamedScopesHolder?): Boolean {
-            val diffDataService = project.service<ProjectActiveDiffDataService>()
-            val result = file in diffDataService.createdFiles
-            // Log only if the result is true, or for a specific file if debugging intensely, to reduce noise.
-            // For now, let's log every check to see frequency.
-            scopeLogger.debug("ScopeCheck: CreatedFilesScope for '${file.name}'. Result: $result. (Service has ${diffDataService.createdFiles.size} created files. Active branch: ${diffDataService.activeBranchName})")
-            return result
-        }
-
-        override fun createCopy(): PackageSet = this // Returns a copy of this package set
-
-        override fun getText(): String = "Files created in the current branch" // Description for the scope
-
-        override fun getNodePriority(): Int = 0 // Priority for display order (lower is higher)
-    }
+    "LSTCRC: Created Files", // Scope ID and UI Name
+    AllIcons.General.Information, // Icon
+    CreatedFilesPackageSet()      // PackageSet implementation
 )
 
-// Defines a scope for files that have been modified in the active branch comparison.
 class ModifiedFilesScope : NamedScope(
-    "Modified Files",
+    "LSTCRC: Modified Files",
     AllIcons.General.Information,
-    object : PackageSetBase() {
-        private val scopeLogger = thisLogger()
-        override fun contains(file: VirtualFile, project: Project, holder: NamedScopesHolder?): Boolean {
-            val diffDataService = project.service<ProjectActiveDiffDataService>()
-            val result = file in diffDataService.modifiedFiles
-            scopeLogger.debug("ScopeCheck: ModifiedFilesScope for '${file.name}'. Result: $result. (Service has ${diffDataService.modifiedFiles.size} modified files. Active branch: ${diffDataService.activeBranchName})")
-            return result
-        }
-
-        override fun createCopy(): PackageSet = this
-
-        override fun getText(): String = "Files modified in the current branch"
-
-        override fun getNodePriority(): Int = 0
-    }
+    ModifiedFilesPackageSet()
 )
 
-// Defines a scope for files that have been moved (renamed) in the active branch comparison.
 class MovedFilesScope : NamedScope(
-    "Moved Files",
+    "LSTCRC: Moved Files",
     AllIcons.General.Information,
-    object : PackageSetBase() {
-        private val scopeLogger = thisLogger()
-        override fun contains(file: VirtualFile, project: Project, holder: NamedScopesHolder?): Boolean {
-            val diffDataService = project.service<ProjectActiveDiffDataService>()
-            val result = file in diffDataService.movedFiles
-            scopeLogger.debug("ScopeCheck: MovedFilesScope for '${file.name}'. Result: $result. (Service has ${diffDataService.movedFiles.size} moved files. Active branch: ${diffDataService.activeBranchName})")
-            return result
-        }
-
-        override fun createCopy(): PackageSet = this
-
-        override fun getText(): String = "Files moved in the current branch"
-
-        override fun getNodePriority(): Int = 0
-    }
+    MovedFilesPackageSet()
 )
 
-// Defines a scope encompassing all files that are created, modified, or moved in the active branch comparison.
 class ChangedFilesScope : NamedScope(
-    "Changed Files",
+    "LSTCRC: Changed Files",
     AllIcons.General.Information,
-    object : PackageSetBase() {
-        private val scopeLogger = thisLogger()
-        override fun contains(file: VirtualFile, project: Project, holder: NamedScopesHolder?): Boolean {
-            val diffDataService = project.service<ProjectActiveDiffDataService>()
-            val isCreated = file in diffDataService.createdFiles
-            val isModified = file in diffDataService.modifiedFiles
-            val isMoved = file in diffDataService.movedFiles
-            val result = isCreated || isModified || isMoved
-            scopeLogger.debug("ScopeCheck: ChangedFilesScope for '${file.name}'. Result: $result (C:$isCreated, M:$isModified, V:$isMoved. Active branch: ${diffDataService.activeBranchName})")
-            return result
-        }
-
-        override fun createCopy(): PackageSet = this
-
-        override fun getText(): String = "All files changed in the current branch"
-
-        override fun getNodePriority(): Int = 0
-    }
+    ChangedFilesPackageSet()
 )
