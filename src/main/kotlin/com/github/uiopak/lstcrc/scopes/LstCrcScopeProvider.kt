@@ -12,11 +12,11 @@ import com.intellij.psi.search.scope.packageSet.NamedScope
 class LstCrcScopeProvider : CustomScopesProvider {
 
     companion object {
-        // Singleton instances of the scopes, initialized lazily
-        private val CREATED_FILES_SCOPE by lazy { CreatedFilesScope() }
-        private val MODIFIED_FILES_SCOPE by lazy { ModifiedFilesScope() }
-        private val MOVED_FILES_SCOPE by lazy { MovedFilesScope() }
-        private val CHANGED_FILES_SCOPE by lazy { ChangedFilesScope() }
+        // Make these accessible from other classes in the same module
+        internal val CREATED_FILES_SCOPE by lazy { CreatedFilesScope() }
+        internal val MODIFIED_FILES_SCOPE by lazy { ModifiedFilesScope() }
+        internal val MOVED_FILES_SCOPE by lazy { MovedFilesScope() }
+        internal val CHANGED_FILES_SCOPE by lazy { ChangedFilesScope() }
     }
 
     override fun getCustomScopes(): List<NamedScope> {
