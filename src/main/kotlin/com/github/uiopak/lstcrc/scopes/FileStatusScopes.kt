@@ -78,24 +78,31 @@ private class ChangedFilesPackageSet : LstCrcPackageSet(
 // The 'name' parameter is the Scope ID and its default display name in UI lists.
 class CreatedFilesScope : NamedScope(
     "LSTCRC: Created Files", // Scope ID and UI Name
-    AllIcons.General.Information, // Icon
+    AllIcons.Actions.Diff, // Icon
     CreatedFilesPackageSet()      // PackageSet implementation
-)
+){
+    override fun getDefaultColorName(): String = "Green"
+}
 
 class ModifiedFilesScope : NamedScope(
     "LSTCRC: Modified Files",
-    AllIcons.General.Information,
+    AllIcons.Actions.Diff,
     ModifiedFilesPackageSet()
-)
+){
+    override fun getDefaultColorName(): String = "Blue"
+}
 
 class MovedFilesScope : NamedScope(
     "LSTCRC: Moved Files",
-    AllIcons.General.Information,
+    AllIcons.Actions.Diff,
     MovedFilesPackageSet()
-)
+){
+    override fun getDefaultColorName(): String = "Gray"
+}
+
 
 class ChangedFilesScope : NamedScope(
     "LSTCRC: Changed Files",
-    AllIcons.General.Information,
+    AllIcons.Actions.Diff,
     ChangedFilesPackageSet()
 )
