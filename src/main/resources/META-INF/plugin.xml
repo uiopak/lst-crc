@@ -19,7 +19,7 @@
 
 
         <customScopesProvider implementation="com.github.uiopak.lstcrc.scopes.LstCrcScopeProvider" />
-        <scopeDescriptorProvider implementation="com.github.uiopak.lstcrc.scopes.LstCrcScopeDescriptorProvider"/>
+        <searchScopesProvider implementation="com.github.uiopak.lstcrc.scopes.LstCrcSearchScopeProvider"/>
 
 <!--        <projectActivity implementation="com.github.uiopak.lstcrc.services.PluginStartupActivity"/>-->
         <!-- Removed TabColorVfsListenerRegistrationActivity -->
