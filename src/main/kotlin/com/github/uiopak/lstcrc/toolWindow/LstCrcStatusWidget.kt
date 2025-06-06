@@ -1,10 +1,17 @@
 package com.github.uiopak.lstcrc.toolWindow
 
+import com.github.uiopak.lstcrc.services.GitService
+import com.github.uiopak.lstcrc.services.ToolWindowStateService
+import com.github.uiopak.lstcrc.state.TabInfo
+import com.github.uiopak.lstcrc.state.ToolWindowState
+import com.intellij.ide.DataManager
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.DefaultActionGroup
-import com.intellij.openapi.project.Project
 import com.intellij.openapi.actionSystem.Separator
+import com.intellij.openapi.components.service
+import com.intellij.openapi.diagnostic.thisLogger
+import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.popup.JBPopupFactory
 import com.intellij.openapi.wm.StatusBar
 import com.intellij.openapi.wm.StatusBarWidget
@@ -12,21 +19,11 @@ import com.intellij.openapi.wm.StatusBarWidgetFactory
 import com.intellij.openapi.wm.ToolWindowManager
 import com.intellij.ui.awt.RelativePoint
 import com.intellij.ui.content.ContentFactory
+import com.intellij.ui.content.ContentManager
 import com.intellij.util.Consumer
-import java.awt.event.MouseEvent
-import com.github.uiopak.lstcrc.services.ToolWindowStateService
-import com.github.uiopak.lstcrc.state.TabInfo // Actual TabInfo
-import com.github.uiopak.lstcrc.state.ToolWindowState // Actual ToolWindowState
 import com.intellij.util.messages.MessageBusConnection
-import com.intellij.openapi.diagnostic.thisLogger
-import com.intellij.openapi.actionSystem.ActionPlaces
-import com.intellij.ide.DataManager
-import java.awt.Component // Import for Component.CENTER_ALIGNMENT
-import com.github.uiopak.lstcrc.utils.LstCrcKeys
-import com.intellij.openapi.application.ApplicationManager
-// Assuming OpenBranchSelectionTabAction is in this package or needs specific import
-// If it's in the same package, direct usage is fine. If not, add:
-// import com.github.uiopak.lstcrc.toolWindow.OpenBranchSelectionTabAction
+import java.awt.Component
+import java.awt.event.MouseEvent
 
 
 class LstCrcStatusWidgetFactory : StatusBarWidgetFactory {
@@ -116,73 +113,107 @@ class LstCrcStatusWidget(private val project: Project) : StatusBarWidget, Status
 
                         if (toolWindow == null) {
                             logger.error("Could not find ToolWindow: $GIT_CHANGES_TOOL_WINDOW_ID when trying to switch tab from widget.")
-                            return // Using return@actionPerformed if inside a non-labeled lambda, but here it's fine.
+                            return
                         }
 
-                        val contentManager = toolWindow.contentManager
-                        val contentToSelect = contentManager.contents.find { it.displayName == branchNameToSelect }
+                        // Activate the tool window, which will create it if needed.
+                        toolWindow.activate({
+                            // This runnable runs after activation is complete
+                            val contentManager = toolWindow.contentManager
+                            val contentToSelect = contentManager.contents.find { it.displayName == branchNameToSelect }
 
-                        if (contentToSelect != null) {
-                            contentManager.setSelectedContent(contentToSelect, true) // true for focus
-                            toolWindow.activate(null, true, true) // Ensure tool window is visible and focused
-                            logger.info("Requested UI tab selection for '$branchNameToSelect' from status widget.")
-                        } else {
-                            logger.warn("Could not find content for tab '$branchNameToSelect' in tool window to select from widget.")
-                            // Fallback considerations mentioned in prompt - for now, just log.
-                        }
-                        // REMOVED: service.setSelectedTab(index)
-                        // Rely on ContentManagerListener in MyToolWindowFactory to update ToolWindowStateService.
+                            if (contentToSelect != null) {
+                                contentManager.setSelectedContent(contentToSelect, true) // true for focus
+                                logger.info("Requested UI tab selection for '$branchNameToSelect' from status widget.")
+                            } else {
+                                logger.warn("Could not find content for tab '$branchNameToSelect' in tool window to select from widget.")
+                            }
+                        }, true, true)
                     }
                 })
             }
 
             actions.add(Separator.getInstance())
 
+            // THIS IS THE CORRECTED ACTION
             actions.add(object : AnAction("+ Add Tab") {
                 override fun actionPerformed(e: AnActionEvent) {
-                    // 'project' is a constructor parameter of LstCrcStatusWidget
-                    // 'statusBar' is a member property initialized in install()
-
                     val toolWindowManager = ToolWindowManager.getInstance(project)
                     val toolWindow = toolWindowManager.getToolWindow(GIT_CHANGES_TOOL_WINDOW_ID)
                     if (toolWindow == null) {
                         logger.error("Could not find ToolWindow: $GIT_CHANGES_TOOL_WINDOW_ID")
-                        return // Abort if tool window not found
+                        return
                     }
 
-                    toolWindow.activate(null, true, true) // Activate and focus the tool window
+                    // Ensure the tool window is visible and ready.
+                    toolWindow.activate({
+                        // The logic from OpenBranchSelectionTabAction is now replicated here,
+                        // removing the fragile dependency on UserData.
+                        val selectionTabName = "Select Branch"
+                        val contentManager: ContentManager = toolWindow.contentManager
 
-                    // Explicit version for diagnostics as requested
-                    val key: com.intellij.openapi.util.Key<com.github.uiopak.lstcrc.toolWindow.OpenBranchSelectionTabAction> = LstCrcKeys.OPEN_BRANCH_SELECTION_ACTION_KEY
-                    val retrievedAction: com.github.uiopak.lstcrc.toolWindow.OpenBranchSelectionTabAction? =
-                        (toolWindow as com.intellij.openapi.util.UserDataHolder).getUserData(key)
-                    val openBranchAction = retrievedAction
-                    // val openBranchAction = toolWindow.getUserData(LstCrcKeys.OPEN_BRANCH_SELECTION_ACTION_KEY) // Original simpler call
-
-
-                    if (openBranchAction != null) {
-                        val contextComponent = statusBar?.component ?: toolWindow.component
-                        val dataContext = DataManager.getInstance().getDataContext(contextComponent)
-                        val event = AnActionEvent.createFromDataContext(ActionPlaces.STATUS_BAR_PLACE, null, dataContext)
-
-                        ApplicationManager.getApplication().invokeLater {
-                            openBranchAction.actionPerformed(event)
+                        val existingContent = contentManager.findContent(selectionTabName)
+                        if (existingContent != null) {
+                            contentManager.setSelectedContent(existingContent, true)
+                            logger.info("Add Tab (from widget): Found existing '$selectionTabName' tab and selected it.")
+                            return@activate
                         }
-                        logger.info("Scheduled OpenBranchSelectionTabAction from status bar widget via invokeLater.")
-                    } else {
-                        logger.warn("OpenBranchSelectionTabAction not found in tool window UserData for key LSTCRC.OpenBranchSelectionAction. Cannot open 'Add Tab' UI from status bar widget.")
-                    }
+
+                        // We need a GitChangesToolWindow instance to create the final view.
+                        // We can create it on-the-fly here.
+                        val uiProvider = GitChangesToolWindow(project, toolWindow.disposable)
+                        val stateService = ToolWindowStateService.getInstance(project)
+                        val contentFactory = ContentFactory.getInstance()
+
+                        val branchSelectionUi = BranchSelectionPanel(project, project.service<GitService>()) { selectedBranchName: String ->
+                            logger.info("Add Tab (from widget callback): Branch '$selectedBranchName' selected.")
+                            if (selectedBranchName.isBlank()) {
+                                logger.error("Add Tab (from widget callback): selectedBranchName is blank.")
+                                return@BranchSelectionPanel
+                            }
+
+                            val manager: ContentManager = toolWindow.contentManager
+                            val selectionTabContent = manager.findContent(selectionTabName)
+                                ?: return@BranchSelectionPanel
+
+                            val existingBranchTab = manager.contents.find { it.displayName == selectedBranchName }
+                            if (existingBranchTab != null) {
+                                manager.setSelectedContent(existingBranchTab, true)
+                                manager.removeContent(selectionTabContent, true)
+                            } else {
+                                selectionTabContent.displayName = selectedBranchName
+                                val newBranchContentView = uiProvider.createBranchContentView(selectedBranchName)
+                                selectionTabContent.component = newBranchContentView
+                                (newBranchContentView as? ChangesTreePanel)?.requestRefreshData()
+
+                                manager.setSelectedContent(selectionTabContent, true)
+                                stateService.addTab(selectedBranchName)
+
+                                val closableTabs = manager.contents.filter { it.isCloseable }.map { it.displayName }
+                                val newTabIndex = closableTabs.indexOf(selectedBranchName)
+                                if (newTabIndex != -1) {
+                                    stateService.setSelectedTab(newTabIndex)
+                                }
+                            }
+                        }
+
+                        val newContent = contentFactory.createContent(branchSelectionUi.getPanel(), selectionTabName, true).apply {
+                            isCloseable = true
+                        }
+                        contentManager.addContent(newContent)
+                        contentManager.setSelectedContent(newContent, true)
+
+                    }, true, true)
                 }
             })
 
             val actionGroup = DefaultActionGroup(actions)
-            // Pass the mouse event's data context to the popup factory
             val popup = JBPopupFactory.getInstance().createActionGroupPopup(
-                "LST-CRC Actions", // Title of the popup
+                "LST-CRC Actions",
                 actionGroup,
-                DataManager.getInstance().getDataContext(mouseEvent.component), // Use component from mouse event for DataContext
+                DataManager.getInstance().getDataContext(mouseEvent.component),
                 JBPopupFactory.ActionSelectionAid.SPEEDSEARCH,
-                true // showSeparators
+                true
             )
             popup.show(RelativePoint(mouseEvent))
         }
