@@ -62,8 +62,7 @@ class LstCrcStatusWidget(private val project: Project) : StatusBarWidget, Status
         val openTabs = currentServiceState.openTabs
 
         currentText = when {
-            openTabs.isEmpty() -> "LST-CRC"
-            selectedIndex == -1 -> "HEAD"
+            selectedIndex == -1 || openTabs.isEmpty() -> "HEAD"
             selectedIndex >= 0 && selectedIndex < openTabs.size -> openTabs[selectedIndex].branchName.take(20) // Truncate for display
             else -> "LST-CRC" // Default or error case
         }
@@ -103,6 +102,33 @@ class LstCrcStatusWidget(private val project: Project) : StatusBarWidget, Status
             val currentServiceState = service.state
             val openTabs = currentServiceState.openTabs
             val actions = mutableListOf<AnAction>()
+
+            // --- START FIX: Manually add the "HEAD" action ---
+            actions.add(object : AnAction("HEAD") {
+                override fun actionPerformed(e: AnActionEvent) {
+                    val toolWindowManager = ToolWindowManager.getInstance(project)
+                    val toolWindow = toolWindowManager.getToolWindow(GIT_CHANGES_TOOL_WINDOW_ID)
+
+                    if (toolWindow == null) {
+                        logger.error("Could not find ToolWindow: $GIT_CHANGES_TOOL_WINDOW_ID when trying to switch to HEAD tab from widget.")
+                        return
+                    }
+
+                    toolWindow.activate({
+                        val contentManager = toolWindow.contentManager
+                        // The HEAD tab is the one that is NOT closable.
+                        val headContent = contentManager.contents.find { !it.isCloseable }
+
+                        if (headContent != null) {
+                            contentManager.setSelectedContent(headContent, true)
+                            logger.info("Requested UI tab selection for 'HEAD' from status widget.")
+                        } else {
+                            logger.warn("Could not find HEAD content (non-closable tab) in tool window to select from widget.")
+                        }
+                    }, true, true)
+                }
+            })
+            // --- END FIX ---
 
             openTabs.forEachIndexed { index, tabInfo ->
                 actions.add(object : AnAction(tabInfo.branchName) { // tabInfo is now actual TabInfo

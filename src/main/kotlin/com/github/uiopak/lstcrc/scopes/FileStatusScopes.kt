@@ -25,6 +25,14 @@ private abstract class LstCrcPackageSet(
     override fun contains(file: VirtualFile, project: Project, holder: NamedScopesHolder?): Boolean {
         if (project.isDisposed) return false
         val diffDataService = project.service<ProjectActiveDiffDataService>()
+
+        // When the "HEAD" tab is active, its changes are standard VCS changes, not part of a specific
+        // branch comparison for this plugin's purpose. Therefore, LSTCRC scopes should be empty.
+        // We identify the HEAD tab by checking if the active branch name in the service is "HEAD" or null.
+        if (diffDataService.activeBranchName == "HEAD" || diffDataService.activeBranchName == null) {
+            return false
+        }
+
         val relevantFiles = getRelevantFiles(diffDataService)
         val result = file in relevantFiles
         // Example for debugging, consider using trace level:

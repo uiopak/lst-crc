@@ -42,7 +42,8 @@ class MyToolWindowFactory : ToolWindowFactory {
         val headTabTargetName = currentRepository?.currentBranchName ?: currentRepository?.currentRevision ?: "HEAD"
         logger.debug("headTabTargetName is $headTabTargetName")
 
-        val headView = gitChangesUiProvider.createBranchContentView(headTabTargetName)
+        // Pass the literal "HEAD" to the panel to standardize its identifier for refreshes.
+        val headView = gitChangesUiProvider.createBranchContentView("HEAD")
         val headContent = contentFactory.createContent(headView, "HEAD", false).apply {
             isCloseable = false
             isPinned = true
