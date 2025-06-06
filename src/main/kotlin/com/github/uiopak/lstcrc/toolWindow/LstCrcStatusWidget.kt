@@ -23,6 +23,7 @@ import com.intellij.ui.content.ContentManager
 import com.intellij.util.Consumer
 import com.intellij.util.messages.MessageBusConnection
 import java.awt.Component
+import java.awt.Point
 import java.awt.event.MouseEvent
 
 
@@ -103,7 +104,7 @@ class LstCrcStatusWidget(private val project: Project) : StatusBarWidget, Status
             val openTabs = currentServiceState.openTabs
             val actions = mutableListOf<AnAction>()
 
-            // --- START FIX: Manually add the "HEAD" action ---
+            // Manually add the "HEAD" action
             actions.add(object : AnAction("HEAD") {
                 override fun actionPerformed(e: AnActionEvent) {
                     val toolWindowManager = ToolWindowManager.getInstance(project)
@@ -128,7 +129,6 @@ class LstCrcStatusWidget(private val project: Project) : StatusBarWidget, Status
                     }, true, true)
                 }
             })
-            // --- END FIX ---
 
             openTabs.forEachIndexed { index, tabInfo ->
                 actions.add(object : AnAction(tabInfo.branchName) { // tabInfo is now actual TabInfo
@@ -161,7 +161,6 @@ class LstCrcStatusWidget(private val project: Project) : StatusBarWidget, Status
 
             actions.add(Separator.getInstance())
 
-            // THIS IS THE CORRECTED ACTION
             actions.add(object : AnAction("+ Add Tab") {
                 override fun actionPerformed(e: AnActionEvent) {
                     val toolWindowManager = ToolWindowManager.getInstance(project)
@@ -173,8 +172,6 @@ class LstCrcStatusWidget(private val project: Project) : StatusBarWidget, Status
 
                     // Ensure the tool window is visible and ready.
                     toolWindow.activate({
-                        // The logic from OpenBranchSelectionTabAction is now replicated here,
-                        // removing the fragile dependency on UserData.
                         val selectionTabName = "Select Branch"
                         val contentManager: ContentManager = toolWindow.contentManager
 
@@ -185,8 +182,6 @@ class LstCrcStatusWidget(private val project: Project) : StatusBarWidget, Status
                             return@activate
                         }
 
-                        // We need a GitChangesToolWindow instance to create the final view.
-                        // We can create it on-the-fly here.
                         val uiProvider = GitChangesToolWindow(project, toolWindow.disposable)
                         val stateService = ToolWindowStateService.getInstance(project)
                         val contentFactory = ContentFactory.getInstance()
@@ -234,14 +229,25 @@ class LstCrcStatusWidget(private val project: Project) : StatusBarWidget, Status
             })
 
             val actionGroup = DefaultActionGroup(actions)
+            val dataContext = DataManager.getInstance().getDataContext(mouseEvent.component)
             val popup = JBPopupFactory.getInstance().createActionGroupPopup(
                 "LST-CRC Actions",
                 actionGroup,
-                DataManager.getInstance().getDataContext(mouseEvent.component),
+                dataContext,
                 JBPopupFactory.ActionSelectionAid.SPEEDSEARCH,
                 true
             )
-            popup.show(RelativePoint(mouseEvent))
+
+            // --- START FINAL FIX for POPUP PLACEMENT ---
+            val component = mouseEvent.component
+            // Get the size of the popup's content *before* showing it.
+            val popupSize = popup.content.preferredSize
+            // Calculate a point that places the popup's bottom-left corner at the widget's top-left.
+            // x = 0 (align left edges)
+            // y = -popupSize.height (move the popup's top edge up by its entire height)
+            val point = Point(0, -popupSize.height)
+            popup.show(RelativePoint(component, point))
+            // --- END FINAL FIX for POPUP PLACEMENT ---
         }
     }
 }
