@@ -177,6 +177,15 @@ class ToolWindowStateService(private val project: Project) : PersistentStateComp
         }
     }
 
+    /**
+     * Explicitly broadcasts the current state to all listeners on the message bus.
+     * This is useful after initialization to ensure all components are synchronized with the initial state.
+     */
+    fun broadcastCurrentState() {
+        logger.info("Broadcasting current state explicitly to all listeners.")
+        project.messageBus.syncPublisher(TOPIC).stateChanged(myState.copy())
+    }
+
     fun getSelectedTabBranchName(): String? {
         // This is a read-only operation, no logging needed unless for specific debugging
         if (myState.selectedTabIndex >= 0 && myState.selectedTabIndex < myState.openTabs.size) {

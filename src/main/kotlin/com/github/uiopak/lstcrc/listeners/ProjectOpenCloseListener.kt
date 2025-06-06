@@ -43,73 +43,81 @@ class ProjectOpenCloseListener : ProjectManagerListener {
         logger.info("MMMM_STARTUP_LOGIC: Scheduling DELAYED ( ${INITIAL_DIFF_LOAD_DELAY_MS}ms) task for robust initial diff load for project: ${project.name}")
 
         DumbService.getInstance(project).runWhenSmart {
-             ApplicationManager.getApplication().executeOnPooledThread {
-                 try {
-                     Thread.sleep(INITIAL_DIFF_LOAD_DELAY_MS)
-                 } catch (e: InterruptedException) {
-                     logger.warn("MMMM_STARTUP_LOGIC_DELAYED: Thread.sleep interrupted", e)
-                     Thread.currentThread().interrupt()
-                     return@executeOnPooledThread
-                 }
+            ApplicationManager.getApplication().executeOnPooledThread {
+                try {
+                    Thread.sleep(INITIAL_DIFF_LOAD_DELAY_MS)
+                } catch (e: InterruptedException) {
+                    logger.warn("MMMM_STARTUP_LOGIC_DELAYED: Thread.sleep interrupted", e)
+                    Thread.currentThread().interrupt()
+                    return@executeOnPooledThread
+                }
 
-                 ApplicationManager.getApplication().invokeLater {
-                     if (project.isDisposed) {
-                         logger.info("MMMM_STARTUP_LOGIC_DELAYED: Project ${project.name} is disposed, skipping delayed initial diff load.")
-                         return@invokeLater
-                     }
-                     logger.info("MMMM_STARTUP_LOGIC_DELAYED: Executing delayed task for initial diff load for project: ${project.name}")
+                ApplicationManager.getApplication().invokeLater {
+                    if (project.isDisposed) {
+                        logger.info("MMMM_STARTUP_LOGIC_DELAYED: Project ${project.name} is disposed, skipping delayed initial diff load.")
+                        return@invokeLater
+                    }
+                    logger.info("MMMM_STARTUP_LOGIC_DELAYED: Executing delayed task for initial diff load for project: ${project.name}")
 
-                     val gitService = project.service<GitService>()
-                     val currentRepo = gitService.getCurrentRepository()
+                    val gitService = project.service<GitService>()
+                    val currentRepo = gitService.getCurrentRepository()
+                    val toolWindowStateService = project.service<ToolWindowStateService>() // Get service instance here
+                    val diffDataService = project.service<ProjectActiveDiffDataService>()
 
-                     if (currentRepo == null) {
-                         logger.warn("MMMM_STARTUP_LOGIC_DELAYED: Git repository still not found after delay for project: ${project.name}. Tab coloring may not function correctly.")
-                         return@invokeLater
-                     }
-                     logger.info("MMMM_STARTUP_LOGIC_DELAYED: Git repository found after delay: ${currentRepo.root.path}. Proceeding with initial diff load.")
+                    if (currentRepo == null) {
+                        logger.warn("MMMM_STARTUP_LOGIC_DELAYED: Git repository still not found after delay for project: ${project.name}. Tab coloring may not function correctly.")
+                        // Even if git isn't ready, we should still broadcast the state to update the widget from "LST-CRC" to whatever is persisted (e.g. "HEAD")
+                        logger.info("MMMM_STARTUP_LOGIC_DELAYED: Broadcasting ToolWindowState to sync UI components even though Git repo was not found.")
+                        toolWindowStateService.broadcastCurrentState()
+                        return@invokeLater
+                    }
+                    logger.info("MMMM_STARTUP_LOGIC_DELAYED: Git repository found after delay: ${currentRepo.root.path}. Proceeding with initial diff load.")
 
-                     val toolWindowStateService = project.service<ToolWindowStateService>()
-                     val diffDataService = project.service<ProjectActiveDiffDataService>()
-                     val selectedBranchName = toolWindowStateService.getSelectedTabBranchName()
+                    val selectedBranchName = toolWindowStateService.getSelectedTabBranchName()
 
-                     if (selectedBranchName != null) {
-                         if (diffDataService.activeBranchName != selectedBranchName || diffDataService.activeChanges.isEmpty()) {
-                             logger.info("MMMM_STARTUP_LOGIC_DELAYED: Attempting to load changes for initially selected tool window branch: '$selectedBranchName' because current activeBranchName is '${diffDataService.activeBranchName}' or activeChanges is empty.")
-                             gitService.getChanges(selectedBranchName).whenCompleteAsync { categorizedChanges, throwable ->
-                                 if (project.isDisposed) {
-                                     logger.info("MMMM_STARTUP_LOGIC_DELAYED: Project ${project.name} disposed during getChanges for '$selectedBranchName'.")
-                                     return@whenCompleteAsync
-                                 }
-                                 logger.info("MMMM_STARTUP_LOGIC_DELAYED: getChanges for '$selectedBranchName' completed. Error: ${throwable != null}, Changes count: ${categorizedChanges?.allChanges?.size ?: "null"}")
-                                 if (throwable != null) {
-                                     logger.error("MMMM_STARTUP_LOGIC_DELAYED: Error getting changes for branch '$selectedBranchName': ${throwable.message}", throwable)
-                                     // Optionally, clear diff data on error
-                                     diffDataService.updateActiveDiff(selectedBranchName, emptyList(), emptyList(), emptyList(), emptyList())
-                                 } else if (categorizedChanges != null) {
-                                     logger.info("MMMM_STARTUP_LOGIC_DELAYED: Successfully fetched ${categorizedChanges.allChanges.size} total changes, ${categorizedChanges.createdFiles.size} created, ${categorizedChanges.modifiedFiles.size} modified, ${categorizedChanges.movedFiles.size} moved for '$selectedBranchName'. Updating ProjectActiveDiffDataService.")
-                                     diffDataService.updateActiveDiff(
-                                         selectedBranchName,
-                                         categorizedChanges.allChanges,
-                                         categorizedChanges.createdFiles,
-                                         categorizedChanges.modifiedFiles,
-                                         categorizedChanges.movedFiles
-                                     )
-                                 } else { // categorizedChanges is null and throwable is null
-                                     logger.warn("MMMM_STARTUP_LOGIC_DELAYED: Fetched changes for '$selectedBranchName' but CategorizedChanges object was null. Clearing diff data.")
-                                     diffDataService.updateActiveDiff(selectedBranchName, emptyList(), emptyList(), emptyList(), emptyList())
-                                 }
-                             }
-                         } else {
-                             logger.info("MMMM_STARTUP_LOGIC_DELAYED: Diff data for branch '$selectedBranchName' seems already loaded in ProjectActiveDiffDataService. Refreshing colors anyway.")
-                             diffDataService.refreshCurrentColorings()
-                         }
-                     } else {
-                         logger.info("MMMM_STARTUP_LOGIC_DELAYED: No branch selected in tool window. Clearing active diff data.")
-                         diffDataService.clearActiveDiff()
-                     }
-                     logger.info("MMMM_STARTUP_LOGIC_DELAYED: Delayed initial diff load task finished for project: ${project.name}")
-                 }
-             }
+                    if (selectedBranchName != null) {
+                        if (diffDataService.activeBranchName != selectedBranchName || diffDataService.activeChanges.isEmpty()) {
+                            logger.info("MMMM_STARTUP_LOGIC_DELAYED: Attempting to load changes for initially selected tool window branch: '$selectedBranchName' because current activeBranchName is '${diffDataService.activeBranchName}' or activeChanges is empty.")
+                            gitService.getChanges(selectedBranchName).whenCompleteAsync { categorizedChanges, throwable ->
+                                if (project.isDisposed) {
+                                    logger.info("MMMM_STARTUP_LOGIC_DELAYED: Project ${project.name} disposed during getChanges for '$selectedBranchName'.")
+                                    return@whenCompleteAsync
+                                }
+                                logger.info("MMMM_STARTUP_LOGIC_DELAYED: getChanges for '$selectedBranchName' completed. Error: ${throwable != null}, Changes count: ${categorizedChanges?.allChanges?.size ?: "null"}")
+                                if (throwable != null) {
+                                    logger.error("MMMM_STARTUP_LOGIC_DELAYED: Error getting changes for branch '$selectedBranchName': ${throwable.message}", throwable)
+                                    // Optionally, clear diff data on error
+                                    diffDataService.updateActiveDiff(selectedBranchName, emptyList(), emptyList(), emptyList(), emptyList())
+                                } else if (categorizedChanges != null) {
+                                    logger.info("MMMM_STARTUP_LOGIC_DELAYED: Successfully fetched ${categorizedChanges.allChanges.size} total changes, ${categorizedChanges.createdFiles.size} created, ${categorizedChanges.modifiedFiles.size} modified, ${categorizedChanges.movedFiles.size} moved for '$selectedBranchName'. Updating ProjectActiveDiffDataService.")
+                                    diffDataService.updateActiveDiff(
+                                        selectedBranchName,
+                                        categorizedChanges.allChanges,
+                                        categorizedChanges.createdFiles,
+                                        categorizedChanges.modifiedFiles,
+                                        categorizedChanges.movedFiles
+                                    )
+                                } else { // categorizedChanges is null and throwable is null
+                                    logger.warn("MMMM_STARTUP_LOGIC_DELAYED: Fetched changes for '$selectedBranchName' but CategorizedChanges object was null. Clearing diff data.")
+                                    diffDataService.updateActiveDiff(selectedBranchName, emptyList(), emptyList(), emptyList(), emptyList())
+                                }
+                            }
+                        } else {
+                            logger.info("MMMM_STARTUP_LOGIC_DELAYED: Diff data for branch '$selectedBranchName' seems already loaded in ProjectActiveDiffDataService. Refreshing colors anyway.")
+                            diffDataService.refreshCurrentColorings()
+                        }
+                    } else {
+                        logger.info("MMMM_STARTUP_LOGIC_DELAYED: No branch selected in tool window. Clearing active diff data.")
+                        diffDataService.clearActiveDiff()
+                    }
+                    logger.info("MMMM_STARTUP_LOGIC_DELAYED: Delayed initial diff load task finished for project: ${project.name}")
+
+                    // After all initial data loading, broadcast the current tool window state
+                    // to ensure components like the status bar widget are up-to-date with the loaded state.
+                    logger.info("MMMM_STARTUP_LOGIC_DELAYED: Broadcasting final ToolWindowState to sync all UI components.")
+                    toolWindowStateService.broadcastCurrentState()
+                }
+            }
         }
         logger.info("MMMM_STARTUP_LOGIC: ProjectOpenCloseListener.projectOpened COMPLETED for project: ${project.name}")
     }

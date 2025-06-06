@@ -79,7 +79,7 @@ class MyToolWindowFactory : ToolWindowFactory {
                     logger.warn("Could not find content for persisted selected branch $selectedBranchNameFromState to restore selection.")
                 }
             } else {
-                 logger.debug("No valid selectedTabIndex in persisted state (${persistedState.selectedTabIndex}).")
+                logger.debug("No valid selectedTabIndex in persisted state (${persistedState.selectedTabIndex}).")
             }
         } else {
             logger.info("No persisted tabs found in state. Performing initial branch tab setup if needed.")
@@ -101,7 +101,7 @@ class MyToolWindowFactory : ToolWindowFactory {
                 // If stateService.addTab made it the last one, its index would be stateService.state.openTabs.size - 1
                 val newTabIndexInState = stateService.state.openTabs.indexOfFirst { it.branchName == currentActualBranchName }
                 if (newTabIndexInState != -1) {
-                     logger.debug("Setting selected tab in state service to $newTabIndexInState for $currentActualBranchName.")
+                    logger.debug("Setting selected tab in state service to $newTabIndexInState for $currentActualBranchName.")
                     stateService.setSelectedTab(newTabIndexInState)
                 } else {
                     logger.warn("Could not find newly added tab '$currentActualBranchName' in state service's openTabs list immediately after adding it. Selection persistence might be affected.")
@@ -136,8 +136,8 @@ class MyToolWindowFactory : ToolWindowFactory {
                     val indexInPersistedList = closableTabsInState.indexOf(branchName)
                     if (indexInPersistedList != -1) {
                         if (stateService.state.selectedTabIndex != indexInPersistedList) {
-                           logger.debug("Updating selected tab in state to $indexInPersistedList for $branchName due to contentAdded+selected.")
-                           stateService.setSelectedTab(indexInPersistedList)
+                            logger.debug("Updating selected tab in state to $indexInPersistedList for $branchName due to contentAdded+selected.")
+                            stateService.setSelectedTab(indexInPersistedList)
                         }
                     } else {
                         // This could happen if a tab is added by means other than our action, and it's not yet in state.
@@ -204,7 +204,7 @@ class MyToolWindowFactory : ToolWindowFactory {
 
         val allGearActionsGroup = DefaultActionGroup()
         allGearActionsGroup.add(pluginSettingsSubMenu)
-        toolWindow.setAdditionalGearActions(allGearActionsGroup) // Corrected typo here
+        toolWindow.setAdditionalGearActions(allGearActionsGroup)
         logger.debug("Additional gear actions set.")
         logger.info("createToolWindowContent finished.")
     }
