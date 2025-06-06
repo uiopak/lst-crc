@@ -13,6 +13,7 @@ import com.intellij.ui.content.ContentManagerEvent
 import com.intellij.ui.content.ContentManagerListener
 import com.intellij.ide.util.PropertiesComponent
 import com.intellij.openapi.diagnostic.thisLogger // Added for logging
+import com.github.uiopak.lstcrc.utils.LstCrcKeys
 
 class MyToolWindowFactory : ToolWindowFactory {
     private val logger = thisLogger() // Initialize logger
@@ -191,6 +192,7 @@ class MyToolWindowFactory : ToolWindowFactory {
 
         val openSelectionTabAction = OpenBranchSelectionTabAction(project, toolWindow, gitChangesUiProvider)
         toolWindow.setTitleActions(listOf(openSelectionTabAction))
+        toolWindow.putUserData(LstCrcKeys.OPEN_BRANCH_SELECTION_ACTION_KEY, openSelectionTabAction)
 
         val propertiesComponent = PropertiesComponent.getInstance()
         val settingsProvider = ToolWindowSettingsProvider(propertiesComponent)

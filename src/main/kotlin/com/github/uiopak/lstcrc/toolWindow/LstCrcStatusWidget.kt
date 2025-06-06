@@ -21,6 +21,8 @@ import com.intellij.util.messages.MessageBusConnection
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.actionSystem.ActionPlaces
 import com.intellij.ide.DataManager
+import java.awt.Component // Import for Component.CENTER_ALIGNMENT
+import com.github.uiopak.lstcrc.utils.LstCrcKeys
 // Assuming OpenBranchSelectionTabAction is in this package or needs specific import
 // If it's in the same package, direct usage is fine. If not, add:
 // import com.github.uiopak.lstcrc.toolWindow.OpenBranchSelectionTabAction
@@ -99,6 +101,10 @@ class LstCrcStatusWidget(private val project: Project) : StatusBarWidget, Status
 
     override fun getTooltipText(): String = "LST-CRC: Click to switch or open tab"
 
+    override fun getAlignment(): Float {
+        return Component.CENTER_ALIGNMENT
+    }
+
     override fun getClickConsumer(): Consumer<MouseEvent> {
         return Consumer { mouseEvent ->
             val service = ToolWindowStateService.getInstance(project)
@@ -131,24 +137,17 @@ class LstCrcStatusWidget(private val project: Project) : StatusBarWidget, Status
 
                     toolWindow.activate(null, true, true) // Activate and focus the tool window
 
-                    // Assuming OpenBranchSelectionTabAction is the actual class, not the placeholder
-                    val openBranchAction = toolWindow.titleActions.find { it is OpenBranchSelectionTabAction }
-                    if (openBranchAction != null) { // Check if it is OpenBranchSelectionTabAction is implicit if it's correctly typed
-                        // Determine the context component for creating DataContext
+                    val openBranchAction = toolWindow.getUserData(LstCrcKeys.OPEN_BRANCH_SELECTION_ACTION_KEY) // Use the key here
+
+                    if (openBranchAction != null) {
                         val contextComponent = statusBar?.component ?: toolWindow.component
                         val dataContext = DataManager.getInstance().getDataContext(contextComponent)
-
-                        // Create AnActionEvent
-                        // Pass the original event's data context if possible, or create a new one.
-                        // Using ActionPlaces.STATUS_BAR_PLACE as the event originates from there.
                         val event = AnActionEvent.createFromDataContext(ActionPlaces.STATUS_BAR_PLACE, null, dataContext)
 
-                        // Perform the action
-                        openBranchAction.actionPerformed(event)
-                        logger.info("Triggered OpenBranchSelectionTabAction from status bar widget.")
+                        openBranchAction.actionPerformed(event) // This should now work as openBranchAction is correctly typed
+                        logger.info("Triggered OpenBranchSelectionTabAction from status bar widget via UserData.")
                     } else {
-                        logger.warn("OpenBranchSelectionTabAction not found in tool window '$GIT_CHANGES_TOOL_WINDOW_ID' title actions. Cannot open 'Add Tab' UI from status bar widget.")
-                        // Fallback or error message can be shown to the user if desired
+                        logger.warn("OpenBranchSelectionTabAction not found in tool window UserData for key LSTCRC.OpenBranchSelectionAction. Cannot open 'Add Tab' UI from status bar widget.")
                     }
                 }
             })
