@@ -21,6 +21,7 @@ class OpenBranchSelectionTabAction(
     private val logger = thisLogger()
 
     override fun actionPerformed(e: AnActionEvent) {
+        logger.info("OpenBranchSelectionTabAction: actionPerformed called. Event source: ${e.place}, DataContext: ${e.dataContext}")
         val selectionTabName = "Select Branch"
         val contentManager: ContentManager = toolWindow.contentManager
 
@@ -110,6 +111,7 @@ class OpenBranchSelectionTabAction(
         logger.info("OpenBranchSelectionTabAction: Creating and adding new '$selectionTabName' tab to UI.")
         val newContent = contentFactory.createContent(branchSelectionUi.getPanel(), selectionTabName, true)
         newContent.isCloseable = true
+        logger.info("OpenBranchSelectionTabAction: About to add new content for '$selectionTabName'. Panel: ${branchSelectionUi.getPanel()}, Is panel visible: ${branchSelectionUi.getPanel().isVisible}")
         contentManager.addContent(newContent)
         contentManager.setSelectedContent(newContent, true)
     }

@@ -23,6 +23,7 @@ import com.intellij.openapi.actionSystem.ActionPlaces
 import com.intellij.ide.DataManager
 import java.awt.Component // Import for Component.CENTER_ALIGNMENT
 import com.github.uiopak.lstcrc.utils.LstCrcKeys
+import com.intellij.openapi.application.ApplicationManager
 // Assuming OpenBranchSelectionTabAction is in this package or needs specific import
 // If it's in the same package, direct usage is fine. If not, add:
 // import com.github.uiopak.lstcrc.toolWindow.OpenBranchSelectionTabAction
@@ -109,7 +110,28 @@ class LstCrcStatusWidget(private val project: Project) : StatusBarWidget, Status
             openTabs.forEachIndexed { index, tabInfo ->
                 actions.add(object : AnAction(tabInfo.branchName) { // tabInfo is now actual TabInfo
                     override fun actionPerformed(e: AnActionEvent) {
-                        service.setSelectedTab(index) // Service method handles state update and publishing
+                        val branchNameToSelect = tabInfo.branchName
+                        val toolWindowManager = ToolWindowManager.getInstance(project)
+                        val toolWindow = toolWindowManager.getToolWindow(GIT_CHANGES_TOOL_WINDOW_ID)
+
+                        if (toolWindow == null) {
+                            logger.error("Could not find ToolWindow: $GIT_CHANGES_TOOL_WINDOW_ID when trying to switch tab from widget.")
+                            return // Using return@actionPerformed if inside a non-labeled lambda, but here it's fine.
+                        }
+
+                        val contentManager = toolWindow.contentManager
+                        val contentToSelect = contentManager.contents.find { it.displayName == branchNameToSelect }
+
+                        if (contentToSelect != null) {
+                            contentManager.setSelectedContent(contentToSelect, true) // true for focus
+                            toolWindow.activate(null, true, true) // Ensure tool window is visible and focused
+                            logger.info("Requested UI tab selection for '$branchNameToSelect' from status widget.")
+                        } else {
+                            logger.warn("Could not find content for tab '$branchNameToSelect' in tool window to select from widget.")
+                            // Fallback considerations mentioned in prompt - for now, just log.
+                        }
+                        // REMOVED: service.setSelectedTab(index)
+                        // Rely on ContentManagerListener in MyToolWindowFactory to update ToolWindowStateService.
                     }
                 })
             }
@@ -143,8 +165,10 @@ class LstCrcStatusWidget(private val project: Project) : StatusBarWidget, Status
                         val dataContext = DataManager.getInstance().getDataContext(contextComponent)
                         val event = AnActionEvent.createFromDataContext(ActionPlaces.STATUS_BAR_PLACE, null, dataContext)
 
-                        openBranchAction.actionPerformed(event) // This should now work as openBranchAction is correctly typed
-                        logger.info("Triggered OpenBranchSelectionTabAction from status bar widget via UserData.")
+                        ApplicationManager.getApplication().invokeLater {
+                            openBranchAction.actionPerformed(event)
+                        }
+                        logger.info("Scheduled OpenBranchSelectionTabAction from status bar widget via invokeLater.")
                     } else {
                         logger.warn("OpenBranchSelectionTabAction not found in tool window UserData for key LSTCRC.OpenBranchSelectionAction. Cannot open 'Add Tab' UI from status bar widget.")
                     }

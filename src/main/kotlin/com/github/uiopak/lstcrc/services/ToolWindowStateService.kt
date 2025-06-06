@@ -134,16 +134,42 @@ class ToolWindowStateService(private val project: Project) : PersistentStateComp
                     }
                 }
             } else { // selectedBranchName is null (e.g. "HEAD" or no tab if index was invalid)
-                logger.debug("No specific branch tab selected (index: $index). Clearing active diff and updating panel.")
-                diffDataService.clearActiveDiff()
-                // Update the UI panel (likely HEAD panel) to show no data / error state
-                val headBranchName = "HEAD" // Default for this scenario
-                getActiveChangesTreePanel(project)?.displayChanges(null, headBranchName)
-                    ?: logger.warn("No active ChangesTreePanel found (no branch selected case). UI might not update.")
+                val effectiveBranchNameForServiceCall = "HEAD"
+                logger.debug("Selected tab is effectively '$effectiveBranchNameForServiceCall' (index: $validIndex). Fetching its changes.")
+
+                // Assuming HEAD changes should also populate ProjectActiveDiffDataService.
+                // If HEAD is meant to be separate from dynamic scopes, then clearActiveDiff() might be used instead of update.
+                // The subtask implies HEAD should update the service.
+
+                gitService.getChanges(effectiveBranchNameForServiceCall).whenCompleteAsync { categorizedChanges, throwable ->
+                    logger.debug("getChanges for '$effectiveBranchNameForServiceCall' completed. Error: ${throwable != null}, Changes count: ${categorizedChanges?.allChanges?.size ?: "null"}")
+                    val activePanel = getActiveChangesTreePanel(project) // Get panel once
+
+                    if (throwable != null) {
+                        logger.error("Error loading changes for '$effectiveBranchNameForServiceCall': ${throwable.message}")
+                        diffDataService.clearActiveDiff() // Clear on error
+                        activePanel?.displayChanges(null, effectiveBranchNameForServiceCall)
+                    } else if (categorizedChanges != null) {
+                        logger.debug("Successfully fetched ${categorizedChanges.allChanges.size} total changes for '$effectiveBranchNameForServiceCall'. Updating ProjectActiveDiffDataService.")
+                        diffDataService.updateActiveDiff(
+                            effectiveBranchNameForServiceCall, // Use "HEAD" as the identifier
+                            categorizedChanges.allChanges,
+                            categorizedChanges.createdFiles,
+                            categorizedChanges.modifiedFiles,
+                            categorizedChanges.movedFiles
+                        )
+                        activePanel?.displayChanges(categorizedChanges, effectiveBranchNameForServiceCall)
+                    } else { // categorizedChanges is null and throwable is null
+                        logger.warn("Fetched changes for '$effectiveBranchNameForServiceCall' but CategorizedChanges object was null and no error. Clearing active diff.")
+                        diffDataService.clearActiveDiff()
+                        activePanel?.displayChanges(null, effectiveBranchNameForServiceCall)
+                    }
+                }
             }
 
         } else {
-            logger.debug("Selected tab index $index is already set. No data fetch or UI update initiated from setSelectedTab.")
+            // Use validIndex here as index might be the original, potentially invalid one.
+            logger.debug("Selected tab index $validIndex is already set. No data fetch or UI update initiated from setSelectedTab.")
             // Even if index is the same, if branch name could have changed (e.g. list reordered without index change),
             // we might still want to refresh. However, current logic is fine if index directly maps to a stable tab order.
             // Consider if a refresh is needed even if index is same, e.g. by comparing branch name.
