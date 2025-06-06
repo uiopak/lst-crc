@@ -28,13 +28,6 @@ import com.github.uiopak.lstcrc.utils.LstCrcKeys
 // import com.github.uiopak.lstcrc.toolWindow.OpenBranchSelectionTabAction
 
 
-// Placeholder for BranchSelectionPanel - Keep for now, not directly used by new logic if action found
-class BranchSelectionPanel(project: Project) { // Placeholder
-    // Placeholder panel
-    fun getComponent() = javax.swing.JPanel()
-}
-
-
 class LstCrcStatusWidgetFactory : StatusBarWidgetFactory {
     override fun getId(): String = "LstCrcStatusWidgetFactory" // Potentially use LstCrcStatusWidget.ID constant
     override fun getDisplayName(): String = "LST-CRC Status Widget"
@@ -137,7 +130,13 @@ class LstCrcStatusWidget(private val project: Project) : StatusBarWidget, Status
 
                     toolWindow.activate(null, true, true) // Activate and focus the tool window
 
-                    val openBranchAction = toolWindow.getUserData(LstCrcKeys.OPEN_BRANCH_SELECTION_ACTION_KEY) // Use the key here
+                    // Explicit version for diagnostics as requested
+                    val key: com.intellij.openapi.util.Key<com.github.uiopak.lstcrc.toolWindow.OpenBranchSelectionTabAction> = LstCrcKeys.OPEN_BRANCH_SELECTION_ACTION_KEY
+                    val retrievedAction: com.github.uiopak.lstcrc.toolWindow.OpenBranchSelectionTabAction? =
+                        (toolWindow as com.intellij.openapi.util.UserDataHolder).getUserData(key)
+                    val openBranchAction = retrievedAction
+                    // val openBranchAction = toolWindow.getUserData(LstCrcKeys.OPEN_BRANCH_SELECTION_ACTION_KEY) // Original simpler call
+
 
                     if (openBranchAction != null) {
                         val contextComponent = statusBar?.component ?: toolWindow.component
