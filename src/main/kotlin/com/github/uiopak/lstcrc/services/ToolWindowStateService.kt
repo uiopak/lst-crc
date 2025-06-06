@@ -8,9 +8,11 @@ import com.intellij.openapi.components.Storage
 import com.github.uiopak.lstcrc.toolWindow.ChangesTreePanel
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.wm.ToolWindowManager
+import com.intellij.util.messages.Topic
 import com.intellij.util.xmlb.XmlSerializerUtil
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.components.service
+import java.util.EventListener // Required for MessageBus Senders
 
 @State(
     name = "com.github.uiopak.lstcrc.services.ToolWindowStateService",
@@ -29,11 +31,13 @@ class ToolWindowStateService(private val project: Project) : PersistentStateComp
     override fun loadState(state: ToolWindowState) {
         logger.info("loadState() called. Loading state: $state")
         XmlSerializerUtil.copyBean(state, myState)
+        project.messageBus.syncPublisher(TOPIC).stateChanged(myState.copy())
     }
 
     override fun noStateLoaded() {
         logger.info("noStateLoaded() called. Initializing with default state.")
         myState = ToolWindowState() // Ensure it's a clean state
+        project.messageBus.syncPublisher(TOPIC).stateChanged(myState.copy())
     }
 
     fun addTab(branchName: String) {
@@ -41,9 +45,11 @@ class ToolWindowStateService(private val project: Project) : PersistentStateComp
         val currentTabs = myState.openTabs.toMutableList()
         if (currentTabs.none { it.branchName == branchName }) {
             currentTabs.add(TabInfo(branchName))
-            myState.openTabs = currentTabs
-            myState = myState.copy()
+            myState.openTabs = ArrayList(currentTabs) // Ensure a new list instance for the state
+            // myState.selectedTabIndex remains unchanged or could be set to the new tab's index
+            myState = myState.copy() // Create a new state object
             logger.info("Tab '$branchName' added. New state: $myState")
+            project.messageBus.syncPublisher(TOPIC).stateChanged(myState.copy())
         } else {
             logger.info("Tab $branchName already exists.")
         }
@@ -52,11 +58,26 @@ class ToolWindowStateService(private val project: Project) : PersistentStateComp
     fun removeTab(branchName: String) {
         logger.info("removeTab($branchName) called.")
         val currentTabs = myState.openTabs.toMutableList()
+        val initialSize = currentTabs.size
         val removed = currentTabs.removeAll { it.branchName == branchName }
+
         if (removed) {
-            myState.openTabs = currentTabs // This modification should be detected
-            myState = myState.copy()      // Explicitly create a new instance
+            myState.openTabs = ArrayList(currentTabs) // Ensure a new list instance
+
+            // Adjust selectedTabIndex if the removed tab affects it
+            if (myState.selectedTabIndex >= currentTabs.size && currentTabs.isNotEmpty()) {
+                myState.selectedTabIndex = currentTabs.size - 1
+            } else if (currentTabs.isEmpty()) {
+                myState.selectedTabIndex = -1
+            }
+            // If the removed tab was before or at the selected index, and that index is now out of bounds or points to a different element.
+            // This logic might need to be more sophisticated depending on desired behavior post-removal.
+            // For now, if selected index is now invalid, it might be better to set to -1 or last element.
+            // The simple adjustment above handles shrinking from the end.
+
+            myState = myState.copy() // Create a new state object
             logger.info("Tab $branchName removed. New state: $myState")
+            project.messageBus.syncPublisher(TOPIC).stateChanged(myState.copy())
             // Consider adjusting selectedTabIndex here if necessary, though selectionChanged should also handle it
         } else {
             logger.info("Tab $branchName not found for removal.")
@@ -65,10 +86,19 @@ class ToolWindowStateService(private val project: Project) : PersistentStateComp
 
     fun setSelectedTab(index: Int) {
         logger.debug("setSelectedTab called with index: $index. Current state selectedTabIndex: ${myState.selectedTabIndex}")
-        if (myState.selectedTabIndex != index) {
-            myState.selectedTabIndex = index
+        // Validate index against current openTabs size
+        val validIndex = if (index >= myState.openTabs.size || index < -1) {
+            logger.warn("setSelectedTab called with invalid index: $index. Open tabs: ${myState.openTabs.size}. Clamping to -1 or last valid index.")
+            if (myState.openTabs.isEmpty()) -1 else myState.openTabs.size -1
+        } else {
+            index
+        }
+
+        if (myState.selectedTabIndex != validIndex) {
+            myState.selectedTabIndex = validIndex
             myState = myState.copy() // Ensure state is copied if it's a data class
-            logger.info("Selected tab index set to $index. New state: $myState")
+            logger.info("Selected tab index set to $validIndex. New state: $myState")
+            project.messageBus.syncPublisher(TOPIC).stateChanged(myState.copy())
 
             // New logic to update ProjectActiveDiffDataService
             val diffDataService = project.service<ProjectActiveDiffDataService>()
@@ -189,6 +219,12 @@ class ToolWindowStateService(private val project: Project) : PersistentStateComp
     }
 
     companion object {
+        interface ToolWindowStateListener : EventListener {
+            fun stateChanged(newState: ToolWindowState)
+        }
+
+        val TOPIC = Topic.create("LST-CRC ToolWindow State Changed", ToolWindowStateListener::class.java)
+
         fun getInstance(project: Project): ToolWindowStateService {
             return project.getService(ToolWindowStateService::class.java)
         }

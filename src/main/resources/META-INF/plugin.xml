@@ -12,6 +12,7 @@
         <projectService serviceImplementation="com.github.uiopak.lstcrc.services.ToolWindowStateService"/>
         <customScopesProvider implementation="com.github.uiopak.lstcrc.scopes.LstCrcScopeProvider" />
         <searchScopesProvider implementation="com.github.uiopak.lstcrc.scopes.LstCrcSearchScopeProvider"/>
+        <statusBarWidgetFactory implementation="com.github.uiopak.lstcrc.toolWindow.LstCrcStatusWidgetFactory" id="LstCrcStatusWidgetFactory" order="first"/>
     </extensions>
 
     <applicationListeners>
