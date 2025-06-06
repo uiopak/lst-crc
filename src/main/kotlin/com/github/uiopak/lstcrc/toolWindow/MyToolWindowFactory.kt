@@ -192,11 +192,7 @@ class MyToolWindowFactory : ToolWindowFactory {
 
         val openSelectionTabAction = OpenBranchSelectionTabAction(project, toolWindow, gitChangesUiProvider)
         toolWindow.setTitleActions(listOf(openSelectionTabAction))
-        // Explicit version for diagnostics as requested
-        val key: com.intellij.openapi.util.Key<com.github.uiopak.lstcrc.toolWindow.OpenBranchSelectionTabAction> = LstCrcKeys.OPEN_BRANCH_SELECTION_ACTION_KEY
-        val action: com.github.uiopak.lstcrc.toolWindow.OpenBranchSelectionTabAction = openSelectionTabAction
-        (toolWindow as com.intellij.openapi.util.UserDataHolder).putUserData(key, action)
-        // toolWindow.putUserData(LstCrcKeys.OPEN_BRANCH_SELECTION_ACTION_KEY, openSelectionTabAction) // Original simpler call
+        toolWindow.putUserData(LstCrcKeys.OPEN_BRANCH_SELECTION_ACTION_KEY, openSelectionTabAction) // Reverted to direct call
 
         val propertiesComponent = PropertiesComponent.getInstance()
         val settingsProvider = ToolWindowSettingsProvider(propertiesComponent)
