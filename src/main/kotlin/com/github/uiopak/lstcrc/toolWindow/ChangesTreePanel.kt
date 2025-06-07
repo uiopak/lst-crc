@@ -27,10 +27,10 @@ import com.intellij.ui.SimpleTextAttributes
 import com.intellij.ui.components.JBScrollPane
 import com.intellij.ui.treeStructure.Tree
 import com.intellij.util.ui.tree.TreeUtil
-import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
 import javax.swing.Icon
 import javax.swing.JTree
+import javax.swing.SwingUtilities
 import javax.swing.Timer
 import javax.swing.UIManager
 import javax.swing.tree.DefaultMutableTreeNode
@@ -47,19 +47,28 @@ class ChangesTreePanel(
 
     private val logger = thisLogger()
     private var refreshDebounceTimer: Timer? = null
-    // isVfsChangeRefreshPending is no longer the primary driver for ChangeListListener refreshes
-    // but can be kept if VfsChangeListener has other uses or as a secondary check.
-    // For now, we will make ChangeListListener events directly trigger refreshes.
     private var isVfsChangeRefreshPending = false
     val tree: Tree
 
-    private var singleClickTimer: Timer? = null
-    private var pendingSingleClickChange: Change? = null
-    private var pendingSingleClickNodePath: TreePath? = null
-    private var singleClickActionHasFiredForPath: TreePath? = null
+    private class ClickState {
+        var timer: Timer? = null
+        var pendingChange: Change? = null
+        var pendingNodePath: TreePath? = null
+        var actionHasFiredForPath: TreePath? = null
+
+        fun clear() {
+            timer?.stop()
+            timer = null
+            pendingChange = null
+            pendingNodePath = null
+            actionHasFiredForPath = null
+        }
+    }
+
+    private val leftClickState = ClickState()
+    private val rightClickState = ClickState()
 
     companion object {
-        // ... (companion object constants remain the same)
         private const val ACTION_NONE = "NONE"
         private const val ACTION_OPEN_DIFF = "OPEN_DIFF"
         private const val ACTION_OPEN_SOURCE = "OPEN_SOURCE"
@@ -67,10 +76,15 @@ class ChangesTreePanel(
 
         private const val APP_SINGLE_CLICK_ACTION_KEY = "com.github.uiopak.lstcrc.app.singleClickAction"
         private const val APP_DOUBLE_CLICK_ACTION_KEY = "com.github.uiopak.lstcrc.app.doubleClickAction"
-        private const val APP_USER_DOUBLE_CLICK_DELAY_KEY = "com.github.uiopak.lstcrc.app.userDoubleClickDelay"
-
         private const val DEFAULT_SINGLE_CLICK_ACTION = ACTION_NONE
         private const val DEFAULT_DOUBLE_CLICK_ACTION = ACTION_OPEN_DIFF
+
+        private const val APP_RIGHT_CLICK_ACTION_KEY = "com.github.uiopak.lstcrc.app.rightClickAction"
+        private const val APP_DOUBLE_RIGHT_CLICK_ACTION_KEY = "com.github.uiopak.lstcrc.app.doubleRightClickAction"
+        private const val DEFAULT_RIGHT_CLICK_ACTION = ACTION_NONE
+        private const val DEFAULT_DOUBLE_RIGHT_CLICK_ACTION = ACTION_NONE
+
+        private const val APP_USER_DOUBLE_CLICK_DELAY_KEY = "com.github.uiopak.lstcrc.app.userDoubleClickDelay"
         private const val DELAY_OPTION_SYSTEM_DEFAULT = -1
     }
 
@@ -81,9 +95,7 @@ class ChangesTreePanel(
 
         project.messageBus.connect(this).subscribe(FILE_CHANGES_TOPIC, object : FileChangeListener {
             override fun onFilesChanged() {
-                logger.debug("onFilesChanged event received from VFS for target: $targetBranchToCompare. Setting isVfsChangeRefreshPending = true.")
                 isVfsChangeRefreshPending = true
-                // We primarily rely on ChangeListListener now, but this flag might be useful for other diagnostics or fine-tuning.
             }
         })
 
@@ -95,30 +107,19 @@ class ChangesTreePanel(
 
     override fun repositoryChanged(repository: git4idea.repo.GitRepository) {
         if (repository.project == this.project) {
-            logger.debug("GitRepositoryChangeListener.repositoryChanged for repo: ${repository.root.presentableUrl}. Requesting refresh for $targetBranchToCompare.")
-            // This directly calls ToolWindowStateService, which is fine.
-            ApplicationManager.getApplication().invokeLater {
-                project.service<ToolWindowStateService>().refreshDataForActiveTabIfMatching(targetBranchToCompare)
-            }
-        } else {
-            logger.debug("GitRepositoryChangeListener.repositoryChanged for repo: ${repository.root.presentableUrl}, but not current project. Skipping.")
+            triggerDebouncedDataRefresh()
         }
     }
 
-    // Renamed for clarity and made lambda optional
     private fun triggerDebouncedDataRefresh() {
         refreshDebounceTimer?.stop()
-        refreshDebounceTimer = Timer(100, null).apply { // 100ms debounce
+        refreshDebounceTimer = Timer(100, null).apply {
             actionListeners.forEach { removeActionListener(it) }
             addActionListener {
                 ApplicationManager.getApplication().invokeLater {
-                    if (project.isDisposed) {
-                        logger.info("Project disposed, skipping debounced data refresh for $targetBranchToCompare")
-                        return@invokeLater
+                    if (!project.isDisposed) {
+                        project.service<ToolWindowStateService>().refreshDataForActiveTabIfMatching(targetBranchToCompare)
                     }
-                    val currentBranch = targetBranchToCompare
-                    logger.debug("Debounced data refresh timer action for '$currentBranch': Calling ToolWindowStateService.")
-                    project.service<ToolWindowStateService>().refreshDataForActiveTabIfMatching(currentBranch)
                 }
             }
             isRepeats = false
@@ -126,199 +127,115 @@ class ChangesTreePanel(
         refreshDebounceTimer?.start()
     }
 
-    // ChangeListListener implementations: Now directly trigger refresh
     override fun changeListChanged(changeList: com.intellij.openapi.vcs.changes.ChangeList) {
-        logger.debug("ChangeListListener: changeListChanged for list: ${changeList.name}. Triggering debounced refresh for $targetBranchToCompare.")
         triggerDebouncedDataRefresh()
-        isVfsChangeRefreshPending = false // Reset flag as ChangeListManager has processed it.
+        isVfsChangeRefreshPending = false
     }
 
     override fun changesAdded(changes: Collection<Change>, changeList: com.intellij.openapi.vcs.changes.ChangeList?) {
-        if (changes.isNotEmpty()) {
-            logger.debug("ChangeListListener: changesAdded (${changes.size}). Triggering debounced refresh for $targetBranchToCompare.")
-            triggerDebouncedDataRefresh()
-        } else {
-            logger.debug("ChangeListListener: changesAdded called with 0 changes.")
-        }
-        isVfsChangeRefreshPending = false // Reset flag
+        if (changes.isNotEmpty()) triggerDebouncedDataRefresh()
+        isVfsChangeRefreshPending = false
     }
 
     override fun changesRemoved(changes: Collection<Change>, changeList: com.intellij.openapi.vcs.changes.ChangeList?) {
-        if (changes.isNotEmpty()) {
-            logger.debug("ChangeListListener: changesRemoved (${changes.size}). Triggering debounced refresh for $targetBranchToCompare.")
-            triggerDebouncedDataRefresh()
-        } else {
-            logger.debug("ChangeListListener: changesRemoved called with 0 changes.")
-        }
-        isVfsChangeRefreshPending = false // Reset flag
+        if (changes.isNotEmpty()) triggerDebouncedDataRefresh()
+        isVfsChangeRefreshPending = false
     }
 
     override fun unchangedFileStatusChanged() {
-        logger.debug("ChangeListListener: unchangedFileStatusChanged. Triggering debounced refresh for $targetBranchToCompare.")
         triggerDebouncedDataRefresh()
-        isVfsChangeRefreshPending = false // Reset flag
+        isVfsChangeRefreshPending = false
     }
 
     override fun dispose() {
         refreshDebounceTimer?.stop()
-        refreshDebounceTimer = null
-        // Other disposals
-        logger.debug("ChangesTreePanel for $targetBranchToCompare disposed.")
+        leftClickState.clear()
+        rightClickState.clear()
     }
 
-    // ... (rest of the ChangesTreePanel class: getSingleClickAction, getDoubleClickAction, getUserDoubleClickDelayMs, createChangesTreeInternal, performConfiguredAction, openSource, showLoadingStateAndPrepareForData, displayChanges, buildTreeFromChanges, openDiff, requestRefreshData)
-    // NO CHANGES NEEDED IN THE REST OF THE METHODS FOR THIS SPECIFIC ISSUE.
-    // Ensure methods like createChangesTreeInternal, displayChanges, etc., remain as they were.
-
-    private fun getSingleClickAction(): String =
-        propertiesComponent.getValue(APP_SINGLE_CLICK_ACTION_KEY, DEFAULT_SINGLE_CLICK_ACTION)
-
-    private fun getDoubleClickAction(): String =
-        propertiesComponent.getValue(APP_DOUBLE_CLICK_ACTION_KEY, DEFAULT_DOUBLE_CLICK_ACTION)
+    private fun getSingleClickAction(): String = propertiesComponent.getValue(APP_SINGLE_CLICK_ACTION_KEY, DEFAULT_SINGLE_CLICK_ACTION)
+    private fun getDoubleClickAction(): String = propertiesComponent.getValue(APP_DOUBLE_CLICK_ACTION_KEY, DEFAULT_DOUBLE_CLICK_ACTION)
+    private fun getRightClickAction(): String = propertiesComponent.getValue(APP_RIGHT_CLICK_ACTION_KEY, DEFAULT_RIGHT_CLICK_ACTION)
+    private fun getDoubleRightClickAction(): String = propertiesComponent.getValue(APP_DOUBLE_RIGHT_CLICK_ACTION_KEY, DEFAULT_DOUBLE_RIGHT_CLICK_ACTION)
 
     private fun getUserDoubleClickDelayMs(): Int {
         val storedValue = propertiesComponent.getInt(APP_USER_DOUBLE_CLICK_DELAY_KEY, DELAY_OPTION_SYSTEM_DEFAULT)
-        if (storedValue == DELAY_OPTION_SYSTEM_DEFAULT) {
-            val systemTimeout = UIManager.getInt("Tree.doubleClickTimeout")
-            return if (systemTimeout > 0) systemTimeout else DEFAULT_USER_DELAY_MS
-        }
-        return if (storedValue > 0) storedValue else DEFAULT_USER_DELAY_MS
+        return if (storedValue > 0) storedValue else UIManager.getInt("Tree.doubleClickTimeout").takeIf { it > 0 } ?: DEFAULT_USER_DELAY_MS
     }
 
     private fun createChangesTreeInternal(initialTarget: String): Tree {
         val root = DefaultMutableTreeNode("Changes")
         val treeModel = DefaultTreeModel(root)
+        // By subclassing Tree, we can override processMouseEvent for ultimate control.
         val newTree = object : Tree(treeModel) {
             override fun getScrollableTracksViewportWidth(): Boolean = true
+
+            override fun processMouseEvent(e: MouseEvent) {
+                // We only care about MOUSE_CLICKED for our custom actions.
+                if (e.id != MouseEvent.MOUSE_CLICKED) {
+                    super.processMouseEvent(e)
+                    return
+                }
+
+                val clickPoint = e.point
+                var path: TreePath? = null
+                val row = getClosestRowForLocation(clickPoint.x, clickPoint.y)
+
+                if (row != -1) {
+                    val rowBounds = getRowBounds(row)
+                    if (rowBounds != null) {
+                        val yWithinRow = clickPoint.y >= rowBounds.y && clickPoint.y < (rowBounds.y + rowBounds.height)
+                        val xWithinTreeVisible = clickPoint.x >= visibleRect.x && clickPoint.x < (visibleRect.x + visibleRect.width)
+                        if (yWithinRow && xWithinTreeVisible) {
+                            path = getPathForRow(row)
+                        }
+                    }
+                }
+
+                if (path == null) {
+                    super.processMouseEvent(e) // Allow clicks on empty space to deselect.
+                    return
+                }
+
+                val node = path.lastPathComponent as? DefaultMutableTreeNode ?: run { super.processMouseEvent(e); return }
+                val change = node.userObject as? Change ?: run { super.processMouseEvent(e); return }
+
+                // The logic to handle the click. Returns true if the event was consumed.
+                val consumed = if (SwingUtilities.isLeftMouseButton(e)) {
+                    rightClickState.clear()
+                    handleGenericClick(e, change, path, getSingleClickAction(), getDoubleClickAction(), leftClickState)
+                } else if (SwingUtilities.isRightMouseButton(e)) {
+                    leftClickState.clear()
+                    handleGenericClick(e, change, path, getRightClickAction(), getDoubleRightClickAction(), rightClickState)
+                } else {
+                    false
+                }
+
+                // If our logic did not consume the event, pass it to the default handler.
+                if (!consumed) {
+                    super.processMouseEvent(e)
+                }
+            }
         }
 
         newTree.setCellRenderer(object : ColoredTreeCellRenderer() {
-            override fun customizeCellRenderer(
-                jTree: JTree, value: Any?, selected: Boolean, expanded: Boolean,
-                leaf: Boolean, row: Int, hasFocus: Boolean
-            ) {
-                if (value !is DefaultMutableTreeNode) {
-                    append(value?.toString() ?: ""); return
-                }
-                val userObject = value.userObject
-                when (userObject) {
+            override fun customizeCellRenderer(jTree: JTree, value: Any?, selected: Boolean, expanded: Boolean, leaf: Boolean, row: Int, hasFocus: Boolean) {
+                if (value !is DefaultMutableTreeNode) { append(value?.toString() ?: ""); return }
+                when (val userObject = value.userObject) {
                     is Change -> {
-                        val change = userObject
-                        val filePath = change.afterRevision?.file ?: change.beforeRevision?.file
+                        val filePath = userObject.afterRevision?.file ?: userObject.beforeRevision?.file
                         val fileName = filePath?.name ?: "Unknown File"
-                        val fgColor = if (selected) UIManager.getColor("Tree.selectionForeground")
-                        else when (change.type) {
+                        val fgColor = if (selected) UIManager.getColor("Tree.selectionForeground") else when (userObject.type) {
                             Change.Type.NEW -> JBColor.namedColor("VersionControl.FileStatus.Added", JBColor.GREEN)
                             Change.Type.DELETED -> JBColor.namedColor("VersionControl.FileStatus.Deleted", JBColor.RED)
                             Change.Type.MOVED, Change.Type.MODIFICATION -> JBColor.namedColor("VersionControl.FileStatus.Modified", JBColor.BLUE)
                             else -> UIManager.getColor("Tree.foreground")
                         } ?: UIManager.getColor("Tree.foreground")
                         append(fileName, SimpleTextAttributes(SimpleTextAttributes.STYLE_PLAIN, fgColor))
-                        var fileIcon: Icon? = null
-                        if (filePath != null) {
-                            filePath.virtualFile?.let { vf -> fileIcon = vf.fileType.icon }
-                            if (fileIcon == null) fileIcon = FileTypeManager.getInstance().getFileTypeByFileName(filePath.name).icon
-                        }
-                        icon = fileIcon ?: AllIcons.FileTypes.Unknown
+                        icon = filePath?.virtualFile?.fileType?.icon ?: FileTypeManager.getInstance().getFileTypeByFileName(fileName).icon
                     }
                     is String -> { append(userObject, SimpleTextAttributes.REGULAR_ATTRIBUTES); icon = AllIcons.Nodes.Folder }
                     else -> append(value.toString(), SimpleTextAttributes.REGULAR_ATTRIBUTES)
-                }
-            }
-        })
-
-        newTree.addMouseListener(object : MouseAdapter() {
-            override fun mouseClicked(e: MouseEvent) {
-                val clickPoint = e.point
-                var currentTargetPath: TreePath? = null
-                val row = newTree.getClosestRowForLocation(clickPoint.x, clickPoint.y)
-                if (row != -1) {
-                    val contentBoundsForRow = newTree.getRowBounds(row)
-                    if (contentBoundsForRow != null) {
-                        val yWithinRowContent = clickPoint.y >= contentBoundsForRow.y && clickPoint.y < (contentBoundsForRow.y + contentBoundsForRow.height)
-                        val xWithinTreeVisible = clickPoint.x >= newTree.visibleRect.x && clickPoint.x < (newTree.visibleRect.x + newTree.visibleRect.width)
-                        if (yWithinRowContent && xWithinTreeVisible) {
-                            currentTargetPath = newTree.getPathForRow(row)
-                        }
-                    }
-                }
-
-                if (currentTargetPath == null) {
-                    singleClickTimer?.stop()
-                    pendingSingleClickChange = null
-                    pendingSingleClickNodePath = null
-                    singleClickActionHasFiredForPath = null
-                    return
-                }
-
-                val node = currentTargetPath.lastPathComponent as? DefaultMutableTreeNode
-                (node?.userObject as? Change)?.let { currentChange ->
-                    if (newTree.selectionPath != currentTargetPath) {
-                        newTree.selectionPath = currentTargetPath
-                    }
-
-                    val singleClickConfiguredAction = getSingleClickAction()
-                    val doubleClickConfiguredAction = getDoubleClickAction()
-
-                    if (e.clickCount == 1) {
-                        if (pendingSingleClickNodePath != currentTargetPath || singleClickActionHasFiredForPath != null) {
-                            singleClickTimer?.stop()
-                            pendingSingleClickChange = null
-                            pendingSingleClickNodePath = null
-                            singleClickActionHasFiredForPath = null
-                        }
-
-                        if (doubleClickConfiguredAction == ACTION_NONE) {
-                            singleClickTimer?.stop()
-                            pendingSingleClickChange = null
-                            pendingSingleClickNodePath = null
-                            singleClickActionHasFiredForPath = null
-                            if (singleClickConfiguredAction != ACTION_NONE) {
-                                performConfiguredAction(currentChange, singleClickConfiguredAction)
-                            }
-                            return@let
-                        }
-
-                        pendingSingleClickChange = currentChange
-                        pendingSingleClickNodePath = currentTargetPath
-                        singleClickTimer?.stop()
-                        val userConfiguredDelay = getUserDoubleClickDelayMs()
-                        singleClickTimer = Timer(userConfiguredDelay) {
-                            val sChange = pendingSingleClickChange
-                            val sPath = pendingSingleClickNodePath
-                            pendingSingleClickChange = null
-                            pendingSingleClickNodePath = null
-                            if (sChange != null && sPath != null) {
-                                if (singleClickConfiguredAction != ACTION_NONE) {
-                                    performConfiguredAction(sChange, singleClickConfiguredAction)
-                                    singleClickActionHasFiredForPath = sPath
-                                }
-                            }
-                        }
-                        singleClickTimer?.isRepeats = false
-                        singleClickTimer?.start()
-
-                    } else if (e.clickCount >= 2) {
-                        if (singleClickActionHasFiredForPath == currentTargetPath) {
-                            singleClickActionHasFiredForPath = null
-                            singleClickTimer?.stop()
-                            return@let
-                        }
-                        if (pendingSingleClickNodePath == currentTargetPath) {
-                            singleClickTimer?.stop()
-                            pendingSingleClickChange = null
-                            pendingSingleClickNodePath = null
-                        }
-                        if (doubleClickConfiguredAction != ACTION_NONE) {
-                            performConfiguredAction(currentChange, doubleClickConfiguredAction)
-                        }
-                        singleClickActionHasFiredForPath = null
-                    }
-                } ?: run {
-                    singleClickTimer?.stop()
-                    pendingSingleClickChange = null
-                    pendingSingleClickNodePath = null
-                    singleClickActionHasFiredForPath = null
                 }
             }
         })
@@ -328,11 +245,74 @@ class ChangesTreePanel(
         return newTree
     }
 
+    private fun handleGenericClick(
+        e: MouseEvent,
+        change: Change,
+        path: TreePath,
+        singleClickAction: String,
+        doubleClickAction: String,
+        clickState: ClickState
+    ): Boolean { // Return true if the event was consumed
+        if (tree.selectionPath != path) {
+            tree.selectionPath = path
+        }
+        tree.requestFocusInWindow()
+
+        if (doubleClickAction == ACTION_NONE) {
+            clickState.clear()
+            if (e.clickCount == 1 && singleClickAction != ACTION_NONE) {
+                performConfiguredAction(change, singleClickAction)
+                return true
+            }
+            return false // No action, don't consume
+        }
+
+        if (e.clickCount == 1) {
+            if (clickState.pendingNodePath != path || clickState.actionHasFiredForPath != null) {
+                clickState.clear()
+            }
+            clickState.pendingChange = change
+            clickState.pendingNodePath = path
+            clickState.timer?.stop()
+            clickState.timer = Timer(getUserDoubleClickDelayMs()) {
+                val sChange = clickState.pendingChange
+                val sPath = clickState.pendingNodePath
+                clickState.timer = null
+                clickState.pendingChange = null
+                clickState.pendingNodePath = null
+
+                if (sChange != null && sPath != null && singleClickAction != ACTION_NONE) {
+                    performConfiguredAction(sChange, singleClickAction)
+                    clickState.actionHasFiredForPath = sPath
+                }
+            }.apply { isRepeats = false }
+            clickState.timer?.start()
+            // Even if we start a timer, we might not consume the event,
+            // allowing selection to happen immediately.
+            // If the single-click action is NONE, we don't need to consume.
+            return singleClickAction != ACTION_NONE
+        } else if (e.clickCount >= 2) {
+            if (clickState.actionHasFiredForPath == path) {
+                clickState.actionHasFiredForPath = null
+                clickState.timer?.stop()
+                return true
+            }
+            if (clickState.pendingNodePath == path) {
+                clickState.clear()
+            }
+            if (doubleClickAction != ACTION_NONE) {
+                performConfiguredAction(change, doubleClickAction)
+                return true
+            }
+            clickState.actionHasFiredForPath = null
+        }
+        return false
+    }
+
     private fun performConfiguredAction(change: Change, actionType: String) {
         when (actionType) {
             ACTION_OPEN_DIFF -> openDiff(change)
             ACTION_OPEN_SOURCE -> openSource(change)
-            ACTION_NONE -> { /* Do nothing */ }
         }
     }
 
@@ -345,16 +325,11 @@ class ChangesTreePanel(
             OpenFileDescriptor(project, fileToOpen).navigate(true)
         } else {
             val pathForMessage = (change.afterRevision?.file ?: change.beforeRevision?.file)?.path ?: "Unknown path"
-            if (fileToOpen?.isDirectory == true) {
-                Messages.showWarningDialog(project, "Cannot open a directory as source. Please select a file.", "Open Source Error")
-            } else {
-                Messages.showWarningDialog(project, "Could not open source file (it may no longer exist or is not accessible): $pathForMessage", "Open Source Error")
-            }
+            Messages.showWarningDialog(project, "Could not open source file (it may no longer exist, is not accessible, or is a directory): $pathForMessage", "Open Source Error")
         }
     }
 
     fun showLoadingStateAndPrepareForData() {
-        logger.debug("showLoadingStateAndPrepareForData for target $targetBranchToCompare")
         val rootModelNode = tree.model.root as DefaultMutableTreeNode
         rootModelNode.removeAllChildren()
         rootModelNode.add(DefaultMutableTreeNode("Loading..."))
@@ -362,35 +337,23 @@ class ChangesTreePanel(
     }
 
     fun displayChanges(categorizedChanges: CategorizedChanges?, forBranchName: String) {
-        logger.debug("displayChanges called for branch '$forBranchName'. Current panel target: '$targetBranchToCompare'. Has data: ${categorizedChanges != null}")
-
         if (forBranchName != targetBranchToCompare) {
-            logger.warn("displayChanges received data for '$forBranchName', but panel is for '$targetBranchToCompare'. Ignoring.")
             return
         }
-
         ApplicationManager.getApplication().invokeLater {
-            if (project.isDisposed) {
-                logger.info("Project disposed, skipping displayChanges for $targetBranchToCompare")
-                return@invokeLater
-            }
+            if (project.isDisposed) return@invokeLater
             val rootModelNode = tree.model.root as DefaultMutableTreeNode
             rootModelNode.removeAllChildren()
 
             if (categorizedChanges == null) {
-                logger.warn("No categorized changes provided (possibly due to error) for $forBranchName.")
                 rootModelNode.add(DefaultMutableTreeNode("Error loading changes for $forBranchName"))
             } else if (categorizedChanges.allChanges.isEmpty()) {
-                logger.debug("No changes found for $forBranchName.")
                 rootModelNode.add(DefaultMutableTreeNode("No changes found for $forBranchName"))
             } else {
-                logger.debug("Building tree from ${categorizedChanges.allChanges.size} changes for $forBranchName.")
                 buildTreeFromChanges(rootModelNode, categorizedChanges.allChanges)
             }
-
             (tree.model as DefaultTreeModel).reload(rootModelNode)
             TreeUtil.expandAll(tree)
-            logger.debug("Tree display updated for $forBranchName.")
         }
     }
 
@@ -417,21 +380,16 @@ class ChangesTreePanel(
             }
 
             if (displayPath == null) displayPath = rawPath
-
             if (displayPath == null) continue
-            val normalizedPath = displayPath.replace('\\', '/')
-            val pathComponents = normalizedPath.split('/').filter { it.isNotEmpty() }
+
+            val pathComponents = displayPath.replace('\\', '/').split('/').filter { it.isNotEmpty() }
             var currentNode = rootNode
             if (pathComponents.isEmpty() && currentFilePathObj != null) {
                 var fileNodeExists = false
                 for (j in 0 until currentNode.childCount) {
                     val existingChild = currentNode.getChildAt(j) as DefaultMutableTreeNode
-                    if (existingChild.userObject is Change) {
-                        val existingChange = existingChild.userObject as Change
-                        val existingChangePath = existingChange.afterRevision?.file?.path ?: existingChange.beforeRevision?.file?.path
-                        if (existingChangePath == rawPath) {
-                            fileNodeExists = true; break
-                        }
+                    if ((existingChild.userObject as? Change)?.afterRevision?.file?.path == rawPath) {
+                        fileNodeExists = true; break
                     }
                 }
                 if (!fileNodeExists) currentNode.add(DefaultMutableTreeNode(changeItem))
@@ -443,12 +401,8 @@ class ChangesTreePanel(
                 var childNode: DefaultMutableTreeNode? = null
                 for (j in 0 until currentNode.childCount) {
                     val existingChild = currentNode.getChildAt(j) as DefaultMutableTreeNode
-                    if (isLastComponent && existingChild.userObject is Change) {
-                        val existingChange = existingChild.userObject as Change
-                        val existingChangeOriginalPath = existingChange.afterRevision?.file?.path ?: existingChange.beforeRevision?.file?.path
-                        if (existingChangeOriginalPath == rawPath) {
-                            childNode = existingChild; break
-                        }
+                    if (isLastComponent && (existingChild.userObject as? Change)?.afterRevision?.file?.path == rawPath) {
+                        childNode = existingChild; break
                     } else if (!isLastComponent && existingChild.userObject is String && existingChild.userObject == componentName) {
                         childNode = existingChild; break
                     }
@@ -471,7 +425,6 @@ class ChangesTreePanel(
     }
 
     fun requestRefreshData() {
-        logger.debug("requestRefreshData called for target: $targetBranchToCompare. Signaling ToolWindowStateService.")
         showLoadingStateAndPrepareForData()
         project.service<ToolWindowStateService>().refreshDataForActiveTabIfMatching(targetBranchToCompare)
     }
