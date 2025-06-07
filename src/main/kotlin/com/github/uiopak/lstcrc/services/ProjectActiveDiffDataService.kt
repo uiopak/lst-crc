@@ -154,20 +154,6 @@ class ProjectActiveDiffDataService(private val project: Project) : Disposable {
         // we might need to re-notify FileStatusManager for all currently known changed files.
         // For now, let's assume normal updates to ProjectActiveDiffDataService handle this.
         triggerEditorTabColorRefresh()
-
-        // Forcing a broader refresh for project tree (use with caution, can be expensive):
-        // ApplicationManager.getApplication().invokeLater {
-        //     if (project.isDisposed) return@invokeLater
-        //     val currentAffectedFiles = (this.createdFiles + this.modifiedFiles + this.movedFiles).toSet()
-        //     if (currentAffectedFiles.isNotEmpty()) {
-        //         val fileStatusManager = FileStatusManager.getInstance(project)
-        //         fileStatusManager.fileStatusesChanged()
-        //         currentAffectedFiles.forEach { file ->
-        //             if (file.isValid) fileStatusManager.fileStatusChanged(file)
-        //         }
-        //         logger.debug("Forced FileStatusManager notifications for ${currentAffectedFiles.size} files in refreshCurrentColorings.")
-        //     }
-        // }
     }
 
     override fun dispose() {

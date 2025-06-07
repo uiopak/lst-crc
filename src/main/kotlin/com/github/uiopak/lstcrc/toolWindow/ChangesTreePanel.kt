@@ -1,7 +1,7 @@
 package com.github.uiopak.lstcrc.toolWindow
 
 import com.github.uiopak.lstcrc.services.CategorizedChanges
-import com.github.uiopak.lstcrc.services.GitService // gitService is used in buildTreeFromChanges
+import com.github.uiopak.lstcrc.services.GitService
 import com.github.uiopak.lstcrc.services.ToolWindowStateService
 import com.intellij.icons.AllIcons
 import com.intellij.ide.util.PropertiesComponent

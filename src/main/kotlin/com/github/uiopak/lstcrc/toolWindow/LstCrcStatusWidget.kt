@@ -2,7 +2,6 @@ package com.github.uiopak.lstcrc.toolWindow
 
 import com.github.uiopak.lstcrc.services.GitService
 import com.github.uiopak.lstcrc.services.ToolWindowStateService
-import com.github.uiopak.lstcrc.state.TabInfo
 import com.github.uiopak.lstcrc.state.ToolWindowState
 import com.github.uiopak.lstcrc.utils.LstCrcKeys
 import com.intellij.ide.DataManager
