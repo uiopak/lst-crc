@@ -310,9 +310,12 @@ class ChangesTreePanel(
     }
 
     private fun performConfiguredAction(change: Change, actionType: String) {
-        when (actionType) {
-            ACTION_OPEN_DIFF -> openDiff(change)
-            ACTION_OPEN_SOURCE -> openSource(change)
+        ApplicationManager.getApplication().invokeLater {
+            if (project.isDisposed) return@invokeLater
+            when (actionType) {
+                ACTION_OPEN_DIFF -> openDiff(change)
+                ACTION_OPEN_SOURCE -> openSource(change)
+            }
         }
     }
 
