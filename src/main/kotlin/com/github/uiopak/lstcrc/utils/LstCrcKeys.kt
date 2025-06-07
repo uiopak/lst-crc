@@ -5,4 +5,5 @@ import com.intellij.openapi.util.Key
 
 object LstCrcKeys {
     val OPEN_BRANCH_SELECTION_ACTION_KEY = Key<OpenBranchSelectionTabAction>("LSTCRC.OpenBranchSelectionAction")
+    val BRANCH_NAME_KEY = Key<String>("LSTCRC.BranchName")
 }

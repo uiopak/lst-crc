@@ -22,4 +22,15 @@
 
     <projectListeners>
     </projectListeners>
+
+    <actions>
+        <action id="com.github.uiopak.lstcrc.RenameTabAction"
+                class="com.github.uiopak.lstcrc.toolWindow.RenameTabAction"
+                text="Rename Tab..."
+                description="Renames the selected LST-CRC tab.">
+            <!-- Use the correct, more modern group ID for the tool window tab context menu -->
+            <add-to-group group-id="ToolWindowContextMenu" anchor="last"/>
+        </action>
+    </actions>
+
 </idea-plugin>

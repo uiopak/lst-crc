@@ -3,6 +3,7 @@ package com.github.uiopak.lstcrc.toolWindow
 import com.github.uiopak.lstcrc.services.GitService
 import com.intellij.icons.AllIcons
 import com.github.uiopak.lstcrc.services.ToolWindowStateService
+import com.github.uiopak.lstcrc.utils.LstCrcKeys
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.components.service
@@ -56,8 +57,9 @@ class OpenBranchSelectionTabAction(
             }
 
             var existingBranchTabForSelectedName: com.intellij.ui.content.Content? = null
+            // Find existing tab using the reliable user data key, not the display name.
             for (content in manager.contents) {
-                if (content.displayName == selectedBranchName && content != selectionTabContent) {
+                if (content.getUserData(LstCrcKeys.BRANCH_NAME_KEY) == selectedBranchName) {
                     existingBranchTabForSelectedName = content
                     break
                 }
@@ -68,7 +70,7 @@ class OpenBranchSelectionTabAction(
                 manager.setSelectedContent(existingBranchTabForSelectedName, true)
                 manager.removeContent(selectionTabContent, true)
 
-                val closableTabs = manager.contents.filter { it.isCloseable }.map { it.displayName }
+                val closableTabs = manager.contents.filter { it.isCloseable }.mapNotNull { it.getUserData(LstCrcKeys.BRANCH_NAME_KEY) }
                 val selectedIndex = closableTabs.indexOf(selectedBranchName)
                 if (selectedIndex != -1) {
                     logger.info("OpenBranchSelectionTabAction (Callback): Calling stateService.setSelectedTab($selectedIndex) for existing branch '$selectedBranchName'.")
@@ -79,6 +81,8 @@ class OpenBranchSelectionTabAction(
             } else {
                 logger.info("OpenBranchSelectionTabAction (Callback): Repurposing '$selectionTabName' tab to '$selectedBranchName'.")
                 selectionTabContent.displayName = selectedBranchName
+                // Set the user data key to reliably identify this tab later.
+                selectionTabContent.putUserData(LstCrcKeys.BRANCH_NAME_KEY, selectedBranchName)
 
                 // Create the new component (ChangesTreePanel)
                 val newBranchContentView = uiProvider.createBranchContentView(selectedBranchName)
@@ -97,7 +101,7 @@ class OpenBranchSelectionTabAction(
                 logger.info("OpenBranchSelectionTabAction (Callback): Preparing to add to state. selectedBranchName = '$selectedBranchName'")
                 stateService.addTab(selectedBranchName)
 
-                val closableTabs = manager.contents.filter { it.isCloseable }.map { it.displayName }
+                val closableTabs = manager.contents.filter { it.isCloseable }.mapNotNull { it.getUserData(LstCrcKeys.BRANCH_NAME_KEY) }
                 val newTabIndex = closableTabs.indexOf(selectedBranchName)
                 if (newTabIndex != -1) {
                     logger.info("OpenBranchSelectionTabAction (Callback): Calling stateService.setSelectedTab($newTabIndex) for new/repurposed branch '$selectedBranchName'.")

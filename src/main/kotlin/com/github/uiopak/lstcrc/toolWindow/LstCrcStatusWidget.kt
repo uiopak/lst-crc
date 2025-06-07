@@ -4,6 +4,7 @@ import com.github.uiopak.lstcrc.services.GitService
 import com.github.uiopak.lstcrc.services.ToolWindowStateService
 import com.github.uiopak.lstcrc.state.TabInfo
 import com.github.uiopak.lstcrc.state.ToolWindowState
+import com.github.uiopak.lstcrc.utils.LstCrcKeys
 import com.intellij.ide.DataManager
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
@@ -64,7 +65,10 @@ class LstCrcStatusWidget(private val project: Project) : StatusBarWidget, Status
 
         currentText = when {
             selectedIndex == -1 || openTabs.isEmpty() -> "HEAD"
-            selectedIndex >= 0 && selectedIndex < openTabs.size -> openTabs[selectedIndex].branchName.take(20) // Truncate for display
+            selectedIndex >= 0 && selectedIndex < openTabs.size -> {
+                val tabInfo = openTabs[selectedIndex]
+                (tabInfo.alias ?: tabInfo.branchName).take(20) // Use alias if available, then truncate
+            }
             else -> "LST-CRC" // Default or error case
         }
     }
@@ -131,9 +135,10 @@ class LstCrcStatusWidget(private val project: Project) : StatusBarWidget, Status
             })
 
             openTabs.forEachIndexed { index, tabInfo ->
-                actions.add(object : AnAction(tabInfo.branchName) { // tabInfo is now actual TabInfo
+                val displayName = tabInfo.alias ?: tabInfo.branchName
+                actions.add(object : AnAction(displayName) { // Use alias for display name
                     override fun actionPerformed(e: AnActionEvent) {
-                        val branchNameToSelect = tabInfo.branchName
+                        val branchNameToSelect = tabInfo.branchName // Internally, still use branchName
                         val toolWindowManager = ToolWindowManager.getInstance(project)
                         val toolWindow = toolWindowManager.getToolWindow(GIT_CHANGES_TOOL_WINDOW_ID)
 
@@ -146,7 +151,8 @@ class LstCrcStatusWidget(private val project: Project) : StatusBarWidget, Status
                         toolWindow.activate({
                             // This runnable runs after activation is complete
                             val contentManager = toolWindow.contentManager
-                            val contentToSelect = contentManager.contents.find { it.displayName == branchNameToSelect }
+                            // Find content by its persistent branch name, not its display name (alias)
+                            val contentToSelect = contentManager.contents.find { it.getUserData(LstCrcKeys.BRANCH_NAME_KEY) == branchNameToSelect }
 
                             if (contentToSelect != null) {
                                 contentManager.setSelectedContent(contentToSelect, true) // true for focus
@@ -197,12 +203,13 @@ class LstCrcStatusWidget(private val project: Project) : StatusBarWidget, Status
                             val selectionTabContent = manager.findContent(selectionTabName)
                                 ?: return@BranchSelectionPanel
 
-                            val existingBranchTab = manager.contents.find { it.displayName == selectedBranchName }
+                            val existingBranchTab = manager.contents.find { it.getUserData(LstCrcKeys.BRANCH_NAME_KEY) == selectedBranchName }
                             if (existingBranchTab != null) {
                                 manager.setSelectedContent(existingBranchTab, true)
                                 manager.removeContent(selectionTabContent, true)
                             } else {
                                 selectionTabContent.displayName = selectedBranchName
+                                selectionTabContent.putUserData(LstCrcKeys.BRANCH_NAME_KEY, selectedBranchName)
                                 val newBranchContentView = uiProvider.createBranchContentView(selectedBranchName)
                                 selectionTabContent.component = newBranchContentView
                                 (newBranchContentView as? ChangesTreePanel)?.requestRefreshData()
@@ -210,7 +217,7 @@ class LstCrcStatusWidget(private val project: Project) : StatusBarWidget, Status
                                 manager.setSelectedContent(selectionTabContent, true)
                                 stateService.addTab(selectedBranchName)
 
-                                val closableTabs = manager.contents.filter { it.isCloseable }.map { it.displayName }
+                                val closableTabs = manager.contents.filter { it.isCloseable }.mapNotNull { it.getUserData(LstCrcKeys.BRANCH_NAME_KEY) }
                                 val newTabIndex = closableTabs.indexOf(selectedBranchName)
                                 if (newTabIndex != -1) {
                                     stateService.setSelectedTab(newTabIndex)

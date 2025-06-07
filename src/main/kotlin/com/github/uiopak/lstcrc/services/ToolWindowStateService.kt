@@ -44,7 +44,7 @@ class ToolWindowStateService(private val project: Project) : PersistentStateComp
         logger.info("addTab('$branchName') called.")
         val currentTabs = myState.openTabs.toMutableList()
         if (currentTabs.none { it.branchName == branchName }) {
-            currentTabs.add(TabInfo(branchName))
+            currentTabs.add(TabInfo(branchName = branchName, alias = null)) // Be explicit about alias
             myState.openTabs = ArrayList(currentTabs) // Ensure a new list instance for the state
             // myState.selectedTabIndex remains unchanged or could be set to the new tab's index
             myState = myState.copy() // Create a new state object
@@ -252,6 +252,29 @@ class ToolWindowStateService(private val project: Project) : PersistentStateComp
         } ?: run {
             logger.warn("Selected content's component is not a ChangesTreePanel. Display name: ${selectedContent.displayName}, Component type: ${selectedContent.component?.javaClass?.name}")
             null
+        }
+    }
+
+    fun updateTabAlias(branchName: String, newAlias: String?) {
+        logger.info("updateTabAlias called for branch '$branchName' with new alias '$newAlias'.")
+        val tabIndex = myState.openTabs.indexOfFirst { it.branchName == branchName }
+
+        if (tabIndex != -1) {
+            val updatedTabs = myState.openTabs.toMutableList()
+            val oldTabInfo = updatedTabs[tabIndex]
+
+            // Only update if alias is actually different to avoid unnecessary state changes and broadcasts.
+            if (oldTabInfo.alias != newAlias) {
+                updatedTabs[tabIndex] = oldTabInfo.copy(alias = newAlias)
+                myState.openTabs = ArrayList(updatedTabs) // Ensure a new list instance for the state
+                myState = myState.copy() // Create a new state object
+                logger.info("Tab alias for '$branchName' updated. New state: $myState")
+                project.messageBus.syncPublisher(TOPIC).stateChanged(myState.copy())
+            } else {
+                logger.debug("Alias for '$branchName' is already '$newAlias'. No state change needed.")
+            }
+        } else {
+            logger.warn("Could not find tab for branch '$branchName' to update its alias.")
         }
     }
 
