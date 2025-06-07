@@ -7,9 +7,41 @@ import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.PlatformDataKeys
 import com.intellij.openapi.components.service
+import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.ui.Messages
+import com.intellij.ui.content.Content
+import java.awt.Component
 
 class RenameTabAction : AnAction("Rename Tab...") {
+
+    private val logger = thisLogger()
+
+    private fun getContent(e: AnActionEvent): Content? {
+        val component: Component? = e.getData(PlatformDataKeys.CONTEXT_COMPONENT)
+        if (component == null) {
+            logger.debug("CONTEXT_COMPONENT is null, cannot determine right-clicked tab.")
+            return null
+        }
+
+        // The component is likely an internal class like `ContentTabLabel`.
+        // We use reflection to access its `myContent` field. This is fragile and may
+        // break in future IDE versions, but it's a known way to solve this.
+        return try {
+            val field = component.javaClass.getDeclaredField("myContent")
+            field.isAccessible = true
+            val content = field.get(component) as? Content
+            if (content == null) {
+                logger.debug("Reflection succeeded, but 'myContent' is not a Content or is null.")
+            }
+            content
+        } catch (ex: NoSuchFieldException) {
+            logger.warn("Could not find field 'myContent' in component ${component.javaClass.name}. The IDE's internal structure may have changed.")
+            null
+        } catch (ex: Exception) {
+            logger.warn("Failed to get 'myContent' via reflection from ${component.javaClass.name}", ex)
+            null
+        }
+    }
 
     override fun update(e: AnActionEvent) {
         val project = e.project
@@ -19,16 +51,28 @@ class RenameTabAction : AnAction("Rename Tab...") {
             return
         }
 
-        // This checks the currently *active* tab, not necessarily the right-clicked one.
-        // We are reverting to this logic because it compiles in your environment.
-        val content = toolWindow.contentManager.selectedContent
-        e.presentation.isEnabledAndVisible = content != null && content.isCloseable
+        // Get the content of the RIGHT-CLICKED tab, not the selected one.
+        val content = getContent(e)
+
+        // A tab is renamable if it's a closeable tab that has a branch name associated with it.
+        // The "Select Branch" tab is closeable but does not have this key.
+        // The "HEAD" tab is not closeable.
+        val isRenamable = content != null &&
+                content.isCloseable &&
+                content.getUserData(LstCrcKeys.BRANCH_NAME_KEY) != null
+
+        e.presentation.isEnabledAndVisible = isRenamable
     }
 
     override fun actionPerformed(e: AnActionEvent) {
-        val project = e.project!!
-        val toolWindow = e.getData(PlatformDataKeys.TOOL_WINDOW)!!
-        val content = toolWindow.contentManager.selectedContent!!
+        val project = e.project!! // update() should prevent this from being null
+
+        // Get the content of the RIGHT-CLICKED tab.
+        val content = getContent(e)
+        if (content == null) {
+            Messages.showErrorDialog(project, "Could not determine which tab was right-clicked.", "Rename Error")
+            return
+        }
 
         // Get the branch name from the UserData we stored on the Content object.
         val branchName = content.getUserData(LstCrcKeys.BRANCH_NAME_KEY)
