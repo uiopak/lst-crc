@@ -36,9 +36,6 @@ class MyToolWindowFactory : ToolWindowFactory {
         val stateService = ToolWindowStateService.getInstance(project)
         val contentManager = toolWindow.contentManager
 
-        // The manual PopupHandler logic has been removed. The context menu is now handled
-        // declaratively by the RenameTabAction registered in plugin.xml.
-
         // --- State/UI Sync Logic (remains the same) ---
         project.messageBus.connect(toolWindow.disposable).subscribe(ToolWindowStateService.TOPIC,
             object : ToolWindowStateService.Companion.ToolWindowStateListener {
@@ -127,7 +124,6 @@ class MyToolWindowFactory : ToolWindowFactory {
             }
 
             override fun selectionChanged(event: ContentManagerEvent) {
-                // ** THIS IS THE FIX **
                 // By wrapping the logic in invokeLater, we ensure that it runs after the current UI event
                 // (like closing a settings popup) has been fully processed, allowing PropertiesComponent
                 // to have a consistent state that can be read correctly.
@@ -154,7 +150,6 @@ class MyToolWindowFactory : ToolWindowFactory {
         val openSelectionTabAction = OpenBranchSelectionTabAction(project, toolWindow, gitChangesUiProvider)
         toolWindow.setTitleActions(listOf(openSelectionTabAction))
 
-        // We now pass the project object to the settings provider, so it uses the project-level settings store.
         val settingsProvider = ToolWindowSettingsProvider(project)
         val pluginSettingsSubMenu: ActionGroup = settingsProvider.createToolWindowSettingsGroup()
 

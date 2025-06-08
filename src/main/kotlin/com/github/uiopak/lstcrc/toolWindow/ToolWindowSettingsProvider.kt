@@ -10,8 +10,6 @@ import com.intellij.openapi.actionSystem.ToggleAction
 import com.intellij.openapi.components.service
 import com.intellij.openapi.project.Project
 
-// ** THE FIX IS HERE **
-// The constructor now takes a Project so it can get the correct project-level properties.
 class ToolWindowSettingsProvider(private val project: Project) {
 
     private val propertiesComponent = PropertiesComponent.getInstance(project)

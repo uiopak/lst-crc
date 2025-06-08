@@ -34,7 +34,7 @@ class ProjectActiveDiffDataService(private val project: Project) : Disposable {
         movedFilesFromEvent: List<VirtualFile>
     ) {
         val currentToolWindowBranch = project.service<ToolWindowStateService>().getSelectedTabBranchName()
-        logger.warn("LSTCRC_TRACE: updateActiveDiff called. Event branch: '$branchNameFromEvent'. Current tool window branch: '$currentToolWindowBranch'.")
+        logger.debug("updateActiveDiff called. Event branch: '$branchNameFromEvent'. Current tool window branch: '$currentToolWindowBranch'.")
 
         // The event is valid if the branch names match exactly,
         // OR if the event is for "HEAD" and the currently selected tab is indeed the HEAD tab (represented by a null branch name).
@@ -43,7 +43,7 @@ class ProjectActiveDiffDataService(private val project: Project) : Disposable {
         val isDirectBranchMatch = branchNameFromEvent == currentToolWindowBranch
 
         if (isDirectBranchMatch || (isEventForHead && isHeadSelectedInToolWindow)) {
-            logger.warn("LSTCRC_TRACE: updateActiveDiff - Update ACCEPTED. Proceeding to update service state.")
+            logger.debug("updateActiveDiff - Update ACCEPTED. Proceeding to update service state.")
             ApplicationManager.getApplication().invokeLater {
                 if (project.isDisposed) {
                     logger.info("Project ${project.name} is disposed (in updateActiveDiff invokeLater), skipping update.")
@@ -61,9 +61,6 @@ class ProjectActiveDiffDataService(private val project: Project) : Disposable {
                 this.modifiedFiles = modifiedFilesFromEvent
                 this.movedFiles = movedFilesFromEvent
 
-                logger.warn("LSTCRC_TRACE: updateActiveDiff - Service state AFTER update: activeBranchName='${this.activeBranchName}', created=${this.createdFiles.size}, modified=${this.modifiedFiles.size}")
-
-
                 val newCreatedFiles = createdFilesFromEvent.toSet()
                 val newModifiedFiles = modifiedFilesFromEvent.toSet()
                 val newMovedFiles = movedFilesFromEvent.toSet()
@@ -74,7 +71,7 @@ class ProjectActiveDiffDataService(private val project: Project) : Disposable {
 
                 if (affectedFiles.isNotEmpty()) {
                     val fileStatusManager = FileStatusManager.getInstance(project)
-                    logger.warn("LSTCRC_TRACE: updateActiveDiff - Notifying FileStatusManager for ${affectedFiles.size} files.")
+                    logger.debug("EDT: Notifying FileStatusManager for ${affectedFiles.size} affected files after updateActiveDiff.")
 
                     // Step 1: General notification to invalidate caches
                     fileStatusManager.fileStatusesChanged()
@@ -89,12 +86,11 @@ class ProjectActiveDiffDataService(private val project: Project) : Disposable {
                 triggerEditorTabColorRefresh() // This method already handles its own invokeLater
             }
         } else {
-            logger.warn("LSTCRC_TRACE: updateActiveDiff - Update REJECTED as stale. Event branch '$branchNameFromEvent' does NOT match current tool window branch '$currentToolWindowBranch'.")
+            logger.debug("updateActiveDiff - Update REJECTED as stale. Event branch '$branchNameFromEvent' does NOT match current tool window branch '$currentToolWindowBranch'.")
         }
     }
 
     fun clearActiveDiff() {
-        logger.warn("LSTCRC_TRACE: clearActiveDiff CALLED.")
         ApplicationManager.getApplication().invokeLater {
             if (project.isDisposed) {
                 logger.info("Project ${project.name} is disposed (in clearActiveDiff invokeLater), skipping clear.")
@@ -109,11 +105,9 @@ class ProjectActiveDiffDataService(private val project: Project) : Disposable {
             this.modifiedFiles = emptyList()
             this.movedFiles = emptyList()
 
-            logger.warn("LSTCRC_TRACE: clearActiveDiff - Service state AFTER clear: activeBranchName='${this.activeBranchName}', created=${this.createdFiles.size}, modified=${this.modifiedFiles.size}")
-
             if (affectedFiles.isNotEmpty()) {
                 val fileStatusManager = FileStatusManager.getInstance(project)
-                logger.warn("LSTCRC_TRACE: clearActiveDiff - Notifying FileStatusManager for ${affectedFiles.size} files.")
+                logger.debug("EDT: Notifying FileStatusManager for ${affectedFiles.size} affected files after clearActiveDiff.")
                 // Step 1: General notification
                 fileStatusManager.fileStatusesChanged()
 
@@ -154,9 +148,6 @@ class ProjectActiveDiffDataService(private val project: Project) : Disposable {
     fun refreshCurrentColorings() {
         logger.debug("refreshCurrentColorings() called. Active branch: $activeBranchName, Changes count: ${activeChanges.size}")
         // This method primarily triggers tab color refresh.
-        // If we want it to also attempt to refresh project tree colors,
-        // we might need to re-notify FileStatusManager for all currently known changed files.
-        // For now, let's assume normal updates to ProjectActiveDiffDataService handle this.
         triggerEditorTabColorRefresh()
     }
 

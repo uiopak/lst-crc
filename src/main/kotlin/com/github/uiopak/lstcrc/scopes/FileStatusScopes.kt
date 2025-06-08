@@ -27,25 +27,16 @@ private abstract class LstCrcPackageSet(
         val diffDataService = project.service<ProjectActiveDiffDataService>()
 
         // The ProjectActiveDiffDataService is the single source of truth.
-        val activeBranch = diffDataService.activeBranchName
-        val createdCount = diffDataService.createdFiles.size
-        val modifiedCount = diffDataService.modifiedFiles.size
-
-        logger.warn("LSTCRC_TRACE: Scope check for '${file.name}'. Service state: activeBranch='${activeBranch}', created=${createdCount}, modified=${modifiedCount}")
-
         // Its state is managed by other services based on tab selection and settings.
         // If activeBranchName is null, it means we have explicitly cleared the diff data,
         // and therefore no files should be in any LSTCRC scope.
-        if (activeBranch == null) {
-            logger.warn("LSTCRC_TRACE: Scope check returning FALSE because activeBranchName is null.")
+        if (diffDataService.activeBranchName == null) {
             return false
         }
 
         // If a branch is active (including "HEAD" if the setting is on), we check its files.
         val relevantFiles = getRelevantFiles(diffDataService)
-        val result = file in relevantFiles
-        logger.warn("LSTCRC_TRACE: Scope check for '${file.name}' returning $result. Relevant files count: ${relevantFiles.size}")
-        return result
+        return file in relevantFiles
     }
 
     /**
