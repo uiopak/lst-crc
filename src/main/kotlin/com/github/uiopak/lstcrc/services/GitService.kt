@@ -5,9 +5,11 @@ import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.progress.ProgressIndicator
 import com.intellij.openapi.progress.Task
+import com.intellij.openapi.util.text.StringUtil
 import com.intellij.openapi.vcs.VcsException
 import com.intellij.openapi.vcs.changes.Change
 import com.intellij.openapi.vcs.changes.ChangeListManager
+import com.intellij.openapi.vfs.VfsUtilCore
 import com.intellij.openapi.vfs.VirtualFile
 import git4idea.changes.GitChangeUtils
 import git4idea.repo.GitRepository
@@ -175,21 +177,42 @@ class GitService(private val project: Project) {
         val repository = getCurrentRepository()
 
         if (repository == null) {
-            logger.warn("Cannot get file content for revision, no repository found.")
+            logger.warn("Cannot get file content for revision '$revision' for file '${file.path}', no repository found.")
             future.complete(null)
             return future
         }
 
         com.intellij.openapi.application.ApplicationManager.getApplication().executeOnPooledThread {
             try {
-                val revisionContentBytes = GitFileUtils.getFileContent(project, repository.root, revision, file.path)
-                val content = String(revisionContentBytes, file.charset)
-                future.complete(content)
+                logger.debug("GUTTER_GIT_SERVICE: Preparing to fetch content for revision:'$revision' file:'${file.path}'")
+                logger.debug("GUTTER_GIT_SERVICE: Repository root is: '${repository.root.path}'")
+
+                val relativePath = VfsUtilCore.getRelativePath(file, repository.root, '/')
+
+                if (relativePath == null) {
+                    val errorMessage = "Could not calculate relative path for file '${file.path}' against repo root '${repository.root.path}'. The file might not be in the repository."
+                    logger.error("GUTTER_GIT_SERVICE: $errorMessage")
+                    future.completeExceptionally(IllegalStateException(errorMessage))
+                    return@executeOnPooledThread
+                }
+                logger.debug("GUTTER_GIT_SERVICE: Calculated relative path: '$relativePath'")
+
+                val revisionContentBytes = GitFileUtils.getFileContent(project, repository.root, revision, relativePath)
+                val rawContent = String(revisionContentBytes, file.charset)
+
+                // --- FIX START: Normalize line endings ---
+                // The IntelliJ Document model requires LF ('\n') line endings. Git on Windows might return CRLF ('\r\n').
+                // We must convert them to prevent an "Wrong line separators" AssertionError.
+                val normalizedContent = StringUtil.convertLineSeparators(rawContent)
+                // --- FIX END ---
+
+                logger.info("GUTTER_GIT_SERVICE: Successfully fetched content for '$relativePath' in revision '$revision'. Raw length: ${rawContent.length}, Normalized length: ${normalizedContent.length}.")
+                future.complete(normalizedContent)
             } catch (e: VcsException) {
-                // **FIXED**: The logic here is now simplified. We let the caller (`LstCrcGutterTrackerService`)
-                // inspect the exception type. We just pass the exception along.
+                logger.warn("GUTTER_GIT_SERVICE: VcsException while getting content for '${file.path}' in revision '$revision'. Message: ${e.message}")
                 future.completeExceptionally(e)
             } catch (e: Exception) {
+                logger.error("GUTTER_GIT_SERVICE: Unhandled exception while getting content for '${file.path}' in revision '$revision'.", e)
                 future.completeExceptionally(e)
             }
         }
