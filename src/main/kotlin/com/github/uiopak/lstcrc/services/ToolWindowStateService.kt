@@ -6,6 +6,8 @@ import com.intellij.openapi.components.PersistentStateComponent
 import com.intellij.openapi.components.State
 import com.intellij.openapi.components.Storage
 import com.github.uiopak.lstcrc.toolWindow.ChangesTreePanel
+import com.github.uiopak.lstcrc.toolWindow.ToolWindowSettingsProvider
+import com.intellij.ide.util.PropertiesComponent
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.wm.ToolWindowManager
 import com.intellij.util.messages.Topic
@@ -85,7 +87,7 @@ class ToolWindowStateService(private val project: Project) : PersistentStateComp
     }
 
     fun setSelectedTab(index: Int) {
-        logger.debug("setSelectedTab called with index: $index. Current state selectedTabIndex: ${myState.selectedTabIndex}")
+        logger.warn("LSTCRC_TRACE: setSelectedTab called with index: $index.")
         // Validate index against current openTabs size
         val validIndex = if (index >= myState.openTabs.size || index < -1) {
             logger.warn("setSelectedTab called with invalid index: $index. Open tabs: ${myState.openTabs.size}. Clamping to -1 or last valid index.")
@@ -105,10 +107,12 @@ class ToolWindowStateService(private val project: Project) : PersistentStateComp
             val gitService = project.service<GitService>()
 
             val selectedBranchName = getSelectedTabBranchName() // Uses the new index due to state update
+            logger.warn("LSTCRC_TRACE: setSelectedTab - selectedBranchName from state is now: '$selectedBranchName'.")
 
             if (selectedBranchName != null) {
-                logger.info("Tool window tab selection changed to: '$selectedBranchName'. Fetching its changes.")
+                logger.warn("LSTCRC_TRACE: setSelectedTab - Path for Specific Branch: '$selectedBranchName'. Fetching changes.")
                 gitService.getChanges(selectedBranchName).whenCompleteAsync { categorizedChanges, throwable ->
+                    if (project.isDisposed) return@whenCompleteAsync
                     logger.debug("getChanges for '$selectedBranchName' completed. Error: ${throwable != null}, Changes count: ${categorizedChanges?.allChanges?.size ?: "null"}")
                     if (throwable != null) {
                         logger.error("Error for $selectedBranchName: ${throwable.message}")
@@ -134,32 +138,65 @@ class ToolWindowStateService(private val project: Project) : PersistentStateComp
                     }
                 }
             } else { // No specific branch tab is selected (i.e., HEAD is active)
-                logger.info("Tool window tab selection changed to HEAD. Clearing ProjectActiveDiffDataService to disable custom scopes.")
-                diffDataService.clearActiveDiff() // This is the key change.
+                logger.warn("LSTCRC_TRACE: setSelectedTab - Path for HEAD tab (selectedBranchName is null).")
 
-                // We still need to fetch and display changes for HEAD in the tool window panel.
+                val properties = PropertiesComponent.getInstance(project)
+                val includeHeadInScopes = properties.getBoolean(
+                    ToolWindowSettingsProvider.APP_INCLUDE_HEAD_IN_SCOPES_KEY,
+                    ToolWindowSettingsProvider.DEFAULT_INCLUDE_HEAD_IN_SCOPES
+                )
                 val effectiveBranchNameForDisplay = "HEAD"
-                logger.debug("Fetching changes for '$effectiveBranchNameForDisplay' to display in the tool window panel.")
-                gitService.getChanges(effectiveBranchNameForDisplay).whenCompleteAsync { categorizedChanges, throwable ->
-                    val activePanel = getActiveChangesTreePanel(project)
-                    if (throwable != null) {
-                        logger.error("Error loading changes for '$effectiveBranchNameForDisplay': ${throwable.message}")
-                        activePanel?.displayChanges(null, effectiveBranchNameForDisplay)
-                    } else {
-                        // Display the changes, but do NOT update the ProjectActiveDiffDataService
-                        logger.debug("Successfully fetched ${categorizedChanges?.allChanges?.size ?: "null"} total changes for '$effectiveBranchNameForDisplay'. Displaying in panel.")
-                        activePanel?.displayChanges(categorizedChanges, effectiveBranchNameForDisplay)
+                logger.warn("LSTCRC_TRACE: setSelectedTab - 'Include HEAD in Scopes' setting is: $includeHeadInScopes.")
+
+                if (includeHeadInScopes) {
+                    logger.warn("LSTCRC_TRACE: setSelectedTab - Setting is ON. Fetching HEAD changes to update service.")
+                    gitService.getChanges(effectiveBranchNameForDisplay).whenCompleteAsync { categorizedChanges, throwable ->
+                        val activePanel = getActiveChangesTreePanel(project)
+                        if (project.isDisposed) return@whenCompleteAsync
+
+                        if (throwable != null) {
+                            logger.error("Error loading changes for '$effectiveBranchNameForDisplay': ${throwable.message}")
+                            diffDataService.clearActiveDiff() // Clear service on error
+                            activePanel?.displayChanges(null, effectiveBranchNameForDisplay)
+                        } else if (categorizedChanges != null) {
+                            logger.debug("Successfully fetched ${categorizedChanges.allChanges.size} total changes for '$effectiveBranchNameForDisplay'. Updating ProjectActiveDiffDataService and displaying in panel.")
+                            diffDataService.updateActiveDiff(
+                                effectiveBranchNameForDisplay, // use "HEAD" as the branch name
+                                categorizedChanges.allChanges,
+                                categorizedChanges.createdFiles,
+                                categorizedChanges.modifiedFiles,
+                                categorizedChanges.movedFiles
+                            )
+                            activePanel?.displayChanges(categorizedChanges, effectiveBranchNameForDisplay)
+                        } else {
+                            logger.warn("Fetched changes for '$effectiveBranchNameForDisplay' but CategorizedChanges object was null. Clearing service.")
+                            diffDataService.clearActiveDiff()
+                            activePanel?.displayChanges(null, effectiveBranchNameForDisplay)
+                        }
+                    }
+                } else {
+                    logger.warn("LSTCRC_TRACE: setSelectedTab - Setting is OFF. Clearing active diff data.")
+                    diffDataService.clearActiveDiff() // This is the original behavior.
+
+                    // We still need to fetch and display changes for HEAD in the tool window panel, just not in the service.
+                    logger.debug("Fetching changes for '$effectiveBranchNameForDisplay' to display in the tool window panel.")
+                    gitService.getChanges(effectiveBranchNameForDisplay).whenCompleteAsync { categorizedChanges, throwable ->
+                        if (project.isDisposed) return@whenCompleteAsync
+                        val activePanel = getActiveChangesTreePanel(project)
+                        if (throwable != null) {
+                            logger.error("Error loading changes for '$effectiveBranchNameForDisplay': ${throwable.message}")
+                            activePanel?.displayChanges(null, effectiveBranchNameForDisplay)
+                        } else {
+                            // Display the changes, but do NOT update the ProjectActiveDiffDataService
+                            logger.debug("Successfully fetched ${categorizedChanges?.allChanges?.size ?: "null"} total changes for '$effectiveBranchNameForDisplay'. Displaying in panel.")
+                            activePanel?.displayChanges(categorizedChanges, effectiveBranchNameForDisplay)
+                        }
                     }
                 }
             }
 
         } else {
-            // Use validIndex here as index might be the original, potentially invalid one.
-            logger.debug("Selected tab index $validIndex is already set. No data fetch or UI update initiated from setSelectedTab.")
-            // Even if index is the same, if branch name could have changed (e.g. list reordered without index change),
-            // we might still want to refresh. However, current logic is fine if index directly maps to a stable tab order.
-            // Consider if a refresh is needed even if index is same, e.g. by comparing branch name.
-            // For now, if index is same, assume no change needed for active diff.
+            logger.warn("LSTCRC_TRACE: setSelectedTab - selected index $validIndex is already set. No action taken.")
         }
     }
 
@@ -181,9 +218,12 @@ class ToolWindowStateService(private val project: Project) : PersistentStateComp
     }
 
     fun refreshDataForActiveTabIfMatching(eventBranchName: String) {
-        logger.debug("refreshDataForActiveTabIfMatching called with eventBranchName: $eventBranchName")
+        logger.warn("LSTCRC_TRACE: refreshDataForActiveTabIfMatching called with eventBranchName: $eventBranchName")
         val currentSelectedBranch = getSelectedTabBranchName()
         val isHeadSelected = currentSelectedBranch == null
+
+        logger.warn("LSTCRC_TRACE: refreshDataForActiveTabIfMatching - currentSelectedBranch: '$currentSelectedBranch', isHeadSelected: $isHeadSelected")
+
 
         // Determine if the refresh request matches the active UI state.
         // It should refresh if:
@@ -193,21 +233,33 @@ class ToolWindowStateService(private val project: Project) : PersistentStateComp
                 (!isHeadSelected && eventBranchName == currentSelectedBranch)
 
         if (shouldRefresh) {
-            logger.debug("Event for '$eventBranchName' matches current active tab. Refreshing data.")
+            logger.warn("LSTCRC_TRACE: refreshDataForActiveTabIfMatching - Refresh condition MET. Proceeding.")
 
             val gitService = project.service<GitService>()
             val diffDataService = project.service<ProjectActiveDiffDataService>()
 
             gitService.getChanges(eventBranchName).whenCompleteAsync { categorizedChanges, throwable ->
+                if (project.isDisposed) return@whenCompleteAsync
+
                 val activePanel = getActiveChangesTreePanel(project)
+                val properties = PropertiesComponent.getInstance(project)
+                val includeHeadInScopes = properties.getBoolean(
+                    ToolWindowSettingsProvider.APP_INCLUDE_HEAD_IN_SCOPES_KEY,
+                    ToolWindowSettingsProvider.DEFAULT_INCLUDE_HEAD_IN_SCOPES
+                )
+                logger.warn("LSTCRC_TRACE: refreshDataForActiveTabIfMatching - Callback executing. 'Include HEAD in Scopes' setting is: $includeHeadInScopes.")
+
+
                 if (throwable != null) {
                     logger.error("Error refreshing data for active tab '$eventBranchName': ${throwable.message}", throwable)
                     activePanel?.displayChanges(null, eventBranchName)
+                    diffDataService.clearActiveDiff() // Clear service on error
                 } else if (categorizedChanges != null) {
                     logger.debug("Successfully refreshed data for active tab '$eventBranchName'. ${categorizedChanges.allChanges.size} changes.")
 
-                    // Only update the global diff service if we are on a specific branch tab, NOT HEAD.
-                    if (!isHeadSelected) {
+                    // Update global diff service if on a branch tab, OR on HEAD tab with setting enabled.
+                    if (!isHeadSelected || (isHeadSelected && includeHeadInScopes)) {
+                        logger.warn("LSTCRC_TRACE: refreshDataForActiveTabIfMatching - DECISION: Updating ProjectActiveDiffDataService.")
                         diffDataService.updateActiveDiff(
                             eventBranchName,
                             categorizedChanges.allChanges,
@@ -215,6 +267,10 @@ class ToolWindowStateService(private val project: Project) : PersistentStateComp
                             categorizedChanges.modifiedFiles,
                             categorizedChanges.movedFiles
                         )
+                    } else {
+                        // This case happens if we are on HEAD and the setting is OFF.
+                        logger.warn("LSTCRC_TRACE: refreshDataForActiveTabIfMatching - DECISION: Clearing ProjectActiveDiffDataService because HEAD is selected but setting is OFF.")
+                        diffDataService.clearActiveDiff()
                     }
 
                     // Always update the UI panel itself.
@@ -222,14 +278,12 @@ class ToolWindowStateService(private val project: Project) : PersistentStateComp
                         ?: logger.warn("No active ChangesTreePanel found after refreshing data for '$eventBranchName'. UI might not update.")
                 } else { // categorizedChanges is null and throwable is null
                     logger.warn("Refreshed data for '$eventBranchName', but CategorizedChanges was null (and no error). Updating panel to reflect no/error state.")
-                    if (!isHeadSelected) {
-                        diffDataService.clearActiveDiff()
-                    }
+                    diffDataService.clearActiveDiff()
                     activePanel?.displayChanges(null, eventBranchName)
                 }
             }
         } else {
-            logger.debug("Event branch '$eventBranchName' does not match current active tab state (selected branch: '$currentSelectedBranch'). No refresh initiated from refreshDataForActiveTabIfMatching.")
+            logger.warn("LSTCRC_TRACE: refreshDataForActiveTabIfMatching - Refresh condition NOT MET. No action taken.")
         }
     }
 

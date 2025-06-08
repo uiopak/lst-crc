@@ -4,7 +4,6 @@ import com.github.uiopak.lstcrc.services.GitService
 import com.github.uiopak.lstcrc.services.ToolWindowStateService
 import com.github.uiopak.lstcrc.state.ToolWindowState
 import com.github.uiopak.lstcrc.utils.LstCrcKeys
-import com.intellij.ide.util.PropertiesComponent
 import com.intellij.openapi.actionSystem.ActionGroup
 import com.intellij.openapi.actionSystem.DefaultActionGroup
 import com.intellij.openapi.application.ApplicationManager
@@ -128,16 +127,26 @@ class MyToolWindowFactory : ToolWindowFactory {
             }
 
             override fun selectionChanged(event: ContentManagerEvent) {
-                val selectedContent = event.content
-                val branchName = selectedContent.getUserData(LstCrcKeys.BRANCH_NAME_KEY)
-                if (branchName != null) {
-                    val closableTabsInState = stateService.state.openTabs
-                    val indexInPersistedList = closableTabsInState.indexOfFirst { it.branchName == branchName }
-                    if (indexInPersistedList != -1) {
-                        stateService.setSelectedTab(indexInPersistedList)
+                // ** THIS IS THE FIX **
+                // By wrapping the logic in invokeLater, we ensure that it runs after the current UI event
+                // (like closing a settings popup) has been fully processed, allowing PropertiesComponent
+                // to have a consistent state that can be read correctly.
+                ApplicationManager.getApplication().invokeLater {
+                    if (project.isDisposed || toolWindow.isDisposed || !toolWindow.isVisible) {
+                        return@invokeLater
                     }
-                } else {
-                    stateService.setSelectedTab(-1)
+                    val selectedContent = toolWindow.contentManager.selectedContent ?: return@invokeLater
+
+                    val branchName = selectedContent.getUserData(LstCrcKeys.BRANCH_NAME_KEY)
+                    if (branchName != null) {
+                        val closableTabsInState = stateService.state.openTabs
+                        val indexInPersistedList = closableTabsInState.indexOfFirst { it.branchName == branchName }
+                        if (indexInPersistedList != -1) {
+                            stateService.setSelectedTab(indexInPersistedList)
+                        }
+                    } else { // This branch is taken for the HEAD tab
+                        stateService.setSelectedTab(-1)
+                    }
                 }
             }
         })
@@ -145,8 +154,8 @@ class MyToolWindowFactory : ToolWindowFactory {
         val openSelectionTabAction = OpenBranchSelectionTabAction(project, toolWindow, gitChangesUiProvider)
         toolWindow.setTitleActions(listOf(openSelectionTabAction))
 
-        val propertiesComponent = PropertiesComponent.getInstance()
-        val settingsProvider = ToolWindowSettingsProvider(propertiesComponent)
+        // We now pass the project object to the settings provider, so it uses the project-level settings store.
+        val settingsProvider = ToolWindowSettingsProvider(project)
         val pluginSettingsSubMenu: ActionGroup = settingsProvider.createToolWindowSettingsGroup()
 
         val allGearActionsGroup = DefaultActionGroup()

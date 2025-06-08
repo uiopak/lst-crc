@@ -26,17 +26,25 @@ private abstract class LstCrcPackageSet(
         if (project.isDisposed) return false
         val diffDataService = project.service<ProjectActiveDiffDataService>()
 
-        // When the "HEAD" tab is active, its changes are standard VCS changes, not part of a specific
-        // branch comparison for this plugin's purpose. Therefore, LSTCRC scopes should be empty.
-        // We identify the HEAD tab by checking if the active branch name in the service is "HEAD" or null.
-        if (diffDataService.activeBranchName == "HEAD" || diffDataService.activeBranchName == null) {
+        // The ProjectActiveDiffDataService is the single source of truth.
+        val activeBranch = diffDataService.activeBranchName
+        val createdCount = diffDataService.createdFiles.size
+        val modifiedCount = diffDataService.modifiedFiles.size
+
+        logger.warn("LSTCRC_TRACE: Scope check for '${file.name}'. Service state: activeBranch='${activeBranch}', created=${createdCount}, modified=${modifiedCount}")
+
+        // Its state is managed by other services based on tab selection and settings.
+        // If activeBranchName is null, it means we have explicitly cleared the diff data,
+        // and therefore no files should be in any LSTCRC scope.
+        if (activeBranch == null) {
+            logger.warn("LSTCRC_TRACE: Scope check returning FALSE because activeBranchName is null.")
             return false
         }
 
+        // If a branch is active (including "HEAD" if the setting is on), we check its files.
         val relevantFiles = getRelevantFiles(diffDataService)
         val result = file in relevantFiles
-        // Example for debugging, consider using trace level:
-        // logger.trace("ScopeCheck (${this::class.simpleName}): '${file.name}' in scope? $result. (Service has ${relevantFiles.size} files. Active branch: ${diffDataService.activeBranchName})")
+        logger.warn("LSTCRC_TRACE: Scope check for '${file.name}' returning $result. Relevant files count: ${relevantFiles.size}")
         return result
     }
 

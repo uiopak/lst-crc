@@ -3,6 +3,8 @@ package com.github.uiopak.lstcrc.listeners
 import com.github.uiopak.lstcrc.services.GitService
 import com.github.uiopak.lstcrc.services.ProjectActiveDiffDataService
 import com.github.uiopak.lstcrc.services.ToolWindowStateService
+import com.github.uiopak.lstcrc.toolWindow.ToolWindowSettingsProvider
+import com.intellij.ide.util.PropertiesComponent
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.service
 import com.intellij.openapi.diagnostic.thisLogger
@@ -107,8 +109,42 @@ class ProjectOpenCloseListener : ProjectManagerListener {
                             diffDataService.refreshCurrentColorings()
                         }
                     } else {
-                        logger.info("MMMM_STARTUP_LOGIC_DELAYED: No branch selected in tool window. Clearing active diff data.")
-                        diffDataService.clearActiveDiff()
+                        logger.info("MMMM_STARTUP_LOGIC_DELAYED: No branch selected in tool window (HEAD is active). Checking setting.")
+                        val properties = PropertiesComponent.getInstance(project)
+                        val includeHeadInScopes = properties.getBoolean(
+                            ToolWindowSettingsProvider.APP_INCLUDE_HEAD_IN_SCOPES_KEY,
+                            ToolWindowSettingsProvider.DEFAULT_INCLUDE_HEAD_IN_SCOPES
+                        )
+                        val headBranchName = "HEAD"
+
+                        if (includeHeadInScopes) {
+                            logger.info("MMMM_STARTUP_LOGIC_DELAYED: 'Include HEAD in Scopes' is ON. Loading HEAD changes into ProjectActiveDiffDataService.")
+                            gitService.getChanges(headBranchName).whenCompleteAsync { categorizedChanges, throwable ->
+                                if (project.isDisposed) {
+                                    logger.info("MMMM_STARTUP_LOGIC_DELAYED: Project disposed during getChanges for HEAD.")
+                                    return@whenCompleteAsync
+                                }
+                                if (throwable != null) {
+                                    logger.error("MMMM_STARTUP_LOGIC_DELAYED: Error getting changes for HEAD: ${throwable.message}", throwable)
+                                    diffDataService.clearActiveDiff()
+                                } else if (categorizedChanges != null) {
+                                    logger.info("MMMM_STARTUP_LOGIC_DELAYED: Successfully fetched changes for HEAD. Updating service.")
+                                    diffDataService.updateActiveDiff(
+                                        headBranchName,
+                                        categorizedChanges.allChanges,
+                                        categorizedChanges.createdFiles,
+                                        categorizedChanges.modifiedFiles,
+                                        categorizedChanges.movedFiles
+                                    )
+                                } else {
+                                    logger.warn("MMMM_STARTUP_LOGIC_DELAYED: Fetched changes for HEAD but result was null. Clearing diff data.")
+                                    diffDataService.clearActiveDiff()
+                                }
+                            }
+                        } else {
+                            logger.info("MMMM_STARTUP_LOGIC_DELAYED: 'Include HEAD in Scopes' is OFF. Clearing active diff data.")
+                            diffDataService.clearActiveDiff()
+                        }
                     }
                     logger.info("MMMM_STARTUP_LOGIC_DELAYED: Delayed initial diff load task finished for project: ${project.name}")
 
