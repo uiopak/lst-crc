@@ -8,11 +8,12 @@ import com.intellij.openapi.progress.Task
 import com.intellij.openapi.vcs.VcsException
 import com.intellij.openapi.vcs.changes.Change
 import com.intellij.openapi.vcs.changes.ChangeListManager
-import git4idea.changes.GitChangeUtils
-import java.util.concurrent.CompletableFuture
 import com.intellij.openapi.vfs.VirtualFile
+import git4idea.changes.GitChangeUtils
 import git4idea.repo.GitRepository
 import git4idea.repo.GitRepositoryManager
+import git4idea.util.GitFileUtils
+import java.util.concurrent.CompletableFuture
 
 data class CategorizedChanges(
     val allChanges: List<Change>,
@@ -158,6 +159,40 @@ class GitService(private val project: Project) {
             }
         }.queue()
 
+        return future
+    }
+
+    /**
+     * Asynchronously loads the content of a file from a specific git revision (branch, tag, commit hash).
+     *
+     * @param revision The git revision to load the file from.
+     * @param file The virtual file whose content is to be loaded.
+     * @return A CompletableFuture that will complete with the file content as a String, or null if the file
+     *         does not exist in that revision. The future completes exceptionally on other errors.
+     */
+    fun getFileContentForRevision(revision: String, file: VirtualFile): CompletableFuture<String?> {
+        val future = CompletableFuture<String?>()
+        val repository = getCurrentRepository()
+
+        if (repository == null) {
+            logger.warn("Cannot get file content for revision, no repository found.")
+            future.complete(null)
+            return future
+        }
+
+        com.intellij.openapi.application.ApplicationManager.getApplication().executeOnPooledThread {
+            try {
+                val revisionContentBytes = GitFileUtils.getFileContent(project, repository.root, revision, file.path)
+                val content = String(revisionContentBytes, file.charset)
+                future.complete(content)
+            } catch (e: VcsException) {
+                // **FIXED**: The logic here is now simplified. We let the caller (`LstCrcGutterTrackerService`)
+                // inspect the exception type. We just pass the exception along.
+                future.completeExceptionally(e)
+            } catch (e: Exception) {
+                future.completeExceptionally(e)
+            }
+        }
         return future
     }
 }

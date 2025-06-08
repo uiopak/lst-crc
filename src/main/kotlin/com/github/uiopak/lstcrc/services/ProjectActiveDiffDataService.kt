@@ -1,5 +1,6 @@
 package com.github.uiopak.lstcrc.services
 
+import com.github.uiopak.lstcrc.messaging.DIFF_DATA_CHANGED_TOPIC
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.Service
@@ -83,6 +84,9 @@ class ProjectActiveDiffDataService(private val project: Project) : Disposable {
                         }
                     }
                 }
+
+                // **FIXED**: Announce that the data is ready for consumers.
+                project.messageBus.syncPublisher(DIFF_DATA_CHANGED_TOPIC).onDiffDataChanged()
                 triggerEditorTabColorRefresh() // This method already handles its own invokeLater
             }
         } else {
@@ -118,6 +122,8 @@ class ProjectActiveDiffDataService(private val project: Project) : Disposable {
                     }
                 }
             }
+            // **FIXED**: Announce that the data is ready for consumers.
+            project.messageBus.syncPublisher(DIFF_DATA_CHANGED_TOPIC).onDiffDataChanged()
             triggerEditorTabColorRefresh() // This method already handles its own invokeLater
         }
     }

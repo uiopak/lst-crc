@@ -39,6 +39,15 @@ class MyToolWindowFactory : ToolWindowFactory {
             logger.error("EXCEPTION while trying to initialize or retrieve VfsListenerService. VFS updates likely impacted.", e)
         }
 
+        try {
+            // By getting the service instance, we trigger its `init` block which sets up the necessary listeners for gutter markers.
+            project.service<com.github.uiopak.lstcrc.services.LstCrcGutterTrackerService>().let {
+                logger.info("LstCrcGutterTrackerService instance successfully retrieved/initialized during tool window creation.")
+            }
+        } catch (e: Throwable) {
+            logger.error("EXCEPTION while trying to initialize or retrieve LstCrcGutterTrackerService. Gutter markers will not work.", e)
+        }
+
         logger.info("createToolWindowContent called for project: ${project.name}")
         val gitChangesUiProvider = GitChangesToolWindow(project, toolWindow.disposable)
         val contentFactory = ContentFactory.getInstance()

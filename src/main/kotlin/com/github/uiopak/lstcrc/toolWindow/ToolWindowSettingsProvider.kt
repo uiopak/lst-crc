@@ -1,5 +1,6 @@
 package com.github.uiopak.lstcrc.toolWindow
 
+import com.github.uiopak.lstcrc.services.LstCrcGutterTrackerService
 import com.github.uiopak.lstcrc.services.ToolWindowStateService
 import com.intellij.ide.util.PropertiesComponent
 import com.intellij.openapi.actionSystem.ActionGroup
@@ -44,6 +45,10 @@ class ToolWindowSettingsProvider(private val project: Project) {
         // Scope Behavior Key & Default
         internal const val APP_INCLUDE_HEAD_IN_SCOPES_KEY = "com.github.uiopak.lstcrc.app.includeHeadInScopes"
         internal const val DEFAULT_INCLUDE_HEAD_IN_SCOPES = false
+
+        // Gutter Marker Key & Default
+        const val APP_ENABLE_GUTTER_MARKERS_KEY = "com.github.uiopak.lstcrc.app.enableGutterMarkers"
+        const val DEFAULT_ENABLE_GUTTER_MARKERS = true
 
         // Sorting Keys & Defaults
         internal const val SORT_TYPE_KEY = "com.github.uiopak.lstcrc.app.sortType"
@@ -131,6 +136,21 @@ class ToolWindowSettingsProvider(private val project: Project) {
 
     fun createToolWindowSettingsGroup(): ActionGroup {
         val rootSettingsGroup = DefaultActionGroup("Git Changes View Options", true)
+
+        // --- Gutter Markers ---
+        rootSettingsGroup.add(object : ToggleAction("Show Gutter Marks for Active Branch") {
+            override fun isSelected(e: AnActionEvent): Boolean =
+                propertiesComponent.getBoolean(APP_ENABLE_GUTTER_MARKERS_KEY, DEFAULT_ENABLE_GUTTER_MARKERS)
+
+            override fun setSelected(e: AnActionEvent, state: Boolean) {
+                propertiesComponent.setValue(APP_ENABLE_GUTTER_MARKERS_KEY, state, DEFAULT_ENABLE_GUTTER_MARKERS)
+                // Notify the service that the setting has changed so it can update trackers
+                e.project?.service<LstCrcGutterTrackerService>()?.settingsChanged()
+            }
+
+            override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
+        })
+        rootSettingsGroup.addSeparator()
 
         // --- Scope Behavior ---
         rootSettingsGroup.add(object : ToggleAction("Include HEAD tab changes in file scopes") {
