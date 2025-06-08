@@ -4,20 +4,30 @@ import com.github.uiopak.lstcrc.services.GitService
 import com.github.uiopak.lstcrc.services.ToolWindowStateService
 import com.github.uiopak.lstcrc.state.ToolWindowState
 import com.github.uiopak.lstcrc.utils.LstCrcKeys
+import com.intellij.icons.AllIcons
 import com.intellij.openapi.actionSystem.ActionGroup
+import com.intellij.openapi.actionSystem.ActionUpdateThread
+import com.intellij.openapi.actionSystem.AnAction
+import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.DefaultActionGroup
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.service
 import com.intellij.openapi.diagnostic.thisLogger
+import com.intellij.openapi.project.DumbAwareAction
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.wm.ToolWindow
 import com.intellij.openapi.wm.ToolWindowFactory
 import com.intellij.ui.content.ContentFactory
 import com.intellij.ui.content.ContentManagerEvent
 import com.intellij.ui.content.ContentManagerListener
+import com.intellij.util.ui.tree.TreeUtil
 
 class MyToolWindowFactory : ToolWindowFactory {
     private val logger = thisLogger()
+
+    private fun getActiveChangesTreePanel(toolWindow: ToolWindow): ChangesTreePanel? {
+        return toolWindow.contentManager.selectedContent?.component as? ChangesTreePanel
+    }
 
     override fun createToolWindowContent(project: Project, toolWindow: ToolWindow) {
         // --- Standard Initialization ---
@@ -36,7 +46,7 @@ class MyToolWindowFactory : ToolWindowFactory {
         val stateService = ToolWindowStateService.getInstance(project)
         val contentManager = toolWindow.contentManager
 
-        // --- State/UI Sync Logic (remains the same) ---
+        // --- State/UI Sync Logic ---
         project.messageBus.connect(toolWindow.disposable).subscribe(ToolWindowStateService.TOPIC,
             object : ToolWindowStateService.Companion.ToolWindowStateListener {
                 override fun stateChanged(newState: ToolWindowState) {
@@ -55,6 +65,7 @@ class MyToolWindowFactory : ToolWindowFactory {
                 }
             })
 
+        // --- Content Creation ---
         val currentRepository = gitService.getCurrentRepository()
         val headTabTargetName = currentRepository?.currentBranchName ?: currentRepository?.currentRevision ?: "HEAD"
 
@@ -112,6 +123,7 @@ class MyToolWindowFactory : ToolWindowFactory {
             stateService.setSelectedTab(-1)
         }
 
+        // --- Content Listeners ---
         contentManager.addContentManagerListener(object : ContentManagerListener {
             override fun contentRemoved(event: ContentManagerEvent) {
                 val branchName = event.content.getUserData(LstCrcKeys.BRANCH_NAME_KEY)
@@ -124,9 +136,6 @@ class MyToolWindowFactory : ToolWindowFactory {
             }
 
             override fun selectionChanged(event: ContentManagerEvent) {
-                // By wrapping the logic in invokeLater, we ensure that it runs after the current UI event
-                // (like closing a settings popup) has been fully processed, allowing PropertiesComponent
-                // to have a consistent state that can be read correctly.
                 ApplicationManager.getApplication().invokeLater {
                     if (project.isDisposed || toolWindow.isDisposed || !toolWindow.isVisible) {
                         return@invokeLater
@@ -147,9 +156,25 @@ class MyToolWindowFactory : ToolWindowFactory {
             }
         })
 
+        // --- Tool Window Header Actions ---
         val openSelectionTabAction = OpenBranchSelectionTabAction(project, toolWindow, gitChangesUiProvider)
-        toolWindow.setTitleActions(listOf(openSelectionTabAction))
+        val expandAllAction = object : DumbAwareAction("Expand All", "Expand all nodes in the tree", AllIcons.Actions.Expandall) {
+            override fun actionPerformed(e: AnActionEvent) {
+                getActiveChangesTreePanel(toolWindow)?.tree?.let { TreeUtil.expandAll(it) }
+            }
+            override fun update(e: AnActionEvent) { e.presentation.isEnabled = getActiveChangesTreePanel(toolWindow) != null }
+            override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.EDT
+        }
+        val collapseAllAction = object : DumbAwareAction("Collapse All", "Collapse all nodes in the tree", AllIcons.Actions.Collapseall) {
+            override fun actionPerformed(e: AnActionEvent) {
+                getActiveChangesTreePanel(toolWindow)?.tree?.let { TreeUtil.collapseAll(it, 1) }
+            }
+            override fun update(e: AnActionEvent) { e.presentation.isEnabled = getActiveChangesTreePanel(toolWindow) != null }
+            override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.EDT
+        }
+        toolWindow.setTitleActions(listOf(openSelectionTabAction, expandAllAction, collapseAllAction))
 
+        // --- Tool Window Gear (Options) Menu ---
         val settingsProvider = ToolWindowSettingsProvider(project)
         val pluginSettingsSubMenu: ActionGroup = settingsProvider.createToolWindowSettingsGroup()
 

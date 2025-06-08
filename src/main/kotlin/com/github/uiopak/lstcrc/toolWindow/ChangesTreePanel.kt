@@ -1,10 +1,14 @@
 package com.github.uiopak.lstcrc.toolWindow
 
+import com.github.uiopak.lstcrc.messaging.FILE_CHANGES_TOPIC
+import com.github.uiopak.lstcrc.messaging.FileChangeListener
 import com.github.uiopak.lstcrc.services.CategorizedChanges
 import com.github.uiopak.lstcrc.services.GitService
 import com.github.uiopak.lstcrc.services.ToolWindowStateService
 import com.intellij.icons.AllIcons
 import com.intellij.ide.util.PropertiesComponent
+import com.intellij.openapi.Disposable
+import com.intellij.openapi.actionSystem.*
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.service
 import com.intellij.openapi.diagnostic.thisLogger
@@ -15,20 +19,18 @@ import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.vcs.changes.Change
 import com.intellij.openapi.vcs.changes.ChangeListListener
 import com.intellij.openapi.vcs.changes.ChangeListManager
-import git4idea.repo.GitRepository
 import com.intellij.openapi.vcs.changes.actions.diff.ShowDiffAction
 import com.intellij.openapi.vfs.VfsUtilCore
 import com.intellij.openapi.vfs.VirtualFile
-import com.github.uiopak.lstcrc.messaging.FILE_CHANGES_TOPIC
-import com.github.uiopak.lstcrc.messaging.FileChangeListener
 import com.intellij.ui.ColoredTreeCellRenderer
 import com.intellij.ui.JBColor
 import com.intellij.ui.SimpleTextAttributes
+import com.intellij.ui.TreeSpeedSearch
 import com.intellij.ui.components.JBScrollPane
 import com.intellij.ui.treeStructure.Tree
 import com.intellij.util.ui.tree.TreeUtil
+import git4idea.repo.GitRepository
 import java.awt.event.MouseEvent
-import javax.swing.Icon
 import javax.swing.JTree
 import javax.swing.SwingUtilities
 import javax.swing.Timer
@@ -42,8 +44,8 @@ class ChangesTreePanel(
     private val gitService: GitService, // Used for gitService.getCurrentRepository() in buildTreeFromChanges
     private val propertiesComponent: PropertiesComponent,
     private val targetBranchToCompare: String,
-    parentDisposable: com.intellij.openapi.Disposable
-) : JBScrollPane(), com.intellij.openapi.Disposable, ChangeListListener, git4idea.repo.GitRepositoryChangeListener {
+    parentDisposable: Disposable
+) : JBScrollPane(), Disposable, ChangeListListener, git4idea.repo.GitRepositoryChangeListener {
 
     private val logger = thisLogger()
     private var refreshDebounceTimer: Timer? = null
@@ -163,6 +165,107 @@ class ChangesTreePanel(
         return if (storedValue > 0) storedValue else UIManager.getInt("Tree.doubleClickTimeout").takeIf { it > 0 } ?: DEFAULT_USER_DELAY_MS
     }
 
+    internal fun reSortTree() {
+        ApplicationManager.getApplication().invokeLater {
+            if (project.isDisposed) return@invokeLater
+            val root = tree.model.root as? DefaultMutableTreeNode ?: return@invokeLater
+            val expansionState = TreeUtil.collectExpandedPaths(tree)
+            sortTreeRecursively(root)
+            (tree.model as DefaultTreeModel).reload(root)
+            TreeUtil.restoreExpandedPaths(tree, expansionState)
+        }
+    }
+
+    private fun sortTreeRecursively(node: DefaultMutableTreeNode) {
+        if (node.isLeaf) return
+
+        val children = node.children().asSequence().mapNotNull { it as? DefaultMutableTreeNode }.toMutableList()
+        if (children.isEmpty()) return
+
+        children.sortWith(getNodeComparator())
+
+        node.removeAllChildren()
+        children.forEach { node.add(it) }
+
+        // Recurse down for child directories
+        children.forEach { if (it.userObject is String) sortTreeRecursively(it) }
+    }
+
+    private fun getNodeComparator(): Comparator<DefaultMutableTreeNode> {
+        val props = PropertiesComponent.getInstance(project)
+        val currentSortTypeName = props.getValue(
+            ToolWindowSettingsProvider.SORT_TYPE_KEY,
+            ToolWindowSettingsProvider.DEFAULT_SORT_TYPE.name
+        )
+        val currentSortType = try {
+            ToolWindowSettingsProvider.Companion.SortType.valueOf(currentSortTypeName)
+        } catch (e: IllegalArgumentException) {
+            ToolWindowSettingsProvider.DEFAULT_SORT_TYPE
+        }
+        val isSortAscending = props.getBoolean(
+            ToolWindowSettingsProvider.SORT_ASCENDING_KEY,
+            ToolWindowSettingsProvider.DEFAULT_SORT_ASCENDING
+        )
+        val keepFoldersOnTop = props.getBoolean(
+            ToolWindowSettingsProvider.KEEP_FOLDERS_ON_TOP_KEY,
+            ToolWindowSettingsProvider.DEFAULT_KEEP_FOLDERS_ON_TOP
+        )
+
+        val mainComparator = Comparator<DefaultMutableTreeNode> { n1, n2 ->
+            val u1 = n1.userObject
+            val u2 = n2.userObject
+
+            when {
+                u1 is String && u2 is String -> { // Both are directories
+                    if (isSortAscending) u1.compareTo(u2, ignoreCase = true) else u2.compareTo(u1, ignoreCase = true)
+                }
+                u1 is Change && u2 is Change -> { // Both are files (Changes)
+                    val comparisonResult = when (currentSortType) {
+                        ToolWindowSettingsProvider.Companion.SortType.NAME -> {
+                            val name1 = u1.afterRevision?.file?.name ?: ""
+                            val name2 = u2.afterRevision?.file?.name ?: ""
+                            name1.compareTo(name2, ignoreCase = true)
+                        }
+                        ToolWindowSettingsProvider.Companion.SortType.DIFF_TYPE -> {
+                            u1.type.ordinal.compareTo(u2.type.ordinal)
+                        }
+                        ToolWindowSettingsProvider.Companion.SortType.FILE_TYPE -> {
+                            val name1 = u1.afterRevision?.file?.name ?: ""
+                            val name2 = u2.afterRevision?.file?.name ?: ""
+                            val ext1 = name1.substringAfterLast('.', "")
+                            val ext2 = name2.substringAfterLast('.', "")
+                            val extCompare = ext1.compareTo(ext2, ignoreCase = true)
+                            if (extCompare != 0) extCompare else name1.compareTo(name2, ignoreCase = true)
+                        }
+                        ToolWindowSettingsProvider.Companion.SortType.MODIFICATION_TIME -> {
+                            val time1 = u1.afterRevision?.file?.virtualFile?.timeStamp ?: 0L
+                            val time2 = u2.afterRevision?.file?.virtualFile?.timeStamp ?: 0L
+                            time1.compareTo(time2)
+                        }
+                    }
+                    if (isSortAscending) comparisonResult else -comparisonResult
+                }
+                else -> 0
+            }
+        }
+
+        if (!keepFoldersOnTop) {
+            return mainComparator
+        }
+
+        return Comparator { n1, n2 ->
+            val isFolder1 = n1.userObject is String
+            val isFolder2 = n2.userObject is String
+
+            when {
+                isFolder1 && !isFolder2 -> -1
+                !isFolder1 && isFolder2 -> 1
+                else -> mainComparator.compare(n1, n2)
+            }
+        }
+    }
+
+
     private fun createChangesTreeInternal(initialTarget: String): Tree {
         val root = DefaultMutableTreeNode("Changes")
         val treeModel = DefaultTreeModel(root)
@@ -217,6 +320,8 @@ class ChangesTreePanel(
                 }
             }
         }
+
+        TreeSpeedSearch(newTree)
 
         newTree.setCellRenderer(object : ColoredTreeCellRenderer() {
             override fun customizeCellRenderer(jTree: JTree, value: Any?, selected: Boolean, expanded: Boolean, leaf: Boolean, row: Int, hasFocus: Boolean) {
@@ -354,6 +459,7 @@ class ChangesTreePanel(
                 rootModelNode.add(DefaultMutableTreeNode("No changes found for $forBranchName"))
             } else {
                 buildTreeFromChanges(rootModelNode, categorizedChanges.allChanges)
+                sortTreeRecursively(rootModelNode) // Sort the newly built tree
             }
             (tree.model as DefaultTreeModel).reload(rootModelNode)
             TreeUtil.expandAll(tree)
