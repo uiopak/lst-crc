@@ -13,7 +13,8 @@ import com.intellij.openapi.wm.ToolWindowManager
 
 class ToolWindowSettingsProvider(private val project: Project) {
 
-    private val propertiesComponent = PropertiesComponent.getInstance(project)
+    // Use application-level settings so they are consistent across projects.
+    private val propertiesComponent = PropertiesComponent.getInstance()
 
     companion object {
         // --- Enums ---
@@ -25,20 +26,20 @@ class ToolWindowSettingsProvider(private val project: Project) {
         private const val ACTION_OPEN_SOURCE = "OPEN_SOURCE"
 
         // Left Click Keys & Defaults
-        private const val APP_SINGLE_CLICK_ACTION_KEY = "com.github.uiopak.lstcrc.app.singleClickAction"
-        private const val APP_DOUBLE_CLICK_ACTION_KEY = "com.github.uiopak.lstcrc.app.doubleClickAction"
-        private const val DEFAULT_SINGLE_CLICK_ACTION = ACTION_NONE
-        private const val DEFAULT_DOUBLE_CLICK_ACTION = ACTION_OPEN_DIFF
+        const val APP_SINGLE_CLICK_ACTION_KEY = "com.github.uiopak.lstcrc.app.singleClickAction"
+        const val APP_DOUBLE_CLICK_ACTION_KEY = "com.github.uiopak.lstcrc.app.doubleClickAction"
+        const val DEFAULT_SINGLE_CLICK_ACTION = ACTION_NONE
+        const val DEFAULT_DOUBLE_CLICK_ACTION = ACTION_OPEN_DIFF
 
         // Right Click Keys & Defaults
-        private const val APP_RIGHT_CLICK_ACTION_KEY = "com.github.uiopak.lstcrc.app.rightClickAction"
-        private const val APP_DOUBLE_RIGHT_CLICK_ACTION_KEY = "com.github.uiopak.lstcrc.app.doubleRightClickAction"
-        private const val DEFAULT_RIGHT_CLICK_ACTION = ACTION_NONE
-        private const val DEFAULT_DOUBLE_RIGHT_CLICK_ACTION = ACTION_NONE
+        const val APP_RIGHT_CLICK_ACTION_KEY = "com.github.uiopak.lstcrc.app.rightClickAction"
+        const val APP_DOUBLE_RIGHT_CLICK_ACTION_KEY = "com.github.uiopak.lstcrc.app.doubleRightClickAction"
+        const val DEFAULT_RIGHT_CLICK_ACTION = ACTION_NONE
+        const val DEFAULT_DOUBLE_RIGHT_CLICK_ACTION = ACTION_NONE
 
         // Delay Keys & Defaults
-        private const val APP_USER_DOUBLE_CLICK_DELAY_KEY = "com.github.uiopak.lstcrc.app.userDoubleClickDelay"
-        private const val DELAY_OPTION_SYSTEM_DEFAULT = -1
+        const val APP_USER_DOUBLE_CLICK_DELAY_KEY = "com.github.uiopak.lstcrc.app.userDoubleClickDelay"
+        const val DELAY_OPTION_SYSTEM_DEFAULT = -1
 
         // Scope Behavior Key & Default
         internal const val APP_INCLUDE_HEAD_IN_SCOPES_KEY = "com.github.uiopak.lstcrc.app.includeHeadInScopes"

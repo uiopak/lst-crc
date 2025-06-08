@@ -12,6 +12,7 @@ class GitChangesToolWindow(
     private val toolWindowDisposable: com.intellij.openapi.Disposable // New parameter
 ) {
     private val gitService = project.service<GitService>()
+    // Use application-level settings so the tree panel gets the correct instance.
     private val propertiesComponent = PropertiesComponent.getInstance()
 
     fun createBranchContentView(branchName: String): JComponent {

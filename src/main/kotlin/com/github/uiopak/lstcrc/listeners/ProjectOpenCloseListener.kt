@@ -110,7 +110,8 @@ class ProjectOpenCloseListener : ProjectManagerListener {
                         }
                     } else {
                         logger.info("MMMM_STARTUP_LOGIC_DELAYED: No branch selected in tool window (HEAD is active). Checking setting.")
-                        val properties = PropertiesComponent.getInstance(project)
+                        // Use application-level properties for this setting.
+                        val properties = PropertiesComponent.getInstance()
                         val includeHeadInScopes = properties.getBoolean(
                             ToolWindowSettingsProvider.APP_INCLUDE_HEAD_IN_SCOPES_KEY,
                             ToolWindowSettingsProvider.DEFAULT_INCLUDE_HEAD_IN_SCOPES

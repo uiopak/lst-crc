@@ -70,26 +70,6 @@ class ChangesTreePanel(
     private val leftClickState = ClickState()
     private val rightClickState = ClickState()
 
-    companion object {
-        private const val ACTION_NONE = "NONE"
-        private const val ACTION_OPEN_DIFF = "OPEN_DIFF"
-        private const val ACTION_OPEN_SOURCE = "OPEN_SOURCE"
-        private const val DEFAULT_USER_DELAY_MS = 300
-
-        private const val APP_SINGLE_CLICK_ACTION_KEY = "com.github.uiopak.lstcrc.app.singleClickAction"
-        private const val APP_DOUBLE_CLICK_ACTION_KEY = "com.github.uiopak.lstcrc.app.doubleClickAction"
-        private const val DEFAULT_SINGLE_CLICK_ACTION = ACTION_NONE
-        private const val DEFAULT_DOUBLE_CLICK_ACTION = ACTION_OPEN_DIFF
-
-        private const val APP_RIGHT_CLICK_ACTION_KEY = "com.github.uiopak.lstcrc.app.rightClickAction"
-        private const val APP_DOUBLE_RIGHT_CLICK_ACTION_KEY = "com.github.uiopak.lstcrc.app.doubleRightClickAction"
-        private const val DEFAULT_RIGHT_CLICK_ACTION = ACTION_NONE
-        private const val DEFAULT_DOUBLE_RIGHT_CLICK_ACTION = ACTION_NONE
-
-        private const val APP_USER_DOUBLE_CLICK_DELAY_KEY = "com.github.uiopak.lstcrc.app.userDoubleClickDelay"
-        private const val DELAY_OPTION_SYSTEM_DEFAULT = -1
-    }
-
     init {
         tree = createChangesTreeInternal(targetBranchToCompare)
         this.setViewportView(tree)
@@ -155,14 +135,14 @@ class ChangesTreePanel(
         rightClickState.clear()
     }
 
-    private fun getSingleClickAction(): String = propertiesComponent.getValue(APP_SINGLE_CLICK_ACTION_KEY, DEFAULT_SINGLE_CLICK_ACTION)
-    private fun getDoubleClickAction(): String = propertiesComponent.getValue(APP_DOUBLE_CLICK_ACTION_KEY, DEFAULT_DOUBLE_CLICK_ACTION)
-    private fun getRightClickAction(): String = propertiesComponent.getValue(APP_RIGHT_CLICK_ACTION_KEY, DEFAULT_RIGHT_CLICK_ACTION)
-    private fun getDoubleRightClickAction(): String = propertiesComponent.getValue(APP_DOUBLE_RIGHT_CLICK_ACTION_KEY, DEFAULT_DOUBLE_RIGHT_CLICK_ACTION)
+    private fun getSingleClickAction(): String = propertiesComponent.getValue(ToolWindowSettingsProvider.APP_SINGLE_CLICK_ACTION_KEY, ToolWindowSettingsProvider.DEFAULT_SINGLE_CLICK_ACTION)
+    private fun getDoubleClickAction(): String = propertiesComponent.getValue(ToolWindowSettingsProvider.APP_DOUBLE_CLICK_ACTION_KEY, ToolWindowSettingsProvider.DEFAULT_DOUBLE_CLICK_ACTION)
+    private fun getRightClickAction(): String = propertiesComponent.getValue(ToolWindowSettingsProvider.APP_RIGHT_CLICK_ACTION_KEY, ToolWindowSettingsProvider.DEFAULT_RIGHT_CLICK_ACTION)
+    private fun getDoubleRightClickAction(): String = propertiesComponent.getValue(ToolWindowSettingsProvider.APP_DOUBLE_RIGHT_CLICK_ACTION_KEY, ToolWindowSettingsProvider.DEFAULT_DOUBLE_RIGHT_CLICK_ACTION)
 
     private fun getUserDoubleClickDelayMs(): Int {
-        val storedValue = propertiesComponent.getInt(APP_USER_DOUBLE_CLICK_DELAY_KEY, DELAY_OPTION_SYSTEM_DEFAULT)
-        return if (storedValue > 0) storedValue else UIManager.getInt("Tree.doubleClickTimeout").takeIf { it > 0 } ?: DEFAULT_USER_DELAY_MS
+        val storedValue = propertiesComponent.getInt(ToolWindowSettingsProvider.APP_USER_DOUBLE_CLICK_DELAY_KEY, ToolWindowSettingsProvider.DELAY_OPTION_SYSTEM_DEFAULT)
+        return if (storedValue > 0) storedValue else UIManager.getInt("Tree.doubleClickTimeout").takeIf { it > 0 } ?: 300
     }
 
     internal fun reSortTree() {
@@ -192,7 +172,8 @@ class ChangesTreePanel(
     }
 
     private fun getNodeComparator(): Comparator<DefaultMutableTreeNode> {
-        val props = PropertiesComponent.getInstance(project)
+        // Use the propertiesComponent instance passed into the class, not a new project-level one.
+        val props = this.propertiesComponent
         val currentSortTypeName = props.getValue(
             ToolWindowSettingsProvider.SORT_TYPE_KEY,
             ToolWindowSettingsProvider.DEFAULT_SORT_TYPE.name
@@ -363,9 +344,9 @@ class ChangesTreePanel(
         }
         tree.requestFocusInWindow()
 
-        if (doubleClickAction == ACTION_NONE) {
+        if (doubleClickAction == "NONE") {
             clickState.clear()
-            if (e.clickCount == 1 && singleClickAction != ACTION_NONE) {
+            if (e.clickCount == 1 && singleClickAction != "NONE") {
                 performConfiguredAction(change, singleClickAction)
                 return true
             }
@@ -386,7 +367,7 @@ class ChangesTreePanel(
                 clickState.pendingChange = null
                 clickState.pendingNodePath = null
 
-                if (sChange != null && sPath != null && singleClickAction != ACTION_NONE) {
+                if (sChange != null && sPath != null && singleClickAction != "NONE") {
                     performConfiguredAction(sChange, singleClickAction)
                     clickState.actionHasFiredForPath = sPath
                 }
@@ -395,7 +376,7 @@ class ChangesTreePanel(
             // Even if we start a timer, we might not consume the event,
             // allowing selection to happen immediately.
             // If the single-click action is NONE, we don't need to consume.
-            return singleClickAction != ACTION_NONE
+            return singleClickAction != "NONE"
         } else if (e.clickCount >= 2) {
             if (clickState.actionHasFiredForPath == path) {
                 clickState.actionHasFiredForPath = null
@@ -405,7 +386,7 @@ class ChangesTreePanel(
             if (clickState.pendingNodePath == path) {
                 clickState.clear()
             }
-            if (doubleClickAction != ACTION_NONE) {
+            if (doubleClickAction != "NONE") {
                 performConfiguredAction(change, doubleClickAction)
                 return true
             }
@@ -418,8 +399,8 @@ class ChangesTreePanel(
         ApplicationManager.getApplication().invokeLater {
             if (project.isDisposed) return@invokeLater
             when (actionType) {
-                ACTION_OPEN_DIFF -> openDiff(change)
-                ACTION_OPEN_SOURCE -> openSource(change)
+                "OPEN_DIFF" -> openDiff(change)
+                "OPEN_SOURCE" -> openSource(change)
             }
         }
     }

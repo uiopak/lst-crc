@@ -119,7 +119,8 @@ class ToolWindowStateService(private val project: Project) : PersistentStateComp
             } else { // No specific branch tab is selected (i.e., HEAD is active)
                 logger.debug("Tab selection changed to HEAD.")
 
-                val properties = PropertiesComponent.getInstance(project)
+                // Use application-level properties for this setting.
+                val properties = PropertiesComponent.getInstance()
                 val includeHeadInScopes = properties.getBoolean(
                     ToolWindowSettingsProvider.APP_INCLUDE_HEAD_IN_SCOPES_KEY,
                     ToolWindowSettingsProvider.DEFAULT_INCLUDE_HEAD_IN_SCOPES
@@ -202,7 +203,8 @@ class ToolWindowStateService(private val project: Project) : PersistentStateComp
                 if (project.isDisposed) return@whenCompleteAsync
 
                 val activePanel = getActiveChangesTreePanel(project)
-                val properties = PropertiesComponent.getInstance(project)
+                // Use application-level properties for this setting.
+                val properties = PropertiesComponent.getInstance()
                 val includeHeadInScopes = properties.getBoolean(
                     ToolWindowSettingsProvider.APP_INCLUDE_HEAD_IN_SCOPES_KEY,
                     ToolWindowSettingsProvider.DEFAULT_INCLUDE_HEAD_IN_SCOPES
