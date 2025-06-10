@@ -8,6 +8,7 @@ import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.PlatformDataKeys
 import com.intellij.openapi.components.service
 import com.intellij.openapi.diagnostic.thisLogger
+import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.Messages
 import com.intellij.ui.content.Content
 import java.awt.Component
@@ -74,33 +75,42 @@ class RenameTabAction : AnAction("Rename Tab...") {
             return
         }
 
-        // Get the branch name from the UserData we stored on the Content object.
         val branchName = content.getUserData(LstCrcKeys.BRANCH_NAME_KEY)
         if (branchName == null) {
-            Messages.showErrorDialog(project, "Could not determine the branch for this tab.", "Rename Error")
+            Messages.showErrorDialog(project, "Could not determine the identifier for this tab.", "Rename Error")
             return
         }
 
-        val stateService = project.service<ToolWindowStateService>()
-        val tabInfo = stateService.state.openTabs.find { it.branchName == branchName }
-        val currentDisplayName = tabInfo?.alias ?: branchName
-
-        val newAlias = Messages.showInputDialog(
-            project,
-            "Enter new name for tab. Leave blank to reset to branch name.",
-            "Rename Tab",
-            Messages.getQuestionIcon(),
-            currentDisplayName,
-            null // No validator
-        )
-
-        // newAlias is null if user presses Cancel
-        if (newAlias != null) {
-            // If user clicks OK with an empty or blank string, we reset the alias by setting it to null.
-            val finalAlias = newAlias.trim().ifEmpty { null }
-            stateService.updateTabAlias(branchName, finalAlias)
-        }
+        invokeRenameDialog(project, branchName)
     }
 
     override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
+
+    companion object {
+        /**
+         * Shows a dialog to rename a tab (identified by its branch/revision name).
+         * This can be called from different actions. It must be called on the EDT.
+         */
+        fun invokeRenameDialog(project: Project, branchName: String) {
+            val stateService = project.service<ToolWindowStateService>()
+            val tabInfo = stateService.state.openTabs.find { it.branchName == branchName }
+            val currentDisplayName = tabInfo?.alias ?: branchName
+
+            val newAlias = Messages.showInputDialog(
+                project,
+                "Enter new name for tab. Leave blank to reset to the original name.",
+                "Rename Tab",
+                Messages.getQuestionIcon(),
+                currentDisplayName,
+                null // No validator
+            )
+
+            // newAlias is null if user presses Cancel
+            if (newAlias != null) {
+                // If user clicks OK with an empty or blank string, we reset the alias by setting it to null.
+                val finalAlias = newAlias.trim().ifEmpty { null }
+                stateService.updateTabAlias(branchName, finalAlias)
+            }
+        }
+    }
 }

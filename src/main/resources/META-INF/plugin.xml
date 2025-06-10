@@ -30,6 +30,13 @@
                 description="Renames the selected LST-CRC tab.">
             <add-to-group group-id="ToolWindowContextMenu" anchor="last"/>
         </action>
+
+        <action id="com.github.uiopak.lstcrc.CreateTabFromRevisionAction"
+                class="com.github.uiopak.lstcrc.toolWindow.CreateTabFromRevisionAction"
+                text="LST-CRC: Compare with Revision"
+                description="Creates a new LST-CRC tab comparing the current working tree against this revision.">
+            <add-to-group group-id="Vcs.Log.ContextMenu" anchor="last"/>
+        </action>
     </actions>
 
 </idea-plugin>
