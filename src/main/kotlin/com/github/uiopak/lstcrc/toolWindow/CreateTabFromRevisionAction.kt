@@ -80,7 +80,7 @@ class CreateTabFromRevisionAction : AnAction("LST-CRC: Compare with Revision") {
                 }
 
                 // Refresh data for the new panel
-                (newContentView as? ChangesTreePanel)?.requestRefreshData()
+                (newContentView as? LstCrcChangesBrowser)?.requestRefreshData()
 
                 // NEW: Automatically trigger the rename dialog
                 RenameTabAction.invokeRenameDialog(project, revisionString)

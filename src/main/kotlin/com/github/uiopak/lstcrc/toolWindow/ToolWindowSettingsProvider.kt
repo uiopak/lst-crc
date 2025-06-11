@@ -18,9 +18,6 @@ class ToolWindowSettingsProvider(private val project: Project) {
     private val propertiesComponent = PropertiesComponent.getInstance()
 
     companion object {
-        // --- Enums ---
-        enum class SortType { NAME, DIFF_TYPE, FILE_TYPE, MODIFICATION_TIME }
-
         // --- Keys ---
         private const val ACTION_NONE = "NONE"
         private const val ACTION_OPEN_DIFF = "OPEN_DIFF"
@@ -31,6 +28,12 @@ class ToolWindowSettingsProvider(private val project: Project) {
         const val APP_DOUBLE_CLICK_ACTION_KEY = "com.github.uiopak.lstcrc.app.doubleClickAction"
         const val DEFAULT_SINGLE_CLICK_ACTION = ACTION_NONE
         const val DEFAULT_DOUBLE_CLICK_ACTION = ACTION_OPEN_DIFF
+
+        // Middle Click Keys & Defaults
+        const val APP_MIDDLE_CLICK_ACTION_KEY = "com.github.uiopak.lstcrc.app.middleClickAction"
+        const val APP_DOUBLE_MIDDLE_CLICK_ACTION_KEY = "com.github.uiopak.lstcrc.app.doubleMiddleClickAction"
+        const val DEFAULT_MIDDLE_CLICK_ACTION = ACTION_NONE
+        const val DEFAULT_DOUBLE_MIDDLE_CLICK_ACTION = ACTION_NONE
 
         // Right Click Keys & Defaults
         const val APP_RIGHT_CLICK_ACTION_KEY = "com.github.uiopak.lstcrc.app.rightClickAction"
@@ -49,14 +52,6 @@ class ToolWindowSettingsProvider(private val project: Project) {
         // Gutter Marker Key & Default
         const val APP_ENABLE_GUTTER_MARKERS_KEY = "com.github.uiopak.lstcrc.app.enableGutterMarkers"
         const val DEFAULT_ENABLE_GUTTER_MARKERS = true
-
-        // Sorting Keys & Defaults
-        internal const val SORT_TYPE_KEY = "com.github.uiopak.lstcrc.app.sortType"
-        internal const val SORT_ASCENDING_KEY = "com.github.uiopak.lstcrc.app.sortAscending"
-        internal const val KEEP_FOLDERS_ON_TOP_KEY = "com.github.uiopak.lstcrc.app.keepFoldersOnTop"
-        internal val DEFAULT_SORT_TYPE = SortType.NAME
-        internal const val DEFAULT_SORT_ASCENDING = true
-        internal const val DEFAULT_KEEP_FOLDERS_ON_TOP = true
     }
 
     // --- Getters and Setters ---
@@ -66,73 +61,27 @@ class ToolWindowSettingsProvider(private val project: Project) {
     private fun getDoubleClickAction(): String = propertiesComponent.getValue(APP_DOUBLE_CLICK_ACTION_KEY, DEFAULT_DOUBLE_CLICK_ACTION)
     private fun setDoubleClickAction(action: String) = propertiesComponent.setValue(APP_DOUBLE_CLICK_ACTION_KEY, action)
 
+    private fun getMiddleClickAction(): String = propertiesComponent.getValue(APP_MIDDLE_CLICK_ACTION_KEY, DEFAULT_MIDDLE_CLICK_ACTION)
+    private fun setMiddleClickAction(action: String) = propertiesComponent.setValue(APP_MIDDLE_CLICK_ACTION_KEY, action)
+
+    private fun getDoubleMiddleClickAction(): String = propertiesComponent.getValue(APP_DOUBLE_MIDDLE_CLICK_ACTION_KEY, DEFAULT_DOUBLE_MIDDLE_CLICK_ACTION)
+    private fun setDoubleMiddleClickAction(action: String) = propertiesComponent.setValue(APP_DOUBLE_MIDDLE_CLICK_ACTION_KEY, action)
+
     private fun getRightClickAction(): String = propertiesComponent.getValue(APP_RIGHT_CLICK_ACTION_KEY, DEFAULT_RIGHT_CLICK_ACTION)
     private fun setRightClickAction(action: String) = propertiesComponent.setValue(APP_RIGHT_CLICK_ACTION_KEY, action)
 
     private fun getDoubleRightClickAction(): String = propertiesComponent.getValue(APP_DOUBLE_RIGHT_CLICK_ACTION_KEY, DEFAULT_DOUBLE_RIGHT_CLICK_ACTION)
     private fun setDoubleRightClickAction(action: String) = propertiesComponent.setValue(APP_DOUBLE_RIGHT_CLICK_ACTION_KEY, action)
 
+
     private fun setUserDoubleClickDelayMs(delay: Int) = propertiesComponent.setValue(APP_USER_DOUBLE_CLICK_DELAY_KEY, delay, DELAY_OPTION_SYSTEM_DEFAULT)
     private fun getIncludeHeadInScopes(): Boolean = propertiesComponent.getBoolean(APP_INCLUDE_HEAD_IN_SCOPES_KEY, DEFAULT_INCLUDE_HEAD_IN_SCOPES)
     private fun setIncludeHeadInScopes(include: Boolean) = propertiesComponent.setValue(APP_INCLUDE_HEAD_IN_SCOPES_KEY, include, DEFAULT_INCLUDE_HEAD_IN_SCOPES)
 
-    // --- Sorting Getters/Setters ---
-    private fun getSortType(): SortType = SortType.valueOf(propertiesComponent.getValue(SORT_TYPE_KEY, DEFAULT_SORT_TYPE.name))
-    private fun setSortType(sortType: SortType) = propertiesComponent.setValue(SORT_TYPE_KEY, sortType.name, DEFAULT_SORT_TYPE.name)
-    private fun isSortAscending(): Boolean = propertiesComponent.getBoolean(SORT_ASCENDING_KEY, DEFAULT_SORT_ASCENDING)
-    private fun setSortAscending(ascending: Boolean) = propertiesComponent.setValue(SORT_ASCENDING_KEY, ascending, DEFAULT_SORT_ASCENDING)
-    private fun isKeepFoldersOnTop(): Boolean = propertiesComponent.getBoolean(KEEP_FOLDERS_ON_TOP_KEY, DEFAULT_KEEP_FOLDERS_ON_TOP)
-    private fun setKeepFoldersOnTop(keepOnTop: Boolean) = propertiesComponent.setValue(KEEP_FOLDERS_ON_TOP_KEY, keepOnTop, DEFAULT_KEEP_FOLDERS_ON_TOP)
-
-    private fun getActiveChangesTreePanel(project: Project): ChangesTreePanel? {
+    private fun getActiveChangesBrowser(project: Project): LstCrcChangesBrowser? {
         val toolWindow = ToolWindowManager.getInstance(project).getToolWindow("GitChangesView")
-        return toolWindow?.contentManager?.selectedContent?.component as? ChangesTreePanel
+        return toolWindow?.contentManager?.selectedContent?.component as? LstCrcChangesBrowser
     }
-
-    private fun createSortingSettingsGroup(): ActionGroup {
-        val sortingGroup = DefaultActionGroup("Sorting", true)
-
-        val sortByGroup = DefaultActionGroup("Sort by", true)
-        sortByGroup.add(createSortTypeAction("Name", SortType.NAME))
-        sortByGroup.add(createSortTypeAction("Diff Type", SortType.DIFF_TYPE))
-        sortByGroup.add(createSortTypeAction("File Type", SortType.FILE_TYPE))
-        sortByGroup.add(createSortTypeAction("Modification Time", SortType.MODIFICATION_TIME))
-        sortingGroup.add(sortByGroup)
-
-        sortingGroup.add(object : ToggleAction("Sort Ascending") {
-            override fun isSelected(e: AnActionEvent) = isSortAscending()
-            override fun setSelected(e: AnActionEvent, state: Boolean) {
-                setSortAscending(state)
-                getActiveChangesTreePanel(project)?.reSortTree()
-            }
-            override fun getActionUpdateThread() = ActionUpdateThread.BGT
-        })
-
-        sortingGroup.add(object : ToggleAction("Group Directories First") {
-            override fun isSelected(e: AnActionEvent) = isKeepFoldersOnTop()
-            override fun setSelected(e: AnActionEvent, state: Boolean) {
-                setKeepFoldersOnTop(state)
-                getActiveChangesTreePanel(project)?.reSortTree()
-            }
-            override fun getActionUpdateThread() = ActionUpdateThread.BGT
-        })
-
-        return sortingGroup
-    }
-
-    private fun createSortTypeAction(text: String, sortType: SortType): ToggleAction {
-        return object : ToggleAction(text) {
-            override fun isSelected(e: AnActionEvent): Boolean = getSortType() == sortType
-            override fun setSelected(e: AnActionEvent, state: Boolean) {
-                if (state) {
-                    setSortType(sortType)
-                    getActiveChangesTreePanel(project)?.reSortTree()
-                }
-            }
-            override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
-        }
-    }
-
 
     fun createToolWindowSettingsGroup(): ActionGroup {
         val rootSettingsGroup = DefaultActionGroup("Git Changes View Options", true)
@@ -167,10 +116,6 @@ class ToolWindowSettingsProvider(private val project: Project) {
         })
         rootSettingsGroup.addSeparator()
 
-        // --- Sorting ---
-        rootSettingsGroup.add(createSortingSettingsGroup())
-        rootSettingsGroup.addSeparator()
-
         // --- Left Click Actions ---
         val singleClickActionGroup = DefaultActionGroup("Action on Left Single Click:", true)
         singleClickActionGroup.add(createToggleAction("None", { getSingleClickAction() == ACTION_NONE }, { setSingleClickAction(ACTION_NONE) }))
@@ -184,6 +129,21 @@ class ToolWindowSettingsProvider(private val project: Project) {
         doubleClickActionGroup.add(createToggleAction("Show Diff", { getDoubleClickAction() == ACTION_OPEN_DIFF }, { setDoubleClickAction(ACTION_OPEN_DIFF) }))
         doubleClickActionGroup.add(createToggleAction("Show Source File", { getDoubleClickAction() == ACTION_OPEN_SOURCE }, { setDoubleClickAction(ACTION_OPEN_SOURCE) }))
         rootSettingsGroup.add(doubleClickActionGroup)
+        rootSettingsGroup.addSeparator()
+
+        // --- Middle Click Actions ---
+        val middleClickActionGroup = DefaultActionGroup("Action on Middle Single Click:", true)
+        middleClickActionGroup.add(createToggleAction("None", { getMiddleClickAction() == ACTION_NONE }, { setMiddleClickAction(ACTION_NONE) }))
+        middleClickActionGroup.add(createToggleAction("Show Diff", { getMiddleClickAction() == ACTION_OPEN_DIFF }, { setMiddleClickAction(ACTION_OPEN_DIFF) }))
+        middleClickActionGroup.add(createToggleAction("Show Source File", { getMiddleClickAction() == ACTION_OPEN_SOURCE }, { setMiddleClickAction(ACTION_OPEN_SOURCE) }))
+        rootSettingsGroup.add(middleClickActionGroup)
+        rootSettingsGroup.addSeparator()
+
+        val doubleMiddleClickActionGroup = DefaultActionGroup("Action on Middle Double Click:", true)
+        doubleMiddleClickActionGroup.add(createToggleAction("None", { getDoubleMiddleClickAction() == ACTION_NONE }, { setDoubleMiddleClickAction(ACTION_NONE) }))
+        doubleMiddleClickActionGroup.add(createToggleAction("Show Diff", { getDoubleMiddleClickAction() == ACTION_OPEN_DIFF }, { setDoubleMiddleClickAction(ACTION_OPEN_DIFF) }))
+        doubleMiddleClickActionGroup.add(createToggleAction("Show Source File", { getDoubleMiddleClickAction() == ACTION_OPEN_SOURCE }, { setDoubleMiddleClickAction(ACTION_OPEN_SOURCE) }))
+        rootSettingsGroup.add(doubleMiddleClickActionGroup)
         rootSettingsGroup.addSeparator()
 
         // --- Right Click Actions ---

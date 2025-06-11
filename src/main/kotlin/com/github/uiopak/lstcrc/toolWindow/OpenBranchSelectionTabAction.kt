@@ -89,11 +89,11 @@ class OpenBranchSelectionTabAction(
                 selectionTabContent.component = newBranchContentView
 
                 // Explicitly refresh the new ChangesTreePanel
-                if (newBranchContentView is ChangesTreePanel) {
-                    logger.info("OpenBranchSelectionTabAction (Callback): Explicitly calling requestRefreshData() on new ChangesTreePanel for branch '$selectedBranchName'.")
+                if (newBranchContentView is LstCrcChangesBrowser) {
+                    logger.info("OpenBranchSelectionTabAction (Callback): Explicitly calling requestRefreshData() on new LstCrcChangesBrowser for branch '$selectedBranchName'.")
                     newBranchContentView.requestRefreshData()
                 } else {
-                    logger.warn("OpenBranchSelectionTabAction (Callback): newBranchContentView is not a ChangesTreePanel. Cannot call requestRefreshData. Type: ${newBranchContentView::class.java.name}")
+                    logger.warn("OpenBranchSelectionTabAction (Callback): newBranchContentView is not a LstCrcChangesBrowser. Cannot call requestRefreshData. Type: ${newBranchContentView::class.java.name}")
                 }
 
                 manager.setSelectedContent(selectionTabContent, true)

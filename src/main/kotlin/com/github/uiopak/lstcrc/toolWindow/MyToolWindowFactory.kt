@@ -25,8 +25,8 @@ import com.intellij.util.ui.tree.TreeUtil
 class MyToolWindowFactory : ToolWindowFactory {
     private val logger = thisLogger()
 
-    private fun getActiveChangesTreePanel(toolWindow: ToolWindow): ChangesTreePanel? {
-        return toolWindow.contentManager.selectedContent?.component as? ChangesTreePanel
+    private fun getActiveChangesBrowser(toolWindow: ToolWindow): LstCrcChangesBrowser? {
+        return toolWindow.contentManager.selectedContent?.component as? LstCrcChangesBrowser
     }
 
     override fun createToolWindowContent(project: Project, toolWindow: ToolWindow) {
@@ -169,16 +169,16 @@ class MyToolWindowFactory : ToolWindowFactory {
         val openSelectionTabAction = OpenBranchSelectionTabAction(project, toolWindow, gitChangesUiProvider)
         val expandAllAction = object : DumbAwareAction("Expand All", "Expand all nodes in the tree", AllIcons.Actions.Expandall) {
             override fun actionPerformed(e: AnActionEvent) {
-                getActiveChangesTreePanel(toolWindow)?.tree?.let { TreeUtil.expandAll(it) }
+                getActiveChangesBrowser(toolWindow)?.viewer?.let { TreeUtil.expandAll(it) }
             }
-            override fun update(e: AnActionEvent) { e.presentation.isEnabled = getActiveChangesTreePanel(toolWindow) != null }
+            override fun update(e: AnActionEvent) { e.presentation.isEnabled = getActiveChangesBrowser(toolWindow) != null }
             override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.EDT
         }
         val collapseAllAction = object : DumbAwareAction("Collapse All", "Collapse all nodes in the tree", AllIcons.Actions.Collapseall) {
             override fun actionPerformed(e: AnActionEvent) {
-                getActiveChangesTreePanel(toolWindow)?.tree?.let { TreeUtil.collapseAll(it, 1) }
+                getActiveChangesBrowser(toolWindow)?.viewer?.let { TreeUtil.collapseAll(it, 1) }
             }
-            override fun update(e: AnActionEvent) { e.presentation.isEnabled = getActiveChangesTreePanel(toolWindow) != null }
+            override fun update(e: AnActionEvent) { e.presentation.isEnabled = getActiveChangesBrowser(toolWindow) != null }
             override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.EDT
         }
         toolWindow.setTitleActions(listOf(openSelectionTabAction, expandAllAction, collapseAllAction))

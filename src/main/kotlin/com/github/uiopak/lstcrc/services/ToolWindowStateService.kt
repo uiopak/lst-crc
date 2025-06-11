@@ -2,7 +2,7 @@ package com.github.uiopak.lstcrc.services
 
 import com.github.uiopak.lstcrc.state.TabInfo
 import com.github.uiopak.lstcrc.state.ToolWindowState
-import com.github.uiopak.lstcrc.toolWindow.ChangesTreePanel
+import com.github.uiopak.lstcrc.toolWindow.LstCrcChangesBrowser
 import com.github.uiopak.lstcrc.toolWindow.ToolWindowSettingsProvider
 import com.intellij.ide.util.PropertiesComponent
 import com.intellij.openapi.components.PersistentStateComponent
@@ -110,10 +110,10 @@ class ToolWindowStateService(private val project: Project) : PersistentStateComp
                             categorizedChanges.modifiedFiles,
                             categorizedChanges.movedFiles
                         )
-                        getActiveChangesTreePanel(project)?.displayChanges(categorizedChanges, selectedBranchName)
+                        getActiveChangesBrowser(project)?.displayChanges(categorizedChanges, selectedBranchName)
                     } else {
                         diffDataService.clearActiveDiff()
-                        getActiveChangesTreePanel(project)?.displayChanges(null, selectedBranchName)
+                        getActiveChangesBrowser(project)?.displayChanges(null, selectedBranchName)
                     }
                 }
             } else { // No specific branch tab is selected (i.e., HEAD is active)
@@ -131,11 +131,11 @@ class ToolWindowStateService(private val project: Project) : PersistentStateComp
                     logger.debug("'Include HEAD in Scopes' is enabled. Fetching changes for HEAD and updating ProjectActiveDiffDataService.")
                     gitService.getChanges(effectiveBranchNameForDisplay).whenCompleteAsync { categorizedChanges, throwable ->
                         if (project.isDisposed) return@whenCompleteAsync
-                        val activePanel = getActiveChangesTreePanel(project)
+                        val activeBrowser = getActiveChangesBrowser(project)
                         if (throwable != null) {
                             logger.error("Error loading changes for '$effectiveBranchNameForDisplay': ${throwable.message}")
                             diffDataService.clearActiveDiff()
-                            activePanel?.displayChanges(null, effectiveBranchNameForDisplay)
+                            activeBrowser?.displayChanges(null, effectiveBranchNameForDisplay)
                         } else if (categorizedChanges != null) {
                             diffDataService.updateActiveDiff(
                                 effectiveBranchNameForDisplay,
@@ -144,10 +144,10 @@ class ToolWindowStateService(private val project: Project) : PersistentStateComp
                                 categorizedChanges.modifiedFiles,
                                 categorizedChanges.movedFiles
                             )
-                            activePanel?.displayChanges(categorizedChanges, effectiveBranchNameForDisplay)
+                            activeBrowser?.displayChanges(categorizedChanges, effectiveBranchNameForDisplay)
                         } else {
                             diffDataService.clearActiveDiff()
-                            activePanel?.displayChanges(null, effectiveBranchNameForDisplay)
+                            activeBrowser?.displayChanges(null, effectiveBranchNameForDisplay)
                         }
                     }
                 } else {
@@ -157,11 +157,11 @@ class ToolWindowStateService(private val project: Project) : PersistentStateComp
                     // Still fetch and display changes for the UI panel.
                     gitService.getChanges(effectiveBranchNameForDisplay).whenCompleteAsync { categorizedChanges, throwable ->
                         if (project.isDisposed) return@whenCompleteAsync
-                        val activePanel = getActiveChangesTreePanel(project)
+                        val activeBrowser = getActiveChangesBrowser(project)
                         if (throwable != null) {
-                            activePanel?.displayChanges(null, effectiveBranchNameForDisplay)
+                            activeBrowser?.displayChanges(null, effectiveBranchNameForDisplay)
                         } else {
-                            activePanel?.displayChanges(categorizedChanges, effectiveBranchNameForDisplay)
+                            activeBrowser?.displayChanges(categorizedChanges, effectiveBranchNameForDisplay)
                         }
                     }
                 }
@@ -202,7 +202,7 @@ class ToolWindowStateService(private val project: Project) : PersistentStateComp
             gitService.getChanges(eventBranchName).whenCompleteAsync { categorizedChanges, throwable ->
                 if (project.isDisposed) return@whenCompleteAsync
 
-                val activePanel = getActiveChangesTreePanel(project)
+                val activeBrowser = getActiveChangesBrowser(project)
                 // Use application-level properties for this setting.
                 val properties = PropertiesComponent.getInstance()
                 val includeHeadInScopes = properties.getBoolean(
@@ -212,7 +212,7 @@ class ToolWindowStateService(private val project: Project) : PersistentStateComp
 
                 if (throwable != null) {
                     logger.error("Error refreshing data for active tab '$eventBranchName': ${throwable.message}", throwable)
-                    activePanel?.displayChanges(null, eventBranchName)
+                    activeBrowser?.displayChanges(null, eventBranchName)
                     diffDataService.clearActiveDiff()
                 } else if (categorizedChanges != null) {
                     // Update global diff service if on a branch tab, OR on HEAD tab with setting enabled.
@@ -228,10 +228,10 @@ class ToolWindowStateService(private val project: Project) : PersistentStateComp
                         // This case happens if we are on HEAD and the setting is OFF.
                         diffDataService.clearActiveDiff()
                     }
-                    activePanel?.displayChanges(categorizedChanges, eventBranchName)
+                    activeBrowser?.displayChanges(categorizedChanges, eventBranchName)
                 } else {
                     diffDataService.clearActiveDiff()
-                    activePanel?.displayChanges(null, eventBranchName)
+                    activeBrowser?.displayChanges(null, eventBranchName)
                 }
             }
         } else {
@@ -239,11 +239,11 @@ class ToolWindowStateService(private val project: Project) : PersistentStateComp
         }
     }
 
-    private fun getActiveChangesTreePanel(project: Project): ChangesTreePanel? {
+    private fun getActiveChangesBrowser(project: Project): LstCrcChangesBrowser? {
         val toolWindowId = "GitChangesView"
         val toolWindow = ToolWindowManager.getInstance(project).getToolWindow(toolWindowId)
         val selectedContent = toolWindow?.contentManager?.selectedContent
-        return selectedContent?.component as? ChangesTreePanel
+        return selectedContent?.component as? LstCrcChangesBrowser
     }
 
     fun updateTabAlias(branchName: String, newAlias: String?) {

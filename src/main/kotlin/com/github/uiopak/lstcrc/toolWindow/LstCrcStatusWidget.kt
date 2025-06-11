@@ -211,7 +211,7 @@ class LstCrcStatusWidget(private val project: Project) : StatusBarWidget, Status
                                 selectionTabContent.putUserData(LstCrcKeys.BRANCH_NAME_KEY, selectedBranchName)
                                 val newBranchContentView = uiProvider.createBranchContentView(selectedBranchName)
                                 selectionTabContent.component = newBranchContentView
-                                (newBranchContentView as? ChangesTreePanel)?.requestRefreshData()
+                                (newBranchContentView as? LstCrcChangesBrowser)?.requestRefreshData()
 
                                 manager.setSelectedContent(selectionTabContent, true)
                                 stateService.addTab(selectedBranchName)
