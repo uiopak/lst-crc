@@ -20,6 +20,7 @@ import com.intellij.openapi.vcs.changes.ui.SimpleAsyncChangesBrowser
 import com.intellij.openapi.vfs.VirtualFile
 import git4idea.repo.GitRepository
 import git4idea.repo.GitRepositoryChangeListener
+import com.intellij.ui.PopupHandler
 import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
 import javax.swing.SwingUtilities
@@ -63,7 +64,16 @@ class LstCrcChangesBrowser(
         // --- DISABLE DEFAULT HANDLERS ---
         // 1. Remove the default double-click/enter key behavior.
         viewer.setDoubleClickAndEnterKeyHandler {}
-        // 2. The default popup menu is disabled by overriding createPopupMenuActions() below.
+
+        // 2. REMOVE the default popup handler installed by the base class.
+        // This is the key to preventing an empty context menu on right-click.
+        // Overriding createPopupMenuActions() is not enough as it still shows an empty popup.
+        viewer.mouseListeners.filterIsInstance<PopupHandler>().forEach {
+            viewer.removeMouseListener(it)
+            logger.debug("Removed a default PopupHandler to prevent empty context menu.")
+        }
+        // The default popup menu actions are cleared via override below, but removing the listener
+        // is the most robust way to prevent any popup from appearing.
 
         // --- INSTALL OUR MASTER LISTENER ---
         // This single listener now has full control over all mouse clicks.
@@ -103,7 +113,7 @@ class LstCrcChangesBrowser(
 
     /**
      * Override and return an empty list to completely disable the default right-click context menu.
-     * This gives our custom MouseListener full control over right-click events.
+     * This is a secondary measure; the primary is removing the PopupHandler listener in init {}.
      */
     override fun createPopupMenuActions(): MutableList<AnAction> {
         return mutableListOf()
