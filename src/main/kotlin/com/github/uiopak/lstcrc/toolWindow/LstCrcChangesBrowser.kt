@@ -18,9 +18,10 @@ import com.intellij.openapi.vcs.changes.actions.diff.ShowDiffAction
 import com.intellij.openapi.vcs.changes.ui.ChangesBrowserNode
 import com.intellij.openapi.vcs.changes.ui.SimpleAsyncChangesBrowser
 import com.intellij.openapi.vfs.VirtualFile
+import com.intellij.ui.PopupHandler
+import com.intellij.util.ui.JBUI
 import git4idea.repo.GitRepository
 import git4idea.repo.GitRepositoryChangeListener
-import com.intellij.ui.PopupHandler
 import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
 import javax.swing.SwingUtilities
@@ -60,6 +61,12 @@ class LstCrcChangesBrowser(
         project.messageBus.connect(this).subscribe(GitRepository.GIT_REPO_CHANGE, this)
         ChangeListManager.getInstance(project).addChangeListListener(this, this)
         com.intellij.openapi.util.Disposer.register(parentDisposable, this)
+
+        // --- FIX UI BORDER ---
+        // The base class adds a border to its internal scroll pane.
+        // The tool window content manager also adds a border. This creates a "double border" effect.
+        // By removing the inner border, we let the tool window manage the component's border correctly.
+        setViewerBorder(JBUI.Borders.empty())
 
         // --- DISABLE DEFAULT HANDLERS ---
         // 1. Remove the default double-click/enter key behavior.
