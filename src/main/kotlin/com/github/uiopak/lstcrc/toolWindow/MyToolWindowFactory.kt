@@ -4,23 +4,18 @@ import com.github.uiopak.lstcrc.services.GitService
 import com.github.uiopak.lstcrc.services.ToolWindowStateService
 import com.github.uiopak.lstcrc.state.ToolWindowState
 import com.github.uiopak.lstcrc.utils.LstCrcKeys
-import com.intellij.icons.AllIcons
 import com.intellij.openapi.actionSystem.ActionGroup
-import com.intellij.openapi.actionSystem.ActionUpdateThread
-import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.DefaultActionGroup
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.service
 import com.intellij.openapi.diagnostic.thisLogger
-import com.intellij.openapi.project.DumbAwareAction
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.wm.ToolWindow
 import com.intellij.openapi.wm.ToolWindowFactory
 import com.intellij.ui.content.ContentFactory
 import com.intellij.ui.content.ContentManagerEvent
 import com.intellij.ui.content.ContentManagerListener
-import com.intellij.util.ui.tree.TreeUtil
 
 class MyToolWindowFactory : ToolWindowFactory {
     private val logger = thisLogger()
@@ -167,21 +162,9 @@ class MyToolWindowFactory : ToolWindowFactory {
 
         // --- Tool Window Header Actions ---
         val openSelectionTabAction = OpenBranchSelectionTabAction(project, toolWindow, gitChangesUiProvider)
-        val expandAllAction = object : DumbAwareAction("Expand All", "Expand all nodes in the tree", AllIcons.Actions.Expandall) {
-            override fun actionPerformed(e: AnActionEvent) {
-                getActiveChangesBrowser(toolWindow)?.viewer?.let { TreeUtil.expandAll(it) }
-            }
-            override fun update(e: AnActionEvent) { e.presentation.isEnabled = getActiveChangesBrowser(toolWindow) != null }
-            override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.EDT
-        }
-        val collapseAllAction = object : DumbAwareAction("Collapse All", "Collapse all nodes in the tree", AllIcons.Actions.Collapseall) {
-            override fun actionPerformed(e: AnActionEvent) {
-                getActiveChangesBrowser(toolWindow)?.viewer?.let { TreeUtil.collapseAll(it, 1) }
-            }
-            override fun update(e: AnActionEvent) { e.presentation.isEnabled = getActiveChangesBrowser(toolWindow) != null }
-            override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.EDT
-        }
-        toolWindow.setTitleActions(listOf(openSelectionTabAction, expandAllAction, collapseAllAction))
+        // The expand/collapse actions are now part of the LstCrcChangesBrowser's own toolbar.
+        // We only need the "Add" action in the main tool window header.
+        toolWindow.setTitleActions(listOf(openSelectionTabAction))
 
         // --- Tool Window Gear (Options) Menu ---
         val settingsProvider = ToolWindowSettingsProvider(project)
