@@ -4,10 +4,15 @@ import com.github.uiopak.lstcrc.services.CategorizedChanges
 import com.github.uiopak.lstcrc.services.ToolWindowStateService
 import com.intellij.ide.util.PropertiesComponent
 import com.intellij.openapi.Disposable
+import com.intellij.openapi.actionSystem.ActionManager
+import com.intellij.openapi.actionSystem.ActionPlaces
 import com.intellij.openapi.actionSystem.AnAction
+import com.intellij.openapi.actionSystem.AnActionEvent
+import com.intellij.openapi.actionSystem.DefaultActionGroup
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.service
 import com.intellij.openapi.diagnostic.thisLogger
+import com.intellij.openapi.project.DumbAwareAction
 import com.intellij.openapi.fileEditor.OpenFileDescriptor
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.Messages
@@ -109,9 +114,14 @@ class LstCrcChangesBrowser(
                         handleGenericClick(e, change, path, getMiddleClickAction(), getDoubleMiddleClickAction(), middleClickState)
                     }
                     SwingUtilities.isRightMouseButton(e) -> {
-                        leftClickState.clear()
-                        middleClickState.clear()
-                        handleGenericClick(e, change, path, getRightClickAction(), getDoubleRightClickAction(), rightClickState)
+                        if (isContextMenuEnabled()) {
+                            showContextMenu(e)
+                        } else {
+                            // If menu is disabled, use the old action logic.
+                            leftClickState.clear()
+                            middleClickState.clear()
+                            handleGenericClick(e, change, path, getRightClickAction(), getDoubleRightClickAction(), rightClickState)
+                        }
                     }
                 }
             }
@@ -184,14 +194,16 @@ class LstCrcChangesBrowser(
         ApplicationManager.getApplication().invokeLater {
             if (project.isDisposed) return@invokeLater
             when (actionType) {
-                "OPEN_DIFF" -> openDiff(change)
+                "OPEN_DIFF" -> openDiff(listOf(change))
                 "OPEN_SOURCE" -> openSource(change)
             }
         }
     }
 
-    private fun openDiff(change: Change) {
-        ShowDiffAction.showDiffForChange(project, listOf(change))
+    private fun openDiff(changes: List<Change>) {
+        if (changes.isNotEmpty()) {
+            ShowDiffAction.showDiffForChange(project, changes)
+        }
     }
 
     private fun openSource(change: Change) {
@@ -280,7 +292,35 @@ class LstCrcChangesBrowser(
         logger.info("LstCrcChangesBrowser for branch '$targetBranchToCompare' disposed.")
     }
 
+    // --- Context Menu ---
+
+    private fun showContextMenu(e: MouseEvent) {
+        val selectedChanges = this.selectedChanges
+        if (selectedChanges.isEmpty()) return
+
+        val group = DefaultActionGroup()
+        group.add(object : DumbAwareAction("Show Diff") {
+            override fun actionPerformed(event: AnActionEvent) = openDiff(selectedChanges)
+        })
+        group.add(object : DumbAwareAction("Open Source") {
+            override fun update(event: AnActionEvent) {
+                // This action is only sensible for a single selection.
+                event.presentation.isEnabled = selectedChanges.size == 1
+            }
+            override fun actionPerformed(event: AnActionEvent) {
+                if (selectedChanges.size == 1) {
+                    openSource(selectedChanges.first())
+                }
+            }
+        })
+
+        val popupMenu = ActionManager.getInstance().createActionPopupMenu(ActionPlaces.TOOLWINDOW_POPUP, group)
+        popupMenu.component.show(e.component, e.x, e.y)
+    }
+
+
     // --- Settings Getters ---
+    private fun isContextMenuEnabled(): Boolean = propertiesComponent.getBoolean(ToolWindowSettingsProvider.APP_SHOW_CONTEXT_MENU_KEY, ToolWindowSettingsProvider.DEFAULT_SHOW_CONTEXT_MENU)
     private fun getSingleClickAction(): String = propertiesComponent.getValue(ToolWindowSettingsProvider.APP_SINGLE_CLICK_ACTION_KEY, ToolWindowSettingsProvider.DEFAULT_SINGLE_CLICK_ACTION)
     private fun getDoubleClickAction(): String = propertiesComponent.getValue(ToolWindowSettingsProvider.APP_DOUBLE_CLICK_ACTION_KEY, ToolWindowSettingsProvider.DEFAULT_DOUBLE_CLICK_ACTION)
     private fun getMiddleClickAction(): String = propertiesComponent.getValue(ToolWindowSettingsProvider.APP_MIDDLE_CLICK_ACTION_KEY, ToolWindowSettingsProvider.DEFAULT_MIDDLE_CLICK_ACTION)

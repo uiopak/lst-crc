@@ -41,6 +41,10 @@ class ToolWindowSettingsProvider(private val project: Project) {
         const val DEFAULT_RIGHT_CLICK_ACTION = ACTION_NONE
         const val DEFAULT_DOUBLE_RIGHT_CLICK_ACTION = ACTION_NONE
 
+        // Context Menu Key & Default
+        const val APP_SHOW_CONTEXT_MENU_KEY = "com.github.uiopak.lstcrc.app.showContextMenu"
+        const val DEFAULT_SHOW_CONTEXT_MENU = false
+
         // Delay Keys & Defaults
         const val APP_USER_DOUBLE_CLICK_DELAY_KEY = "com.github.uiopak.lstcrc.app.userDoubleClickDelay"
         const val DELAY_OPTION_SYSTEM_DEFAULT = -1
@@ -146,7 +150,25 @@ class ToolWindowSettingsProvider(private val project: Project) {
         rootSettingsGroup.add(doubleMiddleClickActionGroup)
         rootSettingsGroup.addSeparator()
 
-        // --- Right Click Actions ---
+        // --- Right Click Behavior ---
+        val rightClickSettingsGroup = DefaultActionGroup("Right-Click Behavior:", true)
+        rightClickSettingsGroup.add(object : ToggleAction("Show Context Menu") {
+            override fun isSelected(e: AnActionEvent): Boolean =
+                propertiesComponent.getBoolean(APP_SHOW_CONTEXT_MENU_KEY, DEFAULT_SHOW_CONTEXT_MENU)
+            override fun setSelected(e: AnActionEvent, state: Boolean) =
+                propertiesComponent.setValue(APP_SHOW_CONTEXT_MENU_KEY, state, DEFAULT_SHOW_CONTEXT_MENU)
+            override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
+        })
+        rightClickSettingsGroup.add(object : ToggleAction("Trigger Click Actions") {
+            override fun isSelected(e: AnActionEvent): Boolean =
+                !propertiesComponent.getBoolean(APP_SHOW_CONTEXT_MENU_KEY, DEFAULT_SHOW_CONTEXT_MENU)
+            override fun setSelected(e: AnActionEvent, state: Boolean) =
+                propertiesComponent.setValue(APP_SHOW_CONTEXT_MENU_KEY, !state, DEFAULT_SHOW_CONTEXT_MENU)
+            override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
+        })
+        rootSettingsGroup.add(rightClickSettingsGroup)
+        rootSettingsGroup.addSeparator()
+
         val rightClickActionGroup = DefaultActionGroup("Action on Right Single Click:", true)
         rightClickActionGroup.add(createToggleAction("None", { getRightClickAction() == ACTION_NONE }, { setRightClickAction(ACTION_NONE) }))
         rightClickActionGroup.add(createToggleAction("Show Diff", { getRightClickAction() == ACTION_OPEN_DIFF }, { setRightClickAction(ACTION_OPEN_DIFF) }))
