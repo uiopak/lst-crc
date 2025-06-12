@@ -20,11 +20,11 @@ class LstCrcSearchScopeProvider : SearchScopeProvider {
     override fun getSearchScopes(project: Project, dataContext: DataContext): List<SearchScope> {
         val namedScopeManager = NamedScopeManager.getInstance(project)
 
-        // We get the singleton instances of our scopes from LstCrcScopeProvider.
-        val createdScope = LstCrcScopeProvider.CREATED_FILES_SCOPE
-        val modifiedScope = LstCrcScopeProvider.MODIFIED_FILES_SCOPE
-        val movedScope = LstCrcScopeProvider.MOVED_FILES_SCOPE
-        val changedScope = LstCrcScopeProvider.CHANGED_FILES_SCOPE
+        // We get the singleton instances of our scopes from LstCrcProvidedScopes.
+        val createdScope = LstCrcProvidedScopes.CREATED_FILES_SCOPE
+        val modifiedScope = LstCrcProvidedScopes.MODIFIED_FILES_SCOPE
+        val movedScope = LstCrcProvidedScopes.MOVED_FILES_SCOPE
+        val changedScope = LstCrcProvidedScopes.CHANGED_FILES_SCOPE
 
         // Each NamedScope is wrapped in our custom SearchScope implementation.
         return listOf(

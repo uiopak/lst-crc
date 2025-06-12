@@ -13,7 +13,7 @@ import com.intellij.openapi.ui.Messages
 import com.intellij.ui.content.Content
 import java.awt.Component
 
-class RenameTabAction : AnAction("Rename Tab...") {
+class RenameTabAction : AnAction() {
 
     private val logger = thisLogger()
 

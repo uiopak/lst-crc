@@ -6,6 +6,7 @@ import com.intellij.ide.util.PropertiesComponent
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.actionSystem.ActionManager
 import com.intellij.openapi.actionSystem.ActionPlaces
+import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.DefaultActionGroup
@@ -183,9 +184,7 @@ class LstCrcChangesBrowser(
             if (clickState.pendingPath == path) {
                 clickState.clear()
             }
-            if (doubleClickAction != "NONE") {
-                performConfiguredAction(change, doubleClickAction)
-            }
+            performConfiguredAction(change, doubleClickAction)
             clickState.actionHasFiredForPath = null
         }
     }
@@ -299,11 +298,16 @@ class LstCrcChangesBrowser(
         if (selectedChanges.isEmpty()) return
 
         val group = DefaultActionGroup()
-        group.add(object : DumbAwareAction("Show Diff") {
+        group.add(object : DumbAwareAction() {
+            override fun update(e: AnActionEvent) {
+                e.presentation.text = "Show Diff"
+            }
             override fun actionPerformed(event: AnActionEvent) = openDiff(selectedChanges)
+            override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.EDT
         })
-        group.add(object : DumbAwareAction("Open Source") {
+        group.add(object : DumbAwareAction() {
             override fun update(event: AnActionEvent) {
+                event.presentation.text = "Open Source"
                 // This action is only sensible for a single selection.
                 event.presentation.isEnabled = selectedChanges.size == 1
             }
@@ -312,6 +316,7 @@ class LstCrcChangesBrowser(
                     openSource(selectedChanges.first())
                 }
             }
+            override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.EDT
         })
 
         val popupMenu = ActionManager.getInstance().createActionPopupMenu(ActionPlaces.TOOLWINDOW_POPUP, group)

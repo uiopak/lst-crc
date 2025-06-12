@@ -10,7 +10,7 @@ import com.intellij.openapi.vcs.VcsDataKeys
 import com.intellij.openapi.wm.ToolWindowManager
 import com.intellij.ui.content.ContentFactory
 
-class CreateTabFromRevisionAction : AnAction("LST-CRC: Compare with Revision") {
+class CreateTabFromRevisionAction : AnAction() {
 
     private val logger = thisLogger()
 
