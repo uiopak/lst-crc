@@ -6,6 +6,7 @@ import com.github.uiopak.lstcrc.toolWindow.LstCrcChangesBrowser
 import com.github.uiopak.lstcrc.toolWindow.ToolWindowSettingsProvider
 import com.intellij.ide.util.PropertiesComponent
 import com.intellij.openapi.components.PersistentStateComponent
+import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.State
 import com.intellij.openapi.components.Storage
 import com.intellij.openapi.components.service
@@ -20,6 +21,7 @@ import java.util.EventListener // Required for MessageBus Senders
     name = "com.github.uiopak.lstcrc.services.ToolWindowStateService",
     storages = [Storage("gitTabsIdeaPluginState.xml")]
 )
+@Service(Service.Level.PROJECT)
 class ToolWindowStateService(private val project: Project) : PersistentStateComponent<ToolWindowState> {
 
     private var myState = ToolWindowState()

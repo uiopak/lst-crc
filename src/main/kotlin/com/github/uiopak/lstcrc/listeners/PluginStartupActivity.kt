@@ -1,8 +1,10 @@
 package com.github.uiopak.lstcrc.listeners
 
 import com.github.uiopak.lstcrc.services.GitService
+import com.github.uiopak.lstcrc.services.LstCrcGutterTrackerService
 import com.github.uiopak.lstcrc.services.ProjectActiveDiffDataService
 import com.github.uiopak.lstcrc.services.ToolWindowStateService
+import com.github.uiopak.lstcrc.services.VfsListenerService
 import com.github.uiopak.lstcrc.toolWindow.ToolWindowSettingsProvider
 import com.github.uiopak.lstcrc.utils.await
 import com.intellij.ide.util.PropertiesComponent
@@ -20,7 +22,7 @@ import kotlinx.coroutines.withContext
  * This activity runs once per project after it has been opened and initial indexing is complete.
  * Its primary responsibility is to perform the initial load of Git diff data based on the
  * plugin's persisted state, so that features like file scopes and tab colors are available
- * as early as possible.
+ * as early as possible. It also eagerly initializes background services.
  */
 class PluginStartupActivity : ProjectActivity {
     private val logger = thisLogger()
@@ -28,6 +30,14 @@ class PluginStartupActivity : ProjectActivity {
 
     override suspend fun execute(project: Project) {
         logger.info("STARTUP_LOGIC: ProjectActivity executing for project: ${project.name}")
+
+        // Eagerly initialize services that need to listen to events from the start,
+        // even if the tool window is not opened. This ensures features like gutter markers
+        // and VFS-triggered refreshes work correctly immediately.
+        logger.info("STARTUP_LOGIC: Eagerly initializing background services.")
+        project.service<VfsListenerService>()
+        project.service<LstCrcGutterTrackerService>()
+        logger.info("STARTUP_LOGIC: Background services initialized.")
 
         // This logic was previously in ProjectOpenCloseListener.
         // It's responsible for loading the initial diff data based on the persisted state

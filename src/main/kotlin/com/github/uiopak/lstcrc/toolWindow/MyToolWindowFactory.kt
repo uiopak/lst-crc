@@ -21,23 +21,9 @@ class MyToolWindowFactory : ToolWindowFactory {
 
     override fun createToolWindowContent(project: Project, toolWindow: ToolWindow) {
         // --- Standard Initialization ---
-        try {
-            project.getService(com.github.uiopak.lstcrc.services.VfsListenerService::class.java)?.let {
-                logger.info("VfsListenerService instance successfully retrieved during tool window creation.")
-            } ?: logger.warn("VfsListenerService is null after attempting to retrieve it. VFS-based updates might not function as expected.")
-        } catch (e: Throwable) {
-            logger.error("EXCEPTION while trying to initialize or retrieve VfsListenerService. VFS updates likely impacted.", e)
-        }
-
-        try {
-            // By getting the service instance, we trigger its `init` block which sets up the necessary listeners for gutter markers.
-            project.service<com.github.uiopak.lstcrc.services.LstCrcGutterTrackerService>().let {
-                logger.info("LstCrcGutterTrackerService instance successfully retrieved/initialized during tool window creation.")
-            }
-        } catch (e: Throwable) {
-            logger.error("EXCEPTION while trying to initialize or retrieve LstCrcGutterTrackerService. Gutter markers will not work.", e)
-        }
-
+        // Key background services (VfsListenerService, LstCrcGutterTrackerService) are now
+        // initialized eagerly in PluginStartupActivity to ensure they are active even if
+        // the tool window isn't opened.
         logger.info("createToolWindowContent called for project: ${project.name}")
         val gitChangesUiProvider = GitChangesToolWindow(project, toolWindow.disposable)
         val contentFactory = ContentFactory.getInstance()
