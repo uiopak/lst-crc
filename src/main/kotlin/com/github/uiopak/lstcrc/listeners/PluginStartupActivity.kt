@@ -24,7 +24,7 @@ import kotlinx.coroutines.withContext
  */
 class PluginStartupActivity : ProjectActivity {
     private val logger = thisLogger()
-    private val INITIAL_DIFF_LOAD_DELAY_MS = 5000L // 5 seconds
+    private val _initialDiffLoadDelayMs = 5000L // 5 seconds
 
     override suspend fun execute(project: Project) {
         logger.info("STARTUP_LOGIC: ProjectActivity executing for project: ${project.name}")
@@ -48,7 +48,7 @@ class PluginStartupActivity : ProjectActivity {
 
         // This delay can help ensure that Git processes and repositories are fully initialized by Git4Idea
         // before we attempt to query them, avoiding race conditions on project startup.
-        delay(INITIAL_DIFF_LOAD_DELAY_MS)
+        delay(_initialDiffLoadDelayMs)
 
         if (project.isDisposed) {
             logger.info("STARTUP_LOGIC_DELAYED: Project ${project.name} is disposed, skipping delayed initial diff load.")

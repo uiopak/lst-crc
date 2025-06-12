@@ -73,19 +73,6 @@ class GitService(private val project: Project) {
         return repository.branches.remoteBranches.map { it.name }
     }
 
-    fun getAllBranches(): List<String> {
-        val repository = getCurrentRepository() ?: return emptyList()
-        return (repository.branches.localBranches + repository.branches.remoteBranches)
-            .map { it.name }
-            .distinct()
-            .sorted() // Optional: sort for better UX
-    }
-
-    fun getCurrentBranch(): String? {
-        val repository = getCurrentRepository() ?: return null
-        return repository.currentBranchName
-    }
-
     /**
      * Gets the changes between the current HEAD and the specified branch name.
      * These changes represent what is in `branchNameToCompare` that is different from HEAD.
