@@ -59,7 +59,7 @@ class VfsChangeListener : BulkFileListener {
                     for (p in openProjects) {
                         if (p.isDisposed) continue
                         val projectBasePath = p.basePath
-                        if (projectBasePath != null && pathForEventLookup.startsWith(projectBasePath + "/")) {
+                        if (projectBasePath != null && pathForEventLookup.startsWith("$projectBasePath/")) {
                             projectForEvent = p
                             logger.debug("Guessed project ${p.name} for path $pathForEventLookup by checking open projects.") // Keep as debug
                             break

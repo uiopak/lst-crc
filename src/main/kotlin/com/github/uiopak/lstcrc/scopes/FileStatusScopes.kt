@@ -3,7 +3,6 @@ package com.github.uiopak.lstcrc.scopes
 import com.github.uiopak.lstcrc.services.ProjectActiveDiffDataService
 import com.intellij.icons.AllIcons
 import com.intellij.openapi.components.service
-import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.psi.search.scope.packageSet.NamedScope
@@ -17,8 +16,6 @@ private abstract class LstCrcPackageSet(
     // of the Scopes dialog.
     private val description: String
 ) : PackageSetBase() {
-    // Using the simple class name for the logger category makes it identifiable.
-    protected val logger: Logger = Logger.getInstance("#${LstCrcPackageSet::class.java.name}.${this::class.simpleName}")
 
     abstract fun getRelevantFiles(service: ProjectActiveDiffDataService): Set<VirtualFile>
 

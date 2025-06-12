@@ -12,7 +12,7 @@ import com.intellij.openapi.components.service
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.wm.ToolWindowManager
 
-class ToolWindowSettingsProvider(private val project: Project) {
+class ToolWindowSettingsProvider() {
 
     // Use application-level settings so they are consistent across projects.
     private val propertiesComponent = PropertiesComponent.getInstance()
@@ -81,11 +81,6 @@ class ToolWindowSettingsProvider(private val project: Project) {
     private fun setUserDoubleClickDelayMs(delay: Int) = propertiesComponent.setValue(APP_USER_DOUBLE_CLICK_DELAY_KEY, delay, DELAY_OPTION_SYSTEM_DEFAULT)
     private fun getIncludeHeadInScopes(): Boolean = propertiesComponent.getBoolean(APP_INCLUDE_HEAD_IN_SCOPES_KEY, DEFAULT_INCLUDE_HEAD_IN_SCOPES)
     private fun setIncludeHeadInScopes(include: Boolean) = propertiesComponent.setValue(APP_INCLUDE_HEAD_IN_SCOPES_KEY, include, DEFAULT_INCLUDE_HEAD_IN_SCOPES)
-
-    private fun getActiveChangesBrowser(project: Project): LstCrcChangesBrowser? {
-        val toolWindow = ToolWindowManager.getInstance(project).getToolWindow("GitChangesView")
-        return toolWindow?.contentManager?.selectedContent?.component as? LstCrcChangesBrowser
-    }
 
     fun createToolWindowSettingsGroup(): ActionGroup {
         val rootSettingsGroup = DefaultActionGroup("Git Changes View Options", true)

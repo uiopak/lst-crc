@@ -5,7 +5,6 @@ import com.github.uiopak.lstcrc.services.ToolWindowStateService
 import com.github.uiopak.lstcrc.state.ToolWindowState
 import com.github.uiopak.lstcrc.utils.LstCrcKeys
 import com.intellij.openapi.actionSystem.ActionGroup
-import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.DefaultActionGroup
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.service
@@ -19,10 +18,6 @@ import com.intellij.ui.content.ContentManagerListener
 
 class MyToolWindowFactory : ToolWindowFactory {
     private val logger = thisLogger()
-
-    private fun getActiveChangesBrowser(toolWindow: ToolWindow): LstCrcChangesBrowser? {
-        return toolWindow.contentManager.selectedContent?.component as? LstCrcChangesBrowser
-    }
 
     override fun createToolWindowContent(project: Project, toolWindow: ToolWindow) {
         // --- Standard Initialization ---
@@ -167,7 +162,7 @@ class MyToolWindowFactory : ToolWindowFactory {
         toolWindow.setTitleActions(listOf(openSelectionTabAction))
 
         // --- Tool Window Gear (Options) Menu ---
-        val settingsProvider = ToolWindowSettingsProvider(project)
+        val settingsProvider = ToolWindowSettingsProvider()
         val pluginSettingsSubMenu: ActionGroup = settingsProvider.createToolWindowSettingsGroup()
 
         val allGearActionsGroup = DefaultActionGroup()

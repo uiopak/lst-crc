@@ -29,7 +29,6 @@ class BranchSelectionPanel(
     private val onBranchSelected: (branchName: String) -> Unit
 ) : JBPanel<BranchSelectionPanel>(BorderLayout(0, JBUI.scale(5))) {
 
-    private val logger = thisLogger()
     private val searchTextField = SearchTextField(false)
     private val tree: Tree
 
