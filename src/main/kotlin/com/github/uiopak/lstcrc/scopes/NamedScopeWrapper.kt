@@ -1,3 +1,5 @@
+@file:Suppress("EqualsOrHashCode")
+
 package com.github.uiopak.lstcrc.scopes
 
 import com.intellij.openapi.project.Project
@@ -13,6 +15,10 @@ import com.intellij.psi.PsiFile
 
 /**
  * A SearchScope that wraps a NamedScope, delegating its core logic.
+ *
+ * We suppress "EqualsOrHashCode" because the base class `SearchScope` has a final `hashCode()`
+ * method and requires subclasses to override `calcHashCode()` instead. Our implementation correctly
+ * overrides both `equals` and `calcHashCode` using the same fields, thus satisfying the contract.
  */
 class NamedScopeWrapper(
     private val project: Project, // Project context is needed for PackageSet.contains AND for PsiManager
@@ -60,7 +66,7 @@ class NamedScopeWrapper(
         return project == other.project && namedScope.scopeId == other.namedScope.scopeId
     }
 
-    override fun hashCode(): Int {
+    override fun calcHashCode(): Int {
         var result = project.hashCode()
         result = 31 * result + namedScope.scopeId.hashCode()
         return result
