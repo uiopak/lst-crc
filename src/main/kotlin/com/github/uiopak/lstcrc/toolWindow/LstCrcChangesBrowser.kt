@@ -13,8 +13,8 @@ import com.intellij.openapi.actionSystem.DefaultActionGroup
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.service
 import com.intellij.openapi.diagnostic.thisLogger
-import com.intellij.openapi.project.DumbAwareAction
 import com.intellij.openapi.fileEditor.OpenFileDescriptor
+import com.intellij.openapi.project.DumbAwareAction
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.vcs.changes.Change
@@ -22,6 +22,7 @@ import com.intellij.openapi.vcs.changes.ChangeListListener
 import com.intellij.openapi.vcs.changes.ChangeListManager
 import com.intellij.openapi.vcs.changes.actions.diff.ShowDiffAction
 import com.intellij.openapi.vcs.changes.ui.ChangesBrowserNode
+import com.intellij.openapi.vcs.changes.ui.ChangesTree
 import com.intellij.openapi.vcs.changes.ui.SimpleAsyncChangesBrowser
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.ui.PopupHandler
@@ -43,6 +44,7 @@ class LstCrcChangesBrowser(
 
     private val logger = thisLogger()
     private var refreshDebounceTimer: Timer? = null
+    private var isInitialLoad = true
 
     private class ClickState {
         var timer: Timer? = null
@@ -220,35 +222,51 @@ class LstCrcChangesBrowser(
 
     // --- Public API for updating the browser ---
 
-    fun showLoadingStateAndPrepareForData() {
-        ApplicationManager.getApplication().invokeLater {
-            if (project.isDisposed) return@invokeLater
-            viewer.emptyText.text = "Loading..."
-            setChangesToDisplay(emptyList())
-        }
-    }
-
+    /**
+     * Updates the browser with a new set of changes.
+     * This method is designed to be called when the data fetch operation is complete.
+     * It uses a state-preserving strategy to avoid resetting the user's scroll position
+     * and expansion state, preventing the "flicker" effect.
+     */
     fun displayChanges(categorizedChanges: CategorizedChanges?, forBranchName: String) {
         if (forBranchName != targetBranchToCompare) {
             return
         }
         ApplicationManager.getApplication().invokeLater {
             if (project.isDisposed) return@invokeLater
-            if (categorizedChanges == null) {
-                viewer.emptyText.text = "Error loading changes for $forBranchName"
-                setChangesToDisplay(emptyList())
-            } else if (categorizedChanges.allChanges.isEmpty()) {
-                viewer.emptyText.text = "No changes found for $forBranchName"
-                setChangesToDisplay(emptyList())
-            } else {
-                viewer.emptyText.text = "No changes" // Default empty text
-                setChangesToDisplay(categorizedChanges.allChanges)
+
+            val changes = categorizedChanges?.allChanges ?: emptyList()
+            val hasChanges = changes.isNotEmpty()
+
+            val emptyText: String = when {
+                categorizedChanges == null -> "Error loading changes for $forBranchName"
+                !hasChanges -> "No changes found for $forBranchName"
+                else -> "No changes" // Default empty text for a filtered-out view
             }
+            viewer.emptyText.text = emptyText
+
+            // On the very first load for this browser instance, we want to reset the state,
+            // which includes a default expansion. On all subsequent refreshes, we want to
+            // keep the user's current expansion and scroll state.
+            val strategy = if (isInitialLoad && hasChanges) {
+                isInitialLoad = false // Flip the flag for next time
+                ChangesTree.ALWAYS_RESET // Resets and applies default expansion
+            } else {
+                ChangesTree.ALWAYS_KEEP // Preserves tree state
+            }
+            setChangesToDisplay(changes, strategy)
         }
     }
 
+    /**
+     * Initiates a refresh of the data for this browser's target branch.
+     * It no longer clears the view upfront, preventing the "Loading..." flicker. The existing
+     * content remains visible until the new data is fetched and applied via displayChanges().
+     */
     fun requestRefreshData() {
-        showLoadingStateAndPrepareForData()
+        // The call to showLoadingStateAndPrepareForData() was removed.
+        // We now directly request the data. The tree will show a busy icon over the
+        // existing content if the fetch is slow, but it won't clear the content.
         project.service<ToolWindowStateService>().refreshDataForActiveTabIfMatching(targetBranchToCompare)
     }
 
