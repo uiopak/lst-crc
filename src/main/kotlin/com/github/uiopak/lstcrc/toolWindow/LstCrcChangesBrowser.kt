@@ -3,6 +3,7 @@ package com.github.uiopak.lstcrc.toolWindow
 import com.github.uiopak.lstcrc.resources.LstCrcBundle
 import com.github.uiopak.lstcrc.services.CategorizedChanges
 import com.github.uiopak.lstcrc.services.ToolWindowStateService
+import com.intellij.ide.projectView.ProjectView
 import com.intellij.ide.util.PropertiesComponent
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.actionSystem.ActionManager
@@ -26,6 +27,9 @@ import com.intellij.openapi.vcs.changes.ui.ChangesBrowserNode
 import com.intellij.openapi.vcs.changes.ui.ChangesTree
 import com.intellij.openapi.vcs.changes.ui.SimpleAsyncChangesBrowser
 import com.intellij.openapi.vfs.VirtualFile
+import com.intellij.openapi.wm.ToolWindowId
+import com.intellij.openapi.wm.ToolWindowManager
+import com.intellij.psi.PsiManager
 import com.intellij.ui.PopupHandler
 import com.intellij.util.ui.JBUI
 import git4idea.repo.GitRepository
@@ -196,8 +200,14 @@ class LstCrcChangesBrowser(
         ApplicationManager.getApplication().invokeLater {
             if (project.isDisposed) return@invokeLater
             when (actionType) {
-                "OPEN_DIFF" -> openDiff(listOf(change))
-                "OPEN_SOURCE" -> openSource(change)
+                ToolWindowSettingsProvider.ACTION_OPEN_DIFF -> openDiff(listOf(change))
+                ToolWindowSettingsProvider.ACTION_OPEN_SOURCE -> openSource(change)
+                ToolWindowSettingsProvider.ACTION_SHOW_IN_PROJECT_TREE -> {
+                    // Guard against deleted files for click actions.
+                    if (change.type != Change.Type.DELETED) {
+                        showInProjectTree(change)
+                    }
+                }
             }
         }
     }
@@ -208,11 +218,34 @@ class LstCrcChangesBrowser(
         }
     }
 
-    private fun openSource(change: Change) {
-        val fileToOpen: VirtualFile? = when (change.type) {
-            Change.Type.DELETED -> change.beforeRevision?.file?.virtualFile
-            else -> change.afterRevision?.file?.virtualFile ?: change.beforeRevision?.file?.virtualFile
+    private fun getFileFromChange(change: Change): VirtualFile? {
+        // For deleted files, we want the `before` revision. For all others (new, modified, moved), `after` is preferred.
+        return change.afterRevision?.file?.virtualFile ?: change.beforeRevision?.file?.virtualFile
+    }
+
+    private fun showInProjectTree(change: Change) {
+        if (change.type == Change.Type.DELETED) return // Safeguard
+
+        val fileToSelect = getFileFromChange(change)
+        if (fileToSelect != null && fileToSelect.isValid) {
+            val toolWindow = ToolWindowManager.getInstance(project).getToolWindow(ToolWindowId.PROJECT_VIEW)
+            // Activate the Project View tool window, and run the selection logic in the callback.
+            toolWindow?.activate({
+                val projectView = ProjectView.getInstance(project)
+                val psiFile = PsiManager.getInstance(project).findFile(fileToSelect)
+                val elementToSelect: Any = psiFile ?: fileToSelect // Prefer PsiFile, fall back to VirtualFile.
+
+                // Select the element, focusing the project view.
+                projectView.select(elementToSelect, fileToSelect, true)
+            }, true) // `true` means autoFocusContents
+        } else {
+            val pathForMessage = (change.afterRevision?.file ?: change.beforeRevision?.file)?.path ?: LstCrcBundle.message("changes.browser.open.source.error.unknown.path")
+            Messages.showWarningDialog(project, LstCrcBundle.message("changes.browser.select.file.error.message", pathForMessage), LstCrcBundle.message("changes.browser.select.file.error.title"))
         }
+    }
+
+    private fun openSource(change: Change) {
+        val fileToOpen = getFileFromChange(change)
         if (fileToOpen != null && fileToOpen.isValid && !fileToOpen.isDirectory) {
             OpenFileDescriptor(project, fileToOpen).navigate(true)
         } else {
@@ -332,6 +365,20 @@ class LstCrcChangesBrowser(
             override fun actionPerformed(event: AnActionEvent) {
                 if (selectedChanges.size == 1) {
                     openSource(selectedChanges.first())
+                }
+            }
+            override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.EDT
+        })
+        group.add(object : DumbAwareAction() {
+            override fun update(e: AnActionEvent) {
+                e.presentation.text = LstCrcBundle.message("context.menu.show.project.tree")
+                // Action is only available for a single, non-deleted file.
+                val isActionable = selectedChanges.size == 1 && selectedChanges.first().type != Change.Type.DELETED
+                e.presentation.isEnabled = isActionable
+            }
+            override fun actionPerformed(event: AnActionEvent) {
+                if (selectedChanges.size == 1) {
+                    showInProjectTree(selectedChanges.first())
                 }
             }
             override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.EDT
