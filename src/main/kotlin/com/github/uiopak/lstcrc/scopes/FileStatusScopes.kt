@@ -1,6 +1,7 @@
 package com.github.uiopak.lstcrc.scopes
 
 import com.github.uiopak.lstcrc.resources.LstCrcBundle
+import com.github.uiopak.lstcrc.resources.LstCrcIcons
 import com.github.uiopak.lstcrc.services.ProjectActiveDiffDataService
 import com.intellij.icons.AllIcons
 import com.intellij.openapi.components.service
@@ -83,7 +84,7 @@ private class ChangedFilesPackageSet : LstCrcPackageSet(
 // The 'name' parameter is the Scope ID and its default display name in UI lists.
 class CreatedFilesScope : NamedScope(
     LstCrcBundle.message("scope.created.name"),
-    AllIcons.Actions.Diff,
+    AllIcons.General.Add, // Changed to a more specific icon
     CreatedFilesPackageSet()
 ){
     override fun getDefaultColorName(): String = "Green"
@@ -91,7 +92,7 @@ class CreatedFilesScope : NamedScope(
 
 class ModifiedFilesScope : NamedScope(
     LstCrcBundle.message("scope.modified.name"),
-    AllIcons.Actions.Diff,
+    AllIcons.Actions.EditSource, // Changed to a more specific icon
     ModifiedFilesPackageSet()
 ){
     override fun getDefaultColorName(): String = "Blue"
@@ -99,7 +100,7 @@ class ModifiedFilesScope : NamedScope(
 
 class MovedFilesScope : NamedScope(
     LstCrcBundle.message("scope.moved.name"),
-    AllIcons.Actions.Diff,
+    AllIcons.Nodes.Tag, // CORRECTED: This icon represents renaming/tagging and is a good fit for "Moved".
     MovedFilesPackageSet()
 ){
     override fun getDefaultColorName(): String = "Gray"
@@ -108,6 +109,6 @@ class MovedFilesScope : NamedScope(
 
 class ChangedFilesScope : NamedScope(
     LstCrcBundle.message("scope.changed.name"),
-    AllIcons.Actions.Diff,
+    LstCrcIcons.TOOL_WINDOW, // Use our custom plugin icon for consistency
     ChangedFilesPackageSet()
 )

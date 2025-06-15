@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 13 13">
+    <g fill="none" fill-rule="evenodd">
+        <!-- The solid, stable "Local State" (LST) -->
+        <rect width="3" height="9" x="2" y="2" fill="#6E737A" rx="1"/>
+        <!-- The dynamic, branching "Commit/Revision/Changes" (CRC) -->
+        <path stroke="#3574F0" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7.5 9.5V5.5H11.5M7.5 5.5L11.5 9.5"/>
+    </g>
+</svg>
