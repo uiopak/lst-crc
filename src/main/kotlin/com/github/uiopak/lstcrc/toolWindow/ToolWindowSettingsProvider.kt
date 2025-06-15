@@ -7,8 +7,11 @@ import com.intellij.openapi.actionSystem.ActionGroup
 import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.DefaultActionGroup
+import com.intellij.openapi.actionSystem.PlatformDataKeys
 import com.intellij.openapi.actionSystem.ToggleAction
 import com.intellij.openapi.components.service
+import com.intellij.openapi.wm.impl.content.ToolWindowContentUi
+import com.intellij.ui.content.impl.ContentManagerImpl
 
 class ToolWindowSettingsProvider() {
 
@@ -54,6 +57,10 @@ class ToolWindowSettingsProvider() {
         // Gutter Marker Key & Default
         const val APP_ENABLE_GUTTER_MARKERS_KEY = "com.github.uiopak.lstcrc.app.enableGutterMarkers"
         const val DEFAULT_ENABLE_GUTTER_MARKERS = true
+
+        // Tool Window Title Key & Default
+        const val APP_SHOW_TOOL_WINDOW_TITLE_KEY = "com.github.uiopak.lstcrc.app.showToolWindowTitle"
+        const val DEFAULT_SHOW_TOOL_WINDOW_TITLE = false
     }
 
     // --- Getters and Setters ---
@@ -97,6 +104,31 @@ class ToolWindowSettingsProvider() {
             override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
         })
         rootSettingsGroup.addSeparator()
+
+        // --- Tool Window Title ---
+        rootSettingsGroup.add(object : ToggleAction("Show Tool Window Title") {
+            override fun isSelected(e: AnActionEvent): Boolean =
+                propertiesComponent.getBoolean(APP_SHOW_TOOL_WINDOW_TITLE_KEY, DEFAULT_SHOW_TOOL_WINDOW_TITLE)
+
+            override fun setSelected(e: AnActionEvent, state: Boolean) {
+                propertiesComponent.setValue(APP_SHOW_TOOL_WINDOW_TITLE_KEY, state, DEFAULT_SHOW_TOOL_WINDOW_TITLE)
+
+                // The logic to update the UI live, mirroring JetBrains' internal behavior.
+                val toolWindow = e.getData(PlatformDataKeys.TOOL_WINDOW) ?: return
+                // `null` shows the label, "true" hides it.
+                val hideIdLabelValue = if (state) null else "true"
+
+                toolWindow.component.putClientProperty(ToolWindowContentUi.HIDE_ID_LABEL, hideIdLabelValue)
+                // Force the UI to re-evaluate the property and update its layout.
+                // We must cast to the implementation class `ContentManagerImpl` to access the `ui` property.
+                val contentManager = toolWindow.contentManager
+                if (contentManager is ContentManagerImpl) {
+                    (contentManager.ui as? ToolWindowContentUi)?.update()
+                }
+            }
+
+            override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
+        })
 
         // --- Scope Behavior ---
         rootSettingsGroup.add(object : ToggleAction("Include HEAD tab changes in file scopes") {

@@ -4,6 +4,7 @@ import com.github.uiopak.lstcrc.services.GitService
 import com.github.uiopak.lstcrc.services.ToolWindowStateService
 import com.github.uiopak.lstcrc.state.ToolWindowState
 import com.github.uiopak.lstcrc.utils.LstCrcKeys
+import com.intellij.ide.util.PropertiesComponent
 import com.intellij.openapi.actionSystem.ActionGroup
 import com.intellij.openapi.actionSystem.DefaultActionGroup
 import com.intellij.openapi.application.ApplicationManager
@@ -12,6 +13,7 @@ import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.wm.ToolWindow
 import com.intellij.openapi.wm.ToolWindowFactory
+import com.intellij.openapi.wm.impl.content.ToolWindowContentUi
 import com.intellij.ui.content.ContentFactory
 import com.intellij.ui.content.ContentManagerEvent
 import com.intellij.ui.content.ContentManagerListener
@@ -21,10 +23,19 @@ class MyToolWindowFactory : ToolWindowFactory {
 
     override fun createToolWindowContent(project: Project, toolWindow: ToolWindow) {
         // --- Standard Initialization ---
-        // Key background services (VfsListenerService, LstCrcGutterTrackerService) are now
-        // initialized eagerly in PluginStartupActivity to ensure they are active even if
-        // the tool window isn't opened.
         logger.info("createToolWindowContent called for project: ${project.name}")
+
+        // --- HIDE/SHOW THE TOOL WINDOW ID LABEL ON STARTUP ---
+        // Read the persisted user setting. The ToggleAction in the settings menu will handle live changes.
+        val properties = PropertiesComponent.getInstance()
+        val showTitle = properties.getBoolean(
+            ToolWindowSettingsProvider.APP_SHOW_TOOL_WINDOW_TITLE_KEY,
+            ToolWindowSettingsProvider.DEFAULT_SHOW_TOOL_WINDOW_TITLE
+        )
+        // Set the client property based on the setting. `null` shows the label, "true" hides it.
+        val hideIdLabelValue = if (showTitle) null else "true"
+        toolWindow.component.putClientProperty(ToolWindowContentUi.HIDE_ID_LABEL, hideIdLabelValue)
+
         val gitChangesUiProvider = GitChangesToolWindow(project, toolWindow.disposable)
         val contentFactory = ContentFactory.getInstance()
         val gitService = project.service<GitService>()
