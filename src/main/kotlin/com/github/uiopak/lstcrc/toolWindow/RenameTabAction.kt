@@ -1,5 +1,6 @@
 package com.github.uiopak.lstcrc.toolWindow
 
+import com.github.uiopak.lstcrc.resources.LstCrcBundle
 import com.github.uiopak.lstcrc.services.ToolWindowStateService
 import com.github.uiopak.lstcrc.utils.LstCrcKeys
 import com.intellij.openapi.actionSystem.ActionUpdateThread
@@ -71,13 +72,13 @@ class RenameTabAction : AnAction() {
         // Get the content of the RIGHT-CLICKED tab.
         val content = getContent(e)
         if (content == null) {
-            Messages.showErrorDialog(project, "Could not determine which tab was right-clicked.", "Rename Error")
+            Messages.showErrorDialog(project, LstCrcBundle.message("dialog.error.rename.no.tab.message"), LstCrcBundle.message("dialog.error.rename.title"))
             return
         }
 
         val branchName = content.getUserData(LstCrcKeys.BRANCH_NAME_KEY)
         if (branchName == null) {
-            Messages.showErrorDialog(project, "Could not determine the identifier for this tab.", "Rename Error")
+            Messages.showErrorDialog(project, LstCrcBundle.message("dialog.error.rename.no.identifier.message"), LstCrcBundle.message("dialog.error.rename.title"))
             return
         }
 
@@ -98,8 +99,8 @@ class RenameTabAction : AnAction() {
 
             val newAlias = Messages.showInputDialog(
                 project,
-                "Enter new name for tab. Leave blank to reset to the original name.",
-                "Rename Tab",
+                LstCrcBundle.message("dialog.rename.tab.message"),
+                LstCrcBundle.message("dialog.rename.tab.title"),
                 Messages.getQuestionIcon(),
                 currentDisplayName,
                 null // No validator

@@ -1,5 +1,6 @@
 package com.github.uiopak.lstcrc.toolWindow
 
+import com.github.uiopak.lstcrc.resources.LstCrcBundle
 import com.github.uiopak.lstcrc.services.CategorizedChanges
 import com.github.uiopak.lstcrc.services.ToolWindowStateService
 import com.intellij.ide.util.PropertiesComponent
@@ -65,7 +66,7 @@ class LstCrcChangesBrowser(
     private val rightClickState = ClickState()
 
     init {
-        viewer.emptyText.text = "Loading..."
+        viewer.emptyText.text = LstCrcBundle.message("changes.browser.loading")
         project.messageBus.connect(this).subscribe(GitRepository.GIT_REPO_CHANGE, this)
         ChangeListManager.getInstance(project).addChangeListListener(this, this)
         com.intellij.openapi.util.Disposer.register(parentDisposable, this)
@@ -215,8 +216,8 @@ class LstCrcChangesBrowser(
         if (fileToOpen != null && fileToOpen.isValid && !fileToOpen.isDirectory) {
             OpenFileDescriptor(project, fileToOpen).navigate(true)
         } else {
-            val pathForMessage = (change.afterRevision?.file ?: change.beforeRevision?.file)?.path ?: "Unknown path"
-            Messages.showWarningDialog(project, "Could not open source file (it may no longer exist, is not accessible, or is a directory): $pathForMessage", "Open Source Error")
+            val pathForMessage = (change.afterRevision?.file ?: change.beforeRevision?.file)?.path ?: LstCrcBundle.message("changes.browser.open.source.error.unknown.path")
+            Messages.showWarningDialog(project, LstCrcBundle.message("changes.browser.open.source.error.message", pathForMessage), LstCrcBundle.message("changes.browser.open.source.error.title"))
         }
     }
 
@@ -238,12 +239,11 @@ class LstCrcChangesBrowser(
             val changes = categorizedChanges?.allChanges ?: emptyList()
             val hasChanges = changes.isNotEmpty()
 
-            val emptyText: String = when {
-                categorizedChanges == null -> "Error loading changes for $forBranchName"
-                !hasChanges -> "No changes found for $forBranchName"
-                else -> "No changes" // Default empty text for a filtered-out view
+            viewer.emptyText.text = when {
+                categorizedChanges == null -> LstCrcBundle.message("changes.browser.error.loading", forBranchName)
+                !hasChanges -> LstCrcBundle.message("changes.browser.no.changes", forBranchName)
+                else -> LstCrcBundle.message("changes.browser.no.changes.filtered")
             }
-            viewer.emptyText.text = emptyText
 
             // On the very first load for this browser instance, we want to reset the state,
             // which includes a default expansion. On all subsequent refreshes, we want to
@@ -318,14 +318,14 @@ class LstCrcChangesBrowser(
         val group = DefaultActionGroup()
         group.add(object : DumbAwareAction() {
             override fun update(e: AnActionEvent) {
-                e.presentation.text = "Show Diff"
+                e.presentation.text = LstCrcBundle.message("context.menu.show.diff")
             }
             override fun actionPerformed(event: AnActionEvent) = openDiff(selectedChanges)
             override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.EDT
         })
         group.add(object : DumbAwareAction() {
             override fun update(event: AnActionEvent) {
-                event.presentation.text = "Open Source"
+                event.presentation.text = LstCrcBundle.message("context.menu.open.source")
                 // This action is only sensible for a single selection.
                 event.presentation.isEnabled = selectedChanges.size == 1
             }

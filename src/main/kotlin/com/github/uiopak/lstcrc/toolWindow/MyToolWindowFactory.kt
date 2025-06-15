@@ -1,5 +1,6 @@
 package com.github.uiopak.lstcrc.toolWindow
 
+import com.github.uiopak.lstcrc.resources.LstCrcBundle
 import com.github.uiopak.lstcrc.services.GitService
 import com.github.uiopak.lstcrc.services.ToolWindowStateService
 import com.github.uiopak.lstcrc.state.ToolWindowState
@@ -66,7 +67,7 @@ class MyToolWindowFactory : ToolWindowFactory {
         val headTabTargetName = currentRepository?.currentBranchName ?: currentRepository?.currentRevision ?: "HEAD"
 
         val headView = gitChangesUiProvider.createBranchContentView("HEAD")
-        val headContent = contentFactory.createContent(headView, "HEAD", false).apply {
+        val headContent = contentFactory.createContent(headView, LstCrcBundle.message("tab.name.head"), false).apply {
             isCloseable = false
             isPinned = true
         }

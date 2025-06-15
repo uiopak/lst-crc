@@ -1,5 +1,6 @@
 package com.github.uiopak.lstcrc.toolWindow
 
+import com.github.uiopak.lstcrc.resources.LstCrcBundle
 import com.github.uiopak.lstcrc.services.GitService
 import com.intellij.icons.AllIcons
 import com.intellij.openapi.project.Project
@@ -33,7 +34,7 @@ class BranchSelectionPanel(
 
     init {
         tree = createBranchSelectionTree()
-        
+
         searchTextField.addDocumentListener(object : DocumentListener {
             override fun insertUpdate(e: DocumentEvent?) { filterTree() }
             override fun removeUpdate(e: DocumentEvent?) { filterTree() }
@@ -69,13 +70,9 @@ class BranchSelectionPanel(
                 }
                 val userObject = value.userObject
                 when (userObject) {
-                    "Local" -> {
-                        append(userObject.toString(), SimpleTextAttributes.REGULAR_ATTRIBUTES)
-                        icon = AllIcons.Nodes.Folder
-                    }
-                    "Remote" -> {
-                        append(userObject.toString(), SimpleTextAttributes.REGULAR_ATTRIBUTES)
-                        icon = AllIcons.Nodes.WebFolder
+                    is BranchCategory -> {
+                        append(userObject.displayName, SimpleTextAttributes.REGULAR_ATTRIBUTES)
+                        icon = if (userObject.type == BranchCategoryType.LOCAL) AllIcons.Nodes.Folder else AllIcons.Nodes.WebFolder
                     }
                     is String -> {
                         append(userObject, SimpleTextAttributes.REGULAR_ATTRIBUTES)
@@ -109,7 +106,7 @@ class BranchSelectionPanel(
                         val node = currentTargetPath.lastPathComponent as? DefaultMutableTreeNode
                         if (node != null && node.isLeaf) {
                             val parentNode = node.parent as? DefaultMutableTreeNode
-                            if (parentNode != null && (parentNode.userObject == "Local" || parentNode.userObject == "Remote")) {
+                            if (parentNode?.userObject is BranchCategory) {
                                 (node.userObject as? String)?.let { branchName ->
                                     onBranchSelected(branchName)
                                 }
@@ -122,10 +119,15 @@ class BranchSelectionPanel(
         return newTree
     }
 
+    private enum class BranchCategoryType { LOCAL, REMOTE }
+    private data class BranchCategory(val type: BranchCategoryType, val displayName: String)
+
     private fun buildBranchTreeModel(searchTerm: String): DefaultTreeModel {
         val rootNode = DefaultMutableTreeNode("Root")
-        val localBranchesNode = DefaultMutableTreeNode("Local")
-        val remoteBranchesNode = DefaultMutableTreeNode("Remote")
+        val localCategory = BranchCategory(BranchCategoryType.LOCAL, LstCrcBundle.message("branch.type.local"))
+        val remoteCategory = BranchCategory(BranchCategoryType.REMOTE, LstCrcBundle.message("branch.type.remote"))
+        val localBranchesNode = DefaultMutableTreeNode(localCategory)
+        val remoteBranchesNode = DefaultMutableTreeNode(remoteCategory)
 
         val localBranches = gitService.getLocalBranches().sorted()
         val remoteBranches = gitService.getRemoteBranches().sorted()

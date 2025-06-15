@@ -1,5 +1,6 @@
 package com.github.uiopak.lstcrc.services
 
+import com.github.uiopak.lstcrc.resources.LstCrcBundle
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.project.Project
@@ -93,7 +94,7 @@ class GitService(private val project: Project) {
         // Determine current actual branch name
         val currentActualBranchName = repository.currentBranchName
 
-        object : Task.Backgroundable(project, "Loading Git Changes...") {
+        object : Task.Backgroundable(project, LstCrcBundle.message("git.task.loading.changes")) {
             override fun run(indicator: ProgressIndicator) {
                 try {
                     val changes: List<Change>

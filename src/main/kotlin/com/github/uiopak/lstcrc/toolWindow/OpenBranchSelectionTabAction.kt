@@ -1,5 +1,6 @@
 package com.github.uiopak.lstcrc.toolWindow
 
+import com.github.uiopak.lstcrc.resources.LstCrcBundle
 import com.github.uiopak.lstcrc.services.GitService
 import com.intellij.icons.AllIcons
 import com.github.uiopak.lstcrc.services.ToolWindowStateService
@@ -17,13 +18,17 @@ class OpenBranchSelectionTabAction(
     private val project: Project,
     private val toolWindow: ToolWindow,
     private val uiProvider: GitChangesToolWindow
-) : AnAction("Open Branch Selection", "Open a tab to select a branch for comparison", AllIcons.General.Add) {
+) : AnAction(
+    LstCrcBundle.message("action.open.branch.selection.text"),
+    LstCrcBundle.message("action.open.branch.selection.description"),
+    AllIcons.General.Add
+) {
 
     private val logger = thisLogger()
 
     override fun actionPerformed(e: AnActionEvent) {
         logger.info("OpenBranchSelectionTabAction: actionPerformed called. Event source: ${e.place}, DataContext: ${e.dataContext}")
-        val selectionTabName = "Select Branch"
+        val selectionTabName = LstCrcBundle.message("tab.name.select.branch")
         val contentManager: ContentManager = toolWindow.contentManager
 
         val existingContent = contentManager.findContent(selectionTabName)

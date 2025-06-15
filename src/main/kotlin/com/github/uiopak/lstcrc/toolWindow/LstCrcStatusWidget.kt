@@ -1,10 +1,14 @@
 package com.github.uiopak.lstcrc.toolWindow
 
+import com.github.uiopak.lstcrc.messaging.PLUGIN_SETTINGS_CHANGED_TOPIC
+import com.github.uiopak.lstcrc.messaging.PluginSettingsChangedListener
+import com.github.uiopak.lstcrc.resources.LstCrcBundle
 import com.github.uiopak.lstcrc.services.GitService
 import com.github.uiopak.lstcrc.services.ToolWindowStateService
 import com.github.uiopak.lstcrc.state.ToolWindowState
 import com.github.uiopak.lstcrc.utils.LstCrcKeys
 import com.intellij.ide.DataManager
+import com.intellij.ide.util.PropertiesComponent
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.DefaultActionGroup
@@ -28,8 +32,8 @@ import java.awt.event.MouseEvent
 
 
 class LstCrcStatusWidgetFactory : StatusBarWidgetFactory {
-    override fun getId(): String = "LstCrcStatusWidgetFactory" // Potentially use LstCrcStatusWidget.ID constant
-    override fun getDisplayName(): String = "LST-CRC Status Widget"
+    override fun getId(): String = LstCrcStatusWidget.ID
+    override fun getDisplayName(): String = LstCrcBundle.message("widget.display.name")
     override fun isAvailable(project: Project): Boolean = true
     override fun createWidget(project: Project): StatusBarWidget = LstCrcStatusWidget(project)
     override fun disposeWidget(widget: StatusBarWidget) {
@@ -44,12 +48,11 @@ class LstCrcStatusWidget(private val project: Project) : StatusBarWidget, Status
 
     private var statusBar: StatusBar? = null
     private var messageBusConnection: MessageBusConnection? = null
-    private var currentText: String = "LST-CRC" // Initialize with default
+    private var currentText: String = LstCrcBundle.message("plugin.name.short")
     private val logger = thisLogger()
 
     companion object {
         const val ID = "LstCrcStatusWidget"
-        // Tool Window ID - should match the one in plugin.xml and where OpenBranchSelectionTabAction is added
         private const val GIT_CHANGES_TOOL_WINDOW_ID = "GitChangesView"
     }
 
@@ -58,18 +61,26 @@ class LstCrcStatusWidget(private val project: Project) : StatusBarWidget, Status
     override fun getPresentation(): StatusBarWidget.WidgetPresentation = this
 
     private fun updateWidgetText(state: ToolWindowState?) {
+        val properties = PropertiesComponent.getInstance()
+        val showContext = properties.getBoolean(
+            ToolWindowSettingsProvider.APP_SHOW_WIDGET_CONTEXT_KEY,
+            ToolWindowSettingsProvider.DEFAULT_SHOW_WIDGET_CONTEXT
+        )
+        val prefix = if (showContext) LstCrcBundle.message("widget.context.prefix") else ""
+
         val currentServiceState = state ?: ToolWindowStateService.getInstance(project).state
         val selectedIndex = currentServiceState.selectedTabIndex
         val openTabs = currentServiceState.openTabs
 
-        currentText = when {
-            selectedIndex == -1 || openTabs.isEmpty() -> "HEAD"
+        val branchDisplayText = when {
+            selectedIndex == -1 || openTabs.isEmpty() -> LstCrcBundle.message("tab.name.head")
             selectedIndex >= 0 && selectedIndex < openTabs.size -> {
                 val tabInfo = openTabs[selectedIndex]
                 (tabInfo.alias ?: tabInfo.branchName).take(20) // Use alias if available, then truncate
             }
-            else -> "LST-CRC" // Default or error case
+            else -> LstCrcBundle.message("plugin.name.short")
         }
+        currentText = "$prefix$branchDisplayText"
     }
 
     override fun install(statusBar: StatusBar) {
@@ -78,6 +89,12 @@ class LstCrcStatusWidget(private val project: Project) : StatusBarWidget, Status
         messageBusConnection?.subscribe(ToolWindowStateService.TOPIC, object : ToolWindowStateService.Companion.ToolWindowStateListener {
             override fun stateChanged(newState: ToolWindowState) {
                 updateWidgetText(newState)
+                this@LstCrcStatusWidget.statusBar?.updateWidget(ID())
+            }
+        })
+        messageBusConnection?.subscribe(PLUGIN_SETTINGS_CHANGED_TOPIC, object : PluginSettingsChangedListener {
+            override fun onSettingsChanged() {
+                updateWidgetText(null)
                 this@LstCrcStatusWidget.statusBar?.updateWidget(ID())
             }
         })
@@ -93,7 +110,7 @@ class LstCrcStatusWidget(private val project: Project) : StatusBarWidget, Status
 
     override fun getText(): String = currentText
 
-    override fun getTooltipText(): String = "LST-CRC: Click to switch or open tab"
+    override fun getTooltipText(): String = LstCrcBundle.message("widget.tooltip")
 
     override fun getAlignment(): Float {
         return Component.CENTER_ALIGNMENT
@@ -108,7 +125,7 @@ class LstCrcStatusWidget(private val project: Project) : StatusBarWidget, Status
             val actions = mutableListOf<AnAction>()
 
             // Manually add the "HEAD" action
-            actions.add(object : AnAction("HEAD") {
+            actions.add(object : AnAction(LstCrcBundle.message("tab.name.head")) {
                 override fun actionPerformed(e: AnActionEvent) {
                     val toolWindowManager = ToolWindowManager.getInstance(project)
                     val toolWindow = toolWindowManager.getToolWindow(GIT_CHANGES_TOOL_WINDOW_ID)
@@ -166,7 +183,7 @@ class LstCrcStatusWidget(private val project: Project) : StatusBarWidget, Status
 
             actions.add(Separator.getInstance())
 
-            actions.add(object : AnAction("+ Add Tab") {
+            actions.add(object : AnAction(LstCrcBundle.message("widget.action.add.tab")) {
                 override fun actionPerformed(e: AnActionEvent) {
                     val toolWindowManager = ToolWindowManager.getInstance(project)
                     val toolWindow = toolWindowManager.getToolWindow(GIT_CHANGES_TOOL_WINDOW_ID)
@@ -177,7 +194,7 @@ class LstCrcStatusWidget(private val project: Project) : StatusBarWidget, Status
 
                     // Ensure the tool window is visible and ready.
                     toolWindow.activate({
-                        val selectionTabName = "Select Branch"
+                        val selectionTabName = LstCrcBundle.message("tab.name.select.branch")
                         val contentManager: ContentManager = toolWindow.contentManager
 
                         val existingContent = contentManager.findContent(selectionTabName)
@@ -237,7 +254,7 @@ class LstCrcStatusWidget(private val project: Project) : StatusBarWidget, Status
             val actionGroup = DefaultActionGroup(actions)
             val dataContext = DataManager.getInstance().getDataContext(mouseEvent.component)
             val popup = JBPopupFactory.getInstance().createActionGroupPopup(
-                "LST-CRC Actions",
+                LstCrcBundle.message("widget.popup.title"),
                 actionGroup,
                 dataContext,
                 JBPopupFactory.ActionSelectionAid.SPEEDSEARCH,

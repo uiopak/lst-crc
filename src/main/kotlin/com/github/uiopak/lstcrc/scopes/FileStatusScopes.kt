@@ -1,5 +1,6 @@
 package com.github.uiopak.lstcrc.scopes
 
+import com.github.uiopak.lstcrc.resources.LstCrcBundle
 import com.github.uiopak.lstcrc.services.ProjectActiveDiffDataService
 import com.intellij.icons.AllIcons
 import com.intellij.openapi.components.service
@@ -47,28 +48,28 @@ private abstract class LstCrcPackageSet(
 
 // --- Specific PackageSet Implementations ---
 private class CreatedFilesPackageSet : LstCrcPackageSet(
-    description = "Files newly added in the current LSTCRC branch comparison."
+    description = LstCrcBundle.message("scope.created.description")
 ) {
     override fun getRelevantFiles(service: ProjectActiveDiffDataService): Set<VirtualFile> = service.createdFiles.toSet()
     override fun createCopy(): PackageSet = CreatedFilesPackageSet()
 }
 
 private class ModifiedFilesPackageSet : LstCrcPackageSet(
-    description = "Files modified in the current LSTCRC branch comparison."
+    description = LstCrcBundle.message("scope.modified.description")
 ) {
     override fun getRelevantFiles(service: ProjectActiveDiffDataService): Set<VirtualFile> = service.modifiedFiles.toSet()
     override fun createCopy(): PackageSet = ModifiedFilesPackageSet()
 }
 
 private class MovedFilesPackageSet : LstCrcPackageSet(
-    description = "Files moved or renamed in the current LSTCRC branch comparison."
+    description = LstCrcBundle.message("scope.moved.description")
 ) {
     override fun getRelevantFiles(service: ProjectActiveDiffDataService): Set<VirtualFile> = service.movedFiles.toSet()
     override fun createCopy(): PackageSet = MovedFilesPackageSet()
 }
 
 private class ChangedFilesPackageSet : LstCrcPackageSet(
-    description = "All files created, modified, or moved in the current LSTCRC branch comparison."
+    description = LstCrcBundle.message("scope.changed.description")
 ) {
     // Overriding getRelevantFiles for combined logic
     override fun getRelevantFiles(service: ProjectActiveDiffDataService): Set<VirtualFile> {
@@ -81,15 +82,15 @@ private class ChangedFilesPackageSet : LstCrcPackageSet(
 // --- NamedScope Definitions (using prefixed IDs) ---
 // The 'name' parameter is the Scope ID and its default display name in UI lists.
 class CreatedFilesScope : NamedScope(
-    "LSTCRC: Created Files", // Scope ID and UI Name
-    AllIcons.Actions.Diff, // Icon
-    CreatedFilesPackageSet()      // PackageSet implementation
+    LstCrcBundle.message("scope.created.name"),
+    AllIcons.Actions.Diff,
+    CreatedFilesPackageSet()
 ){
     override fun getDefaultColorName(): String = "Green"
 }
 
 class ModifiedFilesScope : NamedScope(
-    "LSTCRC: Modified Files",
+    LstCrcBundle.message("scope.modified.name"),
     AllIcons.Actions.Diff,
     ModifiedFilesPackageSet()
 ){
@@ -97,7 +98,7 @@ class ModifiedFilesScope : NamedScope(
 }
 
 class MovedFilesScope : NamedScope(
-    "LSTCRC: Moved Files",
+    LstCrcBundle.message("scope.moved.name"),
     AllIcons.Actions.Diff,
     MovedFilesPackageSet()
 ){
@@ -106,7 +107,7 @@ class MovedFilesScope : NamedScope(
 
 
 class ChangedFilesScope : NamedScope(
-    "LSTCRC: Changed Files",
+    LstCrcBundle.message("scope.changed.name"),
     AllIcons.Actions.Diff,
     ChangedFilesPackageSet()
 )

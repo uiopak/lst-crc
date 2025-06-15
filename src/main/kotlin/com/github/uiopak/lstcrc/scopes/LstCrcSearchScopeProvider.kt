@@ -1,5 +1,6 @@
 package com.github.uiopak.lstcrc.scopes
 
+import com.github.uiopak.lstcrc.resources.LstCrcBundle
 import com.intellij.openapi.actionSystem.DataContext
 import com.intellij.openapi.project.Project
 import com.intellij.psi.search.SearchScope
@@ -14,7 +15,7 @@ class LstCrcSearchScopeProvider : SearchScopeProvider {
 
     override fun getDisplayName(): String {
         // This string will be used as a separator/group header in the scope selection dropdown.
-        return "LSTCRC Changes"
+        return LstCrcBundle.message("scope.provider.display.name")
     }
 
     override fun getSearchScopes(project: Project, dataContext: DataContext): List<SearchScope> {

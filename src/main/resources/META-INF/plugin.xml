@@ -3,6 +3,7 @@
     <id>com.github.uiopak.lstcrc</id>
     <name>lst-crc</name>
     <vendor>uiopak</vendor>
+    <resource-bundle>messages.LstCrcMessages</resource-bundle>
 
     <depends>com.intellij.modules.platform</depends>
     <depends>Git4Idea</depends>
@@ -17,16 +18,12 @@
 
     <actions>
         <action id="com.github.uiopak.lstcrc.RenameTabAction"
-                class="com.github.uiopak.lstcrc.toolWindow.RenameTabAction"
-                text="Rename Tab..."
-                description="Renames the selected LST-CRC tab.">
+                class="com.github.uiopak.lstcrc.toolWindow.RenameTabAction">
             <add-to-group group-id="ToolWindowContextMenu" anchor="last"/>
         </action>
 
         <action id="com.github.uiopak.lstcrc.CreateTabFromRevisionAction"
-                class="com.github.uiopak.lstcrc.toolWindow.CreateTabFromRevisionAction"
-                text="LST-CRC: Compare with Revision"
-                description="Creates a new LST-CRC tab comparing the current working tree against this revision.">
+                class="com.github.uiopak.lstcrc.toolWindow.CreateTabFromRevisionAction">
             <add-to-group group-id="Vcs.Log.ContextMenu" anchor="last"/>
         </action>
     </actions>

@@ -19,3 +19,11 @@ interface ActiveDiffDataChangedListener : EventListener {
 }
 
 val DIFF_DATA_CHANGED_TOPIC: Topic<ActiveDiffDataChangedListener> = Topic.create("LSTCRC Active Diff Data Changed", ActiveDiffDataChangedListener::class.java)
+
+// Topic for broadcasting when any plugin-specific setting has changed.
+// This allows components like the status bar widget to react to settings changes
+// without needing a direct reference to the settings provider.
+interface PluginSettingsChangedListener : EventListener {
+    fun onSettingsChanged()
+}
+val PLUGIN_SETTINGS_CHANGED_TOPIC: Topic<PluginSettingsChangedListener> = Topic.create("LSTCRC Plugin Settings Changed", PluginSettingsChangedListener::class.java)
