@@ -241,7 +241,22 @@ class ToolWindowStateService(private val project: Project) : PersistentStateComp
         }
     }
 
-    private fun getActiveChangesBrowser(project: Project): LstCrcChangesBrowser? {
+    /**
+     * Called on startup or on demand to ensure the data for the initially selected tab is loaded.
+     * This method identifies the current selection and triggers a full data refresh,
+     * which includes updating the data service (`ProjectActiveDiffDataService`) and the
+     * tool window UI (`LstCrcChangesBrowser`) if it's visible.
+     */
+    fun refreshDataForCurrentSelection() {
+        val branchToRefresh = getSelectedTabBranchName() ?: "HEAD"
+        logger.info("ACTION: Refreshing data for current selection: '$branchToRefresh'")
+        // The existing refreshDataForActiveTabIfMatching method already contains all the necessary logic
+        // to fetch data, update the data service, and update the UI. We just need to call it with the
+        // currently selected branch name.
+        refreshDataForActiveTabIfMatching(branchToRefresh)
+    }
+
+    internal fun getActiveChangesBrowser(project: Project): LstCrcChangesBrowser? {
         val toolWindowId = "GitChangesView"
         val toolWindow = ToolWindowManager.getInstance(project).getToolWindow(toolWindowId)
         val selectedContent = toolWindow?.contentManager?.selectedContent

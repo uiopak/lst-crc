@@ -5,9 +5,6 @@ import com.github.uiopak.lstcrc.services.LstCrcGutterTrackerService
 import com.github.uiopak.lstcrc.services.ProjectActiveDiffDataService
 import com.github.uiopak.lstcrc.services.ToolWindowStateService
 import com.github.uiopak.lstcrc.services.VfsListenerService
-import com.github.uiopak.lstcrc.toolWindow.ToolWindowSettingsProvider
-import com.github.uiopak.lstcrc.utils.await
-import com.intellij.ide.util.PropertiesComponent
 import com.intellij.openapi.application.EDT
 import com.intellij.openapi.components.service
 import com.intellij.openapi.diagnostic.thisLogger
@@ -18,7 +15,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 
 /**
- * Replaces the deprecated `ProjectManagerListener`.
  * This activity runs once per project after it has been opened and initial indexing is complete.
  * Its primary responsibility is to perform the initial load of Git diff data based on the
  * plugin's persisted state, so that features like file scopes and tab colors are available
@@ -69,7 +65,6 @@ class PluginStartupActivity : ProjectActivity {
         val gitService = project.service<GitService>()
         val currentRepo = gitService.getCurrentRepository()
         val toolWindowStateService = project.service<ToolWindowStateService>()
-        val diffDataService = project.service<ProjectActiveDiffDataService>()
 
         if (currentRepo == null) {
             logger.warn("STARTUP_LOGIC_DELAYED: Git repository still not found after delay for project: ${project.name}. Tab coloring may not function correctly.")
@@ -82,77 +77,12 @@ class PluginStartupActivity : ProjectActivity {
         }
         logger.info("STARTUP_LOGIC_DELAYED: Git repository found after delay: ${currentRepo.root.path}. Proceeding with initial diff load.")
 
-        val selectedBranchName = toolWindowStateService.getSelectedTabBranchName()
+        // This single call will handle fetching data, updating ProjectActiveDiffDataService,
+        // and updating the UI (if the tool window is open) for the persisted selected tab.
+        // It correctly handles whether a branch or "HEAD" is selected, and respects the
+        // "Include HEAD in Scopes" setting internally.
+        toolWindowStateService.refreshDataForCurrentSelection()
 
-        if (selectedBranchName != null) {
-            if (diffDataService.activeBranchName != selectedBranchName || diffDataService.activeChanges.isEmpty()) {
-                logger.info("STARTUP_LOGIC_DELAYED: Attempting to load changes for initially selected tool window branch: '$selectedBranchName'.")
-                try {
-                    val categorizedChanges = gitService.getChanges(selectedBranchName).await()
-                    logger.info("STARTUP_LOGIC_DELAYED: Successfully fetched changes, updating ProjectActiveDiffDataService for '$selectedBranchName'.")
-                    withContext(Dispatchers.EDT) {
-                        if (project.isDisposed) return@withContext
-                        diffDataService.updateActiveDiff(
-                            selectedBranchName,
-                            categorizedChanges.allChanges,
-                            categorizedChanges.createdFiles,
-                            categorizedChanges.modifiedFiles,
-                            categorizedChanges.movedFiles
-                        )
-                    }
-                } catch (throwable: Throwable) {
-                    logger.error("STARTUP_LOGIC_DELAYED: Error getting changes for branch '$selectedBranchName': ${throwable.message}", throwable)
-                    withContext(Dispatchers.EDT) {
-                        if (project.isDisposed) return@withContext
-                        diffDataService.updateActiveDiff(selectedBranchName, emptyList(), emptyList(), emptyList(), emptyList())
-                    }
-                }
-            } else {
-                logger.info("STARTUP_LOGIC_DELAYED: Diff data for branch '$selectedBranchName' seems already loaded. Refreshing colors anyway.")
-                withContext(Dispatchers.EDT) {
-                    if (project.isDisposed) return@withContext
-                    diffDataService.refreshCurrentColorings()
-                }
-            }
-        } else {
-            logger.info("STARTUP_LOGIC_DELAYED: No branch selected in tool window (HEAD is active). Checking setting.")
-            val properties = PropertiesComponent.getInstance()
-            val includeHeadInScopes = properties.getBoolean(
-                ToolWindowSettingsProvider.APP_INCLUDE_HEAD_IN_SCOPES_KEY,
-                ToolWindowSettingsProvider.DEFAULT_INCLUDE_HEAD_IN_SCOPES
-            )
-            val headBranchName = "HEAD"
-
-            if (includeHeadInScopes) {
-                logger.info("STARTUP_LOGIC_DELAYED: 'Include HEAD in Scopes' is ON. Loading HEAD changes.")
-                try {
-                    val categorizedChanges = gitService.getChanges(headBranchName).await()
-                    logger.info("STARTUP_LOGIC_DELAYED: Successfully fetched changes for HEAD. Updating service.")
-                    withContext(Dispatchers.EDT) {
-                        if (project.isDisposed) return@withContext
-                        diffDataService.updateActiveDiff(
-                            headBranchName,
-                            categorizedChanges.allChanges,
-                            categorizedChanges.createdFiles,
-                            categorizedChanges.modifiedFiles,
-                            categorizedChanges.movedFiles
-                        )
-                    }
-                } catch (throwable: Throwable) {
-                    logger.error("STARTUP_LOGIC_DELAYED: Error getting changes for HEAD: ${throwable.message}", throwable)
-                    withContext(Dispatchers.EDT) {
-                        if (project.isDisposed) return@withContext
-                        diffDataService.clearActiveDiff()
-                    }
-                }
-            } else {
-                logger.info("STARTUP_LOGIC_DELAYED: 'Include HEAD in Scopes' is OFF. Clearing active diff data.")
-                withContext(Dispatchers.EDT) {
-                    if (project.isDisposed) return@withContext
-                    diffDataService.clearActiveDiff()
-                }
-            }
-        }
         logger.info("STARTUP_LOGIC_DELAYED: Delayed initial diff load task finished for project: ${project.name}")
 
         withContext(Dispatchers.EDT) {
