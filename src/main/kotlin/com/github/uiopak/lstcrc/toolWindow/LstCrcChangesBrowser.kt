@@ -20,8 +20,6 @@ import com.intellij.openapi.project.DumbAwareAction
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.vcs.changes.Change
-import com.intellij.openapi.vcs.changes.ChangeListListener
-import com.intellij.openapi.vcs.changes.ChangeListManager
 import com.intellij.openapi.vcs.changes.actions.diff.ShowDiffAction
 import com.intellij.openapi.vcs.changes.ui.ChangesBrowserNode
 import com.intellij.openapi.vcs.changes.ui.ChangesTree
@@ -45,7 +43,7 @@ class LstCrcChangesBrowser(
     private val propertiesComponent: PropertiesComponent,
     private val targetBranchToCompare: String,
     parentDisposable: Disposable
-) : SimpleAsyncChangesBrowser(project, false, true), Disposable, ChangeListListener, GitRepositoryChangeListener {
+) : SimpleAsyncChangesBrowser(project, false, true), Disposable, GitRepositoryChangeListener {
 
     private val logger = thisLogger()
     private var refreshDebounceTimer: Timer? = null
@@ -72,7 +70,6 @@ class LstCrcChangesBrowser(
     init {
         viewer.emptyText.text = LstCrcBundle.message("changes.browser.loading")
         project.messageBus.connect(this).subscribe(GitRepository.GIT_REPO_CHANGE, this)
-        ChangeListManager.getInstance(project).addChangeListListener(this, this)
         com.intellij.openapi.util.Disposer.register(parentDisposable, this)
 
         // --- FIX UI BORDER ---
@@ -293,13 +290,11 @@ class LstCrcChangesBrowser(
 
     /**
      * Initiates a refresh of the data for this browser's target branch.
-     * It no longer clears the view upfront, preventing the "Loading..." flicker. The existing
-     * content remains visible until the new data is fetched and applied via displayChanges().
+     * The global VcsChangeListener handles refreshes from local file changes. This method
+     * is primarily called for explicit UI actions (e.g. initial tab selection).
      */
     fun requestRefreshData() {
-        // The call to showLoadingStateAndPrepareForData() was removed.
-        // We now directly request the data. The tree will show a busy icon over the
-        // existing content if the fetch is slow, but it won't clear the content.
+        logger.debug("UI_REFRESH: Browser for '$targetBranchToCompare' is requesting a data refresh.")
         project.service<ToolWindowStateService>().refreshDataForActiveTabIfMatching(targetBranchToCompare)
     }
 
@@ -307,14 +302,10 @@ class LstCrcChangesBrowser(
 
     override fun repositoryChanged(repository: GitRepository) {
         if (repository.project == this.project) {
+            logger.debug("GIT_REPO_CHANGE: repositoryChanged event received in browser, triggering debounced refresh.")
             triggerDebouncedDataRefresh()
         }
     }
-
-    override fun changeListChanged(changeList: com.intellij.openapi.vcs.changes.ChangeList) = triggerDebouncedDataRefresh()
-    override fun changesAdded(changes: Collection<Change>, changeList: com.intellij.openapi.vcs.changes.ChangeList?) { if (changes.isNotEmpty()) triggerDebouncedDataRefresh() }
-    override fun changesRemoved(changes: Collection<Change>, changeList: com.intellij.openapi.vcs.changes.ChangeList?) { if (changes.isNotEmpty()) triggerDebouncedDataRefresh() }
-    override fun unchangedFileStatusChanged() = triggerDebouncedDataRefresh()
 
     private fun triggerDebouncedDataRefresh() {
         refreshDebounceTimer?.stop()

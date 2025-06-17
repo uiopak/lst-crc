@@ -33,6 +33,7 @@ class PluginStartupActivity : ProjectActivity {
         logger.info("STARTUP_LOGIC: Eagerly initializing background services.")
         project.service<VfsListenerService>()
         project.service<LstCrcGutterTrackerService>()
+        project.service<VcsChangeListener>() // Eagerly initialize the new global VCS listener
         logger.info("STARTUP_LOGIC: Background services initialized.")
 
         // This logic was previously in ProjectOpenCloseListener.
