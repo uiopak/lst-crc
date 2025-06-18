@@ -82,6 +82,7 @@ object ToolWindowHelper {
             val existingContent = contentManager.findContent(selectionTabName)
             if (existingContent != null) {
                 contentManager.setSelectedContent(existingContent, true)
+                (existingContent.component as? BranchSelectionPanel)?.requestFocusOnSearchField()
                 logger.info("HELPER: Found existing '$selectionTabName' tab and selected it.")
                 return@activate
             }
@@ -126,6 +127,7 @@ object ToolWindowHelper {
             }
             contentManager.addContent(newContent)
             contentManager.setSelectedContent(newContent, true)
+            branchSelectionUi.requestFocusOnSearchField()
 
         }, true, true)
     }
