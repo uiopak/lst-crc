@@ -21,6 +21,12 @@ import com.intellij.openapi.vfs.VirtualFile
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ConcurrentHashMap
 
+/**
+ * Manages custom gutter markers (line status trackers) for files that have changed
+ * in the currently active LST-CRC comparison. It listens for data and settings changes to
+ * apply, update, or remove these trackers, and it carefully interoperates with the IDE's
+ * native VCS gutter marking system.
+ */
 @Service(Service.Level.PROJECT)
 class LstCrcGutterTrackerService(private val project: Project) : Disposable {
 
@@ -145,7 +151,6 @@ class LstCrcGutterTrackerService(private val project: Project) : Disposable {
     private fun getOrCreateTracker(file: VirtualFile, branchName: String) {
         val existingTracker = managedTrackers[file]
         if (existingTracker != null) {
-            // Tracker already exists, just update it with potentially new content.
             updateBaseRevision(existingTracker, file, branchName)
         } else {
             // Tracker creation must be on the EDT as it interacts with the Document.
@@ -189,7 +194,6 @@ class LstCrcGutterTrackerService(private val project: Project) : Disposable {
         }
 
         vcsContentFuture.whenComplete { content, throwable ->
-            // `setBaseRevision` must be called on the EDT.
             ApplicationManager.getApplication().invokeLater {
                 if (project.isDisposed || !file.isValid || tracker.isReleased) {
                     logger.warn("GUTTER_TRACKER: updateBaseRevision callback invoked, but state is now invalid. Aborting.")
@@ -224,7 +228,6 @@ class LstCrcGutterTrackerService(private val project: Project) : Disposable {
     private fun releaseTracker(file: VirtualFile) {
         val tracker = managedTrackers.remove(file)
         if (tracker != null) {
-            // Disposal and manager interaction must be on the EDT.
             ApplicationManager.getApplication().invokeLater {
                 if (project.isDisposed) return@invokeLater
                 logger.info("GUTTER_TRACKER: Releasing custom tracker for ${file.path}")

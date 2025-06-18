@@ -23,6 +23,12 @@ import javax.swing.tree.DefaultMutableTreeNode
 import javax.swing.tree.DefaultTreeModel
 import javax.swing.tree.TreePath
 
+/**
+ * A UI panel that displays local and remote Git branches in a filterable tree,
+ * allowing the user to select one.
+ *
+ * @param onBranchSelected A callback invoked with the name of the branch when the user selects it.
+ */
 class BranchSelectionPanel(
     project: Project,
     private val gitService: GitService,

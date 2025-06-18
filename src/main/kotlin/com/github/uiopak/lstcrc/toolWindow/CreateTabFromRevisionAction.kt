@@ -11,6 +11,11 @@ import com.intellij.openapi.vcs.VcsDataKeys
 import com.intellij.openapi.wm.ToolWindowManager
 import com.intellij.ui.content.ContentFactory
 
+/**
+ * An action available in the Git Log context menu to create a new LST-CRC comparison tab
+ * for the selected revision. This allows comparing the current working directory against
+ * any commit or tag.
+ */
 class CreateTabFromRevisionAction : AnAction() {
 
     private val logger = thisLogger()
@@ -38,7 +43,6 @@ class CreateTabFromRevisionAction : AnAction() {
             return
         }
 
-        // Activate the tool window, then run the tab creation logic in the callback.
         toolWindow.activate {
             val contentManager = toolWindow.contentManager
             val stateService = ToolWindowStateService.getInstance(project)

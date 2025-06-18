@@ -38,6 +38,11 @@ import javax.swing.SwingUtilities
 import javax.swing.Timer
 import javax.swing.UIManager
 
+/**
+ * The main UI component for displaying the tree of file changes for a specific branch comparison.
+ * It extends [SimpleAsyncChangesBrowser] but provides highly customized mouse click handling
+ * based on user settings, and integrates with the plugin's data refresh lifecycle.
+ */
 class LstCrcChangesBrowser(
     private val project: Project,
     private val propertiesComponent: PropertiesComponent,
@@ -49,6 +54,7 @@ class LstCrcChangesBrowser(
     private var refreshDebounceTimer: Timer? = null
     private var isInitialLoad = true
 
+    /** Helper class to manage the state for detecting single vs. double clicks. */
     private class ClickState {
         var timer: Timer? = null
         var pendingChange: Change? = null
@@ -89,7 +95,6 @@ class LstCrcChangesBrowser(
         // Install a single master listener to gain full control over all mouse clicks.
         viewer.addMouseListener(object : MouseAdapter() {
             override fun mouseClicked(e: MouseEvent) {
-                // Ensure the click is within the bounds of a specific row for accuracy.
                 val row = viewer.getClosestRowForLocation(e.x, e.y)
                 if (row == -1) return
                 val bounds = viewer.getRowBounds(row)
@@ -115,7 +120,6 @@ class LstCrcChangesBrowser(
                         if (isContextMenuEnabled()) {
                             showContextMenu(e)
                         } else {
-                            // If the context menu is disabled, use the right-click action settings instead.
                             leftClickState.clear()
                             middleClickState.clear()
                             handleGenericClick(e, change, path, getRightClickAction(), getDoubleRightClickAction(), rightClickState)
@@ -147,6 +151,7 @@ class LstCrcChangesBrowser(
         }
         viewer.requestFocusInWindow()
 
+        // If double-click is disabled, we can fire the single-click action immediately.
         if (doubleClickAction == "NONE") {
             clickState.clear()
             if (e.clickCount == 1 && singleClickAction != "NONE") {
@@ -155,6 +160,8 @@ class LstCrcChangesBrowser(
             return
         }
 
+        // This logic handles the case where double-click is enabled.
+        // On the first click, we start a timer. If it expires, we fire the single-click action.
         if (e.clickCount == 1) {
             if (clickState.pendingPath != path || clickState.actionHasFiredForPath != null) {
                 clickState.clear()
@@ -162,6 +169,7 @@ class LstCrcChangesBrowser(
             clickState.pendingChange = change
             clickState.pendingPath = path
             clickState.timer?.stop()
+            // If the timer expires, it was a single click.
             clickState.timer = Timer(getUserDoubleClickDelayMs()) {
                 val sChange = clickState.pendingChange
                 val sPath = clickState.pendingPath
@@ -173,6 +181,7 @@ class LstCrcChangesBrowser(
                 }
             }.apply { isRepeats = false; start() }
         } else if (e.clickCount >= 2) {
+            // This is a double-click. Cancel any pending single-click action and fire the double-click one.
             if (clickState.actionHasFiredForPath == path) {
                 clickState.actionHasFiredForPath = null
                 clickState.timer?.stop()
@@ -193,7 +202,6 @@ class LstCrcChangesBrowser(
                 ToolWindowSettingsProvider.ACTION_OPEN_DIFF -> openDiff(listOf(change))
                 ToolWindowSettingsProvider.ACTION_OPEN_SOURCE -> openSource(change)
                 ToolWindowSettingsProvider.ACTION_SHOW_IN_PROJECT_TREE -> {
-                    // Guard against attempting to show deleted files in the project tree.
                     if (change.type != Change.Type.DELETED) {
                         showInProjectTree(change)
                     }
@@ -219,14 +227,13 @@ class LstCrcChangesBrowser(
         val fileToSelect = getFileFromChange(change)
         if (fileToSelect != null && fileToSelect.isValid) {
             val toolWindow = ToolWindowManager.getInstance(project).getToolWindow(ToolWindowId.PROJECT_VIEW)
-            // Activate the Project View, then run the selection logic in the callback.
             toolWindow?.activate({
                 val projectView = ProjectView.getInstance(project)
                 val psiFile = PsiManager.getInstance(project).findFile(fileToSelect)
                 val elementToSelect: Any = psiFile ?: fileToSelect
 
                 projectView.select(elementToSelect, fileToSelect, true)
-            }, true) // `true` means autoFocusContents
+            }, true)
         } else {
             val pathForMessage = (change.afterRevision?.file ?: change.beforeRevision?.file)?.path ?: LstCrcBundle.message("changes.browser.open.source.error.unknown.path")
             Messages.showWarningDialog(project, LstCrcBundle.message("changes.browser.select.file.error.message", pathForMessage), LstCrcBundle.message("changes.browser.select.file.error.title"))
@@ -263,7 +270,7 @@ class LstCrcChangesBrowser(
             }
 
             // On the very first load, reset the tree to a default expanded state.
-            // On subsequent refreshes, keep the user's current expansion and scroll state to prevent UI flicker.
+            // On subsequent refreshes, keep the user's current expansion and scroll state.
             val strategy = if (isInitialLoad && hasChanges) {
                 isInitialLoad = false
                 ChangesTree.ALWAYS_RESET

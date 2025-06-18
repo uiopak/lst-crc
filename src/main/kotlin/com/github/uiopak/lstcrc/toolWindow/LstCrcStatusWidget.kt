@@ -44,6 +44,10 @@ class LstCrcStatusWidgetFactory : StatusBarWidgetFactory {
     override fun canBeEnabledOn(statusBar: StatusBar): Boolean = true
 }
 
+/**
+ * A status bar widget that displays the currently active LST-CRC comparison context (e.g., "HEAD"
+ * or a branch name). It provides a popup menu for quickly switching between tabs or adding a new one.
+ */
 class LstCrcStatusWidget(private val project: Project) : StatusBarWidget, StatusBarWidget.TextPresentation {
 
     private var statusBar: StatusBar? = null

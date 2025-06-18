@@ -3,6 +3,11 @@ package com.github.uiopak.lstcrc.messaging
 import com.intellij.util.messages.Topic
 import java.util.EventListener
 
+/**
+ * Topic for broadcasting that file system changes have occurred.
+ *
+ * @see com.github.uiopak.lstcrc.services.VfsListenerService
+ */
 interface FileChangeListener : EventListener {
     fun onFilesChanged()
 }

@@ -12,13 +12,9 @@ import com.intellij.openapi.vcs.changes.ChangeListManager
 import javax.swing.Timer
 
 /**
- * A project-level service that listens for changes in the IDE's active changelists.
- * This is the primary mechanism for detecting when a file is modified, reverted, or otherwise
- * has its VCS status changed without a direct file system event (e.g., an in-memory Undo).
- *
- * When a change is detected, it triggers a debounced refresh of the plugin's data, ensuring that
- * all components (gutter markers, file scopes, tool window) are updated accordingly. This service
- * decouples background VCS change detection from any UI components.
+ * Listens for `ChangeListManager` updates to detect when VCS state changes (e.g., local edits,
+ * reverts, Undo). It triggers a debounced data refresh to update all plugin components,
+ * decoupling them from the direct source of VCS events.
  */
 @Service(Service.Level.PROJECT)
 class VcsChangeListener(private val project: Project) : ChangeListListener, Disposable {
@@ -28,7 +24,7 @@ class VcsChangeListener(private val project: Project) : ChangeListListener, Disp
 
     init {
         logger.info("VCS_CHANGE_LISTENER: Initializing for project ${project.name}")
-        // The listener is removed automatically when the service (disposable) is disposed.
+        // The listener is removed automatically when this service (which is a Disposable) is disposed.
         ChangeListManager.getInstance(project).addChangeListListener(this, this)
     }
 
@@ -45,16 +41,14 @@ class VcsChangeListener(private val project: Project) : ChangeListListener, Disp
 
     private fun triggerDebouncedRefresh() {
         refreshDebounceTimer?.stop()
-        // Use a short delay. 250ms is reasonable to batch quick successive events.
+        // A short delay to batch successive VCS events.
         refreshDebounceTimer = Timer(250, null).apply {
             addActionListener {
                 ApplicationManager.getApplication().invokeLater {
                     if (!project.isDisposed) {
                         logger.info("VCS_CHANGE_LISTENER: Debounced refresh executing.")
-                        val toolWindowStateService = project.service<ToolWindowStateService>()
-                        // This single call correctly refreshes data for whatever is currently selected,
-                        // be it HEAD or a specific branch tab.
-                        toolWindowStateService.refreshDataForCurrentSelection()
+                        // This single call correctly refreshes data for whatever is currently selected.
+                        project.service<ToolWindowStateService>().refreshDataForCurrentSelection()
                     }
                 }
             }

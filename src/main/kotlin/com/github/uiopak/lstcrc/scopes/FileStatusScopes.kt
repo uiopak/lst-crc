@@ -70,6 +70,9 @@ private class ChangedFilesPackageSet : LstCrcPackageSet(
     override fun createCopy(): PackageSet = ChangedFilesPackageSet()
 }
 
+/**
+ * A `NamedScope` that includes all files newly created in the active LST-CRC comparison.
+ */
 class CreatedFilesScope : NamedScope(
     LstCrcBundle.message("scope.created.name"),
     AllIcons.General.Add,
@@ -78,6 +81,9 @@ class CreatedFilesScope : NamedScope(
     override fun getDefaultColorName(): String = "Green"
 }
 
+/**
+ * A `NamedScope` that includes all files modified in the active LST-CRC comparison.
+ */
 class ModifiedFilesScope : NamedScope(
     LstCrcBundle.message("scope.modified.name"),
     AllIcons.Actions.EditSource,
@@ -86,6 +92,9 @@ class ModifiedFilesScope : NamedScope(
     override fun getDefaultColorName(): String = "Blue"
 }
 
+/**
+ * A `NamedScope` that includes all files moved or renamed in the active LST-CRC comparison.
+ */
 class MovedFilesScope : NamedScope(
     LstCrcBundle.message("scope.moved.name"),
     AllIcons.Nodes.Tag,
@@ -95,8 +104,11 @@ class MovedFilesScope : NamedScope(
 }
 
 
+/**
+ * A `NamedScope` that includes all files created, modified, or moved in the active LST-CRC comparison.
+ */
 class ChangedFilesScope : NamedScope(
     LstCrcBundle.message("scope.changed.name"),
-    LstCrcIcons.TOOL_WINDOW, // Use our custom plugin icon for the main scope for brand consistency.
+    LstCrcIcons.TOOL_WINDOW, // Use our custom plugin icon for brand consistency.
     ChangedFilesPackageSet()
 )

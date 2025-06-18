@@ -14,6 +14,10 @@ import com.intellij.openapi.wm.ToolWindow
 import com.intellij.ui.content.ContentFactory
 import com.intellij.ui.content.ContentManager
 
+/**
+ * An action (the "+" button in the tool window header) that opens a temporary tab
+ * containing the [BranchSelectionPanel], allowing the user to add a new comparison tab.
+ */
 class OpenBranchSelectionTabAction(
     private val project: Project,
     private val toolWindow: ToolWindow,

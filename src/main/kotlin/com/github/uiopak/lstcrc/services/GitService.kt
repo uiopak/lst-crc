@@ -18,6 +18,14 @@ import git4idea.repo.GitRepositoryManager
 import git4idea.util.GitFileUtils
 import java.util.concurrent.CompletableFuture
 
+/**
+ * Holds the result of a Git diff, with files categorized by their change type.
+ *
+ * @param allChanges The raw list of [Change] objects from the VCS API.
+ * @param createdFiles A list of files considered new in the comparison.
+ * @param modifiedFiles A list of files with content modifications.
+ * @param movedFiles A list of files that were moved or renamed.
+ */
 data class CategorizedChanges(
     val allChanges: List<Change>,
     val createdFiles: List<VirtualFile>,
@@ -25,6 +33,11 @@ data class CategorizedChanges(
     val movedFiles: List<VirtualFile>
 )
 
+/**
+ * A project-level service responsible for all interactions with the Git4Idea plugin API.
+ * It provides asynchronous methods to fetch branches, calculate diffs, and retrieve file content
+ * from specific revisions.
+ */
 @Service(Service.Level.PROJECT)
 class GitService(private val project: Project) {
 
@@ -34,20 +47,12 @@ class GitService(private val project: Project) {
         logger.debug("getCurrentRepository() called.")
 
         val repositoryManager = GitRepositoryManager.getInstance(project)
-        logger.debug("GitRepositoryManager instance: $repositoryManager")
-
         val repositories = repositoryManager.repositories
         logger.debug("Found ${repositories.size} repositories by GitRepositoryManager.")
-
-        repositories.forEach { repo ->
-            logger.debug("Repo: root=${repo.root.path}, presentableUrl=${repo.root.presentableUrl}, state=${repo.state}")
-        }
 
         return when (repositories.size) {
             0 -> {
                 logger.info("No Git repositories found by manager. Returning null.")
-                val projectBasePath = project.basePath
-                logger.info("Project base path for context: $projectBasePath")
                 null
             }
             1 -> {
@@ -56,7 +61,6 @@ class GitService(private val project: Project) {
             }
             else -> {
                 logger.warn("Multiple Git repositories found (${repositories.size}). Using the first one: ${repositories.first().root.path}")
-                repositories.forEach { logger.debug("Available repo root: ${it.root.path}") }
                 repositories.first()
             }
         }
@@ -125,7 +129,7 @@ class GitService(private val project: Project) {
                             }
                             Change.Type.DELETED -> {
                                 // DELETED changes are included in `allChanges` but are not needed for coloring/gutter marks
-                                // of existing files, as the file is gone. No action needed here.
+                                // of existing files, as the file is gone.
                             }
                             else -> {
                                 // Other change types (e.g., UNVERSIONED) are ignored.
@@ -168,17 +172,14 @@ class GitService(private val project: Project) {
         com.intellij.openapi.application.ApplicationManager.getApplication().executeOnPooledThread {
             try {
                 logger.debug("GUTTER_GIT_SERVICE: Preparing to fetch content for revision:'$revision' file:'${file.path}'")
-                logger.debug("GUTTER_GIT_SERVICE: Repository root is: '${repository.root.path}'")
 
                 val relativePath = VfsUtilCore.getRelativePath(file, repository.root, '/')
-
                 if (relativePath == null) {
-                    val errorMessage = "Could not calculate relative path for file '${file.path}' against repo root '${repository.root.path}'. The file might not be in the repository."
+                    val errorMessage = "Could not calculate relative path for file '${file.path}' against repo root '${repository.root.path}'."
                     logger.error("GUTTER_GIT_SERVICE: $errorMessage")
                     future.completeExceptionally(IllegalStateException(errorMessage))
                     return@executeOnPooledThread
                 }
-                logger.debug("GUTTER_GIT_SERVICE: Calculated relative path: '$relativePath'")
 
                 val revisionContentBytes = GitFileUtils.getFileContent(project, repository.root, revision, relativePath)
                 val rawContent = String(revisionContentBytes, file.charset)
@@ -187,7 +188,7 @@ class GitService(private val project: Project) {
                 // We must convert them to prevent a "Wrong line separators" AssertionError from the line status tracker.
                 val normalizedContent = StringUtil.convertLineSeparators(rawContent)
 
-                logger.info("GUTTER_GIT_SERVICE: Successfully fetched content for '$relativePath' in revision '$revision'. Raw length: ${rawContent.length}, Normalized length: ${normalizedContent.length}.")
+                logger.info("GUTTER_GIT_SERVICE: Successfully fetched content for '$relativePath' in revision '$revision'.")
                 future.complete(normalizedContent)
             } catch (e: VcsException) {
                 logger.warn("GUTTER_GIT_SERVICE: VcsException while getting content for '${file.path}' in revision '$revision'. Message: ${e.message}")

@@ -15,6 +15,10 @@ import com.intellij.openapi.components.service
 import com.intellij.openapi.wm.impl.content.ToolWindowContentUi
 import com.intellij.ui.content.impl.ContentManagerImpl
 
+/**
+ * Provides the actions for the tool window's "gear" (options) menu. This class centralizes
+ * all user-configurable settings, which are stored at the application level in [PropertiesComponent].
+ */
 class ToolWindowSettingsProvider {
 
     // Use application-level settings so they are consistent across all projects.
@@ -236,6 +240,12 @@ class ToolWindowSettingsProvider {
         return rootSettingsGroup
     }
 
+    /**
+     * Helper to create a [ToggleAction] for the settings menu.
+     * @param text The text to display for the action.
+     * @param isSelected A lambda that determines if the action is currently in the "selected" state.
+     * @param onSelected A lambda to execute when the action is selected by the user.
+     */
     private fun createToggleAction(text: String, isSelected: (AnActionEvent) -> Boolean, onSelected: () -> Unit): ToggleAction {
         return object : ToggleAction(text) {
             override fun isSelected(e: AnActionEvent): Boolean = isSelected(e)

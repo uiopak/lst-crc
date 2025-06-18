@@ -19,13 +19,17 @@ import com.intellij.ui.content.ContentFactory
 import com.intellij.ui.content.ContentManagerEvent
 import com.intellij.ui.content.ContentManagerListener
 
+/**
+ * The factory responsible for creating and setting up the LST-CRC tool window when the project opens.
+ * It restores tabs from the persisted state, sets up the permanent "HEAD" tab, and registers listeners
+ * to keep the UI and the persisted state synchronized.
+ */
 class MyToolWindowFactory : ToolWindowFactory {
     private val logger = thisLogger()
 
     override fun createToolWindowContent(project: Project, toolWindow: ToolWindow) {
         logger.info("createToolWindowContent called for project: ${project.name}")
 
-        // Configure tool window title visibility based on user settings.
         val properties = PropertiesComponent.getInstance()
         val showTitle = properties.getBoolean(
             ToolWindowSettingsProvider.APP_SHOW_TOOL_WINDOW_TITLE_KEY,
@@ -115,7 +119,7 @@ class MyToolWindowFactory : ToolWindowFactory {
             stateService.setSelectedTab(-1)
         }
 
-        // Add listeners to keep the persisted state in sync with UI actions.
+        // Keep the persisted state in sync with UI actions.
         contentManager.addContentManagerListener(object : ContentManagerListener {
             override fun contentRemoved(event: ContentManagerEvent) {
                 val branchName = event.content.getUserData(LstCrcKeys.BRANCH_NAME_KEY)
@@ -148,11 +152,9 @@ class MyToolWindowFactory : ToolWindowFactory {
             }
         })
 
-        // Configure actions available in the tool window header.
         val openSelectionTabAction = OpenBranchSelectionTabAction(project, toolWindow, gitChangesUiProvider)
         toolWindow.setTitleActions(listOf(openSelectionTabAction))
 
-        // Configure actions available in the "gear" (options) menu.
         val settingsProvider = ToolWindowSettingsProvider()
         val pluginSettingsSubMenu: ActionGroup = settingsProvider.createToolWindowSettingsGroup()
 

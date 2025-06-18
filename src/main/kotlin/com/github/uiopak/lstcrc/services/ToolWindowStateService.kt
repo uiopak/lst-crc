@@ -17,6 +17,12 @@ import com.intellij.util.messages.Topic
 import com.intellij.util.xmlb.XmlSerializerUtil
 import java.util.EventListener
 
+/**
+ * Manages the tool window's UI state (open tabs, selected tab) and persists it.
+ * This service orchestrates the primary data flow: UI events here trigger calls to [GitService]
+ * to fetch data, which then updates the [ProjectActiveDiffDataService]. It broadcasts its own
+ * state changes via the [TOPIC] for UI components to consume.
+ */
 @State(
     name = "com.github.uiopak.lstcrc.services.ToolWindowStateService",
     storages = [Storage("gitTabsIdeaPluginState.xml")]
@@ -40,7 +46,6 @@ class ToolWindowStateService(private val project: Project) : PersistentStateComp
 
     override fun noStateLoaded() {
         logger.info("noStateLoaded() called. Initializing with default state.")
-        // Ensure the state is clean if no XML file was found.
         myState = ToolWindowState()
         project.messageBus.syncPublisher(TOPIC).stateChanged(myState.copy())
     }
@@ -80,9 +85,8 @@ class ToolWindowStateService(private val project: Project) : PersistentStateComp
     }
 
     fun setSelectedTab(index: Int) {
-        // Validate index against current openTabs size, clamping to a valid range.
         val validIndex = if (index >= myState.openTabs.size || index < -1) {
-            logger.warn("setSelectedTab called with invalid index: $index. Open tabs: ${myState.openTabs.size}. Clamping to -1 or last valid index.")
+            logger.warn("setSelectedTab called with invalid index: $index. Open tabs: ${myState.openTabs.size}. Clamping to valid range.")
             if (myState.openTabs.isEmpty()) -1 else myState.openTabs.size - 1
         } else {
             index
@@ -97,7 +101,6 @@ class ToolWindowStateService(private val project: Project) : PersistentStateComp
             val diffDataService = project.service<ProjectActiveDiffDataService>()
             val gitService = project.service<GitService>()
 
-            // `getSelectedTabBranchName` now uses the newly updated index.
             val selectedBranchName = getSelectedTabBranchName()
 
             if (selectedBranchName != null) {
@@ -243,13 +246,11 @@ class ToolWindowStateService(private val project: Project) : PersistentStateComp
 
     /**
      * Ensures the data for the currently selected tab is loaded and all dependent services are updated.
-     * This orchestrates a full data refresh for the current selection, updating both the
-     * `ProjectActiveDiffDataService` and the tool window UI.
+     * This orchestrates a full data refresh for the current selection.
      */
     fun refreshDataForCurrentSelection() {
         val branchToRefresh = getSelectedTabBranchName() ?: "HEAD"
         logger.info("ACTION: Refreshing data for current selection: '$branchToRefresh'")
-        // This method contains all the necessary logic for a full refresh.
         refreshDataForActiveTabIfMatching(branchToRefresh)
     }
 

@@ -16,6 +16,13 @@ import com.intellij.openapi.vfs.newvfs.events.VFileDeleteEvent
 import com.intellij.openapi.vfs.newvfs.events.VFileEvent
 import com.intellij.openapi.vfs.newvfs.events.VFileMoveEvent
 
+/**
+ * Listens for low-level VFS events (file creation, deletion, content changes) and triggers
+ * a refresh of the VCS status. It filters events to act only on those relevant to the current
+ * project. By calling [VcsDirtyScopeManager.markEverythingDirty], it ensures that the IDE's
+ * change detection mechanism will run, which in turn triggers [com.github.uiopak.lstcrc.listeners.VcsChangeListener]
+ * to update the plugin's data.
+ */
 @Service(Service.Level.PROJECT)
 class VfsListenerService(private val project: Project) : BulkFileListener, Disposable {
 
@@ -23,14 +30,13 @@ class VfsListenerService(private val project: Project) : BulkFileListener, Dispo
 
     init {
         logger.info("VFS_LISTENER: Initializing for project ${project.name}")
-        // The connection will be automatically disposed when this service (which is a Disposable) is disposed.
-        val connection = project.messageBus.connect(this)
-        connection.subscribe(VirtualFileManager.VFS_CHANGES, this)
+        // The connection will be automatically disposed when this service (a Disposable) is disposed.
+        project.messageBus.connect(this).subscribe(VirtualFileManager.VFS_CHANGES, this)
         logger.info("VFS_LISTENER: Subscribed to VFS_CHANGES for project ${project.name}")
     }
 
     override fun after(events: MutableList<out VFileEvent>) {
-        // This listener receives events for all projects, so we must filter for relevance to this specific project.
+        // This listener receives events for all projects, so we must filter for relevance.
         var isDirty = false
         val fileIndex = ProjectFileIndex.getInstance(project)
 
@@ -63,8 +69,7 @@ class VfsListenerService(private val project: Project) : BulkFileListener, Dispo
             // This will in turn trigger our VcsChangeListener to refresh the diff data.
             VcsDirtyScopeManager.getInstance(project).markEverythingDirty()
 
-            // This topic is for our own components that might need a more immediate/custom notification,
-            // though the VcsChangeListener is the primary refresh mechanism.
+            // This topic is for our own components that might need a more immediate/custom notification.
             project.messageBus.syncPublisher(FILE_CHANGES_TOPIC).onFilesChanged()
         }
     }

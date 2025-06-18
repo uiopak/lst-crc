@@ -15,11 +15,9 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 
 /**
- * This activity runs once per project after it has been opened and initial indexing is complete.
- * Its primary responsibility is to perform the initial load of Git diff data based on the
- * plugin's persisted state. This ensures that features like file scopes, gutter markers, and
- * tab colors are available as early as possible, even before the tool window is opened.
- * It also eagerly initializes background services.
+ * Runs on project startup to perform the initial load of Git diff data based on the plugin's
+ * persisted state. This ensures features like file scopes and gutter markers are available
+ * early. It also eagerly initializes background services.
  */
 class PluginStartupActivity : ProjectActivity {
     private val logger = thisLogger()
@@ -28,8 +26,8 @@ class PluginStartupActivity : ProjectActivity {
     override suspend fun execute(project: Project) {
         logger.info("STARTUP_LOGIC: ProjectActivity executing for project: ${project.name}")
 
-        // Eagerly initialize services that need to listen to events from the start.
-        // This ensures features like gutter markers and VFS-triggered refreshes work correctly.
+        // Eagerly initialize services that need to listen to events from the start to ensure
+        // features like gutter markers and VFS-triggered refreshes work correctly.
         logger.info("STARTUP_LOGIC: Eagerly initializing background services.")
         project.service<VfsListenerService>()
         project.service<LstCrcGutterTrackerService>()
@@ -76,7 +74,7 @@ class PluginStartupActivity : ProjectActivity {
         logger.info("STARTUP_LOGIC_DELAYED: Git repository found after delay: ${currentRepo.root.path}. Proceeding with initial diff load.")
 
         // This single call orchestrates fetching data, updating ProjectActiveDiffDataService,
-        // and updating the UI (if the tool window is open) for the persisted selected tab.
+        // and updating the UI for the persisted selected tab.
         toolWindowStateService.refreshDataForCurrentSelection()
 
         logger.info("STARTUP_LOGIC_DELAYED: Delayed initial diff load task finished for project: ${project.name}")
