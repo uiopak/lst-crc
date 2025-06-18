@@ -18,6 +18,53 @@ object ToolWindowHelper {
     private val logger = thisLogger()
 
     /**
+     * Creates and selects a new comparison tab for the given branch/revision name.
+     * If a tab for this name already exists, it simply selects it.
+     *
+     * @param project The current project.
+     * @param toolWindow The LST-CRC tool window instance.
+     * @param branchName The branch or revision identifier for the new tab.
+     */
+    fun createAndSelectTab(project: Project, toolWindow: ToolWindow, branchName: String) {
+        logger.info("HELPER: createAndSelectTab called for '$branchName'")
+        val contentManager = toolWindow.contentManager
+        val stateService = project.service<ToolWindowStateService>()
+
+        val existingContent = contentManager.contents.find { it.getUserData(LstCrcKeys.BRANCH_NAME_KEY) == branchName }
+
+        if (existingContent != null) {
+            logger.info("HELPER: Tab for '$branchName' already exists. Selecting it.")
+            contentManager.setSelectedContent(existingContent, true)
+            // The ContentManagerListener will trigger stateService.setSelectedTab
+        } else {
+            logger.info("HELPER: Creating new tab for '$branchName'")
+            val uiProvider = GitChangesToolWindow(project, toolWindow.disposable)
+            val newContentView = uiProvider.createBranchContentView(branchName)
+
+            val contentFactory = ContentFactory.getInstance()
+            val newContent = contentFactory.createContent(newContentView, branchName, false).apply {
+                isCloseable = true
+                putUserData(LstCrcKeys.BRANCH_NAME_KEY, branchName)
+            }
+
+            contentManager.addContent(newContent)
+            contentManager.setSelectedContent(newContent, true)
+
+            // Sync state service. The ContentManagerListener will handle selection change, but we need to add the tab.
+            stateService.addTab(branchName)
+            val newIndex = stateService.state.openTabs.indexOfFirst { it.branchName == branchName }
+            if (newIndex != -1) {
+                // Manually set index here, as the listener might race or not have the updated tab list yet.
+                stateService.setSelectedTab(newIndex)
+            } else {
+                // Failsafe: if tab not found in state, still trigger a refresh for the content.
+                (newContentView as? LstCrcChangesBrowser)?.requestRefreshData()
+            }
+        }
+    }
+
+
+    /**
      * Opens a temporary "Select Branch" tab in the tool window.
      * If such a tab already exists, it is selected. Otherwise, a new one is created.
      * The tab contains a [BranchSelectionPanel] to choose a branch. Upon selection,
@@ -45,44 +92,32 @@ object ToolWindowHelper {
 
             val branchSelectionUi = BranchSelectionPanel(project, project.service<GitService>()) { selectedBranchName ->
                 logger.info("HELPER (Callback): Branch '$selectedBranchName' selected from panel.")
-                if (selectedBranchName.isBlank()) {
-                    logger.error("HELPER (Callback): selectedBranchName is blank.")
-                    toolWindow.contentManager.findContent(selectionTabName)?.let {
-                        toolWindow.contentManager.removeContent(it, true)
-                    }
+                val manager: ContentManager = toolWindow.contentManager
+                val selectionTabContent = manager.findContent(selectionTabName)
+
+                if (selectedBranchName.isBlank() || selectionTabContent == null) {
+                    logger.error("HELPER (Callback): selectedBranchName is blank or selection tab disappeared.")
+                    selectionTabContent?.let { manager.removeContent(it, true) }
                     return@BranchSelectionPanel
                 }
 
-                val manager: ContentManager = toolWindow.contentManager
-                val selectionTabContent = manager.findContent(selectionTabName) ?: return@BranchSelectionPanel
-
+                // Instead of creating a new tab from scratch, repurpose the "Select Branch" tab.
+                // This is a smoother user experience than closing one and opening another.
                 val existingBranchTab = manager.contents.find { it.getUserData(LstCrcKeys.BRANCH_NAME_KEY) == selectedBranchName }
-
                 if (existingBranchTab != null) {
-                    logger.info("HELPER (Callback): Tab for '$selectedBranchName' already exists. Selecting it.")
                     manager.setSelectedContent(existingBranchTab, true)
-                    manager.removeContent(selectionTabContent, true)
-
-                    val selectedIndex = stateService.state.openTabs.indexOfFirst { it.branchName == selectedBranchName }
-                    if (selectedIndex != -1) {
-                        stateService.setSelectedTab(selectedIndex)
-                    }
+                    manager.removeContent(selectionTabContent, true) // Remove the temporary selection tab
                 } else {
                     logger.info("HELPER (Callback): Repurposing '$selectionTabName' tab to '$selectedBranchName'.")
                     val newBranchContentView = uiProvider.createBranchContentView(selectedBranchName)
                     selectionTabContent.displayName = selectedBranchName
                     selectionTabContent.component = newBranchContentView
                     selectionTabContent.putUserData(LstCrcKeys.BRANCH_NAME_KEY, selectedBranchName)
-                    (newBranchContentView as? LstCrcChangesBrowser)?.requestRefreshData()
 
                     manager.setSelectedContent(selectionTabContent, true)
                     stateService.addTab(selectedBranchName)
-
-                    val newTabIndex = stateService.state.openTabs.indexOfFirst { it.branchName == selectedBranchName }
-                    if (newTabIndex != -1) {
-                        stateService.setSelectedTab(newTabIndex)
-                    }
                 }
+                // The selectionChanged listener on ContentManager will handle the stateService.setSelectedTab call.
             }
 
             logger.info("HELPER: Creating and adding new '$selectionTabName' tab to UI.")

@@ -12,63 +12,51 @@ import com.intellij.psi.search.scope.packageSet.NamedScopesHolder
 import com.intellij.psi.search.scope.packageSet.PackageSet
 import com.intellij.psi.search.scope.packageSet.PackageSetBase
 
-private abstract class LstCrcPackageSet(
-    /** The description passed here is used for [getText], which appears in the "Pattern" field of the Scopes dialog. */
-    private val description: String
+/**
+ * A generic [PackageSet] implementation for LST-CRC scopes. It determines file inclusion based on a provided lambda,
+ * reducing boilerplate for different change types.
+ */
+private class LstCrcPackageSet(
+    private val description: String,
+    private val filesExtractor: (ProjectActiveDiffDataService) -> Collection<VirtualFile>
 ) : PackageSetBase() {
-
-    abstract fun getRelevantFiles(service: ProjectActiveDiffDataService): Set<VirtualFile>
 
     override fun contains(file: VirtualFile, project: Project, holder: NamedScopesHolder?): Boolean {
         if (project.isDisposed) return false
         val diffDataService = project.service<ProjectActiveDiffDataService>()
 
-        // The ProjectActiveDiffDataService is the single source of truth for scope data.
         // If activeBranchName is null, it means diff data is intentionally cleared,
         // so no files should be included in any LSTCRC scope.
         if (diffDataService.activeBranchName == null) {
             return false
         }
 
-        val relevantFiles = getRelevantFiles(diffDataService)
+        val relevantFiles = filesExtractor(diffDataService).toSet()
         return file in relevantFiles
     }
 
+    override fun createCopy(): PackageSet = LstCrcPackageSet(description, filesExtractor)
     override fun getText(): String = description
-
-    // Custom scopes should have a higher priority than built-in scopes (0).
     override fun getNodePriority(): Int = 1
 }
 
-private class CreatedFilesPackageSet : LstCrcPackageSet(
-    description = LstCrcBundle.message("scope.created.description")
-) {
-    override fun getRelevantFiles(service: ProjectActiveDiffDataService): Set<VirtualFile> = service.createdFiles.toSet()
-    override fun createCopy(): PackageSet = CreatedFilesPackageSet()
-}
+// Instantiate the generic PackageSet for each change type.
+private val createdFilesPackageSet = LstCrcPackageSet(
+    LstCrcBundle.message("scope.created.description")
+) { it.createdFiles }
 
-private class ModifiedFilesPackageSet : LstCrcPackageSet(
-    description = LstCrcBundle.message("scope.modified.description")
-) {
-    override fun getRelevantFiles(service: ProjectActiveDiffDataService): Set<VirtualFile> = service.modifiedFiles.toSet()
-    override fun createCopy(): PackageSet = ModifiedFilesPackageSet()
-}
+private val modifiedFilesPackageSet = LstCrcPackageSet(
+    LstCrcBundle.message("scope.modified.description")
+) { it.modifiedFiles }
 
-private class MovedFilesPackageSet : LstCrcPackageSet(
-    description = LstCrcBundle.message("scope.moved.description")
-) {
-    override fun getRelevantFiles(service: ProjectActiveDiffDataService): Set<VirtualFile> = service.movedFiles.toSet()
-    override fun createCopy(): PackageSet = MovedFilesPackageSet()
-}
+private val movedFilesPackageSet = LstCrcPackageSet(
+    LstCrcBundle.message("scope.moved.description")
+) { it.movedFiles }
 
-private class ChangedFilesPackageSet : LstCrcPackageSet(
-    description = LstCrcBundle.message("scope.changed.description")
-) {
-    override fun getRelevantFiles(service: ProjectActiveDiffDataService): Set<VirtualFile> {
-        return (service.createdFiles + service.modifiedFiles + service.movedFiles).toSet()
-    }
-    override fun createCopy(): PackageSet = ChangedFilesPackageSet()
-}
+private val changedFilesPackageSet = LstCrcPackageSet(
+    LstCrcBundle.message("scope.changed.description")
+) { it.createdFiles + it.modifiedFiles + it.movedFiles }
+
 
 /**
  * A `NamedScope` that includes all files newly created in the active LST-CRC comparison.
@@ -76,7 +64,7 @@ private class ChangedFilesPackageSet : LstCrcPackageSet(
 class CreatedFilesScope : NamedScope(
     LstCrcBundle.message("scope.created.name"),
     AllIcons.General.Add,
-    CreatedFilesPackageSet()
+    createdFilesPackageSet
 ){
     override fun getDefaultColorName(): String = "Green"
 }
@@ -87,7 +75,7 @@ class CreatedFilesScope : NamedScope(
 class ModifiedFilesScope : NamedScope(
     LstCrcBundle.message("scope.modified.name"),
     AllIcons.Actions.EditSource,
-    ModifiedFilesPackageSet()
+    modifiedFilesPackageSet
 ){
     override fun getDefaultColorName(): String = "Blue"
 }
@@ -98,7 +86,7 @@ class ModifiedFilesScope : NamedScope(
 class MovedFilesScope : NamedScope(
     LstCrcBundle.message("scope.moved.name"),
     AllIcons.Nodes.Tag,
-    MovedFilesPackageSet()
+    movedFilesPackageSet
 ){
     override fun getDefaultColorName(): String = "Gray"
 }
@@ -110,5 +98,5 @@ class MovedFilesScope : NamedScope(
 class ChangedFilesScope : NamedScope(
     LstCrcBundle.message("scope.changed.name"),
     LstCrcIcons.TOOL_WINDOW, // Use our custom plugin icon for brand consistency.
-    ChangedFilesPackageSet()
+    changedFilesPackageSet
 )

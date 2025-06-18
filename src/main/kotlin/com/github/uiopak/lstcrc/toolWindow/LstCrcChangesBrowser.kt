@@ -283,7 +283,7 @@ class LstCrcChangesBrowser(
      */
     fun requestRefreshData() {
         logger.debug("UI_REFRESH: Browser for '$targetBranchToCompare' is requesting a data refresh.")
-        project.service<ToolWindowStateService>().refreshDataForActiveTabIfMatching(targetBranchToCompare)
+        project.service<ToolWindowStateService>().refreshDataForCurrentSelection()
     }
 
 
@@ -319,43 +319,36 @@ class LstCrcChangesBrowser(
         logger.info("LstCrcChangesBrowser for branch '$targetBranchToCompare' disposed.")
     }
 
+    private fun createContextMenuAction(
+        titleKey: String,
+        action: (List<Change>) -> Unit,
+        enabledCondition: (List<Change>) -> Boolean = { it.isNotEmpty() }
+    ): AnAction {
+        return object : DumbAwareAction(LstCrcBundle.message(titleKey)) {
+            override fun update(e: AnActionEvent) {
+                e.presentation.isEnabled = enabledCondition(selectedChanges)
+            }
+            override fun actionPerformed(e: AnActionEvent) = action(selectedChanges)
+            override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.EDT
+        }
+    }
+
     private fun showContextMenu(e: MouseEvent) {
         val selectedChanges = this.selectedChanges
         if (selectedChanges.isEmpty()) return
 
         val group = DefaultActionGroup()
-        group.add(object : DumbAwareAction() {
-            override fun update(e: AnActionEvent) {
-                e.presentation.text = LstCrcBundle.message("context.menu.show.diff")
-            }
-            override fun actionPerformed(event: AnActionEvent) = openDiff(selectedChanges)
-            override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.EDT
-        })
-        group.add(object : DumbAwareAction() {
-            override fun update(event: AnActionEvent) {
-                event.presentation.text = LstCrcBundle.message("context.menu.open.source")
-                event.presentation.isEnabled = selectedChanges.size == 1
-            }
-            override fun actionPerformed(event: AnActionEvent) {
-                if (selectedChanges.size == 1) {
-                    openSource(selectedChanges.first())
-                }
-            }
-            override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.EDT
-        })
-        group.add(object : DumbAwareAction() {
-            override fun update(e: AnActionEvent) {
-                e.presentation.text = LstCrcBundle.message("context.menu.show.project.tree")
-                val isActionable = selectedChanges.size == 1 && selectedChanges.first().type != Change.Type.DELETED
-                e.presentation.isEnabled = isActionable
-            }
-            override fun actionPerformed(event: AnActionEvent) {
-                if (selectedChanges.size == 1) {
-                    showInProjectTree(selectedChanges.first())
-                }
-            }
-            override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.EDT
-        })
+        group.add(createContextMenuAction("context.menu.show.diff", this::openDiff))
+
+        group.add(createContextMenuAction("context.menu.open.source",
+            action = { changes -> openSource(changes.first()) },
+            enabledCondition = { it.size == 1 }
+        ))
+
+        group.add(createContextMenuAction("context.menu.show.project.tree",
+            action = { changes -> showInProjectTree(changes.first()) },
+            enabledCondition = { it.size == 1 && it.first().type != Change.Type.DELETED }
+        ))
 
         val popupMenu = ActionManager.getInstance().createActionPopupMenu(ActionPlaces.TOOLWINDOW_POPUP, group)
         popupMenu.component.show(e.component, e.x, e.y)

@@ -1,14 +1,11 @@
 package com.github.uiopak.lstcrc.toolWindow
 
-import com.github.uiopak.lstcrc.services.ToolWindowStateService
-import com.github.uiopak.lstcrc.utils.LstCrcKeys
 import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.vcs.VcsDataKeys
 import com.intellij.openapi.wm.ToolWindowManager
-import com.intellij.ui.content.ContentFactory
 
 /**
  * An action available in the Git Log context menu to create a new LST-CRC comparison tab
@@ -43,43 +40,10 @@ class CreateTabFromRevisionAction : AnAction() {
         }
 
         toolWindow.activate {
-            val contentManager = toolWindow.contentManager
-            val stateService = ToolWindowStateService.getInstance(project)
-
-            val existingContent = contentManager.contents.find {
-                it.getUserData(LstCrcKeys.BRANCH_NAME_KEY) == revisionString
-            }
-
-            if (existingContent != null) {
-                logger.info("Tab for revision '$revisionString' already exists. Selecting it.")
-                contentManager.setSelectedContent(existingContent, true)
-            } else {
-                logger.info("Creating new tab for revision '$revisionString'")
-                val uiProvider = GitChangesToolWindow(project, toolWindow.disposable)
-                val newContentView = uiProvider.createBranchContentView(revisionString)
-
-                val contentFactory = ContentFactory.getInstance()
-                val newContent = contentFactory.createContent(newContentView, revisionString, false).apply {
-                    isCloseable = true
-                    // Use the branch name key to store the revision hash, consistent with how branches are handled.
-                    putUserData(LstCrcKeys.BRANCH_NAME_KEY, revisionString)
-                }
-
-                contentManager.addContent(newContent)
-                contentManager.setSelectedContent(newContent, true)
-
-                stateService.addTab(revisionString)
-
-                val newIndex = stateService.state.openTabs.indexOfFirst { it.branchName == revisionString }
-                if (newIndex != -1) {
-                    stateService.setSelectedTab(newIndex)
-                }
-
-                (newContentView as? LstCrcChangesBrowser)?.requestRefreshData()
-
-                // Automatically trigger the rename dialog for the new revision tab.
-                RenameTabAction.invokeRenameDialog(project, revisionString)
-            }
+            // Use the helper to handle tab creation and selection logic.
+            ToolWindowHelper.createAndSelectTab(project, toolWindow, revisionString)
+            // After the tab is created, trigger the rename dialog.
+            RenameTabAction.invokeRenameDialog(project, revisionString)
         }
     }
 }

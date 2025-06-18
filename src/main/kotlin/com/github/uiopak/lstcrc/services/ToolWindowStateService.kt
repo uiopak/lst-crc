@@ -96,86 +96,84 @@ class ToolWindowStateService(private val project: Project) : PersistentStateComp
             myState.selectedTabIndex = validIndex
             myState = myState.copy()
             logger.info("Selected tab index set to $validIndex. New state: $myState")
-            project.messageBus.syncPublisher(TOPIC).stateChanged(myState.copy())
 
-            val diffDataService = project.service<ProjectActiveDiffDataService>()
-            val gitService = project.service<GitService>()
+            // Broadcast state change first to update UI like the status bar widget immediately.
+            broadcastCurrentState()
 
-            val selectedBranchName = getSelectedTabBranchName()
-
-            if (selectedBranchName != null) {
-                logger.debug("Tab selection changed to: '$selectedBranchName'. Fetching changes.")
-                gitService.getChanges(selectedBranchName).whenCompleteAsync { categorizedChanges, throwable ->
-                    if (project.isDisposed) return@whenCompleteAsync
-                    if (throwable != null) {
-                        logger.error("Error for $selectedBranchName: ${throwable.message}")
-                        diffDataService.clearActiveDiff()
-                    } else if (categorizedChanges != null) {
-                        diffDataService.updateActiveDiff(
-                            selectedBranchName,
-                            categorizedChanges.allChanges,
-                            categorizedChanges.createdFiles,
-                            categorizedChanges.modifiedFiles,
-                            categorizedChanges.movedFiles
-                        )
-                        getActiveChangesBrowser(project)?.displayChanges(categorizedChanges, selectedBranchName)
-                    } else {
-                        diffDataService.clearActiveDiff()
-                        getActiveChangesBrowser(project)?.displayChanges(null, selectedBranchName)
-                    }
-                }
-            } else { // This case handles the HEAD tab selection.
-                logger.debug("Tab selection changed to HEAD.")
-                val properties = PropertiesComponent.getInstance()
-                val includeHeadInScopes = properties.getBoolean(
-                    ToolWindowSettingsProvider.APP_INCLUDE_HEAD_IN_SCOPES_KEY,
-                    ToolWindowSettingsProvider.DEFAULT_INCLUDE_HEAD_IN_SCOPES
-                )
-                val effectiveBranchNameForDisplay = "HEAD"
-
-                if (includeHeadInScopes) {
-                    logger.debug("'Include HEAD in Scopes' is enabled. Fetching changes for HEAD and updating ProjectActiveDiffDataService.")
-                    gitService.getChanges(effectiveBranchNameForDisplay).whenCompleteAsync { categorizedChanges, throwable ->
-                        if (project.isDisposed) return@whenCompleteAsync
-                        val activeBrowser = getActiveChangesBrowser(project)
-                        if (throwable != null) {
-                            logger.error("Error loading changes for '$effectiveBranchNameForDisplay': ${throwable.message}")
-                            diffDataService.clearActiveDiff()
-                            activeBrowser?.displayChanges(null, effectiveBranchNameForDisplay)
-                        } else if (categorizedChanges != null) {
-                            diffDataService.updateActiveDiff(
-                                effectiveBranchNameForDisplay,
-                                categorizedChanges.allChanges,
-                                categorizedChanges.createdFiles,
-                                categorizedChanges.modifiedFiles,
-                                categorizedChanges.movedFiles
-                            )
-                            activeBrowser?.displayChanges(categorizedChanges, effectiveBranchNameForDisplay)
-                        } else {
-                            diffDataService.clearActiveDiff()
-                            activeBrowser?.displayChanges(null, effectiveBranchNameForDisplay)
-                        }
-                    }
-                } else {
-                    logger.debug("'Include HEAD in Scopes' is disabled. Clearing ProjectActiveDiffDataService.")
-                    diffDataService.clearActiveDiff()
-
-                    // The diff data service is cleared, but we still fetch changes to show them in the UI panel.
-                    gitService.getChanges(effectiveBranchNameForDisplay).whenCompleteAsync { categorizedChanges, throwable ->
-                        if (project.isDisposed) return@whenCompleteAsync
-                        val activeBrowser = getActiveChangesBrowser(project)
-                        if (throwable != null) {
-                            activeBrowser?.displayChanges(null, effectiveBranchNameForDisplay)
-                        } else {
-                            activeBrowser?.displayChanges(categorizedChanges, effectiveBranchNameForDisplay)
-                        }
-                    }
-                }
-            }
+            // Then, load the data for the newly selected tab.
+            refreshDataForCurrentSelection()
 
         } else {
             logger.debug("Selected tab index $validIndex is already set. No action taken.")
         }
+    }
+
+    /**
+     * Central point for loading data for a given branch. It fetches changes from Git,
+     * updates the data cache ([ProjectActiveDiffDataService]), and refreshes the UI.
+     */
+    private fun loadDataForBranch(branchToLoad: String) {
+        logger.info("DATA_FLOW: Initiating data load for branch: '$branchToLoad'")
+
+        val gitService = project.service<GitService>()
+        val diffDataService = project.service<ProjectActiveDiffDataService>()
+        val isHeadTab = branchToLoad == "HEAD"
+
+        val properties = PropertiesComponent.getInstance()
+        val includeHeadInScopes = properties.getBoolean(
+            ToolWindowSettingsProvider.APP_INCLUDE_HEAD_IN_SCOPES_KEY,
+            ToolWindowSettingsProvider.DEFAULT_INCLUDE_HEAD_IN_SCOPES
+        )
+
+        gitService.getChanges(branchToLoad).whenCompleteAsync { categorizedChanges, throwable ->
+            if (project.isDisposed) return@whenCompleteAsync
+
+            val activeBrowser = getActiveChangesBrowser(project)
+
+            if (throwable != null) {
+                logger.error("DATA_FLOW: Error loading changes for '$branchToLoad': ${throwable.message}", throwable)
+                diffDataService.clearActiveDiff()
+                activeBrowser?.displayChanges(null, branchToLoad)
+                return@whenCompleteAsync
+            }
+
+            if (categorizedChanges != null) {
+                logger.info("DATA_FLOW: Successfully loaded ${categorizedChanges.allChanges.size} changes for '$branchToLoad'.")
+                // The data service is the source of truth for scopes, gutter markers, etc.
+                // It should be updated if we're on a branch tab, OR if we're on the HEAD tab and the setting is enabled.
+                if (!isHeadTab || includeHeadInScopes) {
+                    logger.debug("DATA_FLOW: Updating ProjectActiveDiffDataService for '$branchToLoad'.")
+                    diffDataService.updateActiveDiff(
+                        branchToLoad,
+                        categorizedChanges.allChanges,
+                        categorizedChanges.createdFiles,
+                        categorizedChanges.modifiedFiles,
+                        categorizedChanges.movedFiles
+                    )
+                } else {
+                    // This case occurs when on the HEAD tab and the "Include HEAD" setting is OFF.
+                    logger.debug("DATA_FLOW: On HEAD tab with 'Include HEAD in Scopes' disabled. Clearing ProjectActiveDiffDataService.")
+                    diffDataService.clearActiveDiff()
+                }
+                // The UI panel itself should always be updated with the changes, regardless of the data service state.
+                activeBrowser?.displayChanges(categorizedChanges, branchToLoad)
+            } else {
+                logger.warn("DATA_FLOW: Changes for '$branchToLoad' returned as null. Clearing data and UI.")
+                diffDataService.clearActiveDiff()
+                activeBrowser?.displayChanges(null, branchToLoad)
+            }
+        }
+    }
+
+    /**
+     * Ensures the data for the currently selected tab is loaded and all dependent services are updated.
+     * This orchestrates a full data refresh for the current selection and is the main entry point
+     * for refresh triggers (e.g., from startup, VCS changes, or explicit user action).
+     */
+    fun refreshDataForCurrentSelection() {
+        val branchToRefresh = getSelectedTabBranchName() ?: "HEAD"
+        logger.info("ACTION: Refreshing data for current selection: '$branchToRefresh'")
+        loadDataForBranch(branchToRefresh)
     }
 
     /**
@@ -191,67 +189,6 @@ class ToolWindowStateService(private val project: Project) : PersistentStateComp
             return myState.openTabs[myState.selectedTabIndex].branchName
         }
         return null
-    }
-
-    fun refreshDataForActiveTabIfMatching(eventBranchName: String) {
-        val currentSelectedBranch = getSelectedTabBranchName()
-        val isHeadSelected = currentSelectedBranch == null
-
-        val shouldRefresh = (isHeadSelected && eventBranchName == "HEAD") ||
-                (!isHeadSelected && eventBranchName == currentSelectedBranch)
-
-        if (shouldRefresh) {
-            logger.debug("Event for '$eventBranchName' matches current active tab. Refreshing data.")
-            val gitService = project.service<GitService>()
-            val diffDataService = project.service<ProjectActiveDiffDataService>()
-
-            gitService.getChanges(eventBranchName).whenCompleteAsync { categorizedChanges, throwable ->
-                if (project.isDisposed) return@whenCompleteAsync
-
-                val activeBrowser = getActiveChangesBrowser(project)
-                val properties = PropertiesComponent.getInstance()
-                val includeHeadInScopes = properties.getBoolean(
-                    ToolWindowSettingsProvider.APP_INCLUDE_HEAD_IN_SCOPES_KEY,
-                    ToolWindowSettingsProvider.DEFAULT_INCLUDE_HEAD_IN_SCOPES
-                )
-
-                if (throwable != null) {
-                    logger.error("Error refreshing data for active tab '$eventBranchName': ${throwable.message}", throwable)
-                    activeBrowser?.displayChanges(null, eventBranchName)
-                    diffDataService.clearActiveDiff()
-                } else if (categorizedChanges != null) {
-                    // Update global diff service if on a branch tab, OR on HEAD tab with the setting enabled.
-                    if (!isHeadSelected || includeHeadInScopes) {
-                        diffDataService.updateActiveDiff(
-                            eventBranchName,
-                            categorizedChanges.allChanges,
-                            categorizedChanges.createdFiles,
-                            categorizedChanges.modifiedFiles,
-                            categorizedChanges.movedFiles
-                        )
-                    } else {
-                        // This case happens if we are on HEAD and the 'Include HEAD' setting is OFF.
-                        diffDataService.clearActiveDiff()
-                    }
-                    activeBrowser?.displayChanges(categorizedChanges, eventBranchName)
-                } else {
-                    diffDataService.clearActiveDiff()
-                    activeBrowser?.displayChanges(null, eventBranchName)
-                }
-            }
-        } else {
-            logger.debug("Event branch '$eventBranchName' does not match current active tab state ('$currentSelectedBranch'). No refresh initiated.")
-        }
-    }
-
-    /**
-     * Ensures the data for the currently selected tab is loaded and all dependent services are updated.
-     * This orchestrates a full data refresh for the current selection.
-     */
-    fun refreshDataForCurrentSelection() {
-        val branchToRefresh = getSelectedTabBranchName() ?: "HEAD"
-        logger.info("ACTION: Refreshing data for current selection: '$branchToRefresh'")
-        refreshDataForActiveTabIfMatching(branchToRefresh)
     }
 
     internal fun getActiveChangesBrowser(project: Project): LstCrcChangesBrowser? {

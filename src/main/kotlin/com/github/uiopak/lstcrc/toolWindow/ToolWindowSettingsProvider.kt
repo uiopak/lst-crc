@@ -94,6 +94,7 @@ object ToolWindowSettingsProvider {
     private fun getIncludeHeadInScopes(): Boolean = propertiesComponent.getBoolean(APP_INCLUDE_HEAD_IN_SCOPES_KEY, DEFAULT_INCLUDE_HEAD_IN_SCOPES)
     private fun setIncludeHeadInScopes(include: Boolean) = propertiesComponent.setValue(APP_INCLUDE_HEAD_IN_SCOPES_KEY, include, DEFAULT_INCLUDE_HEAD_IN_SCOPES)
 
+
     fun createToolWindowSettingsGroup(): ActionGroup {
         val rootSettingsGroup = DefaultActionGroup(LstCrcBundle.message("settings.root.title"), true)
 
@@ -140,9 +141,9 @@ object ToolWindowSettingsProvider {
             override fun setSelected(e: AnActionEvent, state: Boolean) {
                 setIncludeHeadInScopes(state)
                 val project = e.project ?: return
-                val toolWindowStateService = project.service<ToolWindowStateService>()
-                if (toolWindowStateService.getSelectedTabBranchName() == null) {
-                    toolWindowStateService.refreshDataForActiveTabIfMatching("HEAD")
+                // Refresh data if the currently selected tab is HEAD, to apply the setting change immediately.
+                if (project.service<ToolWindowStateService>().getSelectedTabBranchName() == null) {
+                    project.service<ToolWindowStateService>().refreshDataForCurrentSelection()
                 }
             }
             override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
@@ -153,82 +154,40 @@ object ToolWindowSettingsProvider {
         val mouseClickActionsGroup = DefaultActionGroup({ LstCrcBundle.message("settings.mouse.click.actions") }, true)
         rootSettingsGroup.add(mouseClickActionsGroup)
 
-        val singleClickActionGroup = DefaultActionGroup({ LstCrcBundle.message("settings.left.click.single") }, true)
-        singleClickActionGroup.add(createToggleAction(LstCrcBundle.message("settings.action.none"), { getSingleClickAction() == ACTION_NONE }, { setSingleClickAction(ACTION_NONE) }))
-        singleClickActionGroup.add(createToggleAction(LstCrcBundle.message("settings.action.show.diff"), { getSingleClickAction() == ACTION_OPEN_DIFF }, { setSingleClickAction(ACTION_OPEN_DIFF) }))
-        singleClickActionGroup.add(createToggleAction(LstCrcBundle.message("settings.action.show.source"), { getSingleClickAction() == ACTION_OPEN_SOURCE }, { setSingleClickAction(ACTION_OPEN_SOURCE) }))
-        singleClickActionGroup.add(createToggleAction(LstCrcBundle.message("settings.action.show.project.tree"), { getSingleClickAction() == ACTION_SHOW_IN_PROJECT_TREE }, { setSingleClickAction(ACTION_SHOW_IN_PROJECT_TREE) }))
-        mouseClickActionsGroup.add(singleClickActionGroup)
-
-        val doubleClickActionGroup = DefaultActionGroup({ LstCrcBundle.message("settings.left.click.double") }, true)
-        doubleClickActionGroup.add(createToggleAction(LstCrcBundle.message("settings.action.none"), { getDoubleClickAction() == ACTION_NONE }, { setDoubleClickAction(ACTION_NONE) }))
-        doubleClickActionGroup.add(createToggleAction(LstCrcBundle.message("settings.action.show.diff"), { getDoubleClickAction() == ACTION_OPEN_DIFF }, { setDoubleClickAction(ACTION_OPEN_DIFF) }))
-        doubleClickActionGroup.add(createToggleAction(LstCrcBundle.message("settings.action.show.source"), { getDoubleClickAction() == ACTION_OPEN_SOURCE }, { setDoubleClickAction(ACTION_OPEN_SOURCE) }))
-        doubleClickActionGroup.add(createToggleAction(LstCrcBundle.message("settings.action.show.project.tree"), { getDoubleClickAction() == ACTION_SHOW_IN_PROJECT_TREE }, { setDoubleClickAction(ACTION_SHOW_IN_PROJECT_TREE) }))
-        mouseClickActionsGroup.add(doubleClickActionGroup)
+        mouseClickActionsGroup.add(createClickActionChoiceGroup("settings.left.click.single", ::getSingleClickAction, ::setSingleClickAction))
+        mouseClickActionsGroup.add(createClickActionChoiceGroup("settings.left.click.double", ::getDoubleClickAction, ::setDoubleClickAction))
+        mouseClickActionsGroup.addSeparator()
+        mouseClickActionsGroup.add(createClickActionChoiceGroup("settings.middle.click.single", ::getMiddleClickAction, ::setMiddleClickAction))
+        mouseClickActionsGroup.add(createClickActionChoiceGroup("settings.middle.click.double", ::getDoubleMiddleClickAction, ::setDoubleMiddleClickAction))
         mouseClickActionsGroup.addSeparator()
 
-        val middleClickActionGroup = DefaultActionGroup({ LstCrcBundle.message("settings.middle.click.single") }, true)
-        middleClickActionGroup.add(createToggleAction(LstCrcBundle.message("settings.action.none"), { getMiddleClickAction() == ACTION_NONE }, { setMiddleClickAction(ACTION_NONE) }))
-        middleClickActionGroup.add(createToggleAction(LstCrcBundle.message("settings.action.show.diff"), { getMiddleClickAction() == ACTION_OPEN_DIFF }, { setMiddleClickAction(ACTION_OPEN_DIFF) }))
-        middleClickActionGroup.add(createToggleAction(LstCrcBundle.message("settings.action.show.source"), { getMiddleClickAction() == ACTION_OPEN_SOURCE }, { setMiddleClickAction(ACTION_OPEN_SOURCE) }))
-        middleClickActionGroup.add(createToggleAction(LstCrcBundle.message("settings.action.show.project.tree"), { getMiddleClickAction() == ACTION_SHOW_IN_PROJECT_TREE }, { setMiddleClickAction(ACTION_SHOW_IN_PROJECT_TREE) }))
-        mouseClickActionsGroup.add(middleClickActionGroup)
-
-        val doubleMiddleClickActionGroup = DefaultActionGroup({ LstCrcBundle.message("settings.middle.click.double") }, true)
-        doubleMiddleClickActionGroup.add(createToggleAction(LstCrcBundle.message("settings.action.none"), { getDoubleMiddleClickAction() == ACTION_NONE }, { setDoubleMiddleClickAction(ACTION_NONE) }))
-        doubleMiddleClickActionGroup.add(createToggleAction(LstCrcBundle.message("settings.action.show.diff"), { getDoubleMiddleClickAction() == ACTION_OPEN_DIFF }, { setDoubleMiddleClickAction(ACTION_OPEN_DIFF) }))
-        doubleMiddleClickActionGroup.add(createToggleAction(LstCrcBundle.message("settings.action.show.source"), { getDoubleMiddleClickAction() == ACTION_OPEN_SOURCE }, { setDoubleMiddleClickAction(ACTION_OPEN_SOURCE) }))
-        doubleMiddleClickActionGroup.add(createToggleAction(LstCrcBundle.message("settings.action.show.project.tree"), { getDoubleMiddleClickAction() == ACTION_SHOW_IN_PROJECT_TREE }, { setDoubleMiddleClickAction(ACTION_SHOW_IN_PROJECT_TREE) }))
-        mouseClickActionsGroup.add(doubleMiddleClickActionGroup)
-        mouseClickActionsGroup.addSeparator()
-
+        // --- Right-Click Behavior ---
         val rightClickSettingsGroup = DefaultActionGroup({ LstCrcBundle.message("settings.right.click.behavior") }, true)
-        rightClickSettingsGroup.add(object : ToggleAction(LstCrcBundle.message("settings.right.click.show.menu")) {
-            override fun isSelected(e: AnActionEvent): Boolean =
-                propertiesComponent.getBoolean(APP_SHOW_CONTEXT_MENU_KEY, DEFAULT_SHOW_CONTEXT_MENU)
-            override fun setSelected(e: AnActionEvent, state: Boolean) =
-                propertiesComponent.setValue(APP_SHOW_CONTEXT_MENU_KEY, state, DEFAULT_SHOW_CONTEXT_MENU)
-            override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
-        })
-        rightClickSettingsGroup.add(object : ToggleAction(LstCrcBundle.message("settings.right.click.trigger.actions")) {
-            override fun isSelected(e: AnActionEvent): Boolean =
-                !propertiesComponent.getBoolean(APP_SHOW_CONTEXT_MENU_KEY, DEFAULT_SHOW_CONTEXT_MENU)
-            override fun setSelected(e: AnActionEvent, state: Boolean) =
-                propertiesComponent.setValue(APP_SHOW_CONTEXT_MENU_KEY, !state, DEFAULT_SHOW_CONTEXT_MENU)
-            override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
-        })
+        rightClickSettingsGroup.add(createToggleAction(LstCrcBundle.message("settings.right.click.show.menu"),
+            { isContextMenuEnabled() },
+            { propertiesComponent.setValue(APP_SHOW_CONTEXT_MENU_KEY, true, DEFAULT_SHOW_CONTEXT_MENU) })
+        )
+        rightClickSettingsGroup.add(createToggleAction(LstCrcBundle.message("settings.right.click.trigger.actions"),
+            { !isContextMenuEnabled() },
+            { propertiesComponent.setValue(APP_SHOW_CONTEXT_MENU_KEY, false, DEFAULT_SHOW_CONTEXT_MENU) })
+        )
         mouseClickActionsGroup.add(rightClickSettingsGroup)
 
         val rightClickActionsConditionalGroup = object : DefaultActionGroup() {
             override fun update(e: AnActionEvent) {
-                val showContextMenu = propertiesComponent.getBoolean(APP_SHOW_CONTEXT_MENU_KEY, DEFAULT_SHOW_CONTEXT_MENU)
-                e.presentation.isEnabledAndVisible = !showContextMenu
+                e.presentation.isEnabledAndVisible = !isContextMenuEnabled()
             }
             override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
         }
-        val rightClickActionGroup = DefaultActionGroup({ LstCrcBundle.message("settings.right.click.single") }, true)
-        rightClickActionGroup.add(createToggleAction(LstCrcBundle.message("settings.action.none"), { getRightClickAction() == ACTION_NONE }, { setRightClickAction(ACTION_NONE) }))
-        rightClickActionGroup.add(createToggleAction(LstCrcBundle.message("settings.action.show.diff"), { getRightClickAction() == ACTION_OPEN_DIFF }, { setRightClickAction(ACTION_OPEN_DIFF) }))
-        rightClickActionGroup.add(createToggleAction(LstCrcBundle.message("settings.action.show.source"), { getRightClickAction() == ACTION_OPEN_SOURCE }, { setRightClickAction(ACTION_OPEN_SOURCE) }))
-        rightClickActionGroup.add(createToggleAction(LstCrcBundle.message("settings.action.show.project.tree"), { getRightClickAction() == ACTION_SHOW_IN_PROJECT_TREE }, { setRightClickAction(ACTION_SHOW_IN_PROJECT_TREE) }))
-        rightClickActionsConditionalGroup.add(rightClickActionGroup)
-
-        val doubleRightClickActionGroup = DefaultActionGroup({ LstCrcBundle.message("settings.right.click.double") }, true)
-        doubleRightClickActionGroup.add(createToggleAction(LstCrcBundle.message("settings.action.none"), { getDoubleRightClickAction() == ACTION_NONE }, { setDoubleRightClickAction(ACTION_NONE) }))
-        doubleRightClickActionGroup.add(createToggleAction(LstCrcBundle.message("settings.action.show.diff"), { getDoubleRightClickAction() == ACTION_OPEN_DIFF }, { setDoubleRightClickAction(ACTION_OPEN_DIFF) }))
-        doubleRightClickActionGroup.add(createToggleAction(LstCrcBundle.message("settings.action.show.source"), { getDoubleRightClickAction() == ACTION_OPEN_SOURCE }, { setDoubleRightClickAction(ACTION_OPEN_SOURCE) }))
-        doubleRightClickActionGroup.add(createToggleAction(LstCrcBundle.message("settings.action.show.project.tree"), { getDoubleRightClickAction() == ACTION_SHOW_IN_PROJECT_TREE }, { setDoubleRightClickAction(ACTION_SHOW_IN_PROJECT_TREE) }))
-        rightClickActionsConditionalGroup.add(doubleRightClickActionGroup)
+        rightClickActionsConditionalGroup.add(createClickActionChoiceGroup("settings.right.click.single", ::getRightClickAction, ::setRightClickAction))
+        rightClickActionsConditionalGroup.add(createClickActionChoiceGroup("settings.right.click.double", ::getDoubleRightClickAction, ::setDoubleRightClickAction))
         mouseClickActionsGroup.add(rightClickActionsConditionalGroup)
         mouseClickActionsGroup.addSeparator()
 
+        // --- Double-Click Speed ---
         val delaySpeedGroup = DefaultActionGroup({ LstCrcBundle.message("settings.double.click.speed") }, true)
-        delaySpeedGroup.add(createToggleAction(LstCrcBundle.message("settings.speed.default"),
-            { propertiesComponent.getInt(APP_USER_DOUBLE_CLICK_DELAY_KEY, DELAY_OPTION_SYSTEM_DEFAULT) == DELAY_OPTION_SYSTEM_DEFAULT },
-            { setUserDoubleClickDelayMs(DELAY_OPTION_SYSTEM_DEFAULT) }
-        ))
         val predefinedDelays = listOf(
+            Pair(LstCrcBundle.message("settings.speed.default"), DELAY_OPTION_SYSTEM_DEFAULT),
             Pair(LstCrcBundle.message("settings.speed.faster"), 200),
             Pair(LstCrcBundle.message("settings.speed.fast"), 250),
             Pair(LstCrcBundle.message("settings.speed.medium"), 300),
@@ -246,10 +205,28 @@ object ToolWindowSettingsProvider {
     }
 
     /**
+     * Helper to create a radio-button style group for choosing a click action.
+     */
+    private fun createClickActionChoiceGroup(titleKey: String, getter: () -> String, setter: (String) -> Unit): ActionGroup {
+        val group = DefaultActionGroup({ LstCrcBundle.message(titleKey) }, true)
+        val actions = mapOf(
+            "settings.action.none" to ACTION_NONE,
+            "settings.action.show.diff" to ACTION_OPEN_DIFF,
+            "settings.action.show.source" to ACTION_OPEN_SOURCE,
+            "settings.action.show.project.tree" to ACTION_SHOW_IN_PROJECT_TREE
+        )
+        actions.forEach { (textKey, actionValue) ->
+            group.add(createToggleAction(
+                LstCrcBundle.message(textKey),
+                { getter() == actionValue },
+                { setter(actionValue) }
+            ))
+        }
+        return group
+    }
+
+    /**
      * Helper to create a [ToggleAction] for the settings menu.
-     * @param text The text to display for the action.
-     * @param isSelected A lambda that determines if the action is currently in the "selected" state.
-     * @param onSelected A lambda to execute when the action is selected by the user.
      */
     private fun createToggleAction(text: String, isSelected: (AnActionEvent) -> Boolean, onSelected: () -> Unit): ToggleAction {
         return object : ToggleAction(text) {
