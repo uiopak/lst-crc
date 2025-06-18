@@ -72,36 +72,29 @@ class LstCrcChangesBrowser(
         project.messageBus.connect(this).subscribe(GitRepository.GIT_REPO_CHANGE, this)
         com.intellij.openapi.util.Disposer.register(parentDisposable, this)
 
-        // --- FIX UI BORDER ---
-        // The base class adds a border to its internal scroll pane.
-        // The tool window content manager also adds a border. This creates a "double border" effect.
-        // By removing the inner border, we let the tool window manage the component's border correctly.
+        // The base class adds a border to its scroll pane, and the tool window content manager also adds one,
+        // creating a "double border" effect. Removing the inner border lets the tool window manage it correctly.
         setViewerBorder(JBUI.Borders.empty())
 
-        // --- DISABLE DEFAULT HANDLERS ---
-        // 1. Remove the default double-click/enter key behavior.
+        // Disable default click/key handlers to install our own custom configurable versions.
         viewer.setDoubleClickAndEnterKeyHandler {}
 
-        // 2. REMOVE the default popup handler installed by the base class.
-        // This is the key to preventing an empty context menu on right-click.
-        // Overriding createPopupMenuActions() is not enough as it still shows an empty popup.
+        // Remove the default popup handler installed by the base class. This is critical to preventing
+        // an empty context menu on right-click, as simply overriding createPopupMenuActions() is not enough.
         viewer.mouseListeners.filterIsInstance<PopupHandler>().forEach {
             viewer.removeMouseListener(it)
             logger.debug("Removed a default PopupHandler to prevent empty context menu.")
         }
-        // The default popup menu actions are cleared via override below, but removing the listener
-        // is the most robust way to prevent any popup from appearing.
 
-        // --- INSTALL OUR MASTER LISTENER ---
-        // This single listener now has full control over all mouse clicks.
+        // Install a single master listener to gain full control over all mouse clicks.
         viewer.addMouseListener(object : MouseAdapter() {
             override fun mouseClicked(e: MouseEvent) {
-                // Restore the robust "click anywhere on the row" logic.
+                // Ensure the click is within the bounds of a specific row for accuracy.
                 val row = viewer.getClosestRowForLocation(e.x, e.y)
                 if (row == -1) return
                 val bounds = viewer.getRowBounds(row)
                 if (bounds == null || e.y < bounds.y || e.y >= bounds.y + bounds.height) {
-                    return // Click was outside the actual row bounds.
+                    return
                 }
 
                 val path = viewer.getPathForRow(row) ?: return
@@ -122,7 +115,7 @@ class LstCrcChangesBrowser(
                         if (isContextMenuEnabled()) {
                             showContextMenu(e)
                         } else {
-                            // If menu is disabled, use the old action logic.
+                            // If the context menu is disabled, use the right-click action settings instead.
                             leftClickState.clear()
                             middleClickState.clear()
                             handleGenericClick(e, change, path, getRightClickAction(), getDoubleRightClickAction(), rightClickState)
@@ -134,8 +127,8 @@ class LstCrcChangesBrowser(
     }
 
     /**
-     * Override and return an empty list to completely disable the default right-click context menu.
-     * This is a secondary measure; the primary is removing the PopupHandler listener in init {}.
+     * Override to return an empty list, completely disabling the default right-click context menu.
+     * This is a secondary measure; the primary is removing the `PopupHandler` listener in the init block.
      */
     override fun createPopupMenuActions(): MutableList<AnAction> {
         return mutableListOf()
@@ -200,7 +193,7 @@ class LstCrcChangesBrowser(
                 ToolWindowSettingsProvider.ACTION_OPEN_DIFF -> openDiff(listOf(change))
                 ToolWindowSettingsProvider.ACTION_OPEN_SOURCE -> openSource(change)
                 ToolWindowSettingsProvider.ACTION_SHOW_IN_PROJECT_TREE -> {
-                    // Guard against deleted files for click actions.
+                    // Guard against attempting to show deleted files in the project tree.
                     if (change.type != Change.Type.DELETED) {
                         showInProjectTree(change)
                     }
@@ -216,23 +209,22 @@ class LstCrcChangesBrowser(
     }
 
     private fun getFileFromChange(change: Change): VirtualFile? {
-        // For deleted files, we want the `before` revision. For all others (new, modified, moved), `after` is preferred.
+        // For deleted files, `before` is the only valid revision. For all others, `after` is preferred.
         return change.afterRevision?.file?.virtualFile ?: change.beforeRevision?.file?.virtualFile
     }
 
     private fun showInProjectTree(change: Change) {
-        if (change.type == Change.Type.DELETED) return // Safeguard
+        if (change.type == Change.Type.DELETED) return
 
         val fileToSelect = getFileFromChange(change)
         if (fileToSelect != null && fileToSelect.isValid) {
             val toolWindow = ToolWindowManager.getInstance(project).getToolWindow(ToolWindowId.PROJECT_VIEW)
-            // Activate the Project View tool window, and run the selection logic in the callback.
+            // Activate the Project View, then run the selection logic in the callback.
             toolWindow?.activate({
                 val projectView = ProjectView.getInstance(project)
                 val psiFile = PsiManager.getInstance(project).findFile(fileToSelect)
-                val elementToSelect: Any = psiFile ?: fileToSelect // Prefer PsiFile, fall back to VirtualFile.
+                val elementToSelect: Any = psiFile ?: fileToSelect
 
-                // Select the element, focusing the project view.
                 projectView.select(elementToSelect, fileToSelect, true)
             }, true) // `true` means autoFocusContents
         } else {
@@ -251,13 +243,8 @@ class LstCrcChangesBrowser(
         }
     }
 
-    // --- Public API for updating the browser ---
-
     /**
-     * Updates the browser with a new set of changes.
-     * This method is designed to be called when the data fetch operation is complete.
-     * It uses a state-preserving strategy to avoid resetting the user's scroll position
-     * and expansion state, preventing the "flicker" effect.
+     * Updates the browser with a new set of changes, preserving the user's scroll and expansion state.
      */
     fun displayChanges(categorizedChanges: CategorizedChanges?, forBranchName: String) {
         if (forBranchName != targetBranchToCompare) {
@@ -275,14 +262,13 @@ class LstCrcChangesBrowser(
                 else -> LstCrcBundle.message("changes.browser.no.changes.filtered")
             }
 
-            // On the very first load for this browser instance, we want to reset the state,
-            // which includes a default expansion. On all subsequent refreshes, we want to
-            // keep the user's current expansion and scroll state.
+            // On the very first load, reset the tree to a default expanded state.
+            // On subsequent refreshes, keep the user's current expansion and scroll state to prevent UI flicker.
             val strategy = if (isInitialLoad && hasChanges) {
-                isInitialLoad = false // Flip the flag for next time
-                ChangesTree.ALWAYS_RESET // Resets and applies default expansion
+                isInitialLoad = false
+                ChangesTree.ALWAYS_RESET
             } else {
-                ChangesTree.ALWAYS_KEEP // Preserves tree state
+                ChangesTree.ALWAYS_KEEP
             }
             setChangesToDisplay(changes, strategy)
         }
@@ -290,15 +276,11 @@ class LstCrcChangesBrowser(
 
     /**
      * Initiates a refresh of the data for this browser's target branch.
-     * The global VcsChangeListener handles refreshes from local file changes. This method
-     * is primarily called for explicit UI actions (e.g. initial tab selection).
      */
     fun requestRefreshData() {
         logger.debug("UI_REFRESH: Browser for '$targetBranchToCompare' is requesting a data refresh.")
         project.service<ToolWindowStateService>().refreshDataForActiveTabIfMatching(targetBranchToCompare)
     }
-
-    // --- Listener Implementations ---
 
     override fun repositoryChanged(repository: GitRepository) {
         if (repository.project == this.project) {
@@ -322,8 +304,6 @@ class LstCrcChangesBrowser(
         refreshDebounceTimer?.start()
     }
 
-    // --- Disposable Implementation ---
-
     override fun dispose() {
         shutdown()
         refreshDebounceTimer?.stop()
@@ -332,8 +312,6 @@ class LstCrcChangesBrowser(
         rightClickState.clear()
         logger.info("LstCrcChangesBrowser for branch '$targetBranchToCompare' disposed.")
     }
-
-    // --- Context Menu ---
 
     private fun showContextMenu(e: MouseEvent) {
         val selectedChanges = this.selectedChanges
@@ -350,7 +328,6 @@ class LstCrcChangesBrowser(
         group.add(object : DumbAwareAction() {
             override fun update(event: AnActionEvent) {
                 event.presentation.text = LstCrcBundle.message("context.menu.open.source")
-                // This action is only sensible for a single selection.
                 event.presentation.isEnabled = selectedChanges.size == 1
             }
             override fun actionPerformed(event: AnActionEvent) {
@@ -363,7 +340,6 @@ class LstCrcChangesBrowser(
         group.add(object : DumbAwareAction() {
             override fun update(e: AnActionEvent) {
                 e.presentation.text = LstCrcBundle.message("context.menu.show.project.tree")
-                // Action is only available for a single, non-deleted file.
                 val isActionable = selectedChanges.size == 1 && selectedChanges.first().type != Change.Type.DELETED
                 e.presentation.isEnabled = isActionable
             }
@@ -380,7 +356,6 @@ class LstCrcChangesBrowser(
     }
 
 
-    // --- Settings Getters ---
     private fun isContextMenuEnabled(): Boolean = propertiesComponent.getBoolean(ToolWindowSettingsProvider.APP_SHOW_CONTEXT_MENU_KEY, ToolWindowSettingsProvider.DEFAULT_SHOW_CONTEXT_MENU)
     private fun getSingleClickAction(): String = propertiesComponent.getValue(ToolWindowSettingsProvider.APP_SINGLE_CLICK_ACTION_KEY, ToolWindowSettingsProvider.DEFAULT_SINGLE_CLICK_ACTION)
     private fun getDoubleClickAction(): String = propertiesComponent.getValue(ToolWindowSettingsProvider.APP_DOUBLE_CLICK_ACTION_KEY, ToolWindowSettingsProvider.DEFAULT_DOUBLE_CLICK_ACTION)

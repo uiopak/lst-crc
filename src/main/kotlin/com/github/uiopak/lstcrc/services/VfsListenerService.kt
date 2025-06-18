@@ -23,7 +23,7 @@ class VfsListenerService(private val project: Project) : BulkFileListener, Dispo
 
     init {
         logger.info("VFS_LISTENER: Initializing for project ${project.name}")
-        // The connection will be automatically disposed when this service (Disposable) is disposed.
+        // The connection will be automatically disposed when this service (which is a Disposable) is disposed.
         val connection = project.messageBus.connect(this)
         connection.subscribe(VirtualFileManager.VFS_CHANGES, this)
         logger.info("VFS_LISTENER: Subscribed to VFS_CHANGES for project ${project.name}")
@@ -35,18 +35,16 @@ class VfsListenerService(private val project: Project) : BulkFileListener, Dispo
         val fileIndex = ProjectFileIndex.getInstance(project)
 
         for (event in events) {
-            // We only care about events that could change the git status.
             if (!(event is VFileCreateEvent || event is VFileDeleteEvent ||
                         event is VFileContentChangeEvent || event is VFileMoveEvent || event is VFileCopyEvent)) {
                 continue
             }
 
-            // Check if the file related to the event is part of this project's content.
             val file = event.file
             if (file != null) {
                 if (fileIndex.isInContent(file)) {
                     isDirty = true
-                    break // Found one relevant event, no need to check the rest of the list.
+                    break // A single relevant event is enough to trigger a refresh.
                 }
             } else {
                 // The file object can be null (e.g., for a deletion). Fall back to checking the path.
@@ -54,7 +52,7 @@ class VfsListenerService(private val project: Project) : BulkFileListener, Dispo
                 val projectPath = project.basePath
                 if (projectPath != null && path.startsWith(projectPath)) {
                     isDirty = true
-                    break // Found one relevant event.
+                    break
                 }
             }
         }
@@ -62,10 +60,11 @@ class VfsListenerService(private val project: Project) : BulkFileListener, Dispo
         if (isDirty) {
             logger.info("VFS_LISTENER: Detected relevant VFS change(s) for project ${project.name}. Marking VCS dirty.")
             // This is the standard way to tell the VCS subsystem that file statuses may need re-checking.
-            // This will trigger other listeners, like the one in our ChangesBrowser, to refresh.
+            // This will in turn trigger our VcsChangeListener to refresh the diff data.
             VcsDirtyScopeManager.getInstance(project).markEverythingDirty()
 
-            // This topic is for our own components that might need a more immediate/custom notification.
+            // This topic is for our own components that might need a more immediate/custom notification,
+            // though the VcsChangeListener is the primary refresh mechanism.
             project.messageBus.syncPublisher(FILE_CHANGES_TOPIC).onFilesChanged()
         }
     }

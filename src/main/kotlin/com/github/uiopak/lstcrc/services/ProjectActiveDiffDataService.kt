@@ -37,8 +37,8 @@ class ProjectActiveDiffDataService(private val project: Project) : Disposable {
         val currentToolWindowBranch = project.service<ToolWindowStateService>().getSelectedTabBranchName()
         logger.debug("updateActiveDiff called. Event branch: '$branchNameFromEvent'. Current tool window branch: '$currentToolWindowBranch'.")
 
-        // The event is valid if the branch names match exactly,
-        // OR if the event is for "HEAD" and the currently selected tab is indeed the HEAD tab (represented by a null branch name).
+        // The event is valid if it matches the currently selected branch, or if the event is for HEAD
+        // and the HEAD tab is currently selected (represented by a null branch name).
         val isHeadSelectedInToolWindow = currentToolWindowBranch == null
         val isEventForHead = branchNameFromEvent == "HEAD"
         val isDirectBranchMatch = branchNameFromEvent == currentToolWindowBranch
@@ -66,7 +66,7 @@ class ProjectActiveDiffDataService(private val project: Project) : Disposable {
                 val newModifiedFiles = modifiedFilesFromEvent.toSet()
                 val newMovedFiles = movedFilesFromEvent.toSet()
 
-                // Combine all files whose status might have changed
+                // Combine all files whose status might have changed to notify the IDE.
                 val affectedFiles = oldCreatedFiles + oldModifiedFiles + oldMovedFiles +
                         newCreatedFiles + newModifiedFiles + newMovedFiles
 
@@ -74,10 +74,10 @@ class ProjectActiveDiffDataService(private val project: Project) : Disposable {
                     val fileStatusManager = FileStatusManager.getInstance(project)
                     logger.debug("EDT: Notifying FileStatusManager for ${affectedFiles.size} affected files after updateActiveDiff.")
 
-                    // Step 1: General notification to invalidate caches
+                    // A general notification to invalidate caches.
                     fileStatusManager.fileStatusesChanged()
 
-                    // Step 2: Specific notifications for each affected file
+                    // Specific notifications for each affected file to ensure UI updates.
                     affectedFiles.forEach { file ->
                         if (file.isValid) {
                             fileStatusManager.fileStatusChanged(file)
@@ -85,9 +85,9 @@ class ProjectActiveDiffDataService(private val project: Project) : Disposable {
                     }
                 }
 
-                // **FIXED**: Announce that the data is ready for consumers.
+                // Announce that the data is ready for consumers (scopes, gutters, etc.).
                 project.messageBus.syncPublisher(DIFF_DATA_CHANGED_TOPIC).onDiffDataChanged()
-                triggerEditorTabColorRefresh() // This method already handles its own invokeLater
+                triggerEditorTabColorRefresh() // This method already handles its own invokeLater call.
             }
         } else {
             logger.debug("updateActiveDiff - Update REJECTED as stale. Event branch '$branchNameFromEvent' does NOT match current tool window branch '$currentToolWindowBranch'.")
@@ -112,19 +112,15 @@ class ProjectActiveDiffDataService(private val project: Project) : Disposable {
             if (affectedFiles.isNotEmpty()) {
                 val fileStatusManager = FileStatusManager.getInstance(project)
                 logger.debug("EDT: Notifying FileStatusManager for ${affectedFiles.size} affected files after clearActiveDiff.")
-                // Step 1: General notification
                 fileStatusManager.fileStatusesChanged()
-
-                // Step 2: Specific notifications
                 affectedFiles.forEach { file ->
                     if (file.isValid) {
                         fileStatusManager.fileStatusChanged(file)
                     }
                 }
             }
-            // **FIXED**: Announce that the data is ready for consumers.
             project.messageBus.syncPublisher(DIFF_DATA_CHANGED_TOPIC).onDiffDataChanged()
-            triggerEditorTabColorRefresh() // This method already handles its own invokeLater
+            triggerEditorTabColorRefresh()
         }
     }
 
@@ -153,13 +149,11 @@ class ProjectActiveDiffDataService(private val project: Project) : Disposable {
 
     fun refreshCurrentColorings() {
         logger.debug("refreshCurrentColorings() called. Active branch: $activeBranchName, Changes count: ${activeChanges.size}")
-        // This method primarily triggers tab color refresh.
         triggerEditorTabColorRefresh()
     }
 
     override fun dispose() {
         logger.info("Disposing ProjectActiveDiffDataService for project ${project.name}, clearing changes and file lists.")
-        // No need for invokeLater here as it's a cleanup.
         activeChanges = emptyList()
         activeBranchName = null
         createdFiles = emptyList()

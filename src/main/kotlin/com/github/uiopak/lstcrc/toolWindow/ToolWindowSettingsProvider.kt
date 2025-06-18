@@ -17,60 +17,51 @@ import com.intellij.ui.content.impl.ContentManagerImpl
 
 class ToolWindowSettingsProvider {
 
-    // Use application-level settings so they are consistent across projects.
+    // Use application-level settings so they are consistent across all projects.
     private val propertiesComponent = PropertiesComponent.getInstance()
 
     companion object {
-        // --- Keys ---
+        // --- Keys for Click Actions ---
         internal const val ACTION_NONE = "NONE"
         internal const val ACTION_OPEN_DIFF = "OPEN_DIFF"
         internal const val ACTION_OPEN_SOURCE = "OPEN_SOURCE"
         internal const val ACTION_SHOW_IN_PROJECT_TREE = "SHOW_IN_PROJECT_TREE"
 
-        // Left Click Keys & Defaults
         const val APP_SINGLE_CLICK_ACTION_KEY = "com.github.uiopak.lstcrc.app.singleClickAction"
         const val APP_DOUBLE_CLICK_ACTION_KEY = "com.github.uiopak.lstcrc.app.doubleClickAction"
         const val DEFAULT_SINGLE_CLICK_ACTION = ACTION_NONE
         const val DEFAULT_DOUBLE_CLICK_ACTION = ACTION_OPEN_DIFF
 
-        // Middle Click Keys & Defaults
         const val APP_MIDDLE_CLICK_ACTION_KEY = "com.github.uiopak.lstcrc.app.middleClickAction"
         const val APP_DOUBLE_MIDDLE_CLICK_ACTION_KEY = "com.github.uiopak.lstcrc.app.doubleMiddleClickAction"
         const val DEFAULT_MIDDLE_CLICK_ACTION = ACTION_NONE
         const val DEFAULT_DOUBLE_MIDDLE_CLICK_ACTION = ACTION_NONE
 
-        // Right Click Keys & Defaults
         const val APP_RIGHT_CLICK_ACTION_KEY = "com.github.uiopak.lstcrc.app.rightClickAction"
         const val APP_DOUBLE_RIGHT_CLICK_ACTION_KEY = "com.github.uiopak.lstcrc.app.doubleRightClickAction"
         const val DEFAULT_RIGHT_CLICK_ACTION = ACTION_NONE
         const val DEFAULT_DOUBLE_RIGHT_CLICK_ACTION = ACTION_NONE
 
-        // Context Menu Key & Default
+        // --- Keys for General Settings ---
         const val APP_SHOW_CONTEXT_MENU_KEY = "com.github.uiopak.lstcrc.app.showContextMenu"
         const val DEFAULT_SHOW_CONTEXT_MENU = false
 
-        // Delay Keys & Defaults
         const val APP_USER_DOUBLE_CLICK_DELAY_KEY = "com.github.uiopak.lstcrc.app.userDoubleClickDelay"
         const val DELAY_OPTION_SYSTEM_DEFAULT = -1
 
-        // Scope Behavior Key & Default
         internal const val APP_INCLUDE_HEAD_IN_SCOPES_KEY = "com.github.uiopak.lstcrc.app.includeHeadInScopes"
         internal const val DEFAULT_INCLUDE_HEAD_IN_SCOPES = false
 
-        // Gutter Marker Key & Default
         const val APP_ENABLE_GUTTER_MARKERS_KEY = "com.github.uiopak.lstcrc.app.enableGutterMarkers"
         const val DEFAULT_ENABLE_GUTTER_MARKERS = true
 
-        // Tool Window Title Key & Default
         const val APP_SHOW_TOOL_WINDOW_TITLE_KEY = "com.github.uiopak.lstcrc.app.showToolWindowTitle"
         const val DEFAULT_SHOW_TOOL_WINDOW_TITLE = false
 
-        // Widget Context Label Key & Default
         const val APP_SHOW_WIDGET_CONTEXT_KEY = "com.github.uiopak.lstcrc.app.showWidgetContext"
         const val DEFAULT_SHOW_WIDGET_CONTEXT = false
     }
 
-    // --- Getters and Setters ---
     private fun getSingleClickAction(): String = propertiesComponent.getValue(APP_SINGLE_CLICK_ACTION_KEY, DEFAULT_SINGLE_CLICK_ACTION)
     private fun setSingleClickAction(action: String) = propertiesComponent.setValue(APP_SINGLE_CLICK_ACTION_KEY, action)
 
@@ -97,7 +88,7 @@ class ToolWindowSettingsProvider {
     fun createToolWindowSettingsGroup(): ActionGroup {
         val rootSettingsGroup = DefaultActionGroup(LstCrcBundle.message("settings.root.title"), true)
 
-        // --- General Settings ---
+        // General Behavior Settings
         rootSettingsGroup.add(object : ToggleAction(LstCrcBundle.message("settings.gutter.marks")) {
             override fun isSelected(e: AnActionEvent): Boolean =
                 propertiesComponent.getBoolean(APP_ENABLE_GUTTER_MARKERS_KEY, DEFAULT_ENABLE_GUTTER_MARKERS)
@@ -116,12 +107,9 @@ class ToolWindowSettingsProvider {
             override fun setSelected(e: AnActionEvent, state: Boolean) {
                 propertiesComponent.setValue(APP_SHOW_TOOL_WINDOW_TITLE_KEY, state, DEFAULT_SHOW_TOOL_WINDOW_TITLE)
                 val toolWindow = e.getData(PlatformDataKeys.TOOL_WINDOW) ?: return
-                val hideIdLabelValue = if (state) null else "true"
-                toolWindow.component.putClientProperty(ToolWindowContentUi.HIDE_ID_LABEL, hideIdLabelValue)
-                // Corrected UI update logic
-                val contentManager = toolWindow.contentManager
-                if (contentManager is ContentManagerImpl) {
-                    (contentManager.ui as? ToolWindowContentUi)?.update()
+                toolWindow.component.putClientProperty(ToolWindowContentUi.HIDE_ID_LABEL, if (state) null else "true")
+                (toolWindow.contentManager as? ContentManagerImpl)?.let {
+                    (it.ui as? ToolWindowContentUi)?.update()
                 }
             }
             override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
@@ -152,7 +140,7 @@ class ToolWindowSettingsProvider {
         })
         rootSettingsGroup.addSeparator()
 
-        // --- Mouse Click Actions Sub-menu ---
+        // Mouse Click Action Settings
         val mouseClickActionsGroup = DefaultActionGroup({ LstCrcBundle.message("settings.mouse.click.actions") }, true)
         rootSettingsGroup.add(mouseClickActionsGroup)
 

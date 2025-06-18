@@ -15,7 +15,7 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.wm.ToolWindowManager
 import com.intellij.util.messages.Topic
 import com.intellij.util.xmlb.XmlSerializerUtil
-import java.util.EventListener // Required for MessageBus Senders
+import java.util.EventListener
 
 @State(
     name = "com.github.uiopak.lstcrc.services.ToolWindowStateService",
@@ -25,7 +25,7 @@ import java.util.EventListener // Required for MessageBus Senders
 class ToolWindowStateService(private val project: Project) : PersistentStateComponent<ToolWindowState> {
 
     private var myState = ToolWindowState()
-    private val logger = thisLogger() // Initialize logger
+    private val logger = thisLogger()
 
     override fun getState(): ToolWindowState {
         logger.debug("getState() called. Current state: $myState")
@@ -40,7 +40,8 @@ class ToolWindowStateService(private val project: Project) : PersistentStateComp
 
     override fun noStateLoaded() {
         logger.info("noStateLoaded() called. Initializing with default state.")
-        myState = ToolWindowState() // Ensure it's a clean state
+        // Ensure the state is clean if no XML file was found.
+        myState = ToolWindowState()
         project.messageBus.syncPublisher(TOPIC).stateChanged(myState.copy())
     }
 
@@ -48,9 +49,10 @@ class ToolWindowStateService(private val project: Project) : PersistentStateComp
         logger.info("addTab('$branchName') called.")
         val currentTabs = myState.openTabs.toMutableList()
         if (currentTabs.none { it.branchName == branchName }) {
-            currentTabs.add(TabInfo(branchName = branchName, alias = null)) // Be explicit about alias
-            myState.openTabs = ArrayList(currentTabs) // Ensure a new list instance for the state
-            myState = myState.copy() // Create a new state object
+            currentTabs.add(TabInfo(branchName = branchName, alias = null))
+            // Create a new list instance to ensure the state component detects the change.
+            myState.openTabs = ArrayList(currentTabs)
+            myState = myState.copy()
             logger.info("Tab '$branchName' added. New state: $myState")
             project.messageBus.syncPublisher(TOPIC).stateChanged(myState.copy())
         } else {
@@ -63,39 +65,40 @@ class ToolWindowStateService(private val project: Project) : PersistentStateComp
         val currentTabs = myState.openTabs.toMutableList()
         currentTabs.removeAll { it.branchName == branchName }
 
-        myState.openTabs = ArrayList(currentTabs) // Ensure a new list instance
+        myState.openTabs = ArrayList(currentTabs)
 
-        // Adjust selectedTabIndex if the removed tab affects it
+        // Adjust selectedTabIndex if the removed tab was selected or was before the selected tab.
         if (myState.selectedTabIndex >= currentTabs.size && currentTabs.isNotEmpty()) {
             myState.selectedTabIndex = currentTabs.size - 1
         } else if (currentTabs.isEmpty()) {
             myState.selectedTabIndex = -1
         }
 
-        myState = myState.copy() // Create a new state object
+        myState = myState.copy()
         logger.info("Tab $branchName removed. New state: $myState")
         project.messageBus.syncPublisher(TOPIC).stateChanged(myState.copy())
     }
 
     fun setSelectedTab(index: Int) {
-        // Validate index against current openTabs size
+        // Validate index against current openTabs size, clamping to a valid range.
         val validIndex = if (index >= myState.openTabs.size || index < -1) {
             logger.warn("setSelectedTab called with invalid index: $index. Open tabs: ${myState.openTabs.size}. Clamping to -1 or last valid index.")
-            if (myState.openTabs.isEmpty()) -1 else myState.openTabs.size -1
+            if (myState.openTabs.isEmpty()) -1 else myState.openTabs.size - 1
         } else {
             index
         }
 
         if (myState.selectedTabIndex != validIndex) {
             myState.selectedTabIndex = validIndex
-            myState = myState.copy() // Ensure state is copied if it's a data class
+            myState = myState.copy()
             logger.info("Selected tab index set to $validIndex. New state: $myState")
             project.messageBus.syncPublisher(TOPIC).stateChanged(myState.copy())
 
             val diffDataService = project.service<ProjectActiveDiffDataService>()
             val gitService = project.service<GitService>()
 
-            val selectedBranchName = getSelectedTabBranchName() // Uses the new index due to state update
+            // `getSelectedTabBranchName` now uses the newly updated index.
+            val selectedBranchName = getSelectedTabBranchName()
 
             if (selectedBranchName != null) {
                 logger.debug("Tab selection changed to: '$selectedBranchName'. Fetching changes.")
@@ -118,10 +121,8 @@ class ToolWindowStateService(private val project: Project) : PersistentStateComp
                         getActiveChangesBrowser(project)?.displayChanges(null, selectedBranchName)
                     }
                 }
-            } else { // No specific branch tab is selected (i.e., HEAD is active)
+            } else { // This case handles the HEAD tab selection.
                 logger.debug("Tab selection changed to HEAD.")
-
-                // Use application-level properties for this setting.
                 val properties = PropertiesComponent.getInstance()
                 val includeHeadInScopes = properties.getBoolean(
                     ToolWindowSettingsProvider.APP_INCLUDE_HEAD_IN_SCOPES_KEY,
@@ -156,7 +157,7 @@ class ToolWindowStateService(private val project: Project) : PersistentStateComp
                     logger.debug("'Include HEAD in Scopes' is disabled. Clearing ProjectActiveDiffDataService.")
                     diffDataService.clearActiveDiff()
 
-                    // Still fetch and display changes for the UI panel.
+                    // The diff data service is cleared, but we still fetch changes to show them in the UI panel.
                     gitService.getChanges(effectiveBranchNameForDisplay).whenCompleteAsync { categorizedChanges, throwable ->
                         if (project.isDisposed) return@whenCompleteAsync
                         val activeBrowser = getActiveChangesBrowser(project)
@@ -205,7 +206,6 @@ class ToolWindowStateService(private val project: Project) : PersistentStateComp
                 if (project.isDisposed) return@whenCompleteAsync
 
                 val activeBrowser = getActiveChangesBrowser(project)
-                // Use application-level properties for this setting.
                 val properties = PropertiesComponent.getInstance()
                 val includeHeadInScopes = properties.getBoolean(
                     ToolWindowSettingsProvider.APP_INCLUDE_HEAD_IN_SCOPES_KEY,
@@ -217,7 +217,7 @@ class ToolWindowStateService(private val project: Project) : PersistentStateComp
                     activeBrowser?.displayChanges(null, eventBranchName)
                     diffDataService.clearActiveDiff()
                 } else if (categorizedChanges != null) {
-                    // Update global diff service if on a branch tab, OR on HEAD tab with setting enabled.
+                    // Update global diff service if on a branch tab, OR on HEAD tab with the setting enabled.
                     if (!isHeadSelected || includeHeadInScopes) {
                         diffDataService.updateActiveDiff(
                             eventBranchName,
@@ -227,7 +227,7 @@ class ToolWindowStateService(private val project: Project) : PersistentStateComp
                             categorizedChanges.movedFiles
                         )
                     } else {
-                        // This case happens if we are on HEAD and the setting is OFF.
+                        // This case happens if we are on HEAD and the 'Include HEAD' setting is OFF.
                         diffDataService.clearActiveDiff()
                     }
                     activeBrowser?.displayChanges(categorizedChanges, eventBranchName)
@@ -242,17 +242,14 @@ class ToolWindowStateService(private val project: Project) : PersistentStateComp
     }
 
     /**
-     * Called on startup or on demand to ensure the data for the initially selected tab is loaded.
-     * This method identifies the current selection and triggers a full data refresh,
-     * which includes updating the data service (`ProjectActiveDiffDataService`) and the
-     * tool window UI (`LstCrcChangesBrowser`) if it's visible.
+     * Ensures the data for the currently selected tab is loaded and all dependent services are updated.
+     * This orchestrates a full data refresh for the current selection, updating both the
+     * `ProjectActiveDiffDataService` and the tool window UI.
      */
     fun refreshDataForCurrentSelection() {
         val branchToRefresh = getSelectedTabBranchName() ?: "HEAD"
         logger.info("ACTION: Refreshing data for current selection: '$branchToRefresh'")
-        // The existing refreshDataForActiveTabIfMatching method already contains all the necessary logic
-        // to fetch data, update the data service, and update the UI. We just need to call it with the
-        // currently selected branch name.
+        // This method contains all the necessary logic for a full refresh.
         refreshDataForActiveTabIfMatching(branchToRefresh)
     }
 

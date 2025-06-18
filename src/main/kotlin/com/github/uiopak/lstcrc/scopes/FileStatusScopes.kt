@@ -12,10 +12,8 @@ import com.intellij.psi.search.scope.packageSet.NamedScopesHolder
 import com.intellij.psi.search.scope.packageSet.PackageSet
 import com.intellij.psi.search.scope.packageSet.PackageSetBase
 
-// --- Base PackageSet for LSTCRC Scopes ---
 private abstract class LstCrcPackageSet(
-    // The description will be used for getText(), which appears in the "Pattern" field
-    // of the Scopes dialog.
+    /** The description passed here is used for [getText], which appears in the "Pattern" field of the Scopes dialog. */
     private val description: String
 ) : PackageSetBase() {
 
@@ -25,29 +23,23 @@ private abstract class LstCrcPackageSet(
         if (project.isDisposed) return false
         val diffDataService = project.service<ProjectActiveDiffDataService>()
 
-        // The ProjectActiveDiffDataService is the single source of truth.
-        // Its state is managed by other services based on tab selection and settings.
-        // If activeBranchName is null, it means we have explicitly cleared the diff data,
-        // and therefore no files should be in any LSTCRC scope.
+        // The ProjectActiveDiffDataService is the single source of truth for scope data.
+        // If activeBranchName is null, it means diff data is intentionally cleared,
+        // so no files should be included in any LSTCRC scope.
         if (diffDataService.activeBranchName == null) {
             return false
         }
 
-        // If a branch is active (including "HEAD" if the setting is on), we check its files.
         val relevantFiles = getRelevantFiles(diffDataService)
         return file in relevantFiles
     }
 
-    /**
-     * Returns the text representation of the package set.
-     * This text is displayed in the "Pattern" field of the Scopes dialog.
-     */
     override fun getText(): String = description
 
-    override fun getNodePriority(): Int = 1 // Custom scopes, typically higher priority than 0 (built-ins)
+    // Custom scopes should have a higher priority than built-in scopes (0).
+    override fun getNodePriority(): Int = 1
 }
 
-// --- Specific PackageSet Implementations ---
 private class CreatedFilesPackageSet : LstCrcPackageSet(
     description = LstCrcBundle.message("scope.created.description")
 ) {
@@ -72,19 +64,15 @@ private class MovedFilesPackageSet : LstCrcPackageSet(
 private class ChangedFilesPackageSet : LstCrcPackageSet(
     description = LstCrcBundle.message("scope.changed.description")
 ) {
-    // Overriding getRelevantFiles for combined logic
     override fun getRelevantFiles(service: ProjectActiveDiffDataService): Set<VirtualFile> {
         return (service.createdFiles + service.modifiedFiles + service.movedFiles).toSet()
     }
     override fun createCopy(): PackageSet = ChangedFilesPackageSet()
 }
 
-
-// --- NamedScope Definitions (using prefixed IDs) ---
-// The 'name' parameter is the Scope ID and its default display name in UI lists.
 class CreatedFilesScope : NamedScope(
     LstCrcBundle.message("scope.created.name"),
-    AllIcons.General.Add, // Changed to a more specific icon
+    AllIcons.General.Add,
     CreatedFilesPackageSet()
 ){
     override fun getDefaultColorName(): String = "Green"
@@ -92,7 +80,7 @@ class CreatedFilesScope : NamedScope(
 
 class ModifiedFilesScope : NamedScope(
     LstCrcBundle.message("scope.modified.name"),
-    AllIcons.Actions.EditSource, // Changed to a more specific icon
+    AllIcons.Actions.EditSource,
     ModifiedFilesPackageSet()
 ){
     override fun getDefaultColorName(): String = "Blue"
@@ -100,7 +88,7 @@ class ModifiedFilesScope : NamedScope(
 
 class MovedFilesScope : NamedScope(
     LstCrcBundle.message("scope.moved.name"),
-    AllIcons.Nodes.Tag, // CORRECTED: This icon represents renaming/tagging and is a good fit for "Moved".
+    AllIcons.Nodes.Tag,
     MovedFilesPackageSet()
 ){
     override fun getDefaultColorName(): String = "Gray"
@@ -109,6 +97,6 @@ class MovedFilesScope : NamedScope(
 
 class ChangedFilesScope : NamedScope(
     LstCrcBundle.message("scope.changed.name"),
-    LstCrcIcons.TOOL_WINDOW, // Use our custom plugin icon for consistency
+    LstCrcIcons.TOOL_WINDOW, // Use our custom plugin icon for the main scope for brand consistency.
     ChangedFilesPackageSet()
 )

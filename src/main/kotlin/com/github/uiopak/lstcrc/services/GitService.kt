@@ -46,7 +46,6 @@ class GitService(private val project: Project) {
         return when (repositories.size) {
             0 -> {
                 logger.info("No Git repositories found by manager. Returning null.")
-                // Attempt to get project base path as a fallback clue, though not a repo itself
                 val projectBasePath = project.basePath
                 logger.info("Project base path for context: $projectBasePath")
                 null
@@ -55,9 +54,8 @@ class GitService(private val project: Project) {
                 logger.info("Exactly one Git repository found: ${repositories.first().root.path}")
                 repositories.first()
             }
-            else -> { // More than one repository
+            else -> {
                 logger.warn("Multiple Git repositories found (${repositories.size}). Using the first one: ${repositories.first().root.path}")
-                // Log all available repository roots for diagnostic purposes
                 repositories.forEach { logger.debug("Available repo root: ${it.root.path}") }
                 repositories.first()
             }
@@ -75,8 +73,8 @@ class GitService(private val project: Project) {
     }
 
     /**
-     * Gets the changes between the current HEAD and the specified branch name.
-     * These changes represent what is in `branchNameToCompare` that is different from HEAD.
+     * Gets the changes between the current working state and the specified branch name.
+     * These changes represent what is in `branchNameToCompare` that is different from the working state.
      * - Files added in `branchNameToCompare` (not in HEAD) will be `Change.Type.NEW`.
      * - Files deleted in `branchNameToCompare` (present in HEAD) will be `Change.Type.DELETED`.
      * - Files modified will be `Change.Type.MODIFICATION`.
@@ -91,22 +89,20 @@ class GitService(private val project: Project) {
             return future
         }
 
-        // Determine current actual branch name
         val currentActualBranchName = repository.currentBranchName
 
         object : Task.Backgroundable(project, LstCrcBundle.message("git.task.loading.changes")) {
             override fun run(indicator: ProgressIndicator) {
                 try {
                     val changes: List<Change>
-                    // If target is current branch or HEAD, prioritize ChangeListManager for live local changes
+                    // For the current branch or HEAD, ChangeListManager provides the most accurate view of local changes.
                     if (branchNameToCompare == currentActualBranchName ||
-                        (branchNameToCompare == "HEAD" && currentActualBranchName != null /* i.e., not detached HEAD */)) {
+                        (branchNameToCompare == "HEAD" && currentActualBranchName != null /* i.e., not in detached HEAD state */)) {
                         logger.debug("Using ChangeListManager for target: $branchNameToCompare (current actual: $currentActualBranchName)")
                         changes = ChangeListManager.getInstance(project).allChanges.toList()
                         logger.debug("ChangeListManager found ${changes.size} total changes.")
                     } else {
-                        // Otherwise, compare working tree against the specified branch/commit
-                        // This shows "current work vs. other branch/commit"
+                        // For other branches, diff the working tree against the specified branch to show "current work vs. other branch".
                         logger.debug("Using GitChangeUtils.getDiffWithWorkingTree for target: $branchNameToCompare")
                         changes = GitChangeUtils.getDiffWithWorkingTree(repository, branchNameToCompare, true)?.toList() ?: emptyList()
                         logger.debug("GitChangeUtils.getDiffWithWorkingTree found ${changes.size} total changes for target $branchNameToCompare.")
@@ -128,12 +124,11 @@ class GitService(private val project: Project) {
                                 change.afterRevision?.file?.virtualFile?.let { movedFiles.add(it) }
                             }
                             Change.Type.DELETED -> {
-                                // DELETED changes are part of allChanges, but typically not directly used for tab coloring
-                                // of existing (now deleted) editor tabs, as those tabs would likely be closed.
-                                // No specific action needed here for created/modified/moved lists.
+                                // DELETED changes are included in `allChanges` but are not needed for coloring/gutter marks
+                                // of existing files, as the file is gone. No action needed here.
                             }
                             else -> {
-                                // Other change types (e.g., UNVERSIONED) are ignored for now.
+                                // Other change types (e.g., UNVERSIONED) are ignored.
                             }
                         }
                     }
@@ -142,7 +137,7 @@ class GitService(private val project: Project) {
                 } catch (e: VcsException) {
                     logger.error("Error getting changes for $branchNameToCompare: ${e.message}", e)
                     future.completeExceptionally(e)
-                } catch (e: Exception) { // Catch other potential exceptions
+                } catch (e: Exception) {
                     logger.error("Unexpected error getting changes for $branchNameToCompare: ${e.message}", e)
                     future.completeExceptionally(e)
                 }
@@ -188,11 +183,9 @@ class GitService(private val project: Project) {
                 val revisionContentBytes = GitFileUtils.getFileContent(project, repository.root, revision, relativePath)
                 val rawContent = String(revisionContentBytes, file.charset)
 
-                // --- FIX START: Normalize line endings ---
-                // The IntelliJ Document model requires LF ('\n') line endings. Git on Windows might return CRLF ('\r\n').
-                // We must convert them to prevent an "Wrong line separators" AssertionError.
+                // The IntelliJ Document model requires LF ('\n') line endings, but Git on Windows might return CRLF ('\r\n').
+                // We must convert them to prevent a "Wrong line separators" AssertionError from the line status tracker.
                 val normalizedContent = StringUtil.convertLineSeparators(rawContent)
-                // --- FIX END ---
 
                 logger.info("GUTTER_GIT_SERVICE: Successfully fetched content for '$relativePath' in revision '$revision'. Raw length: ${rawContent.length}, Normalized length: ${normalizedContent.length}.")
                 future.complete(normalizedContent)

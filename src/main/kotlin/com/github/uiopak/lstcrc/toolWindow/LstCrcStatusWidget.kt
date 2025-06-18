@@ -76,7 +76,7 @@ class LstCrcStatusWidget(private val project: Project) : StatusBarWidget, Status
             selectedIndex == -1 || openTabs.isEmpty() -> LstCrcBundle.message("tab.name.head")
             selectedIndex >= 0 && selectedIndex < openTabs.size -> {
                 val tabInfo = openTabs[selectedIndex]
-                (tabInfo.alias ?: tabInfo.branchName).take(20) // Use alias if available, then truncate
+                (tabInfo.alias ?: tabInfo.branchName).take(20)
             }
             else -> LstCrcBundle.message("plugin.name.short")
         }
@@ -85,7 +85,7 @@ class LstCrcStatusWidget(private val project: Project) : StatusBarWidget, Status
 
     override fun install(statusBar: StatusBar) {
         this.statusBar = statusBar
-        messageBusConnection = project.messageBus.connect(this) // `this` is the disposable
+        messageBusConnection = project.messageBus.connect(this)
         messageBusConnection?.subscribe(ToolWindowStateService.TOPIC, object : ToolWindowStateService.Companion.ToolWindowStateListener {
             override fun stateChanged(newState: ToolWindowState) {
                 updateWidgetText(newState)
@@ -98,7 +98,7 @@ class LstCrcStatusWidget(private val project: Project) : StatusBarWidget, Status
                 this@LstCrcStatusWidget.statusBar?.updateWidget(ID())
             }
         })
-        updateWidgetText(null) // Initial text update
+        updateWidgetText(null)
         this.statusBar?.updateWidget(ID())
     }
 
@@ -119,25 +119,18 @@ class LstCrcStatusWidget(private val project: Project) : StatusBarWidget, Status
     override fun getClickConsumer(): Consumer<MouseEvent> {
         return Consumer { mouseEvent ->
             val service = ToolWindowStateService.getInstance(project)
-            // Get the latest state directly from the service for the popup
             val currentServiceState = service.state
             val openTabs = currentServiceState.openTabs
             val actions = mutableListOf<AnAction>()
 
-            // Manually add the "HEAD" action
             actions.add(object : AnAction(LstCrcBundle.message("tab.name.head")) {
                 override fun actionPerformed(e: AnActionEvent) {
                     val toolWindowManager = ToolWindowManager.getInstance(project)
-                    val toolWindow = toolWindowManager.getToolWindow(GIT_CHANGES_TOOL_WINDOW_ID)
-
-                    if (toolWindow == null) {
-                        logger.error("Could not find ToolWindow: $GIT_CHANGES_TOOL_WINDOW_ID when trying to switch to HEAD tab from widget.")
-                        return
-                    }
+                    val toolWindow = toolWindowManager.getToolWindow(GIT_CHANGES_TOOL_WINDOW_ID) ?: return
 
                     toolWindow.activate({
                         val contentManager = toolWindow.contentManager
-                        // The HEAD tab is the one that is NOT closable.
+                        // The HEAD tab is identified by being the non-closable tab.
                         val headContent = contentManager.contents.find { !it.isCloseable }
 
                         if (headContent != null) {
@@ -152,26 +145,18 @@ class LstCrcStatusWidget(private val project: Project) : StatusBarWidget, Status
 
             openTabs.forEachIndexed { index, tabInfo ->
                 val displayName = tabInfo.alias ?: tabInfo.branchName
-                actions.add(object : AnAction(displayName) { // Use alias for display name
+                actions.add(object : AnAction(displayName) {
                     override fun actionPerformed(e: AnActionEvent) {
-                        val branchNameToSelect = tabInfo.branchName // Internally, still use branchName
+                        val branchNameToSelect = tabInfo.branchName
                         val toolWindowManager = ToolWindowManager.getInstance(project)
-                        val toolWindow = toolWindowManager.getToolWindow(GIT_CHANGES_TOOL_WINDOW_ID)
+                        val toolWindow = toolWindowManager.getToolWindow(GIT_CHANGES_TOOL_WINDOW_ID) ?: return
 
-                        if (toolWindow == null) {
-                            logger.error("Could not find ToolWindow: $GIT_CHANGES_TOOL_WINDOW_ID when trying to switch tab from widget.")
-                            return
-                        }
-
-                        // Activate the tool window, which will create it if needed.
                         toolWindow.activate({
-                            // This runnable runs after activation is complete
                             val contentManager = toolWindow.contentManager
-                            // Find content by its persistent branch name, not its display name (alias)
                             val contentToSelect = contentManager.contents.find { it.getUserData(LstCrcKeys.BRANCH_NAME_KEY) == branchNameToSelect }
 
                             if (contentToSelect != null) {
-                                contentManager.setSelectedContent(contentToSelect, true) // true for focus
+                                contentManager.setSelectedContent(contentToSelect, true)
                                 logger.info("Requested UI tab selection for '$branchNameToSelect' from status widget.")
                             } else {
                                 logger.warn("Could not find content for tab '$branchNameToSelect' in tool window to select from widget.")
@@ -186,13 +171,8 @@ class LstCrcStatusWidget(private val project: Project) : StatusBarWidget, Status
             actions.add(object : AnAction(LstCrcBundle.message("widget.action.add.tab")) {
                 override fun actionPerformed(e: AnActionEvent) {
                     val toolWindowManager = ToolWindowManager.getInstance(project)
-                    val toolWindow = toolWindowManager.getToolWindow(GIT_CHANGES_TOOL_WINDOW_ID)
-                    if (toolWindow == null) {
-                        logger.error("Could not find ToolWindow: $GIT_CHANGES_TOOL_WINDOW_ID")
-                        return
-                    }
+                    val toolWindow = toolWindowManager.getToolWindow(GIT_CHANGES_TOOL_WINDOW_ID) ?: return
 
-                    // Ensure the tool window is visible and ready.
                     toolWindow.activate({
                         val selectionTabName = LstCrcBundle.message("tab.name.select.branch")
                         val contentManager: ContentManager = toolWindow.contentManager
@@ -261,16 +241,11 @@ class LstCrcStatusWidget(private val project: Project) : StatusBarWidget, Status
                 true
             )
 
-            // --- START FINAL FIX for POPUP PLACEMENT ---
+            // This logic calculates the correct position to show the popup above the status bar widget.
             val component = mouseEvent.component
-            // Get the size of the popup's content *before* showing it.
             val popupSize = popup.content.preferredSize
-            // Calculate a point that places the popup's bottom-left corner at the widget's top-left.
-            // x = 0 (align left edges)
-            // y = -popupSize.height (move the popup's top edge up by its entire height)
             val point = Point(0, -popupSize.height)
             popup.show(RelativePoint(component, point))
-            // --- END FINAL FIX for POPUP PLACEMENT ---
         }
     }
 }

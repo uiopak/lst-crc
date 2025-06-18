@@ -27,7 +27,7 @@ class OpenBranchSelectionTabAction(
     private val logger = thisLogger()
 
     override fun actionPerformed(e: AnActionEvent) {
-        logger.info("OpenBranchSelectionTabAction: actionPerformed called. Event source: ${e.place}, DataContext: ${e.dataContext}")
+        logger.info("OpenBranchSelectionTabAction: actionPerformed called.")
         val selectionTabName = LstCrcBundle.message("tab.name.select.branch")
         val contentManager: ContentManager = toolWindow.contentManager
 
@@ -39,80 +39,49 @@ class OpenBranchSelectionTabAction(
         }
 
         val stateService = ToolWindowStateService.getInstance(project)
-
         val contentFactory = ContentFactory.getInstance()
-        val branchSelectionUi = BranchSelectionPanel(project, project.service<GitService>()) { selectedBranchName: String ->
+
+        val branchSelectionUi = BranchSelectionPanel(project, project.service<GitService>()) { selectedBranchName ->
             logger.info("OpenBranchSelectionTabAction (Callback): Branch '$selectedBranchName' selected from panel.")
-
             if (selectedBranchName.isBlank()) {
-                logger.error("OpenBranchSelectionTabAction (Callback): selectedBranchName is blank. Throwing exception.")
-                val tempSelectionTab = contentManager.findContent(selectionTabName) // contentManager from outer scope
-                if (tempSelectionTab != null) {
-                    toolWindow.contentManager.removeContent(tempSelectionTab, true) // manager from outer scope, or toolWindow.contentManager
+                logger.error("OpenBranchSelectionTabAction (Callback): selectedBranchName is blank.")
+                toolWindow.contentManager.findContent(selectionTabName)?.let {
+                    toolWindow.contentManager.removeContent(it, true)
                 }
-                throw IllegalArgumentException("selectedBranchName is blank inside OpenBranchSelectionTabAction callback!")
-            }
-
-            val manager: ContentManager = toolWindow.contentManager
-            val selectionTabContent = manager.findContent(selectionTabName)
-
-            if (selectionTabContent == null) {
-                logger.error("OpenBranchSelectionTabAction (Callback): Could not find the '$selectionTabName' tab to repurpose/remove.")
                 return@BranchSelectionPanel
             }
 
-            var existingBranchTabForSelectedName: com.intellij.ui.content.Content? = null
-            // Find existing tab using the reliable user data key, not the display name.
-            for (content in manager.contents) {
-                if (content.getUserData(LstCrcKeys.BRANCH_NAME_KEY) == selectedBranchName) {
-                    existingBranchTabForSelectedName = content
-                    break
-                }
-            }
+            val manager: ContentManager = toolWindow.contentManager
+            val selectionTabContent = manager.findContent(selectionTabName) ?: return@BranchSelectionPanel
 
-            if (existingBranchTabForSelectedName != null) {
-                logger.info("OpenBranchSelectionTabAction (Callback): Tab for '$selectedBranchName' already exists. Selecting it and removing '$selectionTabName' tab.")
-                manager.setSelectedContent(existingBranchTabForSelectedName, true)
+            val existingBranchTab = manager.contents.find { it.getUserData(LstCrcKeys.BRANCH_NAME_KEY) == selectedBranchName }
+
+            if (existingBranchTab != null) {
+                logger.info("OpenBranchSelectionTabAction (Callback): Tab for '$selectedBranchName' already exists. Selecting it.")
+                manager.setSelectedContent(existingBranchTab, true)
                 manager.removeContent(selectionTabContent, true)
 
                 val closableTabs = manager.contents.filter { it.isCloseable }.mapNotNull { it.getUserData(LstCrcKeys.BRANCH_NAME_KEY) }
                 val selectedIndex = closableTabs.indexOf(selectedBranchName)
                 if (selectedIndex != -1) {
-                    logger.info("OpenBranchSelectionTabAction (Callback): Calling stateService.setSelectedTab($selectedIndex) for existing branch '$selectedBranchName'.")
                     stateService.setSelectedTab(selectedIndex)
-                } else {
-                    logger.warn("OpenBranchSelectionTabAction (Callback): Could not find existing branch '$selectedBranchName' in closable tabs for setSelectedTab after selecting it.")
                 }
             } else {
                 logger.info("OpenBranchSelectionTabAction (Callback): Repurposing '$selectionTabName' tab to '$selectedBranchName'.")
                 selectionTabContent.displayName = selectedBranchName
-                // Set the user data key to reliably identify this tab later.
                 selectionTabContent.putUserData(LstCrcKeys.BRANCH_NAME_KEY, selectedBranchName)
 
-                // Create the new component (ChangesTreePanel)
                 val newBranchContentView = uiProvider.createBranchContentView(selectedBranchName)
                 selectionTabContent.component = newBranchContentView
-
-                // Explicitly refresh the new ChangesTreePanel
-                if (newBranchContentView is LstCrcChangesBrowser) {
-                    logger.info("OpenBranchSelectionTabAction (Callback): Explicitly calling requestRefreshData() on new LstCrcChangesBrowser for branch '$selectedBranchName'.")
-                    newBranchContentView.requestRefreshData()
-                } else {
-                    logger.warn("OpenBranchSelectionTabAction (Callback): newBranchContentView is not a LstCrcChangesBrowser. Cannot call requestRefreshData. Type: ${newBranchContentView::class.java.name}")
-                }
+                (newBranchContentView as? LstCrcChangesBrowser)?.requestRefreshData()
 
                 manager.setSelectedContent(selectionTabContent, true)
-
-                logger.info("OpenBranchSelectionTabAction (Callback): Preparing to add to state. selectedBranchName = '$selectedBranchName'")
                 stateService.addTab(selectedBranchName)
 
                 val closableTabs = manager.contents.filter { it.isCloseable }.mapNotNull { it.getUserData(LstCrcKeys.BRANCH_NAME_KEY) }
                 val newTabIndex = closableTabs.indexOf(selectedBranchName)
                 if (newTabIndex != -1) {
-                    logger.info("OpenBranchSelectionTabAction (Callback): Calling stateService.setSelectedTab($newTabIndex) for new/repurposed branch '$selectedBranchName'.")
                     stateService.setSelectedTab(newTabIndex)
-                } else {
-                    logger.warn("OpenBranchSelectionTabAction (Callback): Could not find new/repurposed branch '$selectedBranchName' in closable tabs for setSelectedTab.")
                 }
             }
         }
@@ -120,7 +89,6 @@ class OpenBranchSelectionTabAction(
         logger.info("OpenBranchSelectionTabAction: Creating and adding new '$selectionTabName' tab to UI.")
         val newContent = contentFactory.createContent(branchSelectionUi.getPanel(), selectionTabName, true)
         newContent.isCloseable = true
-        logger.info("OpenBranchSelectionTabAction: About to add new content for '$selectionTabName'. Panel: ${branchSelectionUi.getPanel()}, Is panel visible: ${branchSelectionUi.getPanel().isVisible}")
         contentManager.addContent(newContent)
         contentManager.setSelectedContent(newContent, true)
     }

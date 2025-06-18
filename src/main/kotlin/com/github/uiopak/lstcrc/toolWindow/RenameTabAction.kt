@@ -25,17 +25,13 @@ class RenameTabAction : AnAction() {
             return null
         }
 
-        // The component is likely an internal class like `ContentTabLabel`.
-        // We use reflection to access its `myContent` field. This is fragile and may
-        // break in future IDE versions, but it's a known way to solve this.
+        // The component is an internal `ContentTabLabel` or similar. We use reflection to access its `myContent`
+        // field to identify which tab was actually clicked, as opposed to which is selected.
+        // This is fragile and may break in future IDE versions, but it is a known pattern.
         return try {
             val field = component.javaClass.getDeclaredField("myContent")
             field.isAccessible = true
-            val content = field.get(component) as? Content
-            if (content == null) {
-                logger.debug("Reflection succeeded, but 'myContent' is not a Content or is null.")
-            }
-            content
+            field.get(component) as? Content
         } catch (ex: NoSuchFieldException) {
             logger.warn("Could not find field 'myContent' in component ${component.javaClass.name}. The IDE's internal structure may have changed.")
             null
@@ -53,12 +49,9 @@ class RenameTabAction : AnAction() {
             return
         }
 
-        // Get the content of the RIGHT-CLICKED tab, not the selected one.
         val content = getContent(e)
-
-        // A tab is renamable if it's a closeable tab that has a branch name associated with it.
-        // The "Select Branch" tab is closeable but does not have this key.
-        // The "HEAD" tab is not closeable.
+        // A tab is renamable if it's a closeable tab (not HEAD) that has a branch/revision name associated with it
+        // (not the "Select Branch" temporary tab).
         val isRenamable = content != null &&
                 content.isCloseable &&
                 content.getUserData(LstCrcKeys.BRANCH_NAME_KEY) != null
@@ -67,9 +60,8 @@ class RenameTabAction : AnAction() {
     }
 
     override fun actionPerformed(e: AnActionEvent) {
-        val project = e.project!! // update() should prevent this from being null
+        val project = e.project!!
 
-        // Get the content of the RIGHT-CLICKED tab.
         val content = getContent(e)
         if (content == null) {
             Messages.showErrorDialog(project, LstCrcBundle.message("dialog.error.rename.no.tab.message"), LstCrcBundle.message("dialog.error.rename.title"))
@@ -89,8 +81,8 @@ class RenameTabAction : AnAction() {
 
     companion object {
         /**
-         * Shows a dialog to rename a tab (identified by its branch/revision name).
-         * This can be called from different actions. It must be called on the EDT.
+         * Shows a dialog to rename a tab identified by its persistent branch/revision name.
+         * Must be called on the EDT.
          */
         fun invokeRenameDialog(project: Project, branchName: String) {
             val stateService = project.service<ToolWindowStateService>()
@@ -103,12 +95,11 @@ class RenameTabAction : AnAction() {
                 LstCrcBundle.message("dialog.rename.tab.title"),
                 Messages.getQuestionIcon(),
                 currentDisplayName,
-                null // No validator
+                null
             )
 
-            // newAlias is null if user presses Cancel
             if (newAlias != null) {
-                // If user clicks OK with an empty or blank string, we reset the alias by setting it to null.
+                // If the user provides an empty string, reset the alias to null so the branch name is used.
                 val finalAlias = newAlias.trim().ifEmpty { null }
                 stateService.updateTabAlias(branchName, finalAlias)
             }

@@ -24,7 +24,7 @@ import javax.swing.tree.DefaultTreeModel
 import javax.swing.tree.TreePath
 
 class BranchSelectionPanel(
-    project: Project, // Kept for consistency, though not directly used by this panel's current methods
+    project: Project,
     private val gitService: GitService,
     private val onBranchSelected: (branchName: String) -> Unit
 ) : JBPanel<BranchSelectionPanel>(BorderLayout(0, JBUI.scale(5))) {

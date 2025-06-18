@@ -29,13 +29,13 @@ class LstCrcGutterTrackerService(private val project: Project) : Disposable {
     private val vcsAppSettings = VcsApplicationSettings.getInstance()
     private var wasNativeGutterEnabled: Boolean = true
 
-    // The core of the new implementation: a map to hold and manage our custom trackers.
+    /** A map to hold and manage our custom line status trackers. */
     private val managedTrackers = ConcurrentHashMap<VirtualFile, SimpleLocalLineStatusTracker>()
 
     init {
         logger.info("GUTTER_TRACKER: Initializing for project '${project.name}'")
 
-        // Store the original state of the native gutter markers setting.
+        // Store the original state of the native gutter markers setting to restore it later.
         wasNativeGutterEnabled = vcsAppSettings.SHOW_LST_GUTTER_MARKERS
         logger.info("GUTTER_TRACKER: Native VCS gutter marker initial state is: $wasNativeGutterEnabled")
 
@@ -47,7 +47,7 @@ class LstCrcGutterTrackerService(private val project: Project) : Disposable {
 
         val connection = project.messageBus.connect(this)
 
-        // Listen for data changes to update trackers.
+        // Listen for data changes to update trackers when the active diff changes.
         connection.subscribe(DIFF_DATA_CHANGED_TOPIC, object : ActiveDiffDataChangedListener {
             override fun onDiffDataChanged() {
                 logger.debug("GUTTER_TRACKER: Received onDiffDataChanged event. Scheduling tracker update for all open files.")
@@ -68,7 +68,7 @@ class LstCrcGutterTrackerService(private val project: Project) : Disposable {
             }
         })
 
-        // Initial update for any files that are already open when the project starts.
+        // Perform an initial update for any files that are already open when the project starts.
         ApplicationManager.getApplication().invokeLater {
             if (!project.isDisposed) {
                 logger.debug("GUTTER_TRACKER: Performing initial gutter tracker update for already-open files.")
@@ -78,21 +78,21 @@ class LstCrcGutterTrackerService(private val project: Project) : Disposable {
     }
 
     /**
-     * Called from settings panel when the user toggles the gutter marker feature.
+     * Called from the settings menu when the user toggles the gutter marker feature.
      */
     fun settingsChanged() {
         logger.info("GUTTER_TRACKER: Gutter marker setting changed. Updating native setting and all trackers.")
         val isOurFeatureEnabled = properties.getBoolean(ToolWindowSettingsProvider.APP_ENABLE_GUTTER_MARKERS_KEY, ToolWindowSettingsProvider.DEFAULT_ENABLE_GUTTER_MARKERS)
 
         if (isOurFeatureEnabled) {
-            // Our feature is ON. If native is on, disable it.
+            // Our feature is ON. If native is on, disable it to avoid duplicate markers.
             if (vcsAppSettings.SHOW_LST_GUTTER_MARKERS) {
-                wasNativeGutterEnabled = true // Remember it was on
+                wasNativeGutterEnabled = true // Remember it was on so we can restore it.
                 vcsAppSettings.SHOW_LST_GUTTER_MARKERS = false
                 logger.info("GUTTER_TRACKER: Turned ON. Disabling native gutter markers.")
             }
         } else {
-            // Our feature is OFF. Restore native to its original state.
+            // Our feature is OFF. Restore native markers to their original state.
             if (!vcsAppSettings.SHOW_LST_GUTTER_MARKERS) {
                 vcsAppSettings.SHOW_LST_GUTTER_MARKERS = wasNativeGutterEnabled
                 logger.info("GUTTER_TRACKER: Turned OFF. Restoring native gutter markers to: $wasNativeGutterEnabled")
@@ -131,11 +131,9 @@ class LstCrcGutterTrackerService(private val project: Project) : Disposable {
         }
 
         if (file in filesThatShouldHaveOurTracker) {
-            // This file should be tracked by us.
             logger.debug("GUTTER_TRACKER: [${reason}] File ${file.path} requires custom tracker for branch '$activeBranch'.")
             getOrCreateTracker(file, activeBranch!!)
         } else {
-            // This file should not be tracked by us. Release our tracker if it exists.
             logger.debug("GUTTER_TRACKER: [${reason}] File ${file.path} does not require custom tracker. Releasing if present.")
             releaseTracker(file)
         }
@@ -147,10 +145,10 @@ class LstCrcGutterTrackerService(private val project: Project) : Disposable {
     private fun getOrCreateTracker(file: VirtualFile, branchName: String) {
         val existingTracker = managedTrackers[file]
         if (existingTracker != null) {
-            // Tracker exists, just update it with potentially new content.
+            // Tracker already exists, just update it with potentially new content.
             updateBaseRevision(existingTracker, file, branchName)
         } else {
-            // Creation must be on EDT as it interacts with Document.
+            // Tracker creation must be on the EDT as it interacts with the Document.
             ApplicationManager.getApplication().invokeLater {
                 if (project.isDisposed || !file.isValid || managedTrackers.containsKey(file)) return@invokeLater
 
@@ -191,7 +189,7 @@ class LstCrcGutterTrackerService(private val project: Project) : Disposable {
         }
 
         vcsContentFuture.whenComplete { content, throwable ->
-            // setBaseRevision must be called on the EDT.
+            // `setBaseRevision` must be called on the EDT.
             ApplicationManager.getApplication().invokeLater {
                 if (project.isDisposed || !file.isValid || tracker.isReleased) {
                     logger.warn("GUTTER_TRACKER: updateBaseRevision callback invoked, but state is now invalid. Aborting.")
@@ -226,7 +224,7 @@ class LstCrcGutterTrackerService(private val project: Project) : Disposable {
     private fun releaseTracker(file: VirtualFile) {
         val tracker = managedTrackers.remove(file)
         if (tracker != null) {
-            // Disposal and manager interaction must be on EDT.
+            // Disposal and manager interaction must be on the EDT.
             ApplicationManager.getApplication().invokeLater {
                 if (project.isDisposed) return@invokeLater
                 logger.info("GUTTER_TRACKER: Releasing custom tracker for ${file.path}")
@@ -247,11 +245,10 @@ class LstCrcGutterTrackerService(private val project: Project) : Disposable {
         ApplicationManager.getApplication().invokeLater {
             if (project.isDisposed) return@invokeLater
 
-            // Release all managed trackers.
             managedTrackers.keys.toList().forEach { releaseTracker(it) }
             managedTrackers.clear()
 
-            // Restore the native VCS setting to its original state.
+            // Restore the native VCS setting to its original state on project close.
             if (!vcsAppSettings.SHOW_LST_GUTTER_MARKERS) {
                 vcsAppSettings.SHOW_LST_GUTTER_MARKERS = wasNativeGutterEnabled
                 logger.info("GUTTER_TRACKER: Native LST gutter markers restored to '$wasNativeGutterEnabled' on dispose.")
