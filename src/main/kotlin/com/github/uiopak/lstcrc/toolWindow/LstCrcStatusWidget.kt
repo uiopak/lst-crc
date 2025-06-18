@@ -3,7 +3,6 @@ package com.github.uiopak.lstcrc.toolWindow
 import com.github.uiopak.lstcrc.messaging.PLUGIN_SETTINGS_CHANGED_TOPIC
 import com.github.uiopak.lstcrc.messaging.PluginSettingsChangedListener
 import com.github.uiopak.lstcrc.resources.LstCrcBundle
-import com.github.uiopak.lstcrc.services.GitService
 import com.github.uiopak.lstcrc.services.ToolWindowStateService
 import com.github.uiopak.lstcrc.state.ToolWindowState
 import com.github.uiopak.lstcrc.utils.LstCrcKeys
@@ -13,7 +12,6 @@ import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.DefaultActionGroup
 import com.intellij.openapi.actionSystem.Separator
-import com.intellij.openapi.components.service
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.popup.JBPopupFactory
@@ -22,8 +20,6 @@ import com.intellij.openapi.wm.StatusBarWidget
 import com.intellij.openapi.wm.StatusBarWidgetFactory
 import com.intellij.openapi.wm.ToolWindowManager
 import com.intellij.ui.awt.RelativePoint
-import com.intellij.ui.content.ContentFactory
-import com.intellij.ui.content.ContentManager
 import com.intellij.util.Consumer
 import com.intellij.util.messages.MessageBusConnection
 import java.awt.Component
@@ -176,62 +172,7 @@ class LstCrcStatusWidget(private val project: Project) : StatusBarWidget, Status
                 override fun actionPerformed(e: AnActionEvent) {
                     val toolWindowManager = ToolWindowManager.getInstance(project)
                     val toolWindow = toolWindowManager.getToolWindow(GIT_CHANGES_TOOL_WINDOW_ID) ?: return
-
-                    toolWindow.activate({
-                        val selectionTabName = LstCrcBundle.message("tab.name.select.branch")
-                        val contentManager: ContentManager = toolWindow.contentManager
-
-                        val existingContent = contentManager.findContent(selectionTabName)
-                        if (existingContent != null) {
-                            contentManager.setSelectedContent(existingContent, true)
-                            logger.info("Add Tab (from widget): Found existing '$selectionTabName' tab and selected it.")
-                            return@activate
-                        }
-
-                        val uiProvider = GitChangesToolWindow(project, toolWindow.disposable)
-                        val stateService = ToolWindowStateService.getInstance(project)
-                        val contentFactory = ContentFactory.getInstance()
-
-                        val branchSelectionUi = BranchSelectionPanel(project, project.service<GitService>()) { selectedBranchName: String ->
-                            logger.info("Add Tab (from widget callback): Branch '$selectedBranchName' selected.")
-                            if (selectedBranchName.isBlank()) {
-                                logger.error("Add Tab (from widget callback): selectedBranchName is blank.")
-                                return@BranchSelectionPanel
-                            }
-
-                            val manager: ContentManager = toolWindow.contentManager
-                            val selectionTabContent = manager.findContent(selectionTabName)
-                                ?: return@BranchSelectionPanel
-
-                            val existingBranchTab = manager.contents.find { it.getUserData(LstCrcKeys.BRANCH_NAME_KEY) == selectedBranchName }
-                            if (existingBranchTab != null) {
-                                manager.setSelectedContent(existingBranchTab, true)
-                                manager.removeContent(selectionTabContent, true)
-                            } else {
-                                selectionTabContent.displayName = selectedBranchName
-                                selectionTabContent.putUserData(LstCrcKeys.BRANCH_NAME_KEY, selectedBranchName)
-                                val newBranchContentView = uiProvider.createBranchContentView(selectedBranchName)
-                                selectionTabContent.component = newBranchContentView
-                                (newBranchContentView as? LstCrcChangesBrowser)?.requestRefreshData()
-
-                                manager.setSelectedContent(selectionTabContent, true)
-                                stateService.addTab(selectedBranchName)
-
-                                val closableTabs = manager.contents.filter { it.isCloseable }.mapNotNull { it.getUserData(LstCrcKeys.BRANCH_NAME_KEY) }
-                                val newTabIndex = closableTabs.indexOf(selectedBranchName)
-                                if (newTabIndex != -1) {
-                                    stateService.setSelectedTab(newTabIndex)
-                                }
-                            }
-                        }
-
-                        val newContent = contentFactory.createContent(branchSelectionUi.getPanel(), selectionTabName, true).apply {
-                            isCloseable = true
-                        }
-                        contentManager.addContent(newContent)
-                        contentManager.setSelectedContent(newContent, true)
-
-                    }, true, true)
+                    ToolWindowHelper.openBranchSelectionTab(project, toolWindow)
                 }
             })
 

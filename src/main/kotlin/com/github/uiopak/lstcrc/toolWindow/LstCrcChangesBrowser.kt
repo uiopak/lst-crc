@@ -4,7 +4,6 @@ import com.github.uiopak.lstcrc.resources.LstCrcBundle
 import com.github.uiopak.lstcrc.services.CategorizedChanges
 import com.github.uiopak.lstcrc.services.ToolWindowStateService
 import com.intellij.ide.projectView.ProjectView
-import com.intellij.ide.util.PropertiesComponent
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.actionSystem.ActionManager
 import com.intellij.openapi.actionSystem.ActionPlaces
@@ -36,7 +35,6 @@ import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
 import javax.swing.SwingUtilities
 import javax.swing.Timer
-import javax.swing.UIManager
 
 /**
  * The main UI component for displaying the tree of file changes for a specific branch comparison.
@@ -45,7 +43,6 @@ import javax.swing.UIManager
  */
 class LstCrcChangesBrowser(
     private val project: Project,
-    private val propertiesComponent: PropertiesComponent,
     private val targetBranchToCompare: String,
     parentDisposable: Disposable
 ) : SimpleAsyncChangesBrowser(project, false, true), Disposable, GitRepositoryChangeListener {
@@ -170,7 +167,7 @@ class LstCrcChangesBrowser(
             clickState.pendingPath = path
             clickState.timer?.stop()
             // If the timer expires, it was a single click.
-            clickState.timer = Timer(getUserDoubleClickDelayMs()) {
+            clickState.timer = Timer(ToolWindowSettingsProvider.getUserDoubleClickDelayMs()) {
                 val sChange = clickState.pendingChange
                 val sPath = clickState.pendingPath
                 clickState.clear()
@@ -289,6 +286,8 @@ class LstCrcChangesBrowser(
         project.service<ToolWindowStateService>().refreshDataForActiveTabIfMatching(targetBranchToCompare)
     }
 
+
+
     override fun repositoryChanged(repository: GitRepository) {
         if (repository.project == this.project) {
             logger.debug("GIT_REPO_CHANGE: repositoryChanged event received in browser, triggering debounced refresh.")
@@ -363,20 +362,11 @@ class LstCrcChangesBrowser(
     }
 
 
-    private fun isContextMenuEnabled(): Boolean = propertiesComponent.getBoolean(ToolWindowSettingsProvider.APP_SHOW_CONTEXT_MENU_KEY, ToolWindowSettingsProvider.DEFAULT_SHOW_CONTEXT_MENU)
-    private fun getSingleClickAction(): String = propertiesComponent.getValue(ToolWindowSettingsProvider.APP_SINGLE_CLICK_ACTION_KEY, ToolWindowSettingsProvider.DEFAULT_SINGLE_CLICK_ACTION)
-    private fun getDoubleClickAction(): String = propertiesComponent.getValue(ToolWindowSettingsProvider.APP_DOUBLE_CLICK_ACTION_KEY, ToolWindowSettingsProvider.DEFAULT_DOUBLE_CLICK_ACTION)
-    private fun getMiddleClickAction(): String = propertiesComponent.getValue(ToolWindowSettingsProvider.APP_MIDDLE_CLICK_ACTION_KEY, ToolWindowSettingsProvider.DEFAULT_MIDDLE_CLICK_ACTION)
-    private fun getDoubleMiddleClickAction(): String = propertiesComponent.getValue(ToolWindowSettingsProvider.APP_DOUBLE_MIDDLE_CLICK_ACTION_KEY, ToolWindowSettingsProvider.DEFAULT_DOUBLE_MIDDLE_CLICK_ACTION)
-    private fun getRightClickAction(): String = propertiesComponent.getValue(ToolWindowSettingsProvider.APP_RIGHT_CLICK_ACTION_KEY, ToolWindowSettingsProvider.DEFAULT_RIGHT_CLICK_ACTION)
-    private fun getDoubleRightClickAction(): String = propertiesComponent.getValue(ToolWindowSettingsProvider.APP_DOUBLE_RIGHT_CLICK_ACTION_KEY, ToolWindowSettingsProvider.DEFAULT_DOUBLE_RIGHT_CLICK_ACTION)
-
-    private fun getUserDoubleClickDelayMs(): Int {
-        val storedValue = propertiesComponent.getInt(ToolWindowSettingsProvider.APP_USER_DOUBLE_CLICK_DELAY_KEY, ToolWindowSettingsProvider.DELAY_OPTION_SYSTEM_DEFAULT)
-        if (storedValue > 0) {
-            return storedValue
-        }
-        val systemValue = UIManager.get("Tree.doubleClickTimeout") as? Int
-        return systemValue?.takeIf { it > 0 } ?: 300
-    }
+    private fun isContextMenuEnabled(): Boolean = ToolWindowSettingsProvider.isContextMenuEnabled()
+    private fun getSingleClickAction(): String = ToolWindowSettingsProvider.getSingleClickAction()
+    private fun getDoubleClickAction(): String = ToolWindowSettingsProvider.getDoubleClickAction()
+    private fun getMiddleClickAction(): String = ToolWindowSettingsProvider.getMiddleClickAction()
+    private fun getDoubleMiddleClickAction(): String = ToolWindowSettingsProvider.getDoubleMiddleClickAction()
+    private fun getRightClickAction(): String = ToolWindowSettingsProvider.getRightClickAction()
+    private fun getDoubleRightClickAction(): String = ToolWindowSettingsProvider.getDoubleRightClickAction()
 }

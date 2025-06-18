@@ -1,6 +1,5 @@
 package com.github.uiopak.lstcrc.toolWindow
 
-import com.github.uiopak.lstcrc.resources.LstCrcBundle
 import com.github.uiopak.lstcrc.services.ToolWindowStateService
 import com.github.uiopak.lstcrc.utils.LstCrcKeys
 import com.intellij.openapi.actionSystem.ActionUpdateThread

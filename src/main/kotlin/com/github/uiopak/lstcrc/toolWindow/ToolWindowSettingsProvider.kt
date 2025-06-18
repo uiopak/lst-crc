@@ -14,77 +14,82 @@ import com.intellij.openapi.actionSystem.ToggleAction
 import com.intellij.openapi.components.service
 import com.intellij.openapi.wm.impl.content.ToolWindowContentUi
 import com.intellij.ui.content.impl.ContentManagerImpl
+import javax.swing.UIManager
 
 /**
  * Provides the actions for the tool window's "gear" (options) menu. This class centralizes
  * all user-configurable settings, which are stored at the application level in [PropertiesComponent].
  */
-class ToolWindowSettingsProvider {
+object ToolWindowSettingsProvider {
 
     // Use application-level settings so they are consistent across all projects.
     private val propertiesComponent = PropertiesComponent.getInstance()
 
-    companion object {
-        // --- Keys for Click Actions ---
-        internal const val ACTION_NONE = "NONE"
-        internal const val ACTION_OPEN_DIFF = "OPEN_DIFF"
-        internal const val ACTION_OPEN_SOURCE = "OPEN_SOURCE"
-        internal const val ACTION_SHOW_IN_PROJECT_TREE = "SHOW_IN_PROJECT_TREE"
+    // --- Keys for Click Actions ---
+    internal const val ACTION_NONE = "NONE"
+    internal const val ACTION_OPEN_DIFF = "OPEN_DIFF"
+    internal const val ACTION_OPEN_SOURCE = "OPEN_SOURCE"
+    internal const val ACTION_SHOW_IN_PROJECT_TREE = "SHOW_IN_PROJECT_TREE"
 
-        const val APP_SINGLE_CLICK_ACTION_KEY = "com.github.uiopak.lstcrc.app.singleClickAction"
-        const val APP_DOUBLE_CLICK_ACTION_KEY = "com.github.uiopak.lstcrc.app.doubleClickAction"
-        const val DEFAULT_SINGLE_CLICK_ACTION = ACTION_NONE
-        const val DEFAULT_DOUBLE_CLICK_ACTION = ACTION_OPEN_DIFF
+    const val APP_SINGLE_CLICK_ACTION_KEY = "com.github.uiopak.lstcrc.app.singleClickAction"
+    const val APP_DOUBLE_CLICK_ACTION_KEY = "com.github.uiopak.lstcrc.app.doubleClickAction"
+    const val DEFAULT_SINGLE_CLICK_ACTION = ACTION_NONE
+    const val DEFAULT_DOUBLE_CLICK_ACTION = ACTION_OPEN_DIFF
 
-        const val APP_MIDDLE_CLICK_ACTION_KEY = "com.github.uiopak.lstcrc.app.middleClickAction"
-        const val APP_DOUBLE_MIDDLE_CLICK_ACTION_KEY = "com.github.uiopak.lstcrc.app.doubleMiddleClickAction"
-        const val DEFAULT_MIDDLE_CLICK_ACTION = ACTION_NONE
-        const val DEFAULT_DOUBLE_MIDDLE_CLICK_ACTION = ACTION_NONE
+    const val APP_MIDDLE_CLICK_ACTION_KEY = "com.github.uiopak.lstcrc.app.middleClickAction"
+    const val APP_DOUBLE_MIDDLE_CLICK_ACTION_KEY = "com.github.uiopak.lstcrc.app.doubleMiddleClickAction"
+    const val DEFAULT_MIDDLE_CLICK_ACTION = ACTION_NONE
+    const val DEFAULT_DOUBLE_MIDDLE_CLICK_ACTION = ACTION_NONE
 
-        const val APP_RIGHT_CLICK_ACTION_KEY = "com.github.uiopak.lstcrc.app.rightClickAction"
-        const val APP_DOUBLE_RIGHT_CLICK_ACTION_KEY = "com.github.uiopak.lstcrc.app.doubleRightClickAction"
-        const val DEFAULT_RIGHT_CLICK_ACTION = ACTION_NONE
-        const val DEFAULT_DOUBLE_RIGHT_CLICK_ACTION = ACTION_NONE
+    const val APP_RIGHT_CLICK_ACTION_KEY = "com.github.uiopak.lstcrc.app.rightClickAction"
+    const val APP_DOUBLE_RIGHT_CLICK_ACTION_KEY = "com.github.uiopak.lstcrc.app.doubleRightClickAction"
+    const val DEFAULT_RIGHT_CLICK_ACTION = ACTION_NONE
+    const val DEFAULT_DOUBLE_RIGHT_CLICK_ACTION = ACTION_NONE
 
-        // --- Keys for General Settings ---
-        const val APP_SHOW_CONTEXT_MENU_KEY = "com.github.uiopak.lstcrc.app.showContextMenu"
-        const val DEFAULT_SHOW_CONTEXT_MENU = false
+    // --- Keys for General Settings ---
+    const val APP_SHOW_CONTEXT_MENU_KEY = "com.github.uiopak.lstcrc.app.showContextMenu"
+    const val DEFAULT_SHOW_CONTEXT_MENU = false
 
-        const val APP_USER_DOUBLE_CLICK_DELAY_KEY = "com.github.uiopak.lstcrc.app.userDoubleClickDelay"
-        const val DELAY_OPTION_SYSTEM_DEFAULT = -1
+    const val APP_USER_DOUBLE_CLICK_DELAY_KEY = "com.github.uiopak.lstcrc.app.userDoubleClickDelay"
+    const val DELAY_OPTION_SYSTEM_DEFAULT = -1
 
-        internal const val APP_INCLUDE_HEAD_IN_SCOPES_KEY = "com.github.uiopak.lstcrc.app.includeHeadInScopes"
-        internal const val DEFAULT_INCLUDE_HEAD_IN_SCOPES = false
+    internal const val APP_INCLUDE_HEAD_IN_SCOPES_KEY = "com.github.uiopak.lstcrc.app.includeHeadInScopes"
+    internal const val DEFAULT_INCLUDE_HEAD_IN_SCOPES = false
 
-        const val APP_ENABLE_GUTTER_MARKERS_KEY = "com.github.uiopak.lstcrc.app.enableGutterMarkers"
-        const val DEFAULT_ENABLE_GUTTER_MARKERS = true
+    const val APP_ENABLE_GUTTER_MARKERS_KEY = "com.github.uiopak.lstcrc.app.enableGutterMarkers"
+    const val DEFAULT_ENABLE_GUTTER_MARKERS = true
 
-        const val APP_SHOW_TOOL_WINDOW_TITLE_KEY = "com.github.uiopak.lstcrc.app.showToolWindowTitle"
-        const val DEFAULT_SHOW_TOOL_WINDOW_TITLE = false
+    const val APP_SHOW_TOOL_WINDOW_TITLE_KEY = "com.github.uiopak.lstcrc.app.showToolWindowTitle"
+    const val DEFAULT_SHOW_TOOL_WINDOW_TITLE = false
 
-        const val APP_SHOW_WIDGET_CONTEXT_KEY = "com.github.uiopak.lstcrc.app.showWidgetContext"
-        const val DEFAULT_SHOW_WIDGET_CONTEXT = false
+    const val APP_SHOW_WIDGET_CONTEXT_KEY = "com.github.uiopak.lstcrc.app.showWidgetContext"
+    const val DEFAULT_SHOW_WIDGET_CONTEXT = false
+
+    // --- Public Getters for Settings ---
+    fun getSingleClickAction(): String = propertiesComponent.getValue(APP_SINGLE_CLICK_ACTION_KEY, DEFAULT_SINGLE_CLICK_ACTION)
+    fun getDoubleClickAction(): String = propertiesComponent.getValue(APP_DOUBLE_CLICK_ACTION_KEY, DEFAULT_DOUBLE_CLICK_ACTION)
+    fun getMiddleClickAction(): String = propertiesComponent.getValue(APP_MIDDLE_CLICK_ACTION_KEY, DEFAULT_MIDDLE_CLICK_ACTION)
+    fun getDoubleMiddleClickAction(): String = propertiesComponent.getValue(APP_DOUBLE_MIDDLE_CLICK_ACTION_KEY, DEFAULT_DOUBLE_MIDDLE_CLICK_ACTION)
+    fun getRightClickAction(): String = propertiesComponent.getValue(APP_RIGHT_CLICK_ACTION_KEY, DEFAULT_RIGHT_CLICK_ACTION)
+    fun getDoubleRightClickAction(): String = propertiesComponent.getValue(APP_DOUBLE_RIGHT_CLICK_ACTION_KEY, DEFAULT_DOUBLE_RIGHT_CLICK_ACTION)
+    fun isContextMenuEnabled(): Boolean = propertiesComponent.getBoolean(APP_SHOW_CONTEXT_MENU_KEY, DEFAULT_SHOW_CONTEXT_MENU)
+
+    fun getUserDoubleClickDelayMs(): Int {
+        val storedValue = propertiesComponent.getInt(APP_USER_DOUBLE_CLICK_DELAY_KEY, DELAY_OPTION_SYSTEM_DEFAULT)
+        if (storedValue > 0) {
+            return storedValue
+        }
+        val systemValue = UIManager.get("Tree.doubleClickTimeout") as? Int
+        return systemValue?.takeIf { it > 0 } ?: 300
     }
 
-    private fun getSingleClickAction(): String = propertiesComponent.getValue(APP_SINGLE_CLICK_ACTION_KEY, DEFAULT_SINGLE_CLICK_ACTION)
+    // --- Private Setters used by Actions ---
     private fun setSingleClickAction(action: String) = propertiesComponent.setValue(APP_SINGLE_CLICK_ACTION_KEY, action)
-
-    private fun getDoubleClickAction(): String = propertiesComponent.getValue(APP_DOUBLE_CLICK_ACTION_KEY, DEFAULT_DOUBLE_CLICK_ACTION)
     private fun setDoubleClickAction(action: String) = propertiesComponent.setValue(APP_DOUBLE_CLICK_ACTION_KEY, action)
-
-    private fun getMiddleClickAction(): String = propertiesComponent.getValue(APP_MIDDLE_CLICK_ACTION_KEY, DEFAULT_MIDDLE_CLICK_ACTION)
     private fun setMiddleClickAction(action: String) = propertiesComponent.setValue(APP_MIDDLE_CLICK_ACTION_KEY, action)
-
-    private fun getDoubleMiddleClickAction(): String = propertiesComponent.getValue(APP_DOUBLE_MIDDLE_CLICK_ACTION_KEY, DEFAULT_DOUBLE_MIDDLE_CLICK_ACTION)
     private fun setDoubleMiddleClickAction(action: String) = propertiesComponent.setValue(APP_DOUBLE_MIDDLE_CLICK_ACTION_KEY, action)
-
-    private fun getRightClickAction(): String = propertiesComponent.getValue(APP_RIGHT_CLICK_ACTION_KEY, DEFAULT_RIGHT_CLICK_ACTION)
     private fun setRightClickAction(action: String) = propertiesComponent.setValue(APP_RIGHT_CLICK_ACTION_KEY, action)
-
-    private fun getDoubleRightClickAction(): String = propertiesComponent.getValue(APP_DOUBLE_RIGHT_CLICK_ACTION_KEY, DEFAULT_DOUBLE_RIGHT_CLICK_ACTION)
     private fun setDoubleRightClickAction(action: String) = propertiesComponent.setValue(APP_DOUBLE_RIGHT_CLICK_ACTION_KEY, action)
-
-
     private fun setUserDoubleClickDelayMs(delay: Int) = propertiesComponent.setValue(APP_USER_DOUBLE_CLICK_DELAY_KEY, delay, DELAY_OPTION_SYSTEM_DEFAULT)
     private fun getIncludeHeadInScopes(): Boolean = propertiesComponent.getBoolean(APP_INCLUDE_HEAD_IN_SCOPES_KEY, DEFAULT_INCLUDE_HEAD_IN_SCOPES)
     private fun setIncludeHeadInScopes(include: Boolean) = propertiesComponent.setValue(APP_INCLUDE_HEAD_IN_SCOPES_KEY, include, DEFAULT_INCLUDE_HEAD_IN_SCOPES)

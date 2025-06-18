@@ -152,11 +152,10 @@ class MyToolWindowFactory : ToolWindowFactory {
             }
         })
 
-        val openSelectionTabAction = OpenBranchSelectionTabAction(project, toolWindow, gitChangesUiProvider)
+        val openSelectionTabAction = OpenBranchSelectionTabAction(project, toolWindow)
         toolWindow.setTitleActions(listOf(openSelectionTabAction))
 
-        val settingsProvider = ToolWindowSettingsProvider()
-        val pluginSettingsSubMenu: ActionGroup = settingsProvider.createToolWindowSettingsGroup()
+        val pluginSettingsSubMenu: ActionGroup = ToolWindowSettingsProvider.createToolWindowSettingsGroup()
 
         val allGearActionsGroup = DefaultActionGroup()
         allGearActionsGroup.add(pluginSettingsSubMenu)
