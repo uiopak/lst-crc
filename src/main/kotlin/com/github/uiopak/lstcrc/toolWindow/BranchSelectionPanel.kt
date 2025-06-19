@@ -197,13 +197,22 @@ class BranchSelectionPanel(
         }
         TreeUtil.expandAll(newTree)
 
+        // Combined mouse and key listener for better usability.
         newTree.addMouseListener(object : MouseAdapter() {
             override fun mouseClicked(e: MouseEvent) {
-                if (e.clickCount != 1) return
-                val path = newTree.getClosestPathForLocation(e.x, e.y) ?: return
-                val bounds = newTree.getPathBounds(path)
-                if (bounds == null || !bounds.contains(e.point)) return
+                // Handle single and double clicks to select a branch.
+                if (e.clickCount < 1) return
 
+                val row = newTree.getClosestRowForLocation(e.x, e.y)
+                if (row == -1) return
+
+                // This is a more robust way to check if the click is within the row's vertical bounds.
+                val bounds = newTree.getRowBounds(row)
+                if (bounds == null || e.y < bounds.y || e.y >= bounds.y + bounds.height) {
+                    return
+                }
+
+                val path = newTree.getPathForRow(row) ?: return
                 val node = path.lastPathComponent as? DefaultMutableTreeNode ?: return
                 if (node.isLeaf) {
                     (node.userObject as? BranchInfo)?.let {
@@ -214,7 +223,22 @@ class BranchSelectionPanel(
         })
 
         newTree.addKeyListener(object : KeyAdapter() {
+            override fun keyPressed(e: KeyEvent) {
+                // Allow selection with the Enter key.
+                if (e.keyCode == KeyEvent.VK_ENTER) {
+                    val path = newTree.selectionPath ?: return
+                    val node = path.lastPathComponent as? DefaultMutableTreeNode ?: return
+                    if (node.isLeaf) {
+                        (node.userObject as? BranchInfo)?.let {
+                            onBranchSelected(it.fullBranchName)
+                            e.consume() // Prevent the event from being processed further.
+                        }
+                    }
+                }
+            }
+
             override fun keyTyped(e: KeyEvent) {
+                // Speed-search functionality: typing redirects focus to the search field.
                 if (searchTextField.textEditor.hasFocus()) return
                 if (e.keyChar == KeyEvent.CHAR_UNDEFINED || e.keyChar < ' ' || e.isControlDown || e.isMetaDown || e.isAltDown) {
                     return

@@ -117,8 +117,17 @@ object ToolWindowHelper {
 
                     manager.setSelectedContent(selectionTabContent, true)
                     stateService.addTab(selectedBranchName)
+
+                    // Manually set the selected tab in the state service to trigger data loading.
+                    // The selectionChanged listener might not fire when repurposing an already-selected tab.
+                    val newIndex = stateService.state.openTabs.indexOfFirst { it.branchName == selectedBranchName }
+                    if (newIndex != -1) {
+                        stateService.setSelectedTab(newIndex)
+                    } else {
+                        // Failsafe: If state update hasn't propagated, directly request refresh.
+                        (newBranchContentView as? LstCrcChangesBrowser)?.requestRefreshData()
+                    }
                 }
-                // The selectionChanged listener on ContentManager will handle the stateService.setSelectedTab call.
             }
 
             logger.info("HELPER: Creating and adding new '$selectionTabName' tab to UI.")
