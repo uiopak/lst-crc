@@ -43,12 +43,14 @@ class LstCrcStatusWidgetFactory : StatusBarWidgetFactory {
 /**
  * A status bar widget that displays the currently active LST-CRC comparison context (e.g., "HEAD"
  * or a branch name). It provides a popup menu for quickly switching between tabs or adding a new one.
+ *
+ * This widget is designed to be "stateless" regarding its text. The `getText()` method computes the
+ * text on-demand by fetching the latest state from the `ToolWindowStateService`.
  */
 class LstCrcStatusWidget(private val project: Project) : StatusBarWidget, StatusBarWidget.TextPresentation {
 
     private var statusBar: StatusBar? = null
     private var messageBusConnection: MessageBusConnection? = null
-    private var currentText: String = LstCrcBundle.message("plugin.name.short")
     private val logger = thisLogger()
 
     companion object {
@@ -60,46 +62,22 @@ class LstCrcStatusWidget(private val project: Project) : StatusBarWidget, Status
 
     override fun getPresentation(): StatusBarWidget.WidgetPresentation = this
 
-    private fun updateWidgetText(state: ToolWindowState?) {
-        val properties = PropertiesComponent.getInstance()
-        val showContext = properties.getBoolean(
-            ToolWindowSettingsProvider.APP_SHOW_WIDGET_CONTEXT_KEY,
-            ToolWindowSettingsProvider.DEFAULT_SHOW_WIDGET_CONTEXT
-        )
-        val prefix = if (showContext) LstCrcBundle.message("widget.context.prefix") else ""
-
-        val currentServiceState = state ?: ToolWindowStateService.getInstance(project).state
-        val selectedIndex = currentServiceState.selectedTabIndex
-        val openTabs = currentServiceState.openTabs
-
-        val branchDisplayText = when {
-            selectedIndex == -1 || openTabs.isEmpty() -> LstCrcBundle.message("tab.name.head")
-            selectedIndex >= 0 && selectedIndex < openTabs.size -> {
-                val tabInfo = openTabs[selectedIndex]
-                (tabInfo.alias ?: tabInfo.branchName).take(20)
-            }
-            else -> LstCrcBundle.message("plugin.name.short")
-        }
-        currentText = "$prefix$branchDisplayText"
-    }
-
     override fun install(statusBar: StatusBar) {
         this.statusBar = statusBar
         messageBusConnection = project.messageBus.connect(this)
+
+        // The listener's only job is to tell the status bar to re-query our presentation.
+        // It does not need to manage any internal state itself.
         messageBusConnection?.subscribe(ToolWindowStateService.TOPIC, object : ToolWindowStateService.Companion.ToolWindowStateListener {
             override fun stateChanged(newState: ToolWindowState) {
-                updateWidgetText(newState)
                 this@LstCrcStatusWidget.statusBar?.updateWidget(ID())
             }
         })
         messageBusConnection?.subscribe(PLUGIN_SETTINGS_CHANGED_TOPIC, object : PluginSettingsChangedListener {
             override fun onSettingsChanged() {
-                updateWidgetText(null)
                 this@LstCrcStatusWidget.statusBar?.updateWidget(ID())
             }
         })
-        updateWidgetText(null)
-        this.statusBar?.updateWidget(ID())
     }
 
     override fun dispose() {
@@ -108,7 +86,35 @@ class LstCrcStatusWidget(private val project: Project) : StatusBarWidget, Status
         statusBar = null
     }
 
-    override fun getText(): String = currentText
+    /**
+     * Computes the widget text on demand. This is the core of the "lazy" or "pull" model,
+     * ensuring the displayed text is always up-to-date when the IDE asks for it.
+     */
+    override fun getText(): String {
+        if (project.isDisposed) return ""
+        val state = ToolWindowStateService.getInstance(project).state
+
+        val properties = PropertiesComponent.getInstance()
+        val showContext = properties.getBoolean(
+            ToolWindowSettingsProvider.APP_SHOW_WIDGET_CONTEXT_KEY,
+            ToolWindowSettingsProvider.DEFAULT_SHOW_WIDGET_CONTEXT
+        )
+        val prefix = if (showContext) LstCrcBundle.message("widget.context.prefix") else ""
+
+        val selectedIndex = state.selectedTabIndex
+        val openTabs = state.openTabs
+
+        return when {
+            selectedIndex == -1 || openTabs.isEmpty() -> LstCrcBundle.message("tab.name.head")
+            selectedIndex >= 0 && selectedIndex < openTabs.size -> {
+                val tabInfo = openTabs[selectedIndex]
+                val displayName = (tabInfo.alias ?: tabInfo.branchName).take(20)
+                "$prefix$displayName"
+            }
+            else -> LstCrcBundle.message("plugin.name.short")
+        }
+    }
+
 
     override fun getTooltipText(): String = LstCrcBundle.message("widget.tooltip")
 

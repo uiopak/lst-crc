@@ -16,6 +16,7 @@ import com.intellij.openapi.wm.ToolWindowManager
 import com.intellij.util.messages.Topic
 import com.intellij.util.xmlb.XmlSerializerUtil
 import java.util.EventListener
+import java.util.concurrent.CompletableFuture
 
 /**
  * Manages the tool window's UI state (open tabs, selected tab) and persists it.
@@ -111,13 +112,15 @@ class ToolWindowStateService(private val project: Project) : PersistentStateComp
     /**
      * Central point for loading data for a given branch. It fetches changes from Git,
      * updates the data cache ([ProjectActiveDiffDataService]), and refreshes the UI.
+     * @return A CompletableFuture that completes when the entire data loading and UI update process is finished.
      */
-    private fun loadDataForBranch(branchToLoad: String) {
+    private fun loadDataForBranch(branchToLoad: String): CompletableFuture<Unit> {
         logger.info("DATA_FLOW: Initiating data load for branch: '$branchToLoad'")
 
         val gitService = project.service<GitService>()
         val diffDataService = project.service<ProjectActiveDiffDataService>()
         val isHeadTab = branchToLoad == "HEAD"
+        val resultFuture = CompletableFuture<Unit>()
 
         val properties = PropertiesComponent.getInstance()
         val includeHeadInScopes = properties.getBoolean(
@@ -126,7 +129,10 @@ class ToolWindowStateService(private val project: Project) : PersistentStateComp
         )
 
         gitService.getChanges(branchToLoad).whenCompleteAsync { categorizedChanges, throwable ->
-            if (project.isDisposed) return@whenCompleteAsync
+            if (project.isDisposed) {
+                resultFuture.complete(Unit)
+                return@whenCompleteAsync
+            }
 
             val activeBrowser = getActiveChangesBrowser(project)
 
@@ -134,6 +140,7 @@ class ToolWindowStateService(private val project: Project) : PersistentStateComp
                 logger.error("DATA_FLOW: Error loading changes for '$branchToLoad': ${throwable.message}", throwable)
                 diffDataService.clearActiveDiff()
                 activeBrowser?.displayChanges(null, branchToLoad)
+                resultFuture.completeExceptionally(throwable)
                 return@whenCompleteAsync
             }
 
@@ -162,18 +169,22 @@ class ToolWindowStateService(private val project: Project) : PersistentStateComp
                 diffDataService.clearActiveDiff()
                 activeBrowser?.displayChanges(null, branchToLoad)
             }
+            resultFuture.complete(Unit)
         }
+        return resultFuture
     }
 
     /**
      * Ensures the data for the currently selected tab is loaded and all dependent services are updated.
      * This orchestrates a full data refresh for the current selection and is the main entry point
      * for refresh triggers (e.g., from startup, VCS changes, or explicit user action).
+     *
+     * @return A [CompletableFuture] that completes when the refresh operation is finished.
      */
-    fun refreshDataForCurrentSelection() {
+    fun refreshDataForCurrentSelection(): CompletableFuture<Unit> {
         val branchToRefresh = getSelectedTabBranchName() ?: "HEAD"
         logger.info("ACTION: Refreshing data for current selection: '$branchToRefresh'")
-        loadDataForBranch(branchToRefresh)
+        return loadDataForBranch(branchToRefresh)
     }
 
     /**
