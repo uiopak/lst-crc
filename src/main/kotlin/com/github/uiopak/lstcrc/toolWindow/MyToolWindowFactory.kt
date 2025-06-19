@@ -14,6 +14,7 @@ import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.wm.ToolWindow
 import com.intellij.openapi.wm.ToolWindowFactory
+import com.intellij.openapi.wm.ex.ToolWindowEx
 import com.intellij.openapi.wm.impl.content.ToolWindowContentUi
 import com.intellij.ui.content.ContentFactory
 import com.intellij.ui.content.ContentManagerEvent
@@ -161,8 +162,9 @@ class MyToolWindowFactory : ToolWindowFactory {
             }
         })
 
+        // Use setTabActions to place the '+' button directly next to the tabs
         val openSelectionTabAction = OpenBranchSelectionTabAction(project, toolWindow)
-        toolWindow.setTitleActions(listOf(openSelectionTabAction))
+        (toolWindow as? ToolWindowEx)?.setTabActions(openSelectionTabAction)
 
         val pluginSettingsSubMenu: ActionGroup = ToolWindowSettingsProvider.createToolWindowSettingsGroup()
 
