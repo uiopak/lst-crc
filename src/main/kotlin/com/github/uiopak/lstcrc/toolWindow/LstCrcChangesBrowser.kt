@@ -27,12 +27,18 @@ import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.openapi.wm.ToolWindowId
 import com.intellij.openapi.wm.ToolWindowManager
 import com.intellij.psi.PsiManager
+import com.intellij.ui.JBColor
 import com.intellij.ui.PopupHandler
 import com.intellij.util.ui.JBUI
 import git4idea.repo.GitRepository
 import git4idea.repo.GitRepositoryChangeListener
+import java.awt.BorderLayout
+import java.awt.event.ComponentAdapter
+import java.awt.event.ComponentEvent
 import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
+import javax.swing.JComponent
+import javax.swing.JPanel
 import javax.swing.SwingUtilities
 import javax.swing.Timer
 
@@ -125,6 +131,55 @@ class LstCrcChangesBrowser(
                 }
             }
         })
+
+        // Setup toolbar border to appear on scroll, which is the idiomatic UI for tool windows.
+        val scrollPane = viewerScrollPane
+
+        // To find the correct component to apply the border to, we must navigate the layout of the base class.
+        // The full toolbar is inside a top panel, which is at the NORTH position of the main layout.
+        val mainLayout = this.layout as? BorderLayout
+        val topPanel = mainLayout?.getLayoutComponent(BorderLayout.NORTH) as? JPanel
+
+        // Inside the top panel, the full toolbar (TreeActionsToolbarPanel) is at the CENTER position.
+        val fullToolbarComponent = topPanel?.let {
+            (it.layout as? BorderLayout)?.getLayoutComponent(BorderLayout.CENTER) as? JComponent
+        }
+
+
+        if (fullToolbarComponent != null) {
+            // This is the standard 1px separator border used across the IDE for toolbars.
+            val bottomBorder = JBUI.Borders.customLine(JBColor.border(), 0, 0, 1, 0)
+
+            // This function checks the scroll position and applies or removes the border.
+            val updateToolbarBorder = {
+                val verticalScrollBar = scrollPane.verticalScrollBar
+                // A border is needed if the scrollbar is visible and not at the very top.
+                val needsBorder = verticalScrollBar.isVisible && verticalScrollBar.value > 0
+                fullToolbarComponent.border = if (needsBorder) bottomBorder else JBUI.Borders.empty()
+            }
+
+            // Set the initial border state. Using invokeLater ensures the layout is complete
+            // and scrollbar visibility is correctly determined.
+            ApplicationManager.getApplication().invokeLater {
+                if (!project.isDisposed) {
+                    updateToolbarBorder()
+                }
+            }
+
+            // Listen for scroll events to update the border dynamically.
+            scrollPane.verticalScrollBar.addAdjustmentListener {
+                updateToolbarBorder()
+            }
+
+            // Also listen to component resize events, as this can affect scrollbar visibility.
+            scrollPane.addComponentListener(object : ComponentAdapter() {
+                override fun componentResized(e: ComponentEvent?) {
+                    updateToolbarBorder()
+                }
+            })
+        } else {
+            logger.warn("Could not find full toolbar component; cannot apply dynamic toolbar border.")
+        }
     }
 
     /**
