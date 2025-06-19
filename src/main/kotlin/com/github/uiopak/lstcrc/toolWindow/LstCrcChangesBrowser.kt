@@ -267,12 +267,12 @@ class LstCrcChangesBrowser(
             }
 
             // On the very first load, reset the tree to a default expanded state.
-            // On subsequent refreshes, keep the user's current expansion and scroll state.
+            // On subsequent refreshes, use our custom strategy to preserve state but expand new nodes.
             val strategy = if (isInitialLoad && hasChanges) {
                 isInitialLoad = false
                 ChangesTree.ALWAYS_RESET
             } else {
-                ChangesTree.ALWAYS_KEEP
+                ExpandNewNodesStateStrategy()
             }
             setChangesToDisplay(changes, strategy)
         }
