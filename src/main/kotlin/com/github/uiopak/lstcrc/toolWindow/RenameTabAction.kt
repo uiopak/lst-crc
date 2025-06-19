@@ -7,54 +7,103 @@ import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.PlatformDataKeys
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.service
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.ui.Messages
+import com.intellij.openapi.ui.popup.Balloon
+import com.intellij.openapi.ui.popup.JBPopupFactory
+import com.intellij.ui.awt.RelativePoint
+import com.intellij.ui.components.JBLabel
+import com.intellij.ui.components.JBTextField
+import com.intellij.ui.components.panels.VerticalLayout
 import com.intellij.ui.content.Content
+import com.intellij.ui.content.ContentManager
+import com.intellij.util.ui.JBUI
+import com.intellij.util.ui.UIUtil
 import java.awt.Component
+import java.awt.Point
+import java.awt.event.KeyAdapter
+import java.awt.event.KeyEvent
+import javax.swing.JPanel
+import javax.swing.JPopupMenu
 
 /**
  * A context menu action (right-click on a tab) for renaming a closable comparison tab.
- * It uses reflection to determine which tab was clicked, as this is not provided directly
- * by the standard AnActionEvent context.
+ * It uses a robust, multi-strategy reflective search to find the content, making it
+ * work for normal, grouped, and combo-box style tabs.
  */
 class RenameTabAction : AnAction() {
 
-    private val logger = thisLogger()
+    /**
+     * Finds the associated Content by walking up the component hierarchy from the source component
+     * and trying multiple reflection strategies. This is necessary to support different UI structures.
+     */
+    private fun findContent(source: Component?): Content? {
+        var component = source
+        while (component != null) {
+            // Strategy 1: Look for a direct 'myContent' field.
+            try {
+                val contentField = component.javaClass.getDeclaredField("myContent")
+                contentField.isAccessible = true
+                (contentField.get(component) as? Content)?.let { return it }
+            } catch (ignored: Exception) {
+            }
 
-    private fun getContent(e: AnActionEvent): Content? {
-        val component: Component? = e.getData(PlatformDataKeys.CONTEXT_COMPONENT)
-        if (component == null) {
-            logger.debug("CONTEXT_COMPONENT is null, cannot determine right-clicked tab.")
-            return null
-        }
+            // Strategy 2: Look for 'myInfo' (a TabInfo object).
+            try {
+                val tabInfoField = component.javaClass.getDeclaredField("myInfo")
+                tabInfoField.isAccessible = true
+                val tabInfo = tabInfoField.get(component)
+                if (tabInfo != null) {
+                    try {
+                        val objectField = tabInfo.javaClass.getDeclaredField("myObject")
+                        objectField.isAccessible = true
+                        (objectField.get(tabInfo) as? Content)?.let { return it }
+                    } catch (ignored: Exception) {
+                    }
+                }
+            } catch (ignored: Exception) {
+            }
 
-        // The component is an internal `ContentTabLabel` or similar. We use reflection to access its `myContent`
-        // field to identify which tab was actually clicked, as this is fragile and may break in future IDE versions.
-        return try {
-            val field = component.javaClass.getDeclaredField("myContent")
-            field.isAccessible = true
-            field.get(component) as? Content
-        } catch (ex: NoSuchFieldException) {
-            logger.warn("Could not find field 'myContent' in component ${component.javaClass.name}. The IDE's internal structure may have changed.")
-            null
-        } catch (ex: Exception) {
-            logger.warn("Failed to get 'myContent' via reflection from ${component.javaClass.name}", ex)
-            null
+            // Strategy 3: Look for 'myLayout' -> 'ui' (ToolWindowContentUi) -> getContentManager()
+            try {
+                val layoutField = component.javaClass.getDeclaredField("myLayout")
+                layoutField.isAccessible = true
+                val layout = layoutField.get(component)
+                if (layout != null) {
+                    try {
+                        // The ComboContentLayout extends ContentLayout, which has a public 'ui' field.
+                        val uiField = layout.javaClass.superclass.getDeclaredField("ui")
+                        uiField.isAccessible = true
+                        val contentUi = uiField.get(layout)
+                        if (contentUi != null) {
+                            val managerMethod = contentUi.javaClass.getMethod("getContentManager")
+                            (managerMethod.invoke(contentUi) as? ContentManager)?.let {
+                                return it.selectedContent
+                            }
+                        }
+                    } catch (ignored: Exception) {
+                    }
+                }
+            } catch (ignored: Exception) {
+            }
+
+            if (component is JPopupMenu || component is java.awt.Window) break
+            component = component.parent
         }
+        return null
     }
 
     override fun update(e: AnActionEvent) {
-        val project = e.project
         val toolWindow = e.getData(PlatformDataKeys.TOOL_WINDOW)
-        if (project == null || toolWindow == null || toolWindow.id != "GitChangesView") {
+        if (e.project == null || toolWindow == null || toolWindow.id != "GitChangesView") {
             e.presentation.isEnabledAndVisible = false
             return
         }
 
-        val content = getContent(e)
-        // A tab is renamable if it's a closeable tab (not HEAD) that has a branch/revision name associated with it.
+        val content = findContent(e.getData(PlatformDataKeys.CONTEXT_COMPONENT))
+
         val isRenamable = content != null &&
                 content.isCloseable &&
                 content.getUserData(LstCrcKeys.BRANCH_NAME_KEY) != null
@@ -64,47 +113,87 @@ class RenameTabAction : AnAction() {
 
     override fun actionPerformed(e: AnActionEvent) {
         val project = e.project!!
+        val component = e.getData(PlatformDataKeys.CONTEXT_COMPONENT)
+        val content = findContent(component)
 
-        val content = getContent(e)
-        if (content == null) {
-            Messages.showErrorDialog(project, LstCrcBundle.message("dialog.error.rename.no.tab.message"), LstCrcBundle.message("dialog.error.rename.title"))
+        if (component == null || content == null) {
+            thisLogger().warn("Rename action performed without a valid component or content context.")
             return
         }
 
         val branchName = content.getUserData(LstCrcKeys.BRANCH_NAME_KEY)
         if (branchName == null) {
-            Messages.showErrorDialog(project, LstCrcBundle.message("dialog.error.rename.no.identifier.message"), LstCrcBundle.message("dialog.error.rename.title"))
+            thisLogger().warn("Cannot rename tab, it has no branch name identifier.")
             return
         }
 
-        invokeRenameDialog(project, branchName)
+        invokeRenamePopup(project, component, branchName)
     }
 
     override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
 
     companion object {
         /**
-         * Shows a dialog to rename a tab identified by its persistent branch/revision name.
-         * Must be called on the EDT.
+         * Shows an inline popup with a text field to rename a tab.
+         *
+         * @param project The project.
+         * @param owner The UI component of the tab label to which the popup will be anchored.
+         * @param branchName The persistent identifier of the tab being renamed.
          */
-        fun invokeRenameDialog(project: Project, branchName: String) {
-            val stateService = project.service<ToolWindowStateService>()
-            val tabInfo = stateService.state.openTabs.find { it.branchName == branchName }
-            val currentDisplayName = tabInfo?.alias ?: branchName
+        fun invokeRenamePopup(project: Project, owner: Component, branchName: String) {
+            ApplicationManager.getApplication().invokeLater {
+                val stateService = project.service<ToolWindowStateService>()
+                val tabInfo = stateService.state.openTabs.find { it.branchName == branchName }
+                val currentDisplayName = tabInfo?.alias ?: branchName
 
-            val newAlias = Messages.showInputDialog(
-                project,
-                LstCrcBundle.message("dialog.rename.tab.message"),
-                LstCrcBundle.message("dialog.rename.tab.title"),
-                Messages.getQuestionIcon(),
-                currentDisplayName,
-                null
-            )
+                val textField = JBTextField(currentDisplayName, 17)
+                val titleLabel = JBLabel(LstCrcBundle.message("rename.popup.title"))
 
-            if (newAlias != null) {
-                // If the user provides an empty string, reset the alias to null so the branch name is used.
-                val finalAlias = newAlias.trim().ifEmpty { null }
-                stateService.updateTabAlias(branchName, finalAlias)
+                val panel = JPanel(VerticalLayout(JBUI.scale(4), VerticalLayout.FILL)).apply {
+                    border = JBUI.Borders.empty(2, 2)
+                    add(titleLabel)
+                    add(textField)
+                }
+
+                var balloon: Balloon? = null
+
+                val onOk = {
+                    val newAlias = textField.text.trim().ifEmpty { null }
+                    if (tabInfo?.alias != newAlias) {
+                        stateService.updateTabAlias(branchName, newAlias)
+                    }
+                    balloon?.hide()
+                }
+
+                textField.addKeyListener(object : KeyAdapter() {
+                    override fun keyPressed(e: KeyEvent) {
+                        when (e.keyCode) {
+                            KeyEvent.VK_ENTER -> onOk()
+                            KeyEvent.VK_ESCAPE -> balloon?.hide()
+                        }
+                    }
+                })
+
+                balloon = JBPopupFactory.getInstance()
+                    .createBalloonBuilder(panel)
+                    .setFillColor(UIUtil.getPanelBackground())
+                    .setBorderColor(JBUI.CurrentTheme.Popup.borderColor(true))
+                    .setAnimationCycle(0)
+                    .setShadow(true)
+                    .setCloseButtonEnabled(false)
+                    .setHideOnAction(false)
+                    .setHideOnKeyOutside(true)
+                    .setHideOnClickOutside(true)
+                    .setRequestFocus(true)
+                    .createBalloon()
+
+                val point = Point(owner.width / 2, 0)
+                balloon.show(RelativePoint(owner, point), Balloon.Position.above)
+
+                UIUtil.invokeLaterIfNeeded {
+                    textField.requestFocusInWindow()
+                    textField.selectAll()
+                }
             }
         }
     }
