@@ -22,6 +22,7 @@ import com.intellij.openapi.vcs.VcsApplicationSettings
 import com.intellij.openapi.vcs.VcsException
 import com.intellij.openapi.vcs.ex.SimpleLocalLineStatusTracker
 import com.intellij.openapi.vcs.impl.LineStatusTrackerManager
+import com.intellij.openapi.vcs.impl.LineStatusTrackerSettingListener
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.util.concurrency.AppExecutorUtil
 import java.util.concurrent.CompletableFuture
@@ -106,6 +107,7 @@ class LstCrcGutterTrackerService(private val project: Project) : Disposable {
             logger.info("GUTTER_TRACKER: Turned OFF. Restoring native gutter markers to: $wasNativeGutterEnabled")
             vcsAppSettings.SHOW_LST_GUTTER_MARKERS = wasNativeGutterEnabled
         }
+        ApplicationManager.getApplication().messageBus.syncPublisher(LineStatusTrackerSettingListener.TOPIC).settingsUpdated()
 
         updateAllOpenFiles("settingsChanged")
     }
