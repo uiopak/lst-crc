@@ -8,9 +8,10 @@ import com.intellij.openapi.components.service
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.vcs.changes.Change
 import com.intellij.openapi.vcs.FileStatusManager
+import com.intellij.openapi.vcs.changes.Change
 import com.intellij.openapi.vfs.VirtualFile
+import java.util.*
 
 /**
  * Caches the diff data ([CategorizedChanges]) for the currently selected branch comparison.
@@ -21,6 +22,10 @@ import com.intellij.openapi.vfs.VirtualFile
 @Service(Service.Level.PROJECT)
 class ProjectActiveDiffDataService(private val project: Project) : Disposable {
     private val logger = thisLogger()
+
+    /** A unique ID for the current diff session, used to robustly trigger tracker updates. */
+    var diffSessionId: UUID = UUID.randomUUID()
+        private set
 
     var activeBranchName: String? = null
         private set
@@ -66,6 +71,7 @@ class ProjectActiveDiffDataService(private val project: Project) : Disposable {
                 this.createdFiles = createdFilesFromEvent
                 this.modifiedFiles = modifiedFilesFromEvent
                 this.movedFiles = movedFilesFromEvent
+                this.diffSessionId = UUID.randomUUID() // Generate new session ID to force tracker updates
 
                 val newCreatedFiles = createdFilesFromEvent.toSet()
                 val newModifiedFiles = modifiedFilesFromEvent.toSet()
@@ -110,6 +116,7 @@ class ProjectActiveDiffDataService(private val project: Project) : Disposable {
             this.createdFiles = emptyList()
             this.modifiedFiles = emptyList()
             this.movedFiles = emptyList()
+            this.diffSessionId = UUID.randomUUID() // Generate new session ID to force tracker updates
 
             if (affectedFiles.isNotEmpty()) {
                 val fileStatusManager = FileStatusManager.getInstance(project)

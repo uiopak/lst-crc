@@ -14,6 +14,9 @@
         <searchScopesProvider implementation="com.github.uiopak.lstcrc.scopes.LstCrcSearchScopeProvider"/>
         <statusBarWidgetFactory implementation="com.github.uiopak.lstcrc.toolWindow.LstCrcStatusWidgetFactory" id="LstCrcStatusWidgetFactory" order="first"/>
         <postStartupActivity implementation="com.github.uiopak.lstcrc.listeners.PluginStartupActivity"/>
+        <openapi.vcs.impl.LocalLineStatusTrackerProvider
+                implementation="com.github.uiopak.lstcrc.gutters.LstCrcLineStatusTrackerProvider"
+                order="first"/>
     </extensions>
 
     <actions>
