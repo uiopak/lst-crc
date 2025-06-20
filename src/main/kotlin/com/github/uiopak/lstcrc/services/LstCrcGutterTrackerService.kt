@@ -6,12 +6,15 @@ import com.github.uiopak.lstcrc.toolWindow.ToolWindowSettingsProvider
 import com.intellij.ide.util.PropertiesComponent
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.application.ModalityState
+import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.service
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.fileEditor.FileEditorManagerListener
+import com.intellij.openapi.progress.ProcessCanceledException
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vcs.FileStatus
 import com.intellij.openapi.vcs.FileStatusManager
@@ -20,6 +23,7 @@ import com.intellij.openapi.vcs.VcsException
 import com.intellij.openapi.vcs.ex.SimpleLocalLineStatusTracker
 import com.intellij.openapi.vcs.impl.LineStatusTrackerManager
 import com.intellij.openapi.vfs.VirtualFile
+import com.intellij.util.concurrency.AppExecutorUtil
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ConcurrentHashMap
 
@@ -117,47 +121,62 @@ class LstCrcGutterTrackerService(private val project: Project) : Disposable {
         }
     }
 
+    /** A data class to pass the result from the background thread to the EDT. */
+    private data class TrackerDecision(val shouldHaveTracker: Boolean, val branchName: String?)
+
     /**
      * The core logic: for a given file, decide if it should have our custom tracker or not,
-     * and apply that state.
+     * and apply that state. This is done asynchronously to avoid blocking the UI thread.
      */
     private fun applyTrackerStateToFile(file: VirtualFile, reason: String) {
         if (project.isDisposed || !file.isValid) return
 
-        val fileStatusManager = FileStatusManager.getInstance(project)
-        val status = fileStatusManager.getStatus(file)
-
-        // Per IntelliJ platform conventions (see LineStatusTrackerBaseContentUtil), do not show
-        // trackers for files that are not under version control or are explicitly ignored.
-        // Such files cannot have a meaningful diff against another branch.
-        if (status == FileStatus.UNKNOWN || status == FileStatus.IGNORED) {
-            logger.debug("GUTTER_TRACKER: [${reason}] File ${file.path} has status '$status', which is not tracked. Releasing if present.")
-            releaseTracker(file)
-            return
-        }
-
-        val isOurFeatureEnabled = properties.getBoolean(ToolWindowSettingsProvider.APP_ENABLE_GUTTER_MARKERS_KEY, ToolWindowSettingsProvider.DEFAULT_ENABLE_GUTTER_MARKERS)
-        val diffDataService = project.service<ProjectActiveDiffDataService>()
-        val activeBranch = diffDataService.activeBranchName
-
-        val filesThatShouldHaveOurTracker = if (isOurFeatureEnabled && activeBranch != null) {
-            val showForNewFiles = properties.getBoolean(ToolWindowSettingsProvider.APP_ENABLE_GUTTER_FOR_NEW_FILES_KEY, ToolWindowSettingsProvider.DEFAULT_ENABLE_GUTTER_FOR_NEW_FILES)
-            val baseFiles = (diffDataService.modifiedFiles + diffDataService.movedFiles).toMutableList()
-            if (showForNewFiles) {
-                baseFiles.addAll(diffDataService.createdFiles)
+        ReadAction.nonBlocking<TrackerDecision> {
+            // This block runs on a background thread with read access.
+            if (project.isDisposed || !file.isValid) {
+                throw ProcessCanceledException() // The proper way to cancel.
             }
-            baseFiles.toSet()
-        } else {
-            emptySet()
-        }
 
-        if (file in filesThatShouldHaveOurTracker) {
-            logger.debug("GUTTER_TRACKER: [${reason}] File ${file.path} requires custom tracker for branch '$activeBranch'.")
-            getOrCreateTracker(file, activeBranch!!)
-        } else {
-            logger.debug("GUTTER_TRACKER: [${reason}] File ${file.path} does not require custom tracker. Releasing if present.")
-            releaseTracker(file)
+            // FileStatusManager.getStatus is a potentially slow operation.
+            val fileStatusManager = FileStatusManager.getInstance(project)
+            val status = fileStatusManager.getStatus(file)
+
+            if (status == FileStatus.UNKNOWN || status == FileStatus.IGNORED) {
+                logger.debug("GUTTER_TRACKER: [BG/${reason}] File ${file.path} has status '$status', which is not tracked.")
+                return@nonBlocking TrackerDecision(shouldHaveTracker = false, branchName = null)
+            }
+
+            val isOurFeatureEnabled = properties.getBoolean(ToolWindowSettingsProvider.APP_ENABLE_GUTTER_MARKERS_KEY, ToolWindowSettingsProvider.DEFAULT_ENABLE_GUTTER_MARKERS)
+            val diffDataService = project.service<ProjectActiveDiffDataService>()
+            val activeBranch = diffDataService.activeBranchName
+
+            val filesThatShouldHaveOurTracker = if (isOurFeatureEnabled && activeBranch != null) {
+                val showForNewFiles = properties.getBoolean(ToolWindowSettingsProvider.APP_ENABLE_GUTTER_FOR_NEW_FILES_KEY, ToolWindowSettingsProvider.DEFAULT_ENABLE_GUTTER_FOR_NEW_FILES)
+                val baseFiles = (diffDataService.modifiedFiles + diffDataService.movedFiles).toMutableList()
+                if (showForNewFiles) {
+                    baseFiles.addAll(diffDataService.createdFiles)
+                }
+                baseFiles.toSet()
+            } else {
+                emptySet()
+            }
+
+            TrackerDecision(shouldHaveTracker = file in filesThatShouldHaveOurTracker, branchName = activeBranch)
         }
+            .finishOnUiThread(ModalityState.defaultModalityState()) { decision ->
+                // This block runs safely on the EDT.
+                if (project.isDisposed || !file.isValid) return@finishOnUiThread
+
+                if (decision.shouldHaveTracker) {
+                    logger.debug("GUTTER_TRACKER: [EDT/${reason}] File ${file.path} requires custom tracker for branch '${decision.branchName}'.")
+                    getOrCreateTracker(file, decision.branchName!!)
+                } else {
+                    logger.debug("GUTTER_TRACKER: [EDT/${reason}] File ${file.path} does not require custom tracker. Releasing if present.")
+                    releaseTracker(file)
+                }
+            }
+            .expireWhen { project.isDisposed || !file.isValid }
+            .submit(AppExecutorUtil.getAppExecutorService())
     }
 
     /**
