@@ -13,6 +13,8 @@ import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.fileEditor.FileEditorManagerListener
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.vcs.FileStatus
+import com.intellij.openapi.vcs.FileStatusManager
 import com.intellij.openapi.vcs.VcsApplicationSettings
 import com.intellij.openapi.vcs.VcsException
 import com.intellij.openapi.vcs.ex.SimpleLocalLineStatusTracker
@@ -45,9 +47,10 @@ class LstCrcGutterTrackerService(private val project: Project) : Disposable {
         wasNativeGutterEnabled = vcsAppSettings.SHOW_LST_GUTTER_MARKERS
         logger.info("GUTTER_TRACKER: Native VCS gutter marker initial state is: $wasNativeGutterEnabled")
 
-        // If our feature is enabled by default, disable the native one to prevent conflicts.
-        if (properties.getBoolean(ToolWindowSettingsProvider.APP_ENABLE_GUTTER_MARKERS_KEY, ToolWindowSettingsProvider.DEFAULT_ENABLE_GUTTER_MARKERS)) {
-            logger.info("GUTTER_TRACKER: LST-CRC markers are enabled, disabling native VCS markers.")
+        // If our feature is enabled by default (from a previous session), disable the native one to prevent conflicts.
+        val isOurFeatureEnabled = properties.getBoolean(ToolWindowSettingsProvider.APP_ENABLE_GUTTER_MARKERS_KEY, ToolWindowSettingsProvider.DEFAULT_ENABLE_GUTTER_MARKERS)
+        if (isOurFeatureEnabled) {
+            logger.info("GUTTER_TRACKER: LST-CRC markers are enabled on startup, disabling native VCS markers.")
             vcsAppSettings.SHOW_LST_GUTTER_MARKERS = false
         }
 
@@ -91,18 +94,13 @@ class LstCrcGutterTrackerService(private val project: Project) : Disposable {
         val isOurFeatureEnabled = properties.getBoolean(ToolWindowSettingsProvider.APP_ENABLE_GUTTER_MARKERS_KEY, ToolWindowSettingsProvider.DEFAULT_ENABLE_GUTTER_MARKERS)
 
         if (isOurFeatureEnabled) {
-            // Our feature is ON. If native is on, disable it to avoid duplicate markers.
-            if (vcsAppSettings.SHOW_LST_GUTTER_MARKERS) {
-                wasNativeGutterEnabled = true // Remember it was on so we can restore it.
-                vcsAppSettings.SHOW_LST_GUTTER_MARKERS = false
-                logger.info("GUTTER_TRACKER: Turned ON. Disabling native gutter markers.")
-            }
+            // Our feature is ON, so disable the native one to avoid duplicate markers.
+            logger.info("GUTTER_TRACKER: Turned ON. Disabling native gutter markers.")
+            vcsAppSettings.SHOW_LST_GUTTER_MARKERS = false
         } else {
-            // Our feature is OFF. Restore native markers to their original state.
-            if (!vcsAppSettings.SHOW_LST_GUTTER_MARKERS) {
-                vcsAppSettings.SHOW_LST_GUTTER_MARKERS = wasNativeGutterEnabled
-                logger.info("GUTTER_TRACKER: Turned OFF. Restoring native gutter markers to: $wasNativeGutterEnabled")
-            }
+            // Our feature is OFF, so restore the native one to its original state.
+            logger.info("GUTTER_TRACKER: Turned OFF. Restoring native gutter markers to: $wasNativeGutterEnabled")
+            vcsAppSettings.SHOW_LST_GUTTER_MARKERS = wasNativeGutterEnabled
         }
 
         updateAllOpenFiles("settingsChanged")
@@ -126,12 +124,29 @@ class LstCrcGutterTrackerService(private val project: Project) : Disposable {
     private fun applyTrackerStateToFile(file: VirtualFile, reason: String) {
         if (project.isDisposed || !file.isValid) return
 
+        val fileStatusManager = FileStatusManager.getInstance(project)
+        val status = fileStatusManager.getStatus(file)
+
+        // Per IntelliJ platform conventions (see LineStatusTrackerBaseContentUtil), do not show
+        // trackers for files that are not under version control or are explicitly ignored.
+        // Such files cannot have a meaningful diff against another branch.
+        if (status == FileStatus.UNKNOWN || status == FileStatus.IGNORED) {
+            logger.debug("GUTTER_TRACKER: [${reason}] File ${file.path} has status '$status', which is not tracked. Releasing if present.")
+            releaseTracker(file)
+            return
+        }
+
         val isOurFeatureEnabled = properties.getBoolean(ToolWindowSettingsProvider.APP_ENABLE_GUTTER_MARKERS_KEY, ToolWindowSettingsProvider.DEFAULT_ENABLE_GUTTER_MARKERS)
         val diffDataService = project.service<ProjectActiveDiffDataService>()
         val activeBranch = diffDataService.activeBranchName
 
         val filesThatShouldHaveOurTracker = if (isOurFeatureEnabled && activeBranch != null) {
-            (diffDataService.createdFiles + diffDataService.modifiedFiles + diffDataService.movedFiles).toSet()
+            val showForNewFiles = properties.getBoolean(ToolWindowSettingsProvider.APP_ENABLE_GUTTER_FOR_NEW_FILES_KEY, ToolWindowSettingsProvider.DEFAULT_ENABLE_GUTTER_FOR_NEW_FILES)
+            val baseFiles = (diffDataService.modifiedFiles + diffDataService.movedFiles).toMutableList()
+            if (showForNewFiles) {
+                baseFiles.addAll(diffDataService.createdFiles)
+            }
+            baseFiles.toSet()
         } else {
             emptySet()
         }
@@ -251,11 +266,9 @@ class LstCrcGutterTrackerService(private val project: Project) : Disposable {
             managedTrackers.keys.toList().forEach { releaseTracker(it) }
             managedTrackers.clear()
 
-            // Restore the native VCS setting to its original state on project close.
-            if (!vcsAppSettings.SHOW_LST_GUTTER_MARKERS) {
-                vcsAppSettings.SHOW_LST_GUTTER_MARKERS = wasNativeGutterEnabled
-                logger.info("GUTTER_TRACKER: Native LST gutter markers restored to '$wasNativeGutterEnabled' on dispose.")
-            }
+            // Always restore the native VCS setting to its original state on project close.
+            vcsAppSettings.SHOW_LST_GUTTER_MARKERS = wasNativeGutterEnabled
+            logger.info("GUTTER_TRACKER: Native LST gutter markers restored to '$wasNativeGutterEnabled' on dispose.")
         }
     }
 }

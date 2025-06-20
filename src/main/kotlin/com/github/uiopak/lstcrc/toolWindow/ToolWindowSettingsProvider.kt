@@ -59,6 +59,9 @@ object ToolWindowSettingsProvider {
     const val APP_ENABLE_GUTTER_MARKERS_KEY = "com.github.uiopak.lstcrc.app.enableGutterMarkers"
     const val DEFAULT_ENABLE_GUTTER_MARKERS = true
 
+    const val APP_ENABLE_GUTTER_FOR_NEW_FILES_KEY = "com.github.uiopak.lstcrc.app.enableGutterForNewFiles"
+    const val DEFAULT_ENABLE_GUTTER_FOR_NEW_FILES = false
+
     const val APP_SHOW_TOOL_WINDOW_TITLE_KEY = "com.github.uiopak.lstcrc.app.showToolWindowTitle"
     const val DEFAULT_SHOW_TOOL_WINDOW_TITLE = false
 
@@ -98,8 +101,11 @@ object ToolWindowSettingsProvider {
     fun createToolWindowSettingsGroup(): ActionGroup {
         val rootSettingsGroup = DefaultActionGroup(LstCrcBundle.message("settings.root.title"), true)
 
-        // General Behavior Settings
-        rootSettingsGroup.add(object : ToggleAction(LstCrcBundle.message("settings.gutter.marks")) {
+        // --- Gutter Marks Submenu ---
+        val gutterSettingsGroup = DefaultActionGroup({ LstCrcBundle.message("settings.gutter.group.title") }, true)
+        rootSettingsGroup.add(gutterSettingsGroup)
+
+        gutterSettingsGroup.add(object : ToggleAction(LstCrcBundle.message("settings.gutter.enable")) {
             override fun isSelected(e: AnActionEvent): Boolean =
                 propertiesComponent.getBoolean(APP_ENABLE_GUTTER_MARKERS_KEY, DEFAULT_ENABLE_GUTTER_MARKERS)
 
@@ -110,6 +116,24 @@ object ToolWindowSettingsProvider {
             override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
         })
 
+        gutterSettingsGroup.add(object : ToggleAction(LstCrcBundle.message("settings.gutter.for.new.files")) {
+            override fun update(e: AnActionEvent) {
+                super.update(e)
+                // Only enable this sub-setting if the main gutter setting is enabled.
+                e.presentation.isEnabled = propertiesComponent.getBoolean(APP_ENABLE_GUTTER_MARKERS_KEY, DEFAULT_ENABLE_GUTTER_MARKERS)
+            }
+            override fun isSelected(e: AnActionEvent): Boolean =
+                propertiesComponent.getBoolean(APP_ENABLE_GUTTER_FOR_NEW_FILES_KEY, DEFAULT_ENABLE_GUTTER_FOR_NEW_FILES)
+
+            override fun setSelected(e: AnActionEvent, state: Boolean) {
+                propertiesComponent.setValue(APP_ENABLE_GUTTER_FOR_NEW_FILES_KEY, state, DEFAULT_ENABLE_GUTTER_FOR_NEW_FILES)
+                e.project?.service<LstCrcGutterTrackerService>()?.settingsChanged()
+            }
+            override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
+        })
+        rootSettingsGroup.addSeparator()
+
+        // --- Other General Settings ---
         rootSettingsGroup.add(object : ToggleAction(LstCrcBundle.message("settings.show.tool.window.title")) {
             override fun isSelected(e: AnActionEvent): Boolean =
                 propertiesComponent.getBoolean(APP_SHOW_TOOL_WINDOW_TITLE_KEY, DEFAULT_SHOW_TOOL_WINDOW_TITLE)
