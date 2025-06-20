@@ -1,7 +1,6 @@
 package com.github.uiopak.lstcrc.scopes
 
 import com.github.uiopak.lstcrc.resources.LstCrcBundle
-import com.github.uiopak.lstcrc.resources.LstCrcIcons
 import com.github.uiopak.lstcrc.services.ProjectActiveDiffDataService
 import com.intellij.icons.AllIcons
 import com.intellij.openapi.components.service
@@ -97,6 +96,6 @@ class MovedFilesScope : NamedScope(
  */
 class ChangedFilesScope : NamedScope(
     LstCrcBundle.message("scope.changed.name"),
-    LstCrcIcons.TOOL_WINDOW, // Use our custom plugin icon for brand consistency.
+    AllIcons.Actions.ListChanges, // Use a standard IDE icon for consistency.
     changedFilesPackageSet
 )
