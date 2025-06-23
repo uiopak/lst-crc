@@ -24,20 +24,20 @@ jobs:
               Xvfb -ac :99 -screen 0 1920x1080x24 &
               sleep 10
               mkdir -p build/reports
-              ./gradlew runIdeForUiTests --scan > build/reports/idea.log &
+              ./gradlew runIdeForUiTests --info --scan &> build/reports/idea.log &
             runTests: |
               export DISPLAY=:99.0
-              ./gradlew test
+              ./gradlew test --info
             url: http://127.0.0.1:8082
             reportName: ui-test-fails-report-linux
           - os: macOS-latest
-            runIde: ./gradlew runIdeForUiTests --scan &
-            runTests: ./gradlew test
+            runIde: ./gradlew runIdeForUiTests --info --scan &> build/reports/idea.log &
+            runTests: ./gradlew test --info
             url: http://127.0.0.1:8082
             reportName: ui-test-fails-report-mac
           - os: windows-latest
-            runIde: start gradlew.bat runIdeForUiTests --scan
-            runTests: ./gradlew test
+            runIde: start /b gradlew.bat runIdeForUiTests --info --scan > build/reports/idea.log 2>&1
+            runTests: ./gradlew test --info
             url: http://localhost:8082
             reportName: ui-test-fails-report-windows
 
@@ -56,7 +56,7 @@ jobs:
           java-version: 21
 
       - name: Setup FFmpeg
-        uses: FedericoCarboni/setup-ffmpeg@v2
+        uses: AnimMouse/setup-ffmpeg@v1
         # with:
           # Not strictly necessary, but it may prevent rate limit
           # errors especially on GitHub-hosted macos machines.
@@ -65,6 +65,14 @@ jobs:
       # Setup Gradle
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
+
+      - name: Cache IntelliJ Platform IDE
+        uses: actions/cache@v4
+        with:
+          # The path to the directory where the IDEs are downloaded
+          path: ~/.gradle/caches/jetbrains/idea
+          # A key that invalidates the cache when the OS or IDE version changes
+          key: ${{ runner.os }}-intellij-platform-${{ hashFiles('gradle.properties') }}
 
       # Run IDEA prepared for UI testing
       - name: Run IDE
