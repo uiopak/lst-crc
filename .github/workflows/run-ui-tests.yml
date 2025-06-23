@@ -1,9 +1,7 @@
-### FILE: .github/workflows/run-ui-tests.yml ###
 # GitHub Actions Workflow for launching UI tests on Linux, Windows, and Mac in the following steps:
 # - Prepare and launch IDE with your plugin and robot-server plugin, which is needed to interact with the UI.
 # - Wait for IDE to start.
 # - Run UI tests with a separate Gradle task.
-# - Stop the IDE process to prevent the job from hanging.
 #
 # Please check https://github.com/JetBrains/intellij-ui-test-robot for information about UI tests with IntelliJ Platform.
 #
@@ -14,14 +12,25 @@ on:
   workflow_dispatch
 
 jobs:
+
   testUI:
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        include:
+          - os: ubuntu-latest
+            runIde: |
+              export DISPLAY=:99.0
+              Xvfb -ac :99 -screen 0 1920x1080x16 &
+              gradle runIdeForUiTests &
+          - os: windows-latest
+            runIde: start gradlew.bat runIdeForUiTests
+          - os: macos-latest
+            runIde: ./gradlew runIdeForUiTests &
 
     steps:
+
       # Check out the current repository
       - name: Fetch Sources
         uses: actions/checkout@v4
@@ -30,66 +39,25 @@ jobs:
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
-          distribution: 'corretto' # Use a consistent JDK
-          java-version: '21'
+          distribution: 'corretto'
+          java-version: 21
 
       # Setup Gradle
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      # Grant execute permission for gradlew (important for non-Windows runners)
-      - name: Grant execute permission for gradlew
-        if: runner.os != 'Windows'
-        run: chmod +x gradlew
+      # Run IDEA prepared for UI testing
+      - name: Run IDE
+        run: ${{ matrix.runIde }}
 
-      # Run IDEA prepared for UI testing in the background
-      - name: Run IDE in background
-        shell: bash
-        run: |
-          if [[ "${{ runner.os }}" == "Linux" ]]; then
-            export DISPLAY=:99.0
-            Xvfb -ac :99 -screen 0 1920x1080x16 &
-            ./gradlew runIdeForUiTests &
-            echo "IDE_PID=$!" >> $GITHUB_ENV
-          elif [[ "${{ runner.os }}" == "macOS" ]]; then
-            ./gradlew runIdeForUiTests &
-            echo "IDE_PID=$!" >> $GITHUB_ENV
-          elif [[ "${{ runner.os }}" == "Windows" ]]; then
-            # On Windows, we need to use PowerShell to get the PID of the new process
-            $process = Start-Process -FilePath "gradlew.bat" -ArgumentList "runIdeForUiTests" -PassThru
-            echo "IDE_PID=$($process.Id)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          fi
-
-      # Wait for IDEA to be started and responsive
-      - name: Wait for IDE to be ready
+      # Wait for IDEA to be started
+      - name: Health Check
         uses: jtalk/url-health-check-action@v4
         with:
           url: http://127.0.0.1:8082
           max-attempts: 15
           retry-delay: 30s
 
-      # Run tests, but don't fail the job immediately on error so cleanup can run
-      - name: Run UI Tests
-        id: run-tests
-        continue-on-error: true
-        run: ./gradlew uiTest
-
-      # IMPORTANT: This step always runs, even if tests fail, to stop the background IDE process.
-      - name: Stop IDE
-        if: always()
-        shell: bash
-        run: |
-          echo "Stopping IDE process with PID: ${{ env.IDE_PID }}"
-          if [[ "${{ runner.os }}" == "Linux" || "${{ runner.os }}" == "macOS" ]]; then
-            kill ${{ env.IDE_PID }}
-          elif [[ "${{ runner.os }}" == "Windows" ]]; then
-            taskkill /F /PID ${{ env.IDE_PID }}
-          fi
-          echo "Cleanup complete."
-
-      # This step explicitly fails the job if the test step failed.
-      - name: Check test results
-        if: steps.run-tests.outcome == 'failure'
-        run: |
-          echo "UI tests failed."
-          exit 1
+      # Run tests
+      - name: Tests
+        run: ./gradlew test
