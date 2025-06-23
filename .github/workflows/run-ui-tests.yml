@@ -24,19 +24,19 @@ jobs:
               Xvfb -ac :99 -screen 0 1920x1080x24 &
               sleep 10
               mkdir -p build/reports
-              ./gradlew runIdeForUiTests > build/reports/idea.log &
+              ./gradlew runIdeForUiTests --scan > build/reports/idea.log &
             runTests: |
               export DISPLAY=:99.0
               ./gradlew test
             url: http://127.0.0.1:8082
             reportName: ui-test-fails-report-linux
           - os: macOS-latest
-            runIde: ./gradlew runIdeForUiTests &
+            runIde: ./gradlew runIdeForUiTests --scan &
             runTests: ./gradlew test
             url: http://127.0.0.1:8082
             reportName: ui-test-fails-report-mac
           - os: windows-latest
-            runIde: start gradlew.bat runIdeForUiTests
+            runIde: start gradlew.bat runIdeForUiTests --scan
             runTests: ./gradlew test
             url: http://localhost:8082
             reportName: ui-test-fails-report-windows
