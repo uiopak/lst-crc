@@ -60,7 +60,7 @@ class CreateCommandLineKotlinTest {
                 button("Create").click()
             }
         }
-        Thread.sleep(15_000)
+        Thread.sleep(60_000)
         idea {
             waitFor(ofMinutes(5)) { isDumbMode().not() }
             step("Create App file") {
