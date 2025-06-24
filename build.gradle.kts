@@ -1,6 +1,7 @@
 import org.jetbrains.changelog.Changelog
 import org.jetbrains.changelog.markdownToHTML
 import org.jetbrains.intellij.platform.gradle.TestFrameworkType
+import java.time.Duration
 
 plugins {
     id("java") // Java support
@@ -21,11 +22,10 @@ kotlin {
 
 // Configure project's dependencies
 repositories {
-    mavenCentral()
-
     // IntelliJ Platform Gradle Plugin Repositories Extension - read more: https://plugins.jetbrains.com/docs/intellij/tools-intellij-platform-gradle-plugin-repositories-extension.html
     intellijPlatform {
         defaultRepositories()
+        mavenCentral()
     }
 }
 
@@ -34,12 +34,31 @@ dependencies {
     testImplementation(libs.junit)
     testImplementation(libs.opentest4j)
 
+    // Remote Robot for UI tests
+    testImplementation("com.intellij.remoterobot:remote-robot:0.11.23")
+    testImplementation("com.intellij.remoterobot:remote-fixtures:0.11.23")
+
+//    // Dependencies for UI testing
+//    testImplementation("com.google.code.gson:gson:2.8.5")
+//    testImplementation("com.squareup.okhttp3:okhttp:3.14.9")
+//    testImplementation("com.squareup.retrofit2:retrofit:2.9.0")
+//    testImplementation("com.squareup.retrofit2:converter-gson:2.9.0")
+//
+    // JUnit 5 (Jupiter)
+    testImplementation("org.junit.jupiter:junit-jupiter-api:5.10.0")
+    testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine:5.9.2")
+
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.11.4")
+
+    // Logging Network Calls
+    testImplementation("com.squareup.okhttp3:logging-interceptor:4.12.0")
+
+    // Video Recording
+    implementation("com.automation-remarks:video-recorder-junit5:2.0")
+
     // IntelliJ Platform Gradle Plugin Dependencies Extension - read more: https://plugins.jetbrains.com/docs/intellij/tools-intellij-platform-gradle-plugin-dependencies-extension.html
     intellijPlatform {
-        create(
-            providers.gradleProperty("platformType"),
-            providers.gradleProperty("platformVersion")
-        )
+        create(providers.gradleProperty("platformType"), providers.gradleProperty("platformVersion"))
 
         // Plugin Dependencies. Uses `platformBundledPlugins` property from the gradle.properties file for bundled IntelliJ Platform plugins.
         bundledPlugins(providers.gradleProperty("platformBundledPlugins").map { it.split(',') })
@@ -50,6 +69,18 @@ dependencies {
         testFramework(TestFrameworkType.Platform)
     }
 }
+
+//// Force specific versions for UI testing to avoid classpath conflicts with the IDE.
+//// This is the most robust way to handle this.
+//configurations.testImplementation {
+//    resolutionStrategy.force(
+//        "com.google.code.gson:gson:2.8.5",
+//        "com.squareup.okhttp3:okhttp:3.14.9",
+//        "com.squareup.retrofit2:retrofit:2.9.0",
+//        "com.squareup.retrofit2:converter-gson:2.9.0"
+//    )
+//}
+//
 
 // Configure IntelliJ Platform Gradle Plugin - read more: https://plugins.jetbrains.com/docs/intellij/tools-intellij-platform-gradle-plugin-extension.html
 intellijPlatform {
@@ -135,6 +166,66 @@ tasks {
     publishPlugin {
         dependsOn(patchChangelog)
     }
+
+    //
+//    // Configure the test task to use JUnit 4 for non-UI tests
+//    test {
+//        useJUnit()
+//        exclude("**/ui/**")
+//    }
+//
+//    // Create a separate task for UI tests that uses JUnit 5
+//    val uiTest = register<Test>("uiTest") {
+//        description = "Runs UI tests against an IDE with Robot Server"
+//        group = "verification"
+//
+//        useJUnitPlatform()
+//        include("**/ui/**")
+//
+//        // This is the key change: it tells the test task not to launch the IDE itself.
+//        systemProperty("robot-server.auto.run", "false")
+//
+//        systemProperty("robot.server.url", "http://127.0.0.1:8082")
+//        systemProperty("ui.test.timeout", "120")
+//
+//        testLogging {
+//            events("passed", "skipped", "failed", "standardOut", "standardError")
+//            showExceptions = true
+//            showCauses = true
+//            showStackTraces = true
+//            exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+//        }
+//
+//        timeout.set(Duration.ofMinutes(10))
+//    }
+//
+//    // Add uiTest to the 'check' task to run it with ./gradlew check
+//    named("check") {
+//        dependsOn(uiTest)
+//    }
+
+    // Configure the test task to use JUnit Platform (JUnit 5)
+    test {
+        useJUnitPlatform()
+
+        // Exclude UI tests that require a running IDE with Robot Server
+//        exclude("**/plugin/CreateCommandLineKotlinTest.kt")
+//        exclude("**/plugin/SayHelloKotlinTest.kt")
+
+        testLogging {
+            events("passed", "skipped", "failed", "standardOut", "standardError")
+            showExceptions = true
+            showCauses = true
+            showStackTraces = true
+            exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+        }
+
+        systemProperty("robot-server.auto.run", "false")
+        systemProperty("robot.server.url", "http://127.0.0.1:8082")
+        systemProperty("ui.test.timeout", "120")
+
+        timeout.set(Duration.ofMinutes(10))
+    }
 }
 
 intellijPlatformTesting {
@@ -147,6 +238,11 @@ intellijPlatformTesting {
                         "-Dide.mac.message.dialogs.as.sheets=false",
                         "-Djb.privacy.policy.text=<!--999.999-->",
                         "-Djb.consents.confirmation.enabled=false",
+                        "-Dide.mac.file.chooser.native=false",
+                        "-DjbScreenMenuBar.enabled=false",
+                        "-Dapple.laf.useScreenMenuBar=false",
+                        "-Didea.trust.all.projects=true",
+                        "-Dide.show.tips.on.startup.default.value=false",
                     )
                 }
             }
