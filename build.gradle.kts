@@ -1,6 +1,7 @@
 import org.jetbrains.changelog.Changelog
 import org.jetbrains.changelog.markdownToHTML
 import org.jetbrains.intellij.platform.gradle.TestFrameworkType
+import java.time.Duration
 
 plugins {
     id("java") // Java support
@@ -21,25 +22,54 @@ kotlin {
 
 // Configure project's dependencies
 repositories {
-    mavenCentral()
-
     // IntelliJ Platform Gradle Plugin Repositories Extension - read more: https://plugins.jetbrains.com/docs/intellij/tools-intellij-platform-gradle-plugin-repositories-extension.html
     intellijPlatform {
         defaultRepositories()
+        mavenCentral()
     }
 }
+
+// Global configuration to handle vulnerable transitive dependencies.
+// This block ensures that specific safe versions are used throughout the project.
+configurations.all {
+    resolutionStrategy {
+        // Force a non-vulnerable version of commons-io, overriding the old version brought in by zt-exec.
+        force(libs.commons.io)
+
+        // Substitute the vulnerable log4j:log4j with a safe SLF4J bridge.
+        dependencySubstitution {
+            // Eagerly resolve the dependency from the catalog to build the GAV string.
+            // This is necessary because the `using(module(...))` API requires a concrete
+            // version string and does not support lazy providers. This is a valid configuration
+            // input and should not break caching unless the version itself changes.
+            val log4jOverSlf4jDep = libs.log4j.over.slf4j.get()
+            val log4jOverSlf4jGAV = "${log4jOverSlf4jDep.module}:${log4jOverSlf4jDep.version}"
+            substitute(module("log4j:log4j")).using(module(log4jOverSlf4jGAV))
+        }
+    }
+}
+
 
 // Dependencies are managed with Gradle version catalog - read more: https://docs.gradle.org/current/userguide/platforms.html#sub:version-catalog
 dependencies {
     testImplementation(libs.junit)
     testImplementation(libs.opentest4j)
 
+    // Remote Robot for UI tests (using a bundle from libs.versions.toml)
+    testImplementation(libs.bundles.remoterobot)
+    // Logging Network Calls for tests
+    testImplementation(libs.okhttp.loggingInterceptor)
+    // Video Recording for tests
+    testImplementation(libs.video.recorder.junit5)
+
+    // JUnit 5 (Jupiter)
+    testImplementation(libs.junit.jupiter.api)
+    testRuntimeOnly(libs.junit.jupiter.engine)
+    testRuntimeOnly(libs.junit.platform.launcher)
+
     // IntelliJ Platform Gradle Plugin Dependencies Extension - read more: https://plugins.jetbrains.com/docs/intellij/tools-intellij-platform-gradle-plugin-dependencies-extension.html
     intellijPlatform {
-        create(
-            providers.gradleProperty("platformType"),
-            providers.gradleProperty("platformVersion")
-        )
+        create(providers.gradleProperty("platformType"), providers.gradleProperty("platformVersion"))
 
         // Plugin Dependencies. Uses `platformBundledPlugins` property from the gradle.properties file for bundled IntelliJ Platform plugins.
         bundledPlugins(providers.gradleProperty("platformBundledPlugins").map { it.split(',') })
@@ -135,6 +165,25 @@ tasks {
     publishPlugin {
         dependsOn(patchChangelog)
     }
+
+    // Configure the test task to use JUnit Platform (JUnit 5)
+    test {
+        useJUnitPlatform()
+
+        testLogging {
+            events("passed", "skipped", "failed", "standardOut", "standardError")
+            showExceptions = true
+            showCauses = true
+            showStackTraces = true
+            exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+        }
+
+        systemProperty("robot-server.auto.run", "false")
+        systemProperty("robot.server.url", "http://127.0.0.1:8082")
+        systemProperty("ui.test.timeout", "120")
+
+        timeout.set(Duration.ofMinutes(10))
+    }
 }
 
 intellijPlatformTesting {
@@ -147,6 +196,11 @@ intellijPlatformTesting {
                         "-Dide.mac.message.dialogs.as.sheets=false",
                         "-Djb.privacy.policy.text=<!--999.999-->",
                         "-Djb.consents.confirmation.enabled=false",
+                        "-Dide.mac.file.chooser.native=false",
+                        "-DjbScreenMenuBar.enabled=false",
+                        "-Dapple.laf.useScreenMenuBar=false",
+                        "-Didea.trust.all.projects=true",
+                        "-Dide.show.tips.on.startup.default.value=false",
                     )
                 }
             }
