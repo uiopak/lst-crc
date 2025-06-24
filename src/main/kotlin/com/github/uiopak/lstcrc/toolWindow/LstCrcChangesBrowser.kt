@@ -3,6 +3,7 @@ package com.github.uiopak.lstcrc.toolWindow
 import com.github.uiopak.lstcrc.resources.LstCrcBundle
 import com.github.uiopak.lstcrc.services.CategorizedChanges
 import com.github.uiopak.lstcrc.services.ToolWindowStateService
+import com.github.uiopak.lstcrc.utils.getTreePathForMouseCoordinates
 import com.intellij.ide.projectView.ProjectView
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.actionSystem.ActionManager
@@ -98,14 +99,7 @@ class LstCrcChangesBrowser(
         // Install a single master listener to gain full control over all mouse clicks.
         viewer.addMouseListener(object : MouseAdapter() {
             override fun mouseClicked(e: MouseEvent) {
-                val row = viewer.getClosestRowForLocation(e.x, e.y)
-                if (row == -1) return
-                val bounds = viewer.getRowBounds(row)
-                if (bounds == null || e.y < bounds.y || e.y >= bounds.y + bounds.height) {
-                    return
-                }
-
-                val path = viewer.getPathForRow(row) ?: return
+                val path = viewer.getTreePathForMouseCoordinates(e) ?: return
                 val change = (path.lastPathComponent as? ChangesBrowserNode<*>)?.userObject as? Change ?: return
 
                 when {

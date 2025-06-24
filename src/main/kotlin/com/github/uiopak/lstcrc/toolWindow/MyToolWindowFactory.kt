@@ -88,13 +88,8 @@ class MyToolWindowFactory : ToolWindowFactory {
 
             if (persistedState.openTabs.isNotEmpty()) {
                 persistedState.openTabs.forEach { tabInfo ->
-                    val branchView = gitChangesUiProvider.createBranchContentView(tabInfo.branchName)
                     val displayName = tabInfo.alias ?: tabInfo.branchName
-                    val branchContent = contentFactory.createContent(branchView, displayName, false).apply {
-                        isCloseable = true
-                        putUserData(LstCrcKeys.BRANCH_NAME_KEY, tabInfo.branchName)
-                    }
-                    contentManager.addContent(branchContent)
+                    ToolWindowHelper.createBranchContent(project, toolWindow, tabInfo.branchName, displayName, contentManager)
                 }
                 if (persistedState.selectedTabIndex >= 0 && persistedState.selectedTabIndex < persistedState.openTabs.size) {
                     val selectedTabInfo = persistedState.openTabs[persistedState.selectedTabIndex]
@@ -108,12 +103,7 @@ class MyToolWindowFactory : ToolWindowFactory {
                 // On first launch with no persisted state, add a tab for the current Git branch.
                 val currentActualBranchName = currentRepository?.currentBranchName
                 if (currentActualBranchName != null) {
-                    val initialBranchView = gitChangesUiProvider.createBranchContentView(currentActualBranchName)
-                    val initialBranchContent = contentFactory.createContent(initialBranchView, currentActualBranchName, false).apply {
-                        isCloseable = true
-                        putUserData(LstCrcKeys.BRANCH_NAME_KEY, currentActualBranchName)
-                    }
-                    contentManager.addContent(initialBranchContent)
+                    val initialBranchContent = ToolWindowHelper.createBranchContent(project, toolWindow, currentActualBranchName, currentActualBranchName, contentManager)
                     contentManager.setSelectedContent(initialBranchContent, true)
                     selectedContentRestored = true
                     stateService.addTab(currentActualBranchName)

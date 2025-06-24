@@ -8,6 +8,7 @@ import com.intellij.openapi.components.service
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.wm.ToolWindow
+import com.intellij.ui.content.Content
 import com.intellij.ui.content.ContentFactory
 import com.intellij.ui.content.ContentManager
 
@@ -16,6 +17,37 @@ import com.intellij.ui.content.ContentManager
  */
 object ToolWindowHelper {
     private val logger = thisLogger()
+
+    /**
+     * Creates a new closable content tab for a branch comparison and adds it to the content manager.
+     * This is the standardized way to create a new branch tab.
+     *
+     * @param project The current project.
+     * @param toolWindow The tool window instance.
+     * @param branchName The branch/revision identifier.
+     * @param displayName The text to show on the tab.
+     * @param contentManager The content manager to add the tab to.
+     * @return The newly created [Content] object.
+     */
+    internal fun createBranchContent(
+        project: Project,
+        toolWindow: ToolWindow,
+        branchName: String,
+        displayName: String,
+        contentManager: ContentManager
+    ): Content {
+        val uiProvider = GitChangesToolWindow(project, toolWindow.disposable)
+        val newContentView = uiProvider.createBranchContentView(branchName)
+
+        val contentFactory = ContentFactory.getInstance()
+        val newContent = contentFactory.createContent(newContentView, displayName, false).apply {
+            isCloseable = true
+            putUserData(LstCrcKeys.BRANCH_NAME_KEY, branchName)
+        }
+
+        contentManager.addContent(newContent)
+        return newContent
+    }
 
     /**
      * Creates and selects a new comparison tab for the given branch/revision name.
@@ -38,16 +70,7 @@ object ToolWindowHelper {
             // The ContentManagerListener will trigger stateService.setSelectedTab
         } else {
             logger.info("HELPER: Creating new tab for '$branchName'")
-            val uiProvider = GitChangesToolWindow(project, toolWindow.disposable)
-            val newContentView = uiProvider.createBranchContentView(branchName)
-
-            val contentFactory = ContentFactory.getInstance()
-            val newContent = contentFactory.createContent(newContentView, branchName, false).apply {
-                isCloseable = true
-                putUserData(LstCrcKeys.BRANCH_NAME_KEY, branchName)
-            }
-
-            contentManager.addContent(newContent)
+            val newContent = createBranchContent(project, toolWindow, branchName, branchName, contentManager)
             contentManager.setSelectedContent(newContent, true)
 
             // Sync state service. The ContentManagerListener will handle selection change, but we need to add the tab.
@@ -58,7 +81,7 @@ object ToolWindowHelper {
                 stateService.setSelectedTab(newIndex)
             } else {
                 // Failsafe: if tab not found in state, still trigger a refresh for the content.
-                (newContentView as? LstCrcChangesBrowser)?.requestRefreshData()
+                (newContent.component as? LstCrcChangesBrowser)?.requestRefreshData()
             }
         }
     }

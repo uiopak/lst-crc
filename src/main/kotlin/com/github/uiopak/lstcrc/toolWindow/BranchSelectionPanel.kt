@@ -2,6 +2,7 @@ package com.github.uiopak.lstcrc.toolWindow
 
 import com.github.uiopak.lstcrc.resources.LstCrcBundle
 import com.github.uiopak.lstcrc.services.GitService
+import com.github.uiopak.lstcrc.utils.getTreePathForMouseCoordinates
 import com.intellij.icons.AllIcons
 import com.intellij.ui.ColoredTreeCellRenderer
 import com.intellij.ui.SearchTextField
@@ -201,16 +202,7 @@ class BranchSelectionPanel(
                 // Handle single and double clicks to select a branch.
                 if (e.clickCount < 1) return
 
-                val row = newTree.getClosestRowForLocation(e.x, e.y)
-                if (row == -1) return
-
-                // This is a more robust way to check if the click is within the row's vertical bounds.
-                val bounds = newTree.getRowBounds(row)
-                if (bounds == null || e.y < bounds.y || e.y >= bounds.y + bounds.height) {
-                    return
-                }
-
-                val path = newTree.getPathForRow(row) ?: return
+                val path = newTree.getTreePathForMouseCoordinates(e) ?: return
                 val node = path.lastPathComponent as? DefaultMutableTreeNode ?: return
                 if (node.isLeaf) {
                     (node.userObject as? BranchInfo)?.let {
