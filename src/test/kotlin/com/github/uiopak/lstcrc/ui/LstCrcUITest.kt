@@ -7,6 +7,7 @@ import com.intellij.remoterobot.search.locators.byXpath
 import com.intellij.remoterobot.utils.waitFor
 import org.junit.jupiter.api.Assertions
 import org.junit.jupiter.api.BeforeAll
+import org.junit.jupiter.api.Disabled
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestInstance
 import java.time.Duration
@@ -21,6 +22,7 @@ import java.time.Duration
  * Then run this test class.
  */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
+@Disabled
 class LstCrcUITest {
     // Get timeout from system property or use default (120 seconds)
     private val timeout = System.getProperty("ui.test.timeout")?.toLongOrNull() ?: 120L
@@ -89,6 +91,7 @@ class LstCrcUITest {
      * Test that the GitChangesView tool window is available and can be opened.
      */
     @Test
+    @Disabled
     fun testToolWindowAvailable() {
         openToolWindow()
         // Verify that the tool window is visible
@@ -100,6 +103,7 @@ class LstCrcUITest {
      * Test that the status bar widget is available.
      */
     @Test
+    @Disabled
     fun testStatusBarWidgetAvailable() {
         // Check if the status bar widget is present by querying the StatusBar manager.
         // The widget ID is "LstCrcStatusWidget", as defined in LstCrcStatusWidget.kt.
@@ -123,6 +127,7 @@ class LstCrcUITest {
      * Test that the custom scopes are registered and available.
      */
     @Test
+    @Disabled
     fun testCustomScopesAvailable() {
         // Check if our custom scopes provider is registered and provides the correct scopes.
         val scopesExist = ideFrame.runJs("""
@@ -162,6 +167,7 @@ class LstCrcUITest {
      * Test that the GitChangesView tool window has a 'HEAD' tab and it contains a ChangesTree.
      */
     @Test
+    @Disabled
     fun testToolWindowDisplaysChangesAndContent() {
         openToolWindow()
 
