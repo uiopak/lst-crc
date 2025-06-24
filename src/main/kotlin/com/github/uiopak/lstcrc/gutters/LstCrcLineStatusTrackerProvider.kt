@@ -15,7 +15,7 @@ import com.intellij.openapi.vcs.FileStatus
 import com.intellij.openapi.vcs.FileStatusManager
 import com.intellij.openapi.vcs.VcsException
 import com.intellij.openapi.vcs.ex.LocalLineStatusTracker
-import com.intellij.openapi.vcs.ex.LocalLineStatusTrackerImpl
+import com.intellij.openapi.vcs.ex.SimpleLocalLineStatusTracker
 import com.intellij.openapi.vcs.impl.LineStatusTrackerContentLoader
 import com.intellij.openapi.vfs.VirtualFile
 import java.nio.charset.Charset
@@ -62,12 +62,21 @@ class LstCrcLineStatusTrackerProvider : LineStatusTrackerContentLoader {
         return status != FileStatus.UNKNOWN && status != FileStatus.IGNORED
     }
 
-    override fun isMyTracker(tracker: LocalLineStatusTracker<*>): Boolean = tracker is LstCrcSimpleLocalLineStatusTracker
+    /**
+     * We identify trackers created by our provider by checking if they are an instance of
+     * the platform's SimpleLocalLineStatusTracker, which we create in createTracker.
+     */
+    override fun isMyTracker(tracker: LocalLineStatusTracker<*>): Boolean = tracker is SimpleLocalLineStatusTracker
 
+    /**
+     * Creates an instance of the platform's [SimpleLocalLineStatusTracker]. The IntelliJ
+     * LineStatusTrackerManager will associate this tracker instance with our provider.
+     * Note: This uses an internal, but necessary, platform class.
+     */
     override fun createTracker(project: Project, file: VirtualFile): LocalLineStatusTracker<*>? {
         val document: Document = FileDocumentManager.getInstance().getDocument(file) ?: return null
-        logger.debug("GUTTER_PROVIDER: Creating LST-CRC tracker for ${file.path}")
-        return LstCrcSimpleLocalLineStatusTracker(project, document, file)
+        logger.debug("GUTTER_PROVIDER: Creating tracker for ${file.path}")
+        return SimpleLocalLineStatusTracker(project, document, file)
     }
 
     // --- LineStatusTrackerContentLoader implementation ---
@@ -178,12 +187,20 @@ class LstCrcLineStatusTrackerProvider : LineStatusTrackerContentLoader {
     }
 
     override fun setLoadedContent(tracker: LocalLineStatusTracker<*>, content: LineStatusTrackerContentLoader.TrackerContent) {
-        (tracker as LocalLineStatusTrackerImpl<*>).setBaseRevision((content as LstCrcTrackerContent).content)
+        // Cast to the concrete internal type to access the necessary 'setBaseRevision' method.
+        (tracker as? SimpleLocalLineStatusTracker)?.setBaseRevision((content as LstCrcTrackerContent).content)
         logger.debug("GUTTER_PROVIDER: Successfully set base revision for ${tracker.virtualFile.path}")
     }
 
     override fun handleLoadingError(tracker: LocalLineStatusTracker<*>) {
-        (tracker as LocalLineStatusTrackerImpl<*>).dropBaseRevision()
-        logger.warn("GUTTER_PROVIDER: Dropped base revision for ${tracker.virtualFile.path} due to loading error.")
+        // To clear the diff, we set the base revision to the current document content.
+        // We must cast to the concrete type to access the method.
+        val currentContent = runReadAction { tracker.document.text }
+        if (currentContent != null) {
+            (tracker as? SimpleLocalLineStatusTracker)?.setBaseRevision(StringUtil.convertLineSeparators(currentContent))
+            logger.warn("GUTTER_PROVIDER: Cleared diff for ${tracker.virtualFile.path} due to loading error by setting empty diff.")
+        } else {
+            logger.warn("GUTTER_PROVIDER: Failed to clear diff for ${tracker.virtualFile.path} on error, as current content was not available.")
+        }
     }
 }
