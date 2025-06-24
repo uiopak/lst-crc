@@ -8,6 +8,10 @@ junitPlatformLauncher = "1.11.4"
 remoteRobot = "0.11.23"
 okhttpLogging = "4.12.0"
 videoRecorderJunit5 = "2.0"
+# Forced/Substituted versions for security
+commonsIo = "2.16.1"
+slf4j = "2.0.13"
+
 
 # plugins
 changelog = "2.2.1"
@@ -34,6 +38,10 @@ okhttp-loggingInterceptor = { group = "com.squareup.okhttp3", name = "logging-in
 
 # Video Recording for tests
 video-recorder-junit5 = { group = "com.automation-remarks", name = "video-recorder-junit5", version.ref = "videoRecorderJunit5" }
+
+# Forced dependencies for security mitigation
+commons-io = { group = "commons-io", name = "commons-io", version.ref = "commonsIo" }
+log4j-over-slf4j = { group = "org.slf4j", name = "log4j-over-slf4j", version.ref = "slf4j" }
 
 [plugins]
 changelog = { id = "org.jetbrains.changelog", version.ref = "changelog" }

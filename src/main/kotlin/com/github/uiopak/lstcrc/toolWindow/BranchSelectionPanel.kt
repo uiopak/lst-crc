@@ -3,7 +3,6 @@ package com.github.uiopak.lstcrc.toolWindow
 import com.github.uiopak.lstcrc.resources.LstCrcBundle
 import com.github.uiopak.lstcrc.services.GitService
 import com.intellij.icons.AllIcons
-import com.intellij.openapi.project.Project
 import com.intellij.ui.ColoredTreeCellRenderer
 import com.intellij.ui.SearchTextField
 import com.intellij.ui.SimpleTextAttributes
@@ -32,7 +31,6 @@ import javax.swing.tree.DefaultTreeModel
  * @param onBranchSelected A callback invoked with the name of the branch when the user selects it.
  */
 class BranchSelectionPanel(
-    private val project: Project,
     private val gitService: GitService,
     private val onBranchSelected: (branchName: String) -> Unit
 ) : JBPanel<BranchSelectionPanel>(BorderLayout()) {

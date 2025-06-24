@@ -29,6 +29,27 @@ repositories {
     }
 }
 
+// Global configuration to handle vulnerable transitive dependencies.
+// This block ensures that specific safe versions are used throughout the project.
+configurations.all {
+    resolutionStrategy {
+        // Force a non-vulnerable version of commons-io, overriding the old version brought in by zt-exec.
+        force(libs.commons.io)
+
+        // Substitute the vulnerable log4j:log4j with a safe SLF4J bridge.
+        dependencySubstitution {
+            // Eagerly resolve the dependency from the catalog to build the GAV string.
+            // This is necessary because the `using(module(...))` API requires a concrete
+            // version string and does not support lazy providers. This is a valid configuration
+            // input and should not break caching unless the version itself changes.
+            val log4jOverSlf4jDep = libs.log4j.over.slf4j.get()
+            val log4jOverSlf4jGAV = "${log4jOverSlf4jDep.module}:${log4jOverSlf4jDep.version}"
+            substitute(module("log4j:log4j")).using(module(log4jOverSlf4jGAV))
+        }
+    }
+}
+
+
 // Dependencies are managed with Gradle version catalog - read more: https://docs.gradle.org/current/userguide/platforms.html#sub:version-catalog
 dependencies {
     testImplementation(libs.junit)
@@ -36,18 +57,15 @@ dependencies {
 
     // Remote Robot for UI tests (using a bundle from libs.versions.toml)
     testImplementation(libs.bundles.remoterobot)
+    // Logging Network Calls for tests
+    testImplementation(libs.okhttp.loggingInterceptor)
+    // Video Recording for tests
+    testImplementation(libs.video.recorder.junit5)
 
     // JUnit 5 (Jupiter)
     testImplementation(libs.junit.jupiter.api)
     testRuntimeOnly(libs.junit.jupiter.engine)
     testRuntimeOnly(libs.junit.platform.launcher)
-
-    // Logging Network Calls for tests
-    testImplementation(libs.okhttp.loggingInterceptor)
-
-    // Video Recording for tests
-    // Note: This was changed from 'implementation' to 'testImplementation' as it is a testing-specific library.
-    testImplementation(libs.video.recorder.junit5)
 
     // IntelliJ Platform Gradle Plugin Dependencies Extension - read more: https://plugins.jetbrains.com/docs/intellij/tools-intellij-platform-gradle-plugin-dependencies-extension.html
     intellijPlatform {

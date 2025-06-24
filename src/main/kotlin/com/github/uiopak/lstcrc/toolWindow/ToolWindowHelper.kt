@@ -91,7 +91,7 @@ object ToolWindowHelper {
             val stateService = project.service<ToolWindowStateService>()
             val contentFactory = ContentFactory.getInstance()
 
-            val branchSelectionUi = BranchSelectionPanel(project, project.service<GitService>()) { selectedBranchName ->
+            val branchSelectionUi = BranchSelectionPanel(project.service<GitService>()) { selectedBranchName ->
                 logger.info("HELPER (Callback): Branch '$selectedBranchName' selected from panel.")
                 val manager: ContentManager = toolWindow.contentManager
                 val selectionTabContent = manager.findContent(selectionTabName)
