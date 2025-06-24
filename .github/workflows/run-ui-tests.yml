@@ -23,7 +23,6 @@ jobs:
               export DISPLAY=:99.0
               Xvfb -ac :99 -screen 0 1920x1080x24 &
               sleep 10
-              mkdir -p build/reports
               ./gradlew runIdeForUiTests --info --scan &> build/reports/idea.log &
             runTests: |
               export DISPLAY=:99.0
@@ -74,6 +73,9 @@ jobs:
           # A key that invalidates the cache when the OS or IDE version changes
           key: ${{ runner.os }}-intellij-platform-${{ hashFiles('gradle.properties') }}
 
+      - name: Create reports directory
+        run: mkdir -p build/reports
+
       # Run IDEA prepared for UI testing
       - name: Run IDE
         run: ${{ matrix.runIde }}
@@ -83,7 +85,7 @@ jobs:
         uses: jtalk/url-health-check-action@v4
         with:
           url: ${{ matrix.url }}
-          max-attempts: 30
+          max-attempts: 15
           retry-delay: 30s
 
       # Run tests
@@ -92,11 +94,19 @@ jobs:
 
       - name: Move video
         if: ${{ failure() }}
-        run: mv video build/reports
+        run: |
+          if [ -e video ]; then
+            mv video build/reports
+          fi
+        shell: bash
 
       - name: Copy logs
         if: ${{ failure() }}
-        run: mv build/idea-sandbox/system/log/ build/reports
+        run: |
+          if [ -d "build/idea-sandbox/system/log" ]; then
+            mv build/idea-sandbox/system/log build/reports/
+          fi
+        shell: bash
 
       - name: Save fails report
         if: ${{ failure() }}

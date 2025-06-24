@@ -60,7 +60,7 @@ class CreateCommandLineKotlinTest {
                 button("Create").click()
             }
         }
-        Thread.sleep(1_000)
+        Thread.sleep(15_000)
         idea {
             waitFor(ofMinutes(5)) { isDumbMode().not() }
             step("Create App file") {
@@ -78,7 +78,7 @@ class CreateCommandLineKotlinTest {
 //            Thread.sleep(5_000)
             with(textEditor()) {
                 step("Write a code") {
-                    Thread.sleep(1_000)
+                    Thread.sleep(15_000)
                     editor.findText("App").click()
                     keyboard {
                         key(VK_END)
