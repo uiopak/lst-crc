@@ -149,7 +149,7 @@ class LstCrcStatusWidget(private val project: Project) : StatusBarWidget, Status
                 }
             })
 
-            openTabs.forEachIndexed { index, tabInfo ->
+            openTabs.forEachIndexed { _, tabInfo ->
                 val displayName = tabInfo.alias ?: tabInfo.branchName
                 actions.add(object : AnAction(displayName) {
                     override fun actionPerformed(e: AnActionEvent) {

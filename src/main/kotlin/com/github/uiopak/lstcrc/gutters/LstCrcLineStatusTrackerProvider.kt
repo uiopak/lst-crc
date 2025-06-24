@@ -148,7 +148,7 @@ class LstCrcLineStatusTrackerProvider : LineStatusTrackerContentLoader {
                     contentFuture.get() ?: ""
                 } catch (e: ExecutionException) {
                     val cause = e.cause
-                    if (cause is VcsException && (cause.message?.contains("does not exist in", ignoreCase = true) == true)) {
+                    if (cause is VcsException && cause.message.contains("does not exist in", ignoreCase = true)) {
                         logger.info("GUTTER_PROVIDER: File ${info.virtualFile.path} not found in revision '${info.branchName}'. Treating as a new file (empty base content).")
                         ""
                     } else {
@@ -183,7 +183,7 @@ class LstCrcLineStatusTrackerProvider : LineStatusTrackerContentLoader {
         }
 
         // CRITICAL: Always normalize line separators before returning.
-        return LstCrcTrackerContent(StringUtil.convertLineSeparators(rawContent.toString()))
+        return LstCrcTrackerContent(StringUtil.convertLineSeparators(rawContent))
     }
 
     override fun setLoadedContent(tracker: LocalLineStatusTracker<*>, content: LineStatusTrackerContentLoader.TrackerContent) {
@@ -196,11 +196,7 @@ class LstCrcLineStatusTrackerProvider : LineStatusTrackerContentLoader {
         // To clear the diff, we set the base revision to the current document content.
         // We must cast to the concrete type to access the method.
         val currentContent = runReadAction { tracker.document.text }
-        if (currentContent != null) {
-            (tracker as? SimpleLocalLineStatusTracker)?.setBaseRevision(StringUtil.convertLineSeparators(currentContent))
-            logger.warn("GUTTER_PROVIDER: Cleared diff for ${tracker.virtualFile.path} due to loading error by setting empty diff.")
-        } else {
-            logger.warn("GUTTER_PROVIDER: Failed to clear diff for ${tracker.virtualFile.path} on error, as current content was not available.")
-        }
+        (tracker as? SimpleLocalLineStatusTracker)?.setBaseRevision(StringUtil.convertLineSeparators(currentContent))
+        logger.warn("GUTTER_PROVIDER: Cleared diff for ${tracker.virtualFile.path} due to loading error by setting empty diff.")
     }
 }

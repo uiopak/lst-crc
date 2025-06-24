@@ -9,6 +9,7 @@ import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.PlatformDataKeys
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.service
+import com.intellij.openapi.diagnostic.debug
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.popup.Balloon
@@ -19,12 +20,14 @@ import com.intellij.ui.components.JBTextField
 import com.intellij.ui.components.panels.VerticalLayout
 import com.intellij.ui.content.Content
 import com.intellij.ui.content.ContentManager
+import com.intellij.util.ReflectionUtil
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
 import java.awt.Component
 import java.awt.Point
 import java.awt.event.KeyAdapter
 import java.awt.event.KeyEvent
+import java.lang.reflect.InvocationTargetException
 import javax.swing.JPanel
 import javax.swing.JPopupMenu
 
@@ -35,63 +38,58 @@ import javax.swing.JPopupMenu
  */
 class RenameTabAction : AnAction() {
 
+    private val logger = thisLogger()
+
     /**
      * Finds the associated Content by walking up the component hierarchy from the source component
-     * and trying multiple reflection strategies. This is necessary to support different UI structures.
+     * and trying multiple reflection strategies using the platform's [ReflectionUtil]. This is necessary
+     * to support different UI structures. The reflection attempts are logged to aid debugging
+     * in case of future IDE UI changes.
      */
     private fun findContent(source: Component?): Content? {
         var component = source
         while (component != null) {
-            // Strategy 1: Look for a direct 'myContent' field.
-            try {
-                val contentField = component.javaClass.getDeclaredField("myContent")
-                contentField.isAccessible = true
-                (contentField.get(component) as? Content)?.let { return it }
-            } catch (ignored: Exception) {
+            // Strategy 1: Look for a direct 'myContent' field. Common in simple tab labels.
+            ReflectionUtil.getField(component.javaClass, component, Content::class.java, "myContent")?.let {
+                logger.debug { "RenameTabAction: Found content via Strategy 1 (myContent field) on ${component.javaClass.name}" }
+                return it
             }
 
-            // Strategy 2: Look for 'myInfo' (a TabInfo object).
-            try {
-                val tabInfoField = component.javaClass.getDeclaredField("myInfo")
-                tabInfoField.isAccessible = true
-                val tabInfo = tabInfoField.get(component)
-                if (tabInfo != null) {
-                    try {
-                        val objectField = tabInfo.javaClass.getDeclaredField("myObject")
-                        objectField.isAccessible = true
-                        (objectField.get(tabInfo) as? Content)?.let { return it }
-                    } catch (ignored: Exception) {
-                    }
+            // Strategy 2: Look for 'myInfo' (an internal TabInfo object which holds the content).
+            ReflectionUtil.getField(component.javaClass, component, Any::class.java, "myInfo")?.let { tabInfo ->
+                ReflectionUtil.getField(tabInfo.javaClass, tabInfo, Content::class.java, "myObject")?.let {
+                    logger.debug { "RenameTabAction: Found content via Strategy 2 (myInfo.myObject field) on ${component.javaClass.name}" }
+                    return it
                 }
-            } catch (ignored: Exception) {
             }
 
-            // Strategy 3: Look for 'myLayout' -> 'ui' (ToolWindowContentUi) -> getContentManager()
-            try {
-                val layoutField = component.javaClass.getDeclaredField("myLayout")
-                layoutField.isAccessible = true
-                val layout = layoutField.get(component)
-                if (layout != null) {
-                    try {
-                        // The ComboContentLayout extends ContentLayout, which has a public 'ui' field.
-                        val uiField = layout.javaClass.superclass.getDeclaredField("ui")
-                        uiField.isAccessible = true
-                        val contentUi = uiField.get(layout)
-                        if (contentUi != null) {
-                            val managerMethod = contentUi.javaClass.getMethod("getContentManager")
-                            (managerMethod.invoke(contentUi) as? ContentManager)?.let {
-                                return it.selectedContent
+            // Strategy 3: For combo-box style tabs, navigate through 'myLayout' -> 'ui' -> getContentManager().
+            ReflectionUtil.getField(component.javaClass, component, Any::class.java, "myLayout")?.let { layout ->
+                val uiTargetClass = if (layout.javaClass.superclass.name.endsWith("ContentLayout")) layout.javaClass.superclass else layout.javaClass
+                ReflectionUtil.getField(uiTargetClass, layout, Any::class.java, "ui")?.let { contentUi ->
+                    ReflectionUtil.getMethod(contentUi.javaClass, "getContentManager")?.let { method ->
+                        try {
+                            (method.invoke(contentUi) as? ContentManager)?.let { contentManager ->
+                                // For a combo box, the selected content is the correct one.
+                                logger.debug { "RenameTabAction: Found content via Strategy 3 (getContentManager) on ${component.javaClass.name}" }
+                                return contentManager.selectedContent
+                            }
+                        } catch (e: Exception) {
+                            when (e) {
+                                is IllegalAccessException, is InvocationTargetException -> {
+                                    logger.debug(e) { "RenameTabAction: Strategy 3 failed to invoke getContentManager on ${contentUi.javaClass.name}" }
+                                }
+                                else -> throw e
                             }
                         }
-                    } catch (ignored: Exception) {
                     }
                 }
-            } catch (ignored: Exception) {
             }
 
             if (component is JPopupMenu || component is java.awt.Window) break
             component = component.parent
         }
+        logger.warn("RenameTabAction: Could not find Content for component: ${source?.javaClass?.name}. All strategies failed.")
         return null
     }
 
@@ -150,7 +148,7 @@ class RenameTabAction : AnAction() {
                 val titleLabel = JBLabel(LstCrcBundle.message("rename.popup.title"))
 
                 val panel = JPanel(VerticalLayout(JBUI.scale(4), VerticalLayout.FILL)).apply {
-                    border = JBUI.Borders.empty(2, 2)
+                    border = JBUI.Borders.empty(2)
                     add(titleLabel)
                     add(textField)
                 }

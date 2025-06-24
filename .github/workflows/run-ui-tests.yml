@@ -93,7 +93,7 @@ jobs:
         run: ${{ matrix.runTests }}
 
       - name: Move video
-        if: ${{ failure() }}
+      #  if: ${{ failure() }}
         run: |
           if [ -e video ]; then
             mv video build/reports
@@ -109,7 +109,7 @@ jobs:
         shell: bash
 
       - name: Save fails report
-        if: ${{ failure() }}
+      #  if: ${{ failure() }}
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.reportName }}

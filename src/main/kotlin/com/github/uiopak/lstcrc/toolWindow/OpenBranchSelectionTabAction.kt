@@ -3,7 +3,6 @@ package com.github.uiopak.lstcrc.toolWindow
 import com.github.uiopak.lstcrc.resources.LstCrcBundle
 import com.intellij.icons.AllIcons
 import com.intellij.openapi.actionSystem.ActionUpdateThread
-import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.project.DumbAwareAction
