@@ -78,7 +78,7 @@ class CreateCommandLineKotlinTest {
 //            Thread.sleep(5_000)
             with(textEditor()) {
                 step("Write a code") {
-                    Thread.sleep(30_000)
+                    Thread.sleep(15_000)
                     editor.findText("App").click()
                     keyboard {
                         key(VK_END)
