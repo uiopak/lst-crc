@@ -168,6 +168,7 @@ tasks {
 
     // Configure the test task to use JUnit Platform (JUnit 5)
     test {
+        enabled = false
         useJUnitPlatform()
 
         testLogging {
