@@ -10,6 +10,7 @@ import com.intellij.openapi.util.text.StringUtil
 import com.intellij.openapi.vcs.VcsException
 import com.intellij.openapi.vcs.changes.Change
 import com.intellij.openapi.vcs.changes.ChangeListManager
+import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.openapi.vfs.VfsUtilCore
 import com.intellij.openapi.vfs.VirtualFile
 import git4idea.changes.GitChangeUtils
@@ -43,100 +44,120 @@ class GitService(private val project: Project) {
 
     private val logger = thisLogger()
 
-    internal fun getCurrentRepository(): GitRepository? {
-        logger.debug("getCurrentRepository() called.")
-
+    internal fun getRepositoryForFile(file: VirtualFile): GitRepository? {
         val repositoryManager = GitRepositoryManager.getInstance(project)
-        val repositories = repositoryManager.repositories
-        logger.debug("Found ${repositories.size} repositories by GitRepositoryManager.")
-
-        return when (repositories.size) {
-            0 -> {
-                logger.info("No Git repositories found by manager. Returning null.")
-                null
-            }
-            1 -> {
-                logger.info("Exactly one Git repository found: ${repositories.first().root.path}")
-                repositories.first()
-            }
-            else -> {
-                logger.warn("Multiple Git repositories found (${repositories.size}). Using the first one: ${repositories.first().root.path}")
-                repositories.first()
-            }
-        }
+        return repositoryManager.getRepositoryForFile(file)
     }
 
-    fun getLocalBranches(): List<String> {
-        val repository = getCurrentRepository() ?: return emptyList()
-        return repository.branches.localBranches.map { it.name }
-    }
-
-    fun getRemoteBranches(): List<String> {
-        val repository = getCurrentRepository() ?: return emptyList()
-        return repository.branches.remoteBranches.map { it.name }
+    private fun getRepositories(): List<GitRepository> {
+        val repositoryManager = GitRepositoryManager.getInstance(project)
+        return repositoryManager.repositories
     }
 
     /**
-     * Gets the changes between the current working state and the specified branch name.
-     * These changes represent what is in `branchNameToCompare` that is different from the working state.
-     * - Files added in `branchNameToCompare` (not in HEAD) will be `Change.Type.NEW`.
-     * - Files deleted in `branchNameToCompare` (present in HEAD) will be `Change.Type.DELETED`.
-     * - Files modified will be `Change.Type.MODIFICATION`.
+     * Gets the "primary" repository for the project. This is useful for context where a single
+     * repository is needed (e.g., startup). The logic prefers the repository containing the
+     * project's base directory.
      */
-    fun getChanges(branchNameToCompare: String): CompletableFuture<CategorizedChanges> {
-        logger.debug("getChanges called with branchNameToCompare: $branchNameToCompare")
-        val future = CompletableFuture<CategorizedChanges>()
-        val repository = getCurrentRepository()
+    internal fun getPrimaryRepository(): GitRepository? {
+        logger.debug("getPrimaryRepository() called.")
+        val repositoryManager = GitRepositoryManager.getInstance(project)
+        val repositories = repositoryManager.repositories
+        logger.debug("Found ${repositories.size} repositories.")
 
-        if (repository == null) {
+        if (repositories.isEmpty()) {
+            logger.info("No Git repositories found. Returning null.")
+            return null
+        }
+        if (repositories.size == 1) {
+            logger.info("Exactly one Git repository found: ${repositories.first().root.path}")
+            return repositories.first()
+        }
+
+        // For multiple repositories, prefer the one that contains the project's base path.
+        val projectBasePath = project.basePath?.let { LocalFileSystem.getInstance().findFileByPath(it) }
+        if (projectBasePath != null) {
+            val repoForProjectRoot = repositoryManager.getRepositoryForFile(projectBasePath)
+            if (repoForProjectRoot != null) {
+                logger.info("Multiple repositories found. Using the one for the project root: ${repoForProjectRoot.root.path}")
+                return repoForProjectRoot
+            }
+        }
+
+        // Fallback to the first repository if no better match is found.
+        logger.warn("Multiple Git repositories found, but none contains the project base path. Using the first one: ${repositories.first().root.path}")
+        return repositories.first()
+    }
+
+    fun getLocalBranches(): List<String> {
+        val allBranches = getRepositories().flatMap { repo ->
+            repo.branches.localBranches.map { it.name }
+        }
+        return allBranches.distinct().sorted()
+    }
+
+    fun getRemoteBranches(): List<String> {
+        val allBranches = getRepositories().flatMap { repo ->
+            repo.branches.remoteBranches.map { it.name }
+        }
+        return allBranches.distinct().sorted()
+    }
+
+    fun getChanges(branchNameToCompare: String): CompletableFuture<CategorizedChanges> {
+        logger.debug("getChanges called for all repositories with branchNameToCompare: $branchNameToCompare")
+        val future = CompletableFuture<CategorizedChanges>()
+        val repositories = getRepositories()
+
+        if (repositories.isEmpty()) {
             future.complete(CategorizedChanges(emptyList(), emptyList(), emptyList(), emptyList()))
             return future
         }
 
-        val currentActualBranchName = repository.currentBranchName
-
         object : Task.Backgroundable(project, LstCrcBundle.message("git.task.loading.changes")) {
             override fun run(indicator: ProgressIndicator) {
                 try {
-                    val changes: List<Change>
-                    // For the current branch or HEAD, ChangeListManager provides the most accurate view of local changes.
-                    if (branchNameToCompare == currentActualBranchName ||
-                        (branchNameToCompare == "HEAD" && currentActualBranchName != null /* i.e., not in detached HEAD state */)) {
-                        logger.debug("Using ChangeListManager for target: $branchNameToCompare (current actual: $currentActualBranchName)")
-                        changes = ChangeListManager.getInstance(project).allChanges.toList()
-                        logger.debug("ChangeListManager found ${changes.size} total changes.")
+                    val allChanges = mutableListOf<Change>()
+                    val allCreatedFiles = mutableListOf<VirtualFile>()
+                    val allModifiedFiles = mutableListOf<VirtualFile>()
+                    val allMovedFiles = mutableListOf<VirtualFile>()
+
+                    // Special handling for HEAD: use ChangeListManager for a unified view of all local changes across all repos.
+                    if (branchNameToCompare == "HEAD") {
+                        logger.debug("Using ChangeListManager for HEAD across all repositories.")
+                        allChanges.addAll(ChangeListManager.getInstance(project).allChanges)
                     } else {
-                        // For other branches, diff the working tree against the specified branch to show "current work vs. other branch".
-                        logger.debug("Using GitChangeUtils.getDiffWithWorkingTree for target: $branchNameToCompare")
-                        changes = GitChangeUtils.getDiffWithWorkingTree(repository, branchNameToCompare, true)?.toList() ?: emptyList()
-                        logger.debug("GitChangeUtils.getDiffWithWorkingTree found ${changes.size} total changes for target $branchNameToCompare.")
-                    }
-
-                    val createdFiles = mutableListOf<VirtualFile>()
-                    val modifiedFiles = mutableListOf<VirtualFile>()
-                    val movedFiles = mutableListOf<VirtualFile>()
-
-                    for (change in changes) {
-                        when (change.type) {
-                            Change.Type.NEW -> {
-                                change.afterRevision?.file?.virtualFile?.let { createdFiles.add(it) }
-                            }
-                            Change.Type.MODIFICATION -> {
-                                change.afterRevision?.file?.virtualFile?.let { modifiedFiles.add(it) }
-                            }
-                            Change.Type.MOVED -> {
-                                change.afterRevision?.file?.virtualFile?.let { movedFiles.add(it) }
-                            }
-                            Change.Type.DELETED -> {
-                                // DELETED changes are included in `allChanges` but are not needed for coloring/gutter marks
-                                // of existing files, as the file is gone.
-                            }
-                            else -> {
-                                // Other change types (e.g., UNVERSIONED) are ignored.
+                        // For a specific branch, iterate through each repository.
+                        for (repo in repositories) {
+                            indicator.text = "Checking repository: ${repo.root.name}"
+                            // Check if the branch exists in the current repository before diffing.
+                            val branchExistsInRepo = repo.branches.findBranchByName(branchNameToCompare) != null
+                            if (branchExistsInRepo) {
+                                logger.debug("Getting diff with working tree for repo '${repo.root.path}' against branch '$branchNameToCompare'")
+                                val repoChanges = GitChangeUtils.getDiffWithWorkingTree(repo, branchNameToCompare, true)
+                                if (repoChanges != null) {
+                                    allChanges.addAll(repoChanges)
+                                }
+                            } else {
+                                logger.debug("Branch '$branchNameToCompare' not found in repository '${repo.root.path}'. Skipping.")
                             }
                         }
                     }
-                    val categorizedChanges = CategorizedChanges(changes, createdFiles, modifiedFiles, movedFiles)
+
+                    for (change in allChanges) {
+                        when (change.type) {
+                            Change.Type.NEW -> change.afterRevision?.file?.virtualFile?.let { allCreatedFiles.add(it) }
+                            Change.Type.MODIFICATION -> change.afterRevision?.file?.virtualFile?.let { allModifiedFiles.add(it) }
+                            Change.Type.MOVED -> change.afterRevision?.file?.virtualFile?.let { allMovedFiles.add(it) }
+                            else -> { /* Other types like DELETED are ignored for categorization */ }
+                        }
+                    }
+
+                    val categorizedChanges = CategorizedChanges(
+                        allChanges.distinct(),
+                        allCreatedFiles.distinct(),
+                        allModifiedFiles.distinct(),
+                        allMovedFiles.distinct()
+                    )
                     future.complete(categorizedChanges)
                 } catch (e: VcsException) {
                     logger.error("Error getting changes for $branchNameToCompare: ${e.message}", e)
@@ -151,31 +172,23 @@ class GitService(private val project: Project) {
         return future
     }
 
-    /**
-     * Asynchronously loads the content of a file from a specific git revision (branch, tag, commit hash).
-     *
-     * @param revision The git revision to load the file from.
-     * @param file The virtual file whose content is to be loaded.
-     * @return A CompletableFuture that will complete with the file content as a String, or null if the file
-     *         does not exist in that revision. The future completes exceptionally on other errors.
-     */
     fun getFileContentForRevision(revision: String, file: VirtualFile): CompletableFuture<String?> {
         val future = CompletableFuture<String?>()
-        val repository = getCurrentRepository()
+        val repository = getRepositoryForFile(file)
 
         if (repository == null) {
-            logger.warn("Cannot get file content for revision '$revision' for file '${file.path}', no repository found.")
+            logger.warn("Cannot get file content for revision '$revision' for file '${file.path}', no repository found for this file.")
             future.complete(null)
             return future
         }
 
         com.intellij.openapi.application.ApplicationManager.getApplication().executeOnPooledThread {
             try {
-                logger.debug("GUTTER_GIT_SERVICE: Preparing to fetch content for revision:'$revision' file:'${file.path}'")
+                logger.debug("GUTTER_GIT_SERVICE: Preparing to fetch content for revision:'${revision}' file:'${file.path}'")
 
                 val relativePath = VfsUtilCore.getRelativePath(file, repository.root, '/')
                 if (relativePath == null) {
-                    val errorMessage = "Could not calculate relative path for file '${file.path}' against repo root '${repository.root.path}'."
+                    val errorMessage = "Could not calculate relative path for file '${file.path}' against repo root '${repository.root.path}'.'"
                     logger.error("GUTTER_GIT_SERVICE: $errorMessage")
                     future.completeExceptionally(IllegalStateException(errorMessage))
                     return@executeOnPooledThread
@@ -188,7 +201,7 @@ class GitService(private val project: Project) {
                 // We must convert them to prevent a "Wrong line separators" AssertionError from the line status tracker.
                 val normalizedContent = StringUtil.convertLineSeparators(rawContent)
 
-                logger.info("GUTTER_GIT_SERVICE: Successfully fetched content for '$relativePath' in revision '$revision'.")
+                logger.info("GUTTER_GIT_SERVICE: Successfully fetched content for '${relativePath}' in revision '${revision}'.")
                 future.complete(normalizedContent)
             } catch (e: VcsException) {
                 logger.warn("GUTTER_GIT_SERVICE: VcsException while getting content for '${file.path}' in revision '$revision'. Message: ${e.message}")

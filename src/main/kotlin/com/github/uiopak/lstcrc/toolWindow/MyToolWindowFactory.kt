@@ -84,7 +84,7 @@ class MyToolWindowFactory : ToolWindowFactory {
             // Restore persisted tabs from the previous session.
             var selectedContentRestored = false
             val persistedState = stateService.state
-            val currentRepository = gitService.getCurrentRepository()
+            val currentRepository = gitService.getPrimaryRepository()
 
             if (persistedState.openTabs.isNotEmpty()) {
                 persistedState.openTabs.forEach { tabInfo ->

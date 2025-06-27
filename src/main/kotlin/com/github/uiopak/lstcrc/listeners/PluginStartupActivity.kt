@@ -90,7 +90,7 @@ class PluginStartupActivity : ProjectActivity {
         }
 
         val gitService = project.service<GitService>()
-        val currentRepo = gitService.getCurrentRepository()
+        val currentRepo = gitService.getPrimaryRepository()
         val toolWindowStateService = project.service<ToolWindowStateService>()
 
         if (currentRepo == null) {
