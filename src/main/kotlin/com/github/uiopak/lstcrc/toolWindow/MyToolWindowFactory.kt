@@ -12,6 +12,8 @@ import com.intellij.openapi.actionSystem.DefaultActionGroup
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.service
 import com.intellij.openapi.diagnostic.thisLogger
+import com.intellij.openapi.progress.ProgressIndicator
+import com.intellij.openapi.progress.Task
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.wm.ToolWindow
 import com.intellij.openapi.wm.ToolWindowFactory
@@ -30,143 +32,162 @@ class MyToolWindowFactory : ToolWindowFactory {
     private val logger = thisLogger()
 
     override fun createToolWindowContent(project: Project, toolWindow: ToolWindow) {
-        logger.info("createToolWindowContent called for project: ${project.name}")
+        logger.info("createToolWindowContent called for project: ${project.name}. Scheduling data fetch and UI setup.")
 
-        // Programmatically set the icon to use a standard IDE icon. This overrides any icon in plugin.xml.
-        toolWindow.setIcon(AllIcons.Actions.ListChanges)
+        object : Task.Backgroundable(project, LstCrcBundle.message("git.task.initializing"), false) {
+            // Data to be fetched on BGT
+            lateinit var persistedState: ToolWindowState
+            var currentActualBranchName: String? = null
 
-        val properties = PropertiesComponent.getInstance()
-        val showTitle = properties.getBoolean(
-            ToolWindowSettingsProvider.APP_SHOW_TOOL_WINDOW_TITLE_KEY,
-            ToolWindowSettingsProvider.DEFAULT_SHOW_TOOL_WINDOW_TITLE
-        )
-        toolWindow.component.putClientProperty(ToolWindowContentUi.HIDE_ID_LABEL, if (showTitle) null else "true")
+            override fun run(indicator: ProgressIndicator) {
+                // This runs on a BGT, safe to call slow methods
+                indicator.text = "Fetching Git repository info..."
+                val stateService = project.service<ToolWindowStateService>()
+                persistedState = stateService.state
 
-        val stateService = ToolWindowStateService.getInstance(project)
-        val contentManager = toolWindow.contentManager
+                // Only need to fetch current branch if there are no persisted tabs,
+                // which is a potentially slow operation.
+                if (persistedState.openTabs.isEmpty()) {
+                    val gitService = project.service<GitService>()
+                    val currentRepository = gitService.getPrimaryRepository()
+                    currentActualBranchName = currentRepository?.currentBranchName
+                }
+            }
 
-        // Listen for state changes to update UI elements like tab aliases.
-        project.messageBus.connect(toolWindow.disposable).subscribe(ToolWindowStateService.TOPIC,
-            object : ToolWindowStateService.Companion.ToolWindowStateListener {
-                override fun stateChanged(newState: ToolWindowState) {
-                    ApplicationManager.getApplication().invokeLater {
-                        if (project.isDisposed || toolWindow.isDisposed) return@invokeLater
-                        newState.openTabs.forEach { tabInfo ->
-                            val content = contentManager.contents.find { c -> c.getUserData(LstCrcKeys.BRANCH_NAME_KEY) == tabInfo.branchName }
-                            content?.let {
-                                val newDisplayName = tabInfo.alias ?: tabInfo.branchName
-                                if (it.displayName != newDisplayName) {
-                                    it.displayName = newDisplayName
+            override fun onSuccess() {
+                // This runs on the EDT, safe to do UI work
+                if (project.isDisposed || toolWindow.isDisposed) {
+                    logger.info("Project or tool window disposed before UI setup.")
+                    return
+                }
+
+                logger.info("Setting up tool window UI on EDT.")
+
+                val stateService = project.service<ToolWindowStateService>()
+                val contentManager = toolWindow.contentManager
+
+                // Programmatically set the icon to use a standard IDE icon.
+                toolWindow.setIcon(AllIcons.Actions.ListChanges)
+
+                val properties = PropertiesComponent.getInstance()
+                val showTitle = properties.getBoolean(
+                    ToolWindowSettingsProvider.APP_SHOW_TOOL_WINDOW_TITLE_KEY,
+                    ToolWindowSettingsProvider.DEFAULT_SHOW_TOOL_WINDOW_TITLE
+                )
+                toolWindow.component.putClientProperty(ToolWindowContentUi.HIDE_ID_LABEL, if (showTitle) null else "true")
+
+                // Listen for state changes to update UI elements like tab aliases.
+                project.messageBus.connect(toolWindow.disposable).subscribe(ToolWindowStateService.TOPIC,
+                    object : ToolWindowStateService.Companion.ToolWindowStateListener {
+                        override fun stateChanged(newState: ToolWindowState) {
+                            ApplicationManager.getApplication().invokeLater {
+                                if (project.isDisposed || toolWindow.isDisposed) return@invokeLater
+                                newState.openTabs.forEach { tabInfo ->
+                                    val content = contentManager.contents.find { c -> c.getUserData(LstCrcKeys.BRANCH_NAME_KEY) == tabInfo.branchName }
+                                    content?.let {
+                                        val newDisplayName = tabInfo.alias ?: tabInfo.branchName
+                                        if (it.displayName != newDisplayName) {
+                                            it.displayName = newDisplayName
+                                        }
+                                    }
                                 }
                             }
                         }
-                    }
+                    })
+
+                val gitChangesUiProvider = GitChangesToolWindow(project, toolWindow.disposable)
+                val contentFactory = ContentFactory.getInstance()
+
+                // Create the permanent "HEAD" tab.
+                val headView = gitChangesUiProvider.createBranchContentView("HEAD")
+                val headContent = contentFactory.createContent(headView, LstCrcBundle.message("tab.name.head"), false).apply {
+                    isCloseable = false
+                    isPinned = true
                 }
-            })
+                contentManager.addContent(headContent)
 
-        // Defer the main content population to ensure the tool window components are ready.
-        // This fixes issues where the window is initialized while hidden.
-        ApplicationManager.getApplication().invokeLater {
-            if (project.isDisposed || toolWindow.isDisposed) return@invokeLater
-
-            val gitChangesUiProvider = GitChangesToolWindow(project, toolWindow.disposable)
-            val contentFactory = ContentFactory.getInstance()
-            val gitService = project.service<GitService>()
-
-            // Create the permanent "HEAD" tab.
-            val headView = gitChangesUiProvider.createBranchContentView("HEAD")
-            val headContent = contentFactory.createContent(headView, LstCrcBundle.message("tab.name.head"), false).apply {
-                isCloseable = false
-                isPinned = true
-            }
-            contentManager.addContent(headContent)
-
-            // Restore persisted tabs from the previous session.
-            var selectedContentRestored = false
-            val persistedState = stateService.state
-            val currentRepository = gitService.getPrimaryRepository()
-
-            if (persistedState.openTabs.isNotEmpty()) {
-                persistedState.openTabs.forEach { tabInfo ->
-                    val displayName = tabInfo.alias ?: tabInfo.branchName
-                    ToolWindowHelper.createBranchContent(project, toolWindow, tabInfo.branchName, displayName, contentManager)
-                }
-                if (persistedState.selectedTabIndex >= 0 && persistedState.selectedTabIndex < persistedState.openTabs.size) {
-                    val selectedTabInfo = persistedState.openTabs[persistedState.selectedTabIndex]
-                    val contentToSelect = contentManager.contents.find { it.getUserData(LstCrcKeys.BRANCH_NAME_KEY) == selectedTabInfo.branchName }
-                    if (contentToSelect != null) {
-                        contentManager.setSelectedContent(contentToSelect, true)
-                        selectedContentRestored = true
+                // Restore persisted tabs from the previous session.
+                var selectedContentRestored = false
+                if (persistedState.openTabs.isNotEmpty()) {
+                    persistedState.openTabs.forEach { tabInfo ->
+                        val displayName = tabInfo.alias ?: tabInfo.branchName
+                        ToolWindowHelper.createBranchContent(project, toolWindow, tabInfo.branchName, displayName, contentManager)
                     }
-                }
-            } else {
-                // On first launch with no persisted state, add a tab for the current Git branch.
-                val currentActualBranchName = currentRepository?.currentBranchName
-                if (currentActualBranchName != null) {
-                    val initialBranchContent = ToolWindowHelper.createBranchContent(project, toolWindow, currentActualBranchName, currentActualBranchName, contentManager)
-                    contentManager.setSelectedContent(initialBranchContent, true)
-                    selectedContentRestored = true
-                    stateService.addTab(currentActualBranchName)
-                    val newTabIndexInState = stateService.state.openTabs.indexOfFirst { it.branchName == currentActualBranchName }
-                    if (newTabIndexInState != -1) {
-                        stateService.setSelectedTab(newTabIndexInState)
-                    }
-                }
-            }
-
-            // If no other tab was restored as selected, default to the HEAD tab.
-            if (!selectedContentRestored) {
-                contentManager.setSelectedContent(headContent, true)
-                stateService.setSelectedTab(-1)
-            }
-        }
-
-        // Keep the persisted state in sync with UI actions.
-        contentManager.addContentManagerListener(object : ContentManagerListener {
-            override fun contentRemoved(event: ContentManagerEvent) {
-                val branchName = event.content.getUserData(LstCrcKeys.BRANCH_NAME_KEY)
-                if (branchName != null) {
-                    stateService.removeTab(branchName)
-                    if (contentManager.contentCount > 0 && contentManager.selectedContent?.isCloseable == false) {
-                        stateService.setSelectedTab(-1)
-                    }
-                }
-            }
-
-            override fun selectionChanged(event: ContentManagerEvent) {
-                ApplicationManager.getApplication().invokeLater {
-                    // Do not check for isVisible here. The state must always be in sync
-                    // with the UI selection, even if the window is hidden.
-                    if (project.isDisposed || toolWindow.isDisposed) {
-                        return@invokeLater
-                    }
-                    val selectedContent = toolWindow.contentManager.selectedContent ?: return@invokeLater
-
-                    val branchName = selectedContent.getUserData(LstCrcKeys.BRANCH_NAME_KEY)
-                    if (branchName != null) {
-                        val closableTabsInState = stateService.state.openTabs
-                        val indexInPersistedList = closableTabsInState.indexOfFirst { it.branchName == branchName }
-                        if (indexInPersistedList != -1) {
-                            stateService.setSelectedTab(indexInPersistedList)
+                    if (persistedState.selectedTabIndex >= 0 && persistedState.selectedTabIndex < persistedState.openTabs.size) {
+                        val selectedTabInfo = persistedState.openTabs[persistedState.selectedTabIndex]
+                        val contentToSelect = contentManager.contents.find { it.getUserData(LstCrcKeys.BRANCH_NAME_KEY) == selectedTabInfo.branchName }
+                        if (contentToSelect != null) {
+                            contentManager.setSelectedContent(contentToSelect, true)
+                            selectedContentRestored = true
                         }
-                    } else { // This branch is taken for the HEAD tab
-                        stateService.setSelectedTab(-1)
+                    }
+                } else {
+                    // On first launch, use the branch name fetched in the background.
+                    // Capture the mutable property in a local, immutable variable for safe smart casting.
+                    val branchNameToCreate = currentActualBranchName
+                    if (branchNameToCreate != null) {
+                        val initialBranchContent = ToolWindowHelper.createBranchContent(project, toolWindow, branchNameToCreate, branchNameToCreate, contentManager)
+                        contentManager.setSelectedContent(initialBranchContent, true)
+                        selectedContentRestored = true
+                        stateService.addTab(branchNameToCreate)
+                        val newTabIndexInState = stateService.state.openTabs.indexOfFirst { it.branchName == branchNameToCreate }
+                        if (newTabIndexInState != -1) {
+                            stateService.setSelectedTab(newTabIndexInState)
+                        }
                     }
                 }
+
+                // If no other tab was restored as selected, default to the HEAD tab.
+                if (!selectedContentRestored) {
+                    contentManager.setSelectedContent(headContent, true)
+                    stateService.setSelectedTab(-1)
+                }
+
+                // Keep the persisted state in sync with UI actions.
+                contentManager.addContentManagerListener(object : ContentManagerListener {
+                    override fun contentRemoved(event: ContentManagerEvent) {
+                        val branchName = event.content.getUserData(LstCrcKeys.BRANCH_NAME_KEY)
+                        if (branchName != null) {
+                            stateService.removeTab(branchName)
+                            if (contentManager.contentCount > 0 && contentManager.selectedContent?.isCloseable == false) {
+                                stateService.setSelectedTab(-1)
+                            }
+                        }
+                    }
+
+                    override fun selectionChanged(event: ContentManagerEvent) {
+                        if (project.isDisposed || toolWindow.isDisposed) return
+                        val selectedContent = toolWindow.contentManager.selectedContent ?: return
+
+                        val branchName = selectedContent.getUserData(LstCrcKeys.BRANCH_NAME_KEY)
+                        if (branchName != null) {
+                            val closableTabsInState = stateService.state.openTabs
+                            val indexInPersistedList = closableTabsInState.indexOfFirst { it.branchName == branchName }
+                            if (indexInPersistedList != -1) {
+                                stateService.setSelectedTab(indexInPersistedList)
+                            }
+                        } else { // This branch is taken for the HEAD tab
+                            stateService.setSelectedTab(-1)
+                        }
+                    }
+                })
+
+                // Use setTabActions to place the '+' button directly next to the tabs
+                val openSelectionTabAction = OpenBranchSelectionTabAction(project, toolWindow)
+                (toolWindow as? ToolWindowEx)?.setTabActions(openSelectionTabAction)
+
+                val pluginSettingsSubMenu: ActionGroup = ToolWindowSettingsProvider.createToolWindowSettingsGroup()
+                val allGearActionsGroup = DefaultActionGroup()
+                allGearActionsGroup.add(pluginSettingsSubMenu)
+                toolWindow.setAdditionalGearActions(allGearActionsGroup)
+
+                logger.info("Tool window UI setup complete.")
             }
-        })
 
-        // Use setTabActions to place the '+' button directly next to the tabs
-        val openSelectionTabAction = OpenBranchSelectionTabAction(project, toolWindow)
-        (toolWindow as? ToolWindowEx)?.setTabActions(openSelectionTabAction)
-
-        val pluginSettingsSubMenu: ActionGroup = ToolWindowSettingsProvider.createToolWindowSettingsGroup()
-
-        val allGearActionsGroup = DefaultActionGroup()
-        allGearActionsGroup.add(pluginSettingsSubMenu)
-        toolWindow.setAdditionalGearActions(allGearActionsGroup)
-
-        logger.info("createToolWindowContent finished.")
+            override fun onThrowable(error: Throwable) {
+                logger.error("Failed to initialize tool window content.", error)
+            }
+        }.queue()
     }
 
     override fun shouldBeAvailable(project: Project) = true
