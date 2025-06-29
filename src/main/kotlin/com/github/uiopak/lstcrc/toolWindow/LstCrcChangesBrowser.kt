@@ -2,16 +2,15 @@ package com.github.uiopak.lstcrc.toolWindow
 
 import com.github.uiopak.lstcrc.resources.LstCrcBundle
 import com.github.uiopak.lstcrc.services.CategorizedChanges
+import com.github.uiopak.lstcrc.services.GitService
 import com.github.uiopak.lstcrc.services.ToolWindowStateService
+import com.github.uiopak.lstcrc.state.TabInfo
 import com.github.uiopak.lstcrc.utils.getTreePathForMouseCoordinates
+import com.intellij.icons.AllIcons
+import com.intellij.ide.DataManager
 import com.intellij.ide.projectView.ProjectView
 import com.intellij.openapi.Disposable
-import com.intellij.openapi.actionSystem.ActionManager
-import com.intellij.openapi.actionSystem.ActionPlaces
-import com.intellij.openapi.actionSystem.ActionUpdateThread
-import com.intellij.openapi.actionSystem.AnAction
-import com.intellij.openapi.actionSystem.AnActionEvent
-import com.intellij.openapi.actionSystem.DefaultActionGroup
+import com.intellij.openapi.actionSystem.*
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.service
 import com.intellij.openapi.diagnostic.thisLogger
@@ -19,11 +18,10 @@ import com.intellij.openapi.fileEditor.OpenFileDescriptor
 import com.intellij.openapi.project.DumbAwareAction
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.Messages
+import com.intellij.openapi.ui.popup.JBPopupFactory
 import com.intellij.openapi.vcs.changes.Change
 import com.intellij.openapi.vcs.changes.actions.diff.ShowDiffAction
-import com.intellij.openapi.vcs.changes.ui.ChangesBrowserNode
-import com.intellij.openapi.vcs.changes.ui.ChangesTree
-import com.intellij.openapi.vcs.changes.ui.SimpleAsyncChangesBrowser
+import com.intellij.openapi.vcs.changes.ui.*
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.openapi.wm.ToolWindowId
 import com.intellij.openapi.wm.ToolWindowManager
@@ -42,21 +40,27 @@ import javax.swing.JComponent
 import javax.swing.JPanel
 import javax.swing.SwingUtilities
 import javax.swing.Timer
+import javax.swing.tree.DefaultTreeModel
 
 /**
  * The main UI component for displaying the tree of file changes for a specific branch comparison.
- * It extends [SimpleAsyncChangesBrowser] but provides highly customized mouse click handling
- * based on user settings, and integrates with the plugin's data refresh lifecycle.
+ * It extends [AsyncChangesBrowserBase] to provide a fully custom asynchronous tree model, and
+ * highly customized mouse click handling based on user settings.
  */
 class LstCrcChangesBrowser(
     private val project: Project,
     private val targetBranchToCompare: String,
     parentDisposable: Disposable
-) : SimpleAsyncChangesBrowser(project, false, true), Disposable, GitRepositoryChangeListener {
+) : AsyncChangesBrowserBase(project, false, true), Disposable, GitRepositoryChangeListener {
 
     private val logger = thisLogger()
     private var refreshDebounceTimer: Timer? = null
-    private var isInitialLoad = true
+
+    // This field will hold the changes and context for the async tree model builder.
+    private var currentChanges: CategorizedChanges? = null
+
+    private val selectedChanges: List<Change>
+        get() = VcsTreeModelData.selected(viewer).userObjects(Change::class.java)
 
     /** Helper class to manage the state for detecting single vs. double clicks. */
     private class ClickState {
@@ -78,6 +82,10 @@ class LstCrcChangesBrowser(
     private val rightClickState = ClickState()
 
     init {
+        // This is CRITICAL. Unlike SimpleAsyncChangesBrowser, AsyncChangesBrowserBase does not call
+        // init() in its constructor, so we must do it to build the component layout.
+        init()
+
         viewer.emptyText.text = LstCrcBundle.message("changes.browser.loading")
         project.messageBus.connect(this).subscribe(GitRepository.GIT_REPO_CHANGE, this)
         com.intellij.openapi.util.Disposer.register(parentDisposable, this)
@@ -176,6 +184,22 @@ class LstCrcChangesBrowser(
         }
     }
 
+    override fun createToolbarActions(): MutableList<AnAction> {
+        val actions = super.createToolbarActions().toMutableList()
+        // Find the "Group by" action and insert our action right after it.
+        val groupByActionIndex = actions.indexOfFirst { it.javaClass.simpleName == "GroupByActionGroup" }
+
+        val configureAction = ShowRepoComparisonInfoAction(this)
+
+        if (groupByActionIndex != -1) {
+            actions.add(groupByActionIndex + 1, configureAction)
+        } else {
+            actions.add(configureAction)
+        }
+        return actions
+    }
+
+
     /**
      * Override to return an empty list, completely disabling the default right-click context menu.
      * This is a secondary measure; the primary is removing the `PopupHandler` listener in the init block.
@@ -183,6 +207,33 @@ class LstCrcChangesBrowser(
     override fun createPopupMenuActions(): MutableList<AnAction> {
         return mutableListOf()
     }
+
+    override val changesTreeModel: AsyncChangesTreeModel =
+        SimpleAsyncChangesTreeModel.create { userSelectedGroupingFactory ->
+            val gitService = project.service<GitService>()
+            val hasMultipleRepos = gitService.getRepositories().size > 1
+
+            // If there are multiple repos, we force grouping by repository.
+            // Otherwise, we respect the user's choice from the toolbar (e.g., Directory, Module).
+            val effectiveGroupingFactory = if (hasMultipleRepos) {
+                // This is the platform's standard way to get the factory for grouping by repository.
+                ChangesGroupingSupport.getFactory(ChangesGroupingSupport.REPOSITORY_GROUPING)
+            } else {
+                userSelectedGroupingFactory
+            }
+
+            val builder = TreeModelBuilder(project, effectiveGroupingFactory)
+            val changes = currentChanges?.allChanges ?: emptyList()
+
+            if (changes.isNotEmpty()) {
+                // We no longer need to build custom repository nodes. We just insert all changes,
+                // and the chosen grouping policy (either REPOSITORY or the user's selection)
+                // will handle the tree structure creation automatically.
+                builder.insertChanges(changes, builder.myRoot)
+            }
+            builder.build()
+        }
+
 
     private fun handleGenericClick(
         e: MouseEvent,
@@ -306,8 +357,7 @@ class LstCrcChangesBrowser(
         ApplicationManager.getApplication().invokeLater {
             if (project.isDisposed) return@invokeLater
 
-            val changes = categorizedChanges?.allChanges ?: emptyList()
-            val hasChanges = changes.isNotEmpty()
+            val hasChanges = categorizedChanges?.allChanges?.isNotEmpty() ?: false
 
             viewer.emptyText.text = when {
                 categorizedChanges == null -> LstCrcBundle.message("changes.browser.error.loading", forBranchName)
@@ -315,15 +365,9 @@ class LstCrcChangesBrowser(
                 else -> LstCrcBundle.message("changes.browser.no.changes.filtered")
             }
 
-            // On the very first load, reset the tree to a default expanded state.
-            // On subsequent refreshes, use our custom strategy to preserve state but expand new nodes.
-            val strategy = if (isInitialLoad && hasChanges) {
-                isInitialLoad = false
-                ChangesTree.ALWAYS_RESET
-            } else {
-                ExpandNewNodesStateStrategy()
-            }
-            setChangesToDisplay(changes, strategy)
+            // Store the changes and trigger an asynchronous rebuild
+            currentChanges = categorizedChanges
+            viewer.rebuildTree()
         }
     }
 
@@ -338,7 +382,7 @@ class LstCrcChangesBrowser(
 
 
     override fun repositoryChanged(repository: GitRepository) {
-        if (repository.project == this.project) {
+        if (repository.project == project) {
             logger.debug("GIT_REPO_CHANGE: repositoryChanged event received in browser, triggering debounced refresh.")
             triggerDebouncedDataRefresh()
         }
@@ -383,8 +427,8 @@ class LstCrcChangesBrowser(
     }
 
     private fun showContextMenu(e: MouseEvent) {
-        val selectedChanges = this.selectedChanges
-        if (selectedChanges.isEmpty()) return
+        val changes = this.selectedChanges
+        if (changes.isEmpty()) return
 
         val group = DefaultActionGroup()
         group.add(createContextMenuAction("context.menu.show.diff", this::openDiff))
@@ -411,4 +455,63 @@ class LstCrcChangesBrowser(
     private fun getDoubleMiddleClickAction(): String = ToolWindowSettingsProvider.getDoubleMiddleClickAction()
     private fun getRightClickAction(): String = ToolWindowSettingsProvider.getRightClickAction()
     private fun getDoubleRightClickAction(): String = ToolWindowSettingsProvider.getDoubleRightClickAction()
+}
+
+/**
+ * Action to open a popup showing the current comparison context for each repository,
+ * and allowing the user to change it.
+ */
+private class ShowRepoComparisonInfoAction(
+    private val browser: LstCrcChangesBrowser
+) : DumbAwareAction(
+    LstCrcBundle.message("action.configure.repos.text"),
+    LstCrcBundle.message("action.configure.repos.description"),
+    AllIcons.General.GearPlain
+) {
+    override fun update(e: AnActionEvent) {
+        val project = e.project
+        if (project == null) {
+            e.presentation.isEnabledAndVisible = false
+            return
+        }
+        val gitService = project.service<GitService>()
+        // This action is only useful in multi-repository projects.
+        e.presentation.isEnabledAndVisible = gitService.getRepositories().size > 1
+    }
+
+    override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
+
+    override fun actionPerformed(e: AnActionEvent) {
+        val project = e.project ?: return
+        val stateService = project.service<ToolWindowStateService>()
+        val gitService = project.service<GitService>()
+        val tabInfo = stateService.getSelectedTabInfo() ?: return
+
+        val repositories = gitService.getRepositories()
+        val actionGroup = DefaultActionGroup()
+
+        for (repo in repositories.sortedBy { it.root.name }) {
+            val currentTarget = tabInfo.comparisonMap[repo.root.path]
+                ?: if (repo.branches.findBranchByName(tabInfo.branchName) != null) tabInfo.branchName else "HEAD"
+
+            val actionText = LstCrcBundle.message("changes.browser.repo.node.full.comparison.text", repo.root.name, currentTarget)
+
+            actionGroup.add(object : AnAction(actionText) {
+                override fun actionPerformed(e: AnActionEvent) {
+                    val dialog = SingleRepoBranchSelectionDialog(project, repo, tabInfo)
+                    dialog.show()
+                }
+            })
+        }
+
+        val dataContext = DataManager.getInstance().getDataContext(e.inputEvent?.component)
+        val popup = JBPopupFactory.getInstance().createActionGroupPopup(
+            LstCrcBundle.message("action.configure.repos.popup.title"),
+            actionGroup,
+            dataContext,
+            JBPopupFactory.ActionSelectionAid.MNEMONICS,
+            true
+        )
+        popup.showInBestPositionFor(dataContext)
+    }
 }

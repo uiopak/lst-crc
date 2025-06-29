@@ -33,17 +33,17 @@ object ToolWindowSettingsProvider {
 
     const val APP_SINGLE_CLICK_ACTION_KEY = "com.github.uiopak.lstcrc.app.singleClickAction"
     const val APP_DOUBLE_CLICK_ACTION_KEY = "com.github.uiopak.lstcrc.app.doubleClickAction"
-    const val DEFAULT_SINGLE_CLICK_ACTION = ACTION_NONE
-    const val DEFAULT_DOUBLE_CLICK_ACTION = ACTION_OPEN_DIFF
+    const val DEFAULT_SINGLE_CLICK_ACTION = ACTION_OPEN_SOURCE
+    const val DEFAULT_DOUBLE_CLICK_ACTION = ACTION_NONE
 
     const val APP_MIDDLE_CLICK_ACTION_KEY = "com.github.uiopak.lstcrc.app.middleClickAction"
     const val APP_DOUBLE_MIDDLE_CLICK_ACTION_KEY = "com.github.uiopak.lstcrc.app.doubleMiddleClickAction"
-    const val DEFAULT_MIDDLE_CLICK_ACTION = ACTION_NONE
+    const val DEFAULT_MIDDLE_CLICK_ACTION = ACTION_SHOW_IN_PROJECT_TREE
     const val DEFAULT_DOUBLE_MIDDLE_CLICK_ACTION = ACTION_NONE
 
     const val APP_RIGHT_CLICK_ACTION_KEY = "com.github.uiopak.lstcrc.app.rightClickAction"
     const val APP_DOUBLE_RIGHT_CLICK_ACTION_KEY = "com.github.uiopak.lstcrc.app.doubleRightClickAction"
-    const val DEFAULT_RIGHT_CLICK_ACTION = ACTION_NONE
+    const val DEFAULT_RIGHT_CLICK_ACTION = ACTION_OPEN_DIFF
     const val DEFAULT_DOUBLE_RIGHT_CLICK_ACTION = ACTION_NONE
 
     // --- Keys for General Settings ---

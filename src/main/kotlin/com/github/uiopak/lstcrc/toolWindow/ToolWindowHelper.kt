@@ -6,11 +6,14 @@ import com.github.uiopak.lstcrc.services.ToolWindowStateService
 import com.github.uiopak.lstcrc.utils.LstCrcKeys
 import com.intellij.openapi.components.service
 import com.intellij.openapi.diagnostic.thisLogger
+import com.intellij.openapi.progress.ProgressIndicator
+import com.intellij.openapi.progress.Task
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.wm.ToolWindow
 import com.intellij.ui.content.Content
 import com.intellij.ui.content.ContentFactory
 import com.intellij.ui.content.ContentManager
+import git4idea.repo.GitRepository
 
 /**
  * A helper object for common tool window UI operations.
@@ -110,56 +113,66 @@ object ToolWindowHelper {
                 return@activate
             }
 
-            val uiProvider = GitChangesToolWindow(project, toolWindow.disposable)
-            val stateService = project.service<ToolWindowStateService>()
-            val contentFactory = ContentFactory.getInstance()
+            // Fetching repository info can be slow, so run it in a background task.
+            object : Task.Backgroundable(project, LstCrcBundle.message("git.task.repo.info"), true) {
+                var primaryRepo: GitRepository? = null
 
-            val branchSelectionUi = BranchSelectionPanel(project.service<GitService>()) { selectedBranchName ->
-                logger.info("HELPER (Callback): Branch '$selectedBranchName' selected from panel.")
-                val manager: ContentManager = toolWindow.contentManager
-                val selectionTabContent = manager.findContent(selectionTabName)
-
-                if (selectedBranchName.isBlank() || selectionTabContent == null) {
-                    logger.error("HELPER (Callback): selectedBranchName is blank or selection tab disappeared.")
-                    selectionTabContent?.let { manager.removeContent(it, true) }
-                    return@BranchSelectionPanel
+                override fun run(indicator: ProgressIndicator) {
+                    // This runs on a BGT, safe for slow operations.
+                    primaryRepo = project.service<GitService>().getPrimaryRepository()
                 }
 
-                // Instead of creating a new tab from scratch, repurpose the "Select Branch" tab.
-                // This is a smoother user experience than closing one and opening another.
-                val existingBranchTab = manager.contents.find { it.getUserData(LstCrcKeys.BRANCH_NAME_KEY) == selectedBranchName }
-                if (existingBranchTab != null) {
-                    manager.setSelectedContent(existingBranchTab, true)
-                    manager.removeContent(selectionTabContent, true) // Remove the temporary selection tab
-                } else {
-                    logger.info("HELPER (Callback): Repurposing '$selectionTabName' tab to '$selectedBranchName'.")
-                    val newBranchContentView = uiProvider.createBranchContentView(selectedBranchName)
-                    selectionTabContent.displayName = selectedBranchName
-                    selectionTabContent.component = newBranchContentView
-                    selectionTabContent.putUserData(LstCrcKeys.BRANCH_NAME_KEY, selectedBranchName)
+                override fun onSuccess() {
+                    // This runs on the EDT, safe for UI operations.
+                    if (project.isDisposed || toolWindow.isDisposed) return
 
-                    manager.setSelectedContent(selectionTabContent, true)
-                    stateService.addTab(selectedBranchName)
+                    val gitService = project.service<GitService>()
+                    val stateService = project.service<ToolWindowStateService>()
+                    val contentFactory = ContentFactory.getInstance()
 
-                    // Manually set the selected tab in the state service to trigger data loading.
-                    // The selectionChanged listener might not fire when repurposing an already-selected tab.
-                    val newIndex = stateService.state.openTabs.indexOfFirst { it.branchName == selectedBranchName }
-                    if (newIndex != -1) {
-                        stateService.setSelectedTab(newIndex)
-                    } else {
-                        // Failsafe: If state update hasn't propagated, directly request refresh.
-                        (newBranchContentView as? LstCrcChangesBrowser)?.requestRefreshData()
+                    val branchSelectionUi = BranchSelectionPanel(gitService, primaryRepo) { selectedBranchName ->
+                        logger.info("HELPER (Callback): Branch '$selectedBranchName' selected from panel.")
+                        val manager: ContentManager = toolWindow.contentManager
+                        val selectionTabContent = manager.findContent(selectionTabName)
+
+                        if (selectedBranchName.isBlank() || selectionTabContent == null) {
+                            logger.error("HELPER (Callback): selectedBranchName is blank or selection tab disappeared.")
+                            selectionTabContent?.let { manager.removeContent(it, true) }
+                            return@BranchSelectionPanel
+                        }
+
+                        val existingBranchTab = manager.contents.find { it.getUserData(LstCrcKeys.BRANCH_NAME_KEY) == selectedBranchName }
+                        if (existingBranchTab != null) {
+                            manager.setSelectedContent(existingBranchTab, true)
+                            manager.removeContent(selectionTabContent, true)
+                        } else {
+                            logger.info("HELPER (Callback): Repurposing '$selectionTabName' tab to '$selectedBranchName'.")
+                            val newBranchContentView = GitChangesToolWindow(project, toolWindow.disposable).createBranchContentView(selectedBranchName)
+                            selectionTabContent.displayName = selectedBranchName
+                            selectionTabContent.component = newBranchContentView
+                            selectionTabContent.putUserData(LstCrcKeys.BRANCH_NAME_KEY, selectedBranchName)
+
+                            manager.setSelectedContent(selectionTabContent, true)
+                            stateService.addTab(selectedBranchName)
+
+                            val newIndex = stateService.state.openTabs.indexOfFirst { it.branchName == selectedBranchName }
+                            if (newIndex != -1) {
+                                stateService.setSelectedTab(newIndex)
+                            } else {
+                                (newBranchContentView as? LstCrcChangesBrowser)?.requestRefreshData()
+                            }
+                        }
                     }
-                }
-            }
 
-            logger.info("HELPER: Creating and adding new '$selectionTabName' tab to UI.")
-            val newContent = contentFactory.createContent(branchSelectionUi.getPanel(), selectionTabName, true).apply {
-                isCloseable = true
-            }
-            contentManager.addContent(newContent)
-            contentManager.setSelectedContent(newContent, true)
-            branchSelectionUi.requestFocusOnSearchField()
+                    logger.info("HELPER: Creating and adding new '$selectionTabName' tab to UI.")
+                    val newContent = contentFactory.createContent(branchSelectionUi.getPanel(), selectionTabName, true).apply {
+                        isCloseable = true
+                    }
+                    contentManager.addContent(newContent)
+                    contentManager.setSelectedContent(newContent, true)
+                    branchSelectionUi.requestFocusOnSearchField()
+                }
+            }.queue()
 
         }, true, true)
     }

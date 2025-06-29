@@ -13,6 +13,7 @@ import com.intellij.ui.treeStructure.Tree
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
 import com.intellij.util.ui.tree.TreeUtil
+import git4idea.repo.GitRepository
 import java.awt.BorderLayout
 import java.awt.event.KeyAdapter
 import java.awt.event.KeyEvent
@@ -26,13 +27,16 @@ import javax.swing.tree.DefaultMutableTreeNode
 import javax.swing.tree.DefaultTreeModel
 
 /**
- * A UI panel that displays local and remote Git branches in a filterable, hierarchical tree,
- * allowing the user to select one.
+ * A UI panel that displays Git branches in a filterable, hierarchical tree, allowing the user to select one.
+ * It can be scoped to a single repository or show branches from all repositories in the project.
  *
+ * @param gitService The service used to fetch repository information.
+ * @param repository An optional specific repository to scope the branch list to. If null, branches from the primary repository are shown.
  * @param onBranchSelected A callback invoked with the name of the branch when the user selects it.
  */
 class BranchSelectionPanel(
     private val gitService: GitService,
+    private val repository: GitRepository?,
     private val onBranchSelected: (branchName: String) -> Unit
 ) : JBPanel<BranchSelectionPanel>(BorderLayout()) {
 
@@ -245,13 +249,20 @@ class BranchSelectionPanel(
         val rootNode = DefaultMutableTreeNode("Root")
         val localCategory = BranchCategory(BranchCategoryType.LOCAL, LstCrcBundle.message("branch.type.local"))
         val remoteCategory = BranchCategory(BranchCategoryType.REMOTE, LstCrcBundle.message("branch.type.remote"))
+
+        // If a specific repository is provided, use its branches. Otherwise, use the primary one.
+        val targetRepo = repository ?: gitService.getPrimaryRepository()
+
+        val localBranches = targetRepo?.branches?.localBranches?.map { it.name } ?: emptyList()
+        val remoteBranches = targetRepo?.branches?.remoteBranches?.map { it.name } ?: emptyList()
+
         val localBranchesNode = DefaultMutableTreeNode(localCategory)
-        addBranchNodes(localBranchesNode, gitService.getLocalBranches())
+        addBranchNodes(localBranchesNode, localBranches)
         if (localBranchesNode.childCount > 0) {
             rootNode.add(localBranchesNode)
         }
         val remoteBranchesNode = DefaultMutableTreeNode(remoteCategory)
-        addBranchNodes(remoteBranchesNode, gitService.getRemoteBranches())
+        addBranchNodes(remoteBranchesNode, remoteBranches)
         if (remoteBranchesNode.childCount > 0) {
             rootNode.add(remoteBranchesNode)
         }

@@ -1,6 +1,7 @@
 package com.github.uiopak.lstcrc.services
 
 import com.github.uiopak.lstcrc.resources.LstCrcBundle
+import com.github.uiopak.lstcrc.state.TabInfo
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.project.Project
@@ -26,12 +27,14 @@ import java.util.concurrent.CompletableFuture
  * @param createdFiles A list of files considered new in the comparison.
  * @param modifiedFiles A list of files with content modifications.
  * @param movedFiles A list of files that were moved or renamed.
+ * @param comparisonContext A map of repository root path to the branch/revision it was compared against.
  */
 data class CategorizedChanges(
     val allChanges: List<Change>,
     val createdFiles: List<VirtualFile>,
     val modifiedFiles: List<VirtualFile>,
-    val movedFiles: List<VirtualFile>
+    val movedFiles: List<VirtualFile>,
+    val comparisonContext: Map<String, String>
 )
 
 /**
@@ -49,7 +52,7 @@ class GitService(private val project: Project) {
         return repositoryManager.getRepositoryForFile(file)
     }
 
-    private fun getRepositories(): List<GitRepository> {
+    fun getRepositories(): List<GitRepository> {
         val repositoryManager = GitRepositoryManager.getInstance(project)
         return repositoryManager.repositories
     }
@@ -103,13 +106,16 @@ class GitService(private val project: Project) {
         return allBranches.distinct().sorted()
     }
 
-    fun getChanges(branchNameToCompare: String): CompletableFuture<CategorizedChanges> {
-        logger.debug("getChanges called for all repositories with branchNameToCompare: $branchNameToCompare")
+    fun getChanges(tabInfo: TabInfo?): CompletableFuture<CategorizedChanges> {
         val future = CompletableFuture<CategorizedChanges>()
         val repositories = getRepositories()
+        val isLoadingHead = tabInfo == null
+        val profileName = tabInfo?.branchName ?: "HEAD"
+
+        logger.debug("getChanges called for profile: $profileName")
 
         if (repositories.isEmpty()) {
-            future.complete(CategorizedChanges(emptyList(), emptyList(), emptyList(), emptyList()))
+            future.complete(CategorizedChanges(emptyList(), emptyList(), emptyList(), emptyList(), emptyMap()))
             return future
         }
 
@@ -120,25 +126,42 @@ class GitService(private val project: Project) {
                     val allCreatedFiles = mutableListOf<VirtualFile>()
                     val allModifiedFiles = mutableListOf<VirtualFile>()
                     val allMovedFiles = mutableListOf<VirtualFile>()
+                    val comparisonContext = mutableMapOf<String, String>()
 
-                    // Special handling for HEAD: use ChangeListManager for a unified view of all local changes across all repos.
-                    if (branchNameToCompare == "HEAD") {
+                    if (isLoadingHead) {
                         logger.debug("Using ChangeListManager for HEAD across all repositories.")
                         allChanges.addAll(ChangeListManager.getInstance(project).allChanges)
+                        repositories.forEach { repo ->
+                            comparisonContext[repo.root.path] = "HEAD"
+                        }
                     } else {
-                        // For a specific branch, iterate through each repository.
+                        // For a specific profile, iterate through each repository.
+                        val primaryBranch = tabInfo!!.branchName
+                        val overrides = tabInfo.comparisonMap
+
                         for (repo in repositories) {
                             indicator.text = "Checking repository: ${repo.root.name}"
-                            // Check if the branch exists in the current repository before diffing.
-                            val branchExistsInRepo = repo.branches.findBranchByName(branchNameToCompare) != null
-                            if (branchExistsInRepo) {
-                                logger.debug("Getting diff with working tree for repo '${repo.root.path}' against branch '$branchNameToCompare'")
-                                val repoChanges = GitChangeUtils.getDiffWithWorkingTree(repo, branchNameToCompare, true)
-                                if (repoChanges != null) {
-                                    allChanges.addAll(repoChanges)
+
+                            // Determine the comparison target for this repository
+                            val target: String = overrides[repo.root.path]
+                                ?: if (repo.branches.findBranchByName(primaryBranch) != null) primaryBranch else "HEAD"
+
+                            comparisonContext[repo.root.path] = target
+                            logger.debug("Repo '${repo.root.path}': using target '$target'")
+
+                            val repoChanges = if (target == "HEAD") {
+                                // For HEAD, we want only the changes from this specific repo
+                                val allLocalChanges = ChangeListManager.getInstance(project).allChanges
+                                allLocalChanges.filter { change ->
+                                    val vf = change.virtualFile
+                                    vf != null && VfsUtilCore.isAncestor(repo.root, vf, false)
                                 }
                             } else {
-                                logger.debug("Branch '$branchNameToCompare' not found in repository '${repo.root.path}'. Skipping.")
+                                GitChangeUtils.getDiffWithWorkingTree(repo, target, true)
+                            }
+
+                            if (repoChanges != null) {
+                                allChanges.addAll(repoChanges)
                             }
                         }
                     }
@@ -156,14 +179,15 @@ class GitService(private val project: Project) {
                         allChanges.distinct(),
                         allCreatedFiles.distinct(),
                         allModifiedFiles.distinct(),
-                        allMovedFiles.distinct()
+                        allMovedFiles.distinct(),
+                        comparisonContext
                     )
                     future.complete(categorizedChanges)
                 } catch (e: VcsException) {
-                    logger.error("Error getting changes for $branchNameToCompare: ${e.message}", e)
+                    logger.error("Error getting changes for $profileName: ${e.message}", e)
                     future.completeExceptionally(e)
                 } catch (e: Exception) {
-                    logger.error("Unexpected error getting changes for $branchNameToCompare: ${e.message}", e)
+                    logger.error("Unexpected error getting changes for $profileName: ${e.message}", e)
                     future.completeExceptionally(e)
                 }
             }

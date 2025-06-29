@@ -84,6 +84,7 @@ class LstCrcLineStatusTrackerProvider : LineStatusTrackerContentLoader {
     private data class LstCrcContentInfo(
         val diffSessionId: UUID,
         val branchName: String?,
+        val comparisonContext: Map<String, String>, // <-- Added context map
         val charset: Charset,
         val virtualFile: VirtualFile,
         val shouldShowOurDiff: Boolean
@@ -99,6 +100,7 @@ class LstCrcLineStatusTrackerProvider : LineStatusTrackerContentLoader {
         val diffDataService = project.service<ProjectActiveDiffDataService>()
         val branchName = diffDataService.activeBranchName
         val sessionId = diffDataService.diffSessionId
+        val comparisonContext = diffDataService.activeComparisonContext
 
         val showForNewFiles = properties.getBoolean(
             ToolWindowSettingsProvider.APP_ENABLE_GUTTER_FOR_NEW_FILES_KEY,
@@ -110,7 +112,7 @@ class LstCrcLineStatusTrackerProvider : LineStatusTrackerContentLoader {
         }
         val shouldShowOurDiff = branchName != null && file in trackedFiles
 
-        return LstCrcContentInfo(sessionId, branchName, file.charset, file, shouldShowOurDiff)
+        return LstCrcContentInfo(sessionId, branchName, comparisonContext, file.charset, file, shouldShowOurDiff)
     }
 
     /**
@@ -122,7 +124,7 @@ class LstCrcLineStatusTrackerProvider : LineStatusTrackerContentLoader {
         if (oldInfo == null || oldInfo !is LstCrcContentInfo) return true
 
         // Let the auto-generated `equals` of the data class determine if an update is needed.
-        // This will correctly compare diffSessionId, branchName, AND shouldShowOurDiff.
+        // This will now correctly compare diffSessionId, branchName, comparisonContext, AND shouldShowOurDiff.
         return oldInfo != newInfo
     }
 
@@ -135,24 +137,29 @@ class LstCrcLineStatusTrackerProvider : LineStatusTrackerContentLoader {
 
         // Case 1: The file is part of our active diff. Load content from the target Git revision.
         if (info.shouldShowOurDiff) {
-            logger.debug("GUTTER_PROVIDER: File ${info.virtualFile.path} is in our diff. Loading from Git revision '${info.branchName}'.")
+            val gitService = project.service<GitService>()
             val isNewFile = project.service<ProjectActiveDiffDataService>().createdFiles.contains(info.virtualFile)
+
+            // Determine the correct revision for this specific file
+            val repository = gitService.getRepositoryForFile(info.virtualFile)
+            val revisionForFile = repository?.let { info.comparisonContext[it.root.path] } ?: info.branchName
+
+            logger.debug("GUTTER_PROVIDER: File ${info.virtualFile.path} is in our diff. Resolved revision to '$revisionForFile'.")
 
             if (isNewFile) {
                 logger.debug("GUTTER_PROVIDER: File is new, using empty base content.")
                 rawContent = ""
             } else {
-                val gitService = project.service<GitService>()
                 rawContent = try {
-                    val contentFuture = gitService.getFileContentForRevision(info.branchName!!, info.virtualFile)
+                    val contentFuture = gitService.getFileContentForRevision(revisionForFile!!, info.virtualFile)
                     contentFuture.get() ?: ""
                 } catch (e: ExecutionException) {
                     val cause = e.cause
                     if (cause is VcsException && cause.message.contains("does not exist in", ignoreCase = true)) {
-                        logger.info("GUTTER_PROVIDER: File ${info.virtualFile.path} not found in revision '${info.branchName}'. Treating as a new file (empty base content).")
+                        logger.info("GUTTER_PROVIDER: File ${info.virtualFile.path} not found in revision '$revisionForFile'. Treating as a new file (empty base content).")
                         ""
                     } else {
-                        logger.warn("GUTTER_PROVIDER: Failed to load content for ${info.virtualFile.path} from revision ${info.branchName}", e)
+                        logger.warn("GUTTER_PROVIDER: Failed to load content for ${info.virtualFile.path} from revision $revisionForFile", e)
                         return null // This will trigger handleError.
                     }
                 } catch (e: Exception) {

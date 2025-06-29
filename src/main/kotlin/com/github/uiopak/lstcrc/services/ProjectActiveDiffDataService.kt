@@ -37,13 +37,16 @@ class ProjectActiveDiffDataService(private val project: Project) : Disposable {
         private set
     var movedFiles: List<VirtualFile> = emptyList()
         private set
+    var activeComparisonContext: Map<String, String> = emptyMap()
+        private set
 
     fun updateActiveDiff(
         branchNameFromEvent: String,
         changesFromEvent: List<Change>,
         createdFilesFromEvent: List<VirtualFile>,
         modifiedFilesFromEvent: List<VirtualFile>,
-        movedFilesFromEvent: List<VirtualFile>
+        movedFilesFromEvent: List<VirtualFile>,
+        comparisonContextFromEvent: Map<String, String>
     ) {
         val currentToolWindowBranch = project.service<ToolWindowStateService>().getSelectedTabBranchName()
         logger.debug("updateActiveDiff called. Event branch: '$branchNameFromEvent'. Current tool window branch: '$currentToolWindowBranch'.")
@@ -71,6 +74,7 @@ class ProjectActiveDiffDataService(private val project: Project) : Disposable {
                 this.createdFiles = createdFilesFromEvent
                 this.modifiedFiles = modifiedFilesFromEvent
                 this.movedFiles = movedFilesFromEvent
+                this.activeComparisonContext = comparisonContextFromEvent
                 this.diffSessionId = UUID.randomUUID() // Generate new session ID to force tracker updates
 
                 val newCreatedFiles = createdFilesFromEvent.toSet()
@@ -116,6 +120,7 @@ class ProjectActiveDiffDataService(private val project: Project) : Disposable {
             this.createdFiles = emptyList()
             this.modifiedFiles = emptyList()
             this.movedFiles = emptyList()
+            this.activeComparisonContext = emptyMap()
             this.diffSessionId = UUID.randomUUID() // Generate new session ID to force tracker updates
 
             if (affectedFiles.isNotEmpty()) {
@@ -162,5 +167,6 @@ class ProjectActiveDiffDataService(private val project: Project) : Disposable {
         createdFiles = emptyList()
         modifiedFiles = emptyList()
         movedFiles = emptyList()
+        activeComparisonContext = emptyMap()
     }
 }

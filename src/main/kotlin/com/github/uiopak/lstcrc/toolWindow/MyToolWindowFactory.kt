@@ -146,12 +146,11 @@ class MyToolWindowFactory : ToolWindowFactory {
                 // Keep the persisted state in sync with UI actions.
                 contentManager.addContentManagerListener(object : ContentManagerListener {
                     override fun contentRemoved(event: ContentManagerEvent) {
+                        // The only job here is to update the state list.
+                        // The selectionChanged event will handle updating the selected index and triggering the data refresh.
                         val branchName = event.content.getUserData(LstCrcKeys.BRANCH_NAME_KEY)
                         if (branchName != null) {
                             stateService.removeTab(branchName)
-                            if (contentManager.contentCount > 0 && contentManager.selectedContent?.isCloseable == false) {
-                                stateService.setSelectedTab(-1)
-                            }
                         }
                     }
 
