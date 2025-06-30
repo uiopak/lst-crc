@@ -86,6 +86,14 @@ class LstCrcChangesBrowser(
         // init() in its constructor, so we must do it to build the component layout.
         init()
 
+        viewer.setCellRenderer(
+            RepoNodeRenderer(
+                project,
+                { viewer.isShowFlatten },
+                viewer.isHighlightProblems
+            )
+        )
+
         viewer.emptyText.text = LstCrcBundle.message("changes.browser.loading")
         project.messageBus.connect(this).subscribe(GitRepository.GIT_REPO_CHANGE, this)
         com.intellij.openapi.util.Disposer.register(parentDisposable, this)
@@ -210,25 +218,13 @@ class LstCrcChangesBrowser(
 
     override val changesTreeModel: AsyncChangesTreeModel =
         SimpleAsyncChangesTreeModel.create { userSelectedGroupingFactory ->
-            val gitService = project.service<GitService>()
-            val hasMultipleRepos = gitService.getRepositories().size > 1
-
-            // If there are multiple repos, we force grouping by repository.
-            // Otherwise, we respect the user's choice from the toolbar (e.g., Directory, Module).
-            val effectiveGroupingFactory = if (hasMultipleRepos) {
-                // This is the platform's standard way to get the factory for grouping by repository.
-                ChangesGroupingSupport.getFactory(ChangesGroupingSupport.REPOSITORY_GROUPING)
-            } else {
-                userSelectedGroupingFactory
-            }
-
-            val builder = TreeModelBuilder(project, effectiveGroupingFactory)
+            // Revert to the standard TreeModelBuilder. Let it handle all grouping logic.
+            // Our custom RepoNodeRenderer will decorate the nodes when the "Group by Repository"
+            // policy is active.
+            val builder = TreeModelBuilder(project, userSelectedGroupingFactory)
             val changes = currentChanges?.allChanges ?: emptyList()
 
             if (changes.isNotEmpty()) {
-                // We no longer need to build custom repository nodes. We just insert all changes,
-                // and the chosen grouping policy (either REPOSITORY or the user's selection)
-                // will handle the tree structure creation automatically.
                 builder.insertChanges(changes, builder.myRoot)
             }
             builder.build()
