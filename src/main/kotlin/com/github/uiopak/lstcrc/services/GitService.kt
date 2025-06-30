@@ -158,13 +158,15 @@ class GitService(private val project: Project) {
                             comparisonContext[repo.root.path] = "HEAD"
                         }
                     } else {
-                        val primaryBranch = tabInfo!!.branchName
+                        val primaryRevision = tabInfo!!.branchName
                         val overrides = tabInfo.comparisonMap
 
                         for (repo in repositories) {
                             indicator.text = "Checking repository: ${repo.root.name}"
-                            val target: String = overrides[repo.root.path]
-                                ?: if (repo.branches.findBranchByName(primaryBranch) != null) primaryBranch else "HEAD"
+                            // Use the override if it exists, otherwise use the tab's primary revision.
+                            // The `git diff` command will fail if the revision is invalid for this repo,
+                            // which is caught below. This correctly handles commit hashes.
+                            val target: String = overrides[repo.root.path] ?: primaryRevision
                             comparisonContext[repo.root.path] = target
                             logger.debug("Repo '${repo.root.path}': using target '$target'")
 

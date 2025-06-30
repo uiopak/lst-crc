@@ -55,8 +55,9 @@ class SingleRepoBranchSelectionDialog(
             val stateService = project.service<ToolWindowStateService>()
             val newMap = tabInfo.comparisonMap.toMutableMap()
 
-            // Determine if we need to store an override or can remove one.
-            val defaultTarget = if (repository.branches.findBranchByName(tabInfo.branchName) != null) tabInfo.branchName else "HEAD"
+            // The default target is simply the primary revision identifier of the tab.
+            // This correctly handles cases where the identifier is a commit hash.
+            val defaultTarget = tabInfo.branchName
 
             if (branchToSet == defaultTarget) {
                 // If the user selected the default, we can remove the override from the map.

@@ -375,6 +375,16 @@ class LstCrcChangesBrowser(
         project.service<ToolWindowStateService>().refreshDataForCurrentSelection()
     }
 
+    /**
+     * Rebuilds the tree view. Called when a display setting (like showing comparison context) is changed.
+     */
+    fun rebuildView() {
+        ApplicationManager.getApplication().invokeLater {
+            if (!project.isDisposed) {
+                viewer.rebuildTree()
+            }
+        }
+    }
 
 
     override fun repositoryChanged(repository: GitRepository) {
@@ -487,8 +497,9 @@ private class ShowRepoComparisonInfoAction(
         val actionGroup = DefaultActionGroup()
 
         for (repo in repositories.sortedBy { it.root.name }) {
-            val currentTarget = tabInfo.comparisonMap[repo.root.path]
-                ?: if (repo.branches.findBranchByName(tabInfo.branchName) != null) tabInfo.branchName else "HEAD"
+            // Correctly determine the target. Use the override if it exists, otherwise the primary tab revision.
+            // This now correctly handles commit hashes by not attempting to resolve them as branches.
+            val currentTarget = tabInfo.comparisonMap[repo.root.path] ?: tabInfo.branchName
 
             val actionText = LstCrcBundle.message("changes.browser.repo.node.full.comparison.text", repo.root.name, currentTarget)
 

@@ -2,6 +2,7 @@ package com.github.uiopak.lstcrc.toolWindow
 
 import com.github.uiopak.lstcrc.services.GitService
 import com.github.uiopak.lstcrc.services.ProjectActiveDiffDataService
+import com.github.uiopak.lstcrc.utils.RevisionUtils
 import com.intellij.dvcs.ui.RepositoryChangesBrowserNode
 import com.intellij.openapi.components.service
 import com.intellij.openapi.project.Project
@@ -23,6 +24,16 @@ class RepoNodeRenderer(
     isHighlightProblems: Boolean
 ) : ChangesTreeCellRenderer(ChangesBrowserNodeRenderer(project, isShowFlatten, isHighlightProblems)) {
 
+    private fun appendContextText(targetRevision: String) {
+        val showForCommits = ToolWindowSettingsProvider.isShowContextForCommitsEnabled()
+        if (RevisionUtils.isCommitHash(targetRevision) && !showForCommits) {
+            return
+        }
+
+        textRenderer.append(FontUtil.spaceAndThinSpace())
+        textRenderer.append("(vs $targetRevision)", SimpleTextAttributes.GRAYED_ATTRIBUTES)
+    }
+
     override fun getTreeCellRendererComponent(
         tree: JTree,
         value: Any,
@@ -36,11 +47,21 @@ class RepoNodeRenderer(
         super.getTreeCellRendererComponent(tree, value, selected, expanded, leaf, row, hasFocus)
 
         val gitService = project.service<GitService>()
-        val diffDataService = project.service<ProjectActiveDiffDataService>()
         val repositories = gitService.getRepositories()
+        val isMultiRepo = repositories.size > 1
+
+        val shouldShowContext = if (isMultiRepo) {
+            ToolWindowSettingsProvider.isShowContextForMultiRepoEnabled()
+        } else {
+            ToolWindowSettingsProvider.isShowContextForSingleRepoEnabled()
+        }
+
+        if (!shouldShowContext) return this
+
+        val diffDataService = project.service<ProjectActiveDiffDataService>()
         val node = value as? ChangesBrowserNode<*> ?: return this
 
-        if (repositories.size > 1) {
+        if (isMultiRepo) {
             // Case 1: Multi-repo view, append to the repository node if grouping is active.
             if (node is RepositoryChangesBrowserNode) {
                 val repository = node.userObject as? GitRepository ?: return this
@@ -48,11 +69,10 @@ class RepoNodeRenderer(
                 val targetRevision = comparisonContext[repository.root.path]
 
                 if (targetRevision != null) {
-                    textRenderer.append(FontUtil.spaceAndThinSpace())
-                    textRenderer.append("(vs $targetRevision)", SimpleTextAttributes.GRAYED_ATTRIBUTES)
+                    appendContextText(targetRevision)
                 }
             }
-        } else if (repositories.size == 1) {
+        } else {
             // Case 2: Single-repo view. Annotate the top-level node if it's unique.
             val groupingSupport = (tree as ChangesTree).groupingSupport
             val parentNode = node.parent
@@ -75,8 +95,7 @@ class RepoNodeRenderer(
                     val targetRevision = comparisonContext[repository.root.path]
 
                     if (targetRevision != null) {
-                        textRenderer.append(FontUtil.spaceAndThinSpace())
-                        textRenderer.append("(vs $targetRevision)", SimpleTextAttributes.GRAYED_ATTRIBUTES)
+                        appendContextText(targetRevision)
                     }
                 }
             }

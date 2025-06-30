@@ -2,6 +2,7 @@ package com.github.uiopak.lstcrc.toolWindow
 
 import com.github.uiopak.lstcrc.messaging.PLUGIN_SETTINGS_CHANGED_TOPIC
 import com.github.uiopak.lstcrc.resources.LstCrcBundle
+import com.github.uiopak.lstcrc.services.GitService
 import com.github.uiopak.lstcrc.services.LstCrcGutterTrackerService
 import com.github.uiopak.lstcrc.services.ToolWindowStateService
 import com.intellij.ide.util.PropertiesComponent
@@ -68,6 +69,13 @@ object ToolWindowSettingsProvider {
     const val APP_SHOW_WIDGET_CONTEXT_KEY = "com.github.uiopak.lstcrc.app.showWidgetContext"
     const val DEFAULT_SHOW_WIDGET_CONTEXT = false
 
+    const val APP_SHOW_CONTEXT_SINGLE_REPO_KEY = "com.github.uiopak.lstcrc.app.showContextSingleRepo"
+    const val DEFAULT_SHOW_CONTEXT_SINGLE_REPO = true
+    const val APP_SHOW_CONTEXT_MULTI_REPO_KEY = "com.github.uiopak.lstcrc.app.showContextMultiRepo"
+    const val DEFAULT_SHOW_CONTEXT_MULTI_REPO = true
+    const val APP_SHOW_CONTEXT_FOR_COMMITS_KEY = "com.github.uiopak.lstcrc.app.showContextForCommits"
+    const val DEFAULT_SHOW_CONTEXT_FOR_COMMITS = false
+
     // --- Public Getters for Settings ---
     fun getSingleClickAction(): String = propertiesComponent.getValue(APP_SINGLE_CLICK_ACTION_KEY, DEFAULT_SINGLE_CLICK_ACTION)
     fun getDoubleClickAction(): String = propertiesComponent.getValue(APP_DOUBLE_CLICK_ACTION_KEY, DEFAULT_DOUBLE_CLICK_ACTION)
@@ -76,6 +84,9 @@ object ToolWindowSettingsProvider {
     fun getRightClickAction(): String = propertiesComponent.getValue(APP_RIGHT_CLICK_ACTION_KEY, DEFAULT_RIGHT_CLICK_ACTION)
     fun getDoubleRightClickAction(): String = propertiesComponent.getValue(APP_DOUBLE_RIGHT_CLICK_ACTION_KEY, DEFAULT_DOUBLE_RIGHT_CLICK_ACTION)
     fun isContextMenuEnabled(): Boolean = propertiesComponent.getBoolean(APP_SHOW_CONTEXT_MENU_KEY, DEFAULT_SHOW_CONTEXT_MENU)
+    fun isShowContextForSingleRepoEnabled(): Boolean = propertiesComponent.getBoolean(APP_SHOW_CONTEXT_SINGLE_REPO_KEY, DEFAULT_SHOW_CONTEXT_SINGLE_REPO)
+    fun isShowContextForMultiRepoEnabled(): Boolean = propertiesComponent.getBoolean(APP_SHOW_CONTEXT_MULTI_REPO_KEY, DEFAULT_SHOW_CONTEXT_MULTI_REPO)
+    fun isShowContextForCommitsEnabled(): Boolean = propertiesComponent.getBoolean(APP_SHOW_CONTEXT_FOR_COMMITS_KEY, DEFAULT_SHOW_CONTEXT_FOR_COMMITS)
 
     fun getUserDoubleClickDelayMs(): Int {
         val storedValue = propertiesComponent.getInt(APP_USER_DOUBLE_CLICK_DELAY_KEY, DELAY_OPTION_SYSTEM_DEFAULT)
@@ -131,6 +142,57 @@ object ToolWindowSettingsProvider {
             }
             override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
         })
+        rootSettingsGroup.addSeparator()
+
+        // --- Tree View Submenu ---
+        val treeViewSettingsGroup = DefaultActionGroup({ LstCrcBundle.message("settings.tree.view.group.title") }, true).apply {
+            // This action is only visible if there are multiple git repos in the project.
+            add(object : ToggleAction(LstCrcBundle.message("settings.tree.view.show.context.multi.repo")) {
+                override fun update(e: AnActionEvent) {
+                    super.update(e)
+                    e.presentation.isEnabledAndVisible = e.project?.service<GitService>()?.getRepositories()?.size ?: 0 > 1
+                }
+                override fun isSelected(e: AnActionEvent): Boolean = isShowContextForMultiRepoEnabled()
+                override fun setSelected(e: AnActionEvent, state: Boolean) {
+                    propertiesComponent.setValue(APP_SHOW_CONTEXT_MULTI_REPO_KEY, state, DEFAULT_SHOW_CONTEXT_MULTI_REPO)
+                    val toolWindow = e.getData(PlatformDataKeys.TOOL_WINDOW) ?: return
+                    val browser = toolWindow.contentManager.selectedContent?.component as? LstCrcChangesBrowser
+                    browser?.rebuildView()
+                }
+                override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
+            })
+
+            add(object : ToggleAction(LstCrcBundle.message("settings.tree.view.show.context.single.repo")) {
+                override fun update(e: AnActionEvent) {
+                    super.update(e)
+                    e.presentation.isEnabledAndVisible = e.project?.service<GitService>()?.getRepositories()?.size ?: 0 <= 1
+                }
+                override fun isSelected(e: AnActionEvent): Boolean = isShowContextForSingleRepoEnabled()
+                override fun setSelected(e: AnActionEvent, state: Boolean) {
+                    propertiesComponent.setValue(APP_SHOW_CONTEXT_SINGLE_REPO_KEY, state, DEFAULT_SHOW_CONTEXT_SINGLE_REPO)
+                    val toolWindow = e.getData(PlatformDataKeys.TOOL_WINDOW) ?: return
+                    val browser = toolWindow.contentManager.selectedContent?.component as? LstCrcChangesBrowser
+                    browser?.rebuildView()
+                }
+                override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
+            })
+
+            add(object : ToggleAction(LstCrcBundle.message("settings.tree.view.show.context.for.commits")) {
+                override fun update(e: AnActionEvent) {
+                    super.update(e)
+                    e.presentation.isEnabled = isShowContextForSingleRepoEnabled() || isShowContextForMultiRepoEnabled()
+                }
+                override fun isSelected(e: AnActionEvent): Boolean = isShowContextForCommitsEnabled()
+                override fun setSelected(e: AnActionEvent, state: Boolean) {
+                    propertiesComponent.setValue(APP_SHOW_CONTEXT_FOR_COMMITS_KEY, state, DEFAULT_SHOW_CONTEXT_FOR_COMMITS)
+                    val toolWindow = e.getData(PlatformDataKeys.TOOL_WINDOW) ?: return
+                    val browser = toolWindow.contentManager.selectedContent?.component as? LstCrcChangesBrowser
+                    browser?.rebuildView()
+                }
+                override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
+            })
+        }
+        rootSettingsGroup.add(treeViewSettingsGroup)
         rootSettingsGroup.addSeparator()
 
         // --- Other General Settings ---

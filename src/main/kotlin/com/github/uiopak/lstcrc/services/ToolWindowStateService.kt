@@ -6,6 +6,7 @@ import com.github.uiopak.lstcrc.state.ToolWindowState
 import com.github.uiopak.lstcrc.toolWindow.LstCrcChangesBrowser
 import com.github.uiopak.lstcrc.toolWindow.SingleRepoBranchSelectionDialog
 import com.github.uiopak.lstcrc.toolWindow.ToolWindowSettingsProvider
+import com.github.uiopak.lstcrc.utils.RevisionUtils
 import com.intellij.ide.util.PropertiesComponent
 import com.intellij.notification.NotificationGroupManager
 import com.intellij.notification.NotificationType
@@ -182,14 +183,27 @@ class ToolWindowStateService(private val project: Project) : PersistentStateComp
 
     /**
      * Handles the case where one or more branches could not be found during a data load.
-     * It updates the tab's configuration to fall back to 'HEAD' and notifies the user.
+     * It updates the tab's configuration to fall back to 'HEAD' and notifies the user, but
+     * intelligently skips failures for revisions that look like commit hashes, as these are
+     * expected not to exist in all repositories in a multi-repo project.
      */
     private fun handleBranchFailures(tabInfo: TabInfo, failures: Map<GitRepository, String>) {
-        logger.warn("Handling branch failures for tab '${tabInfo.branchName}'. Failures: $failures")
+        // Filter out failures that are likely commit hashes, as they are not "errors" in the same
+        // way a missing branch name is. It's expected a commit hash might not exist in all repos.
+        val actualBranchFailures = failures.filter { (_, failedRevision) ->
+            !RevisionUtils.isCommitHash(failedRevision)
+        }
+
+        if (actualBranchFailures.isEmpty()) {
+            logger.info("Handling branch failures: All failures were for commit hashes, taking no action. Original failures: $failures")
+            return
+        }
+
+        logger.warn("Handling branch failures for tab '${tabInfo.branchName}'. Actual branch failures: $actualBranchFailures")
         val newComparisonMap = tabInfo.comparisonMap.toMutableMap()
         var tabConfigUpdated = false
 
-        failures.forEach { (repo, failedRevision) ->
+        actualBranchFailures.forEach { (repo, failedRevision) ->
             // Check if the failed revision is an override for this repo
             if (newComparisonMap[repo.root.path] == failedRevision) {
                 newComparisonMap[repo.root.path] = "HEAD"
@@ -223,7 +237,7 @@ class ToolWindowStateService(private val project: Project) : PersistentStateComp
             }
         }
 
-        showBranchNotFoundNotification(tabInfo, failures)
+        showBranchNotFoundNotification(tabInfo, actualBranchFailures)
     }
 
     private fun showBranchNotFoundNotification(tabInfo: TabInfo, failures: Map<GitRepository, String>) {
