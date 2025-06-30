@@ -17,6 +17,7 @@
         <openapi.vcs.impl.LocalLineStatusTrackerProvider
                 implementation="com.github.uiopak.lstcrc.gutters.LstCrcLineStatusTrackerProvider"
                 order="first"/>
+        <notificationGroup id="LST-CRC Branch Errors" displayType="BALLOON" bundle="messages.LstCrcMessages" key="notification.group.lst-crc.branch.errors"/>
     </extensions>
 
     <actions>
