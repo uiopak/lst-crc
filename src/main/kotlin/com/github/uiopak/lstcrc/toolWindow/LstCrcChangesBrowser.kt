@@ -86,6 +86,9 @@ class LstCrcChangesBrowser(
         // init() in its constructor, so we must do it to build the component layout.
         init()
 
+        // Set the custom strategy to preserve the tree state while expanding new nodes.
+        viewer.treeStateStrategy = ExpandNewNodesStateStrategy()
+
         viewer.setCellRenderer(
             RepoNodeRenderer(
                 project,

@@ -26,7 +26,7 @@
             <add-to-group group-id="ToolWindowContextMenu" anchor="last"/>
         </action>
 
-        <group id="LstCrc.Log.ActionsGroup" text="LST-CRC" popup="true">
+        <group id="LstCrc.Log.ActionsGroup" popup="true">
             <action id="com.github.uiopak.lstcrc.CreateTabFromRevisionAction"
                     class="com.github.uiopak.lstcrc.toolWindow.CreateTabFromRevisionAction"/>
             <action id="com.github.uiopak.lstcrc.toolWindow.SetRevisionAsRepoComparisonAction"

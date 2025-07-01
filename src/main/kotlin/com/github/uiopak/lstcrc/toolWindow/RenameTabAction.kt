@@ -129,70 +129,68 @@ class RenameTabAction : AnAction() {
     }
 
     override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
+}
 
-    companion object {
-        /**
-         * Shows an inline popup with a text field to rename a tab.
-         *
-         * @param project The project.
-         * @param owner The UI component of the tab label to which the popup will be anchored.
-         * @param branchName The persistent identifier of the tab being renamed.
-         */
-        fun invokeRenamePopup(project: Project, owner: Component, branchName: String) {
-            ApplicationManager.getApplication().invokeLater {
-                val stateService = project.service<ToolWindowStateService>()
-                val tabInfo = stateService.state.openTabs.find { it.branchName == branchName }
-                val currentDisplayName = tabInfo?.alias ?: branchName
+/**
+ * Shows an inline popup with a text field to rename a tab.
+ *
+ * @param project The project.
+ * @param owner The UI component of the tab label to which the popup will be anchored.
+ * @param branchName The persistent identifier of the tab being renamed.
+ */
+private fun invokeRenamePopup(project: Project, owner: Component, branchName: String) {
+    ApplicationManager.getApplication().invokeLater {
+        val stateService = project.service<ToolWindowStateService>()
+        val tabInfo = stateService.state.openTabs.find { it.branchName == branchName }
+        val currentDisplayName = tabInfo?.alias ?: branchName
 
-                val textField = JBTextField(currentDisplayName, 17)
-                val titleLabel = JBLabel(LstCrcBundle.message("rename.popup.title"))
+        val textField = JBTextField(currentDisplayName, 17)
+        val titleLabel = JBLabel(LstCrcBundle.message("rename.popup.title"))
 
-                val panel = JPanel(VerticalLayout(JBUI.scale(4), VerticalLayout.FILL)).apply {
-                    border = JBUI.Borders.empty(2)
-                    add(titleLabel)
-                    add(textField)
-                }
+        val panel = JPanel(VerticalLayout(JBUI.scale(4), VerticalLayout.FILL)).apply {
+            border = JBUI.Borders.empty(2)
+            add(titleLabel)
+            add(textField)
+        }
 
-                var balloon: Balloon? = null
+        var balloon: Balloon? = null
 
-                val onOk = {
-                    val newAlias = textField.text.trim().ifEmpty { null }
-                    if (tabInfo?.alias != newAlias) {
-                        stateService.updateTabAlias(branchName, newAlias)
-                    }
-                    balloon?.hide()
-                }
+        val onOk = {
+            val newAlias = textField.text.trim().ifEmpty { null }
+            if (tabInfo?.alias != newAlias) {
+                stateService.updateTabAlias(branchName, newAlias)
+            }
+            balloon?.hide()
+        }
 
-                textField.addKeyListener(object : KeyAdapter() {
-                    override fun keyPressed(e: KeyEvent) {
-                        when (e.keyCode) {
-                            KeyEvent.VK_ENTER -> onOk()
-                            KeyEvent.VK_ESCAPE -> balloon?.hide()
-                        }
-                    }
-                })
-
-                balloon = JBPopupFactory.getInstance()
-                    .createBalloonBuilder(panel)
-                    .setFillColor(UIUtil.getPanelBackground())
-                    .setBorderColor(JBUI.CurrentTheme.Popup.borderColor(true))
-                    .setAnimationCycle(0)
-                    .setShadow(true)
-                    .setCloseButtonEnabled(false)
-                    .setHideOnAction(false)
-                    .setHideOnKeyOutside(true)
-                    .setHideOnClickOutside(true)
-                    .setRequestFocus(true)
-                    .createBalloon()
-
-                val point = Point(owner.width / 2, 0)
-                balloon.show(RelativePoint(owner, point), Balloon.Position.above)
-
-                UIUtil.invokeLaterIfNeeded {
-                    textField.requestFocusInWindow()
-                    textField.selectAll()
+        textField.addKeyListener(object : KeyAdapter() {
+            override fun keyPressed(e: KeyEvent) {
+                when (e.keyCode) {
+                    KeyEvent.VK_ENTER -> onOk()
+                    KeyEvent.VK_ESCAPE -> balloon?.hide()
                 }
             }
+        })
+
+        balloon = JBPopupFactory.getInstance()
+            .createBalloonBuilder(panel)
+            .setFillColor(UIUtil.getPanelBackground())
+            .setBorderColor(JBUI.CurrentTheme.Popup.borderColor(true))
+            .setAnimationCycle(0)
+            .setShadow(true)
+            .setCloseButtonEnabled(false)
+            .setHideOnAction(false)
+            .setHideOnKeyOutside(true)
+            .setHideOnClickOutside(true)
+            .setRequestFocus(true)
+            .createBalloon()
+
+        val point = Point(owner.width / 2, 0)
+        balloon.show(RelativePoint(owner, point), Balloon.Position.above)
+
+        UIUtil.invokeLaterIfNeeded {
+            textField.requestFocusInWindow()
+            textField.selectAll()
         }
     }
 }

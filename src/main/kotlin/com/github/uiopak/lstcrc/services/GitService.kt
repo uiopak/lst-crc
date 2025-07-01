@@ -113,20 +113,6 @@ class GitService(private val project: Project) {
         return repositories.first()
     }
 
-    fun getLocalBranches(): List<String> {
-        val allBranches = getRepositories().flatMap { repo ->
-            repo.branches.localBranches.map { it.name }
-        }
-        return allBranches.distinct().sorted()
-    }
-
-    fun getRemoteBranches(): List<String> {
-        val allBranches = getRepositories().flatMap { repo ->
-            repo.branches.remoteBranches.map { it.name }
-        }
-        return allBranches.distinct().sorted()
-    }
-
     fun getChanges(tabInfo: TabInfo?): CompletableFuture<GetChangesResult> {
         val future = CompletableFuture<GetChangesResult>()
         val repositories = getRepositories()

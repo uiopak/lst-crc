@@ -25,9 +25,6 @@ import javax.swing.UIManager
  */
 object ToolWindowSettingsProvider {
 
-    // Use application-level settings so they are consistent across all projects.
-    private val propertiesComponent = PropertiesComponent.getInstance()
-
     // --- Keys for Click Actions ---
     internal const val ACTION_NONE = "NONE"
     internal const val ACTION_OPEN_DIFF = "OPEN_DIFF"
@@ -79,19 +76,19 @@ object ToolWindowSettingsProvider {
     const val DEFAULT_SHOW_CONTEXT_FOR_COMMITS = false
 
     // --- Public Getters for Settings ---
-    fun getSingleClickAction(): String = propertiesComponent.getValue(APP_SINGLE_CLICK_ACTION_KEY, DEFAULT_SINGLE_CLICK_ACTION)
-    fun getDoubleClickAction(): String = propertiesComponent.getValue(APP_DOUBLE_CLICK_ACTION_KEY, DEFAULT_DOUBLE_CLICK_ACTION)
-    fun getMiddleClickAction(): String = propertiesComponent.getValue(APP_MIDDLE_CLICK_ACTION_KEY, DEFAULT_MIDDLE_CLICK_ACTION)
-    fun getDoubleMiddleClickAction(): String = propertiesComponent.getValue(APP_DOUBLE_MIDDLE_CLICK_ACTION_KEY, DEFAULT_DOUBLE_MIDDLE_CLICK_ACTION)
-    fun getRightClickAction(): String = propertiesComponent.getValue(APP_RIGHT_CLICK_ACTION_KEY, DEFAULT_RIGHT_CLICK_ACTION)
-    fun getDoubleRightClickAction(): String = propertiesComponent.getValue(APP_DOUBLE_RIGHT_CLICK_ACTION_KEY, DEFAULT_DOUBLE_RIGHT_CLICK_ACTION)
-    fun isContextMenuEnabled(): Boolean = propertiesComponent.getBoolean(APP_SHOW_CONTEXT_MENU_KEY, DEFAULT_SHOW_CONTEXT_MENU)
-    fun isShowContextForSingleRepoEnabled(): Boolean = propertiesComponent.getBoolean(APP_SHOW_CONTEXT_SINGLE_REPO_KEY, DEFAULT_SHOW_CONTEXT_SINGLE_REPO)
-    fun isShowContextForMultiRepoEnabled(): Boolean = propertiesComponent.getBoolean(APP_SHOW_CONTEXT_MULTI_REPO_KEY, DEFAULT_SHOW_CONTEXT_MULTI_REPO)
-    fun isShowContextForCommitsEnabled(): Boolean = propertiesComponent.getBoolean(APP_SHOW_CONTEXT_FOR_COMMITS_KEY, DEFAULT_SHOW_CONTEXT_FOR_COMMITS)
+    fun getSingleClickAction(): String = PropertiesComponent.getInstance().getValue(APP_SINGLE_CLICK_ACTION_KEY, DEFAULT_SINGLE_CLICK_ACTION)
+    fun getDoubleClickAction(): String = PropertiesComponent.getInstance().getValue(APP_DOUBLE_CLICK_ACTION_KEY, DEFAULT_DOUBLE_CLICK_ACTION)
+    fun getMiddleClickAction(): String = PropertiesComponent.getInstance().getValue(APP_MIDDLE_CLICK_ACTION_KEY, DEFAULT_MIDDLE_CLICK_ACTION)
+    fun getDoubleMiddleClickAction(): String = PropertiesComponent.getInstance().getValue(APP_DOUBLE_MIDDLE_CLICK_ACTION_KEY, DEFAULT_DOUBLE_MIDDLE_CLICK_ACTION)
+    fun getRightClickAction(): String = PropertiesComponent.getInstance().getValue(APP_RIGHT_CLICK_ACTION_KEY, DEFAULT_RIGHT_CLICK_ACTION)
+    fun getDoubleRightClickAction(): String = PropertiesComponent.getInstance().getValue(APP_DOUBLE_RIGHT_CLICK_ACTION_KEY, DEFAULT_DOUBLE_RIGHT_CLICK_ACTION)
+    fun isContextMenuEnabled(): Boolean = PropertiesComponent.getInstance().getBoolean(APP_SHOW_CONTEXT_MENU_KEY, DEFAULT_SHOW_CONTEXT_MENU)
+    fun isShowContextForSingleRepoEnabled(): Boolean = PropertiesComponent.getInstance().getBoolean(APP_SHOW_CONTEXT_SINGLE_REPO_KEY, DEFAULT_SHOW_CONTEXT_SINGLE_REPO)
+    fun isShowContextForMultiRepoEnabled(): Boolean = PropertiesComponent.getInstance().getBoolean(APP_SHOW_CONTEXT_MULTI_REPO_KEY, DEFAULT_SHOW_CONTEXT_MULTI_REPO)
+    fun isShowContextForCommitsEnabled(): Boolean = PropertiesComponent.getInstance().getBoolean(APP_SHOW_CONTEXT_FOR_COMMITS_KEY, DEFAULT_SHOW_CONTEXT_FOR_COMMITS)
 
     fun getUserDoubleClickDelayMs(): Int {
-        val storedValue = propertiesComponent.getInt(APP_USER_DOUBLE_CLICK_DELAY_KEY, DELAY_OPTION_SYSTEM_DEFAULT)
+        val storedValue = PropertiesComponent.getInstance().getInt(APP_USER_DOUBLE_CLICK_DELAY_KEY, DELAY_OPTION_SYSTEM_DEFAULT)
         if (storedValue > 0) {
             return storedValue
         }
@@ -100,15 +97,15 @@ object ToolWindowSettingsProvider {
     }
 
     // --- Private Setters used by Actions ---
-    private fun setSingleClickAction(action: String) = propertiesComponent.setValue(APP_SINGLE_CLICK_ACTION_KEY, action)
-    private fun setDoubleClickAction(action: String) = propertiesComponent.setValue(APP_DOUBLE_CLICK_ACTION_KEY, action)
-    private fun setMiddleClickAction(action: String) = propertiesComponent.setValue(APP_MIDDLE_CLICK_ACTION_KEY, action)
-    private fun setDoubleMiddleClickAction(action: String) = propertiesComponent.setValue(APP_DOUBLE_MIDDLE_CLICK_ACTION_KEY, action)
-    private fun setRightClickAction(action: String) = propertiesComponent.setValue(APP_RIGHT_CLICK_ACTION_KEY, action)
-    private fun setDoubleRightClickAction(action: String) = propertiesComponent.setValue(APP_DOUBLE_RIGHT_CLICK_ACTION_KEY, action)
-    private fun setUserDoubleClickDelayMs(delay: Int) = propertiesComponent.setValue(APP_USER_DOUBLE_CLICK_DELAY_KEY, delay, DELAY_OPTION_SYSTEM_DEFAULT)
-    private fun getIncludeHeadInScopes(): Boolean = propertiesComponent.getBoolean(APP_INCLUDE_HEAD_IN_SCOPES_KEY, DEFAULT_INCLUDE_HEAD_IN_SCOPES)
-    private fun setIncludeHeadInScopes(include: Boolean) = propertiesComponent.setValue(APP_INCLUDE_HEAD_IN_SCOPES_KEY, include, DEFAULT_INCLUDE_HEAD_IN_SCOPES)
+    private fun setSingleClickAction(action: String) = PropertiesComponent.getInstance().setValue(APP_SINGLE_CLICK_ACTION_KEY, action)
+    private fun setDoubleClickAction(action: String) = PropertiesComponent.getInstance().setValue(APP_DOUBLE_CLICK_ACTION_KEY, action)
+    private fun setMiddleClickAction(action: String) = PropertiesComponent.getInstance().setValue(APP_MIDDLE_CLICK_ACTION_KEY, action)
+    private fun setDoubleMiddleClickAction(action: String) = PropertiesComponent.getInstance().setValue(APP_DOUBLE_MIDDLE_CLICK_ACTION_KEY, action)
+    private fun setRightClickAction(action: String) = PropertiesComponent.getInstance().setValue(APP_RIGHT_CLICK_ACTION_KEY, action)
+    private fun setDoubleRightClickAction(action: String) = PropertiesComponent.getInstance().setValue(APP_DOUBLE_RIGHT_CLICK_ACTION_KEY, action)
+    private fun setUserDoubleClickDelayMs(delay: Int) = PropertiesComponent.getInstance().setValue(APP_USER_DOUBLE_CLICK_DELAY_KEY, delay, DELAY_OPTION_SYSTEM_DEFAULT)
+    private fun getIncludeHeadInScopes(): Boolean = PropertiesComponent.getInstance().getBoolean(APP_INCLUDE_HEAD_IN_SCOPES_KEY, DEFAULT_INCLUDE_HEAD_IN_SCOPES)
+    private fun setIncludeHeadInScopes(include: Boolean) = PropertiesComponent.getInstance().setValue(APP_INCLUDE_HEAD_IN_SCOPES_KEY, include, DEFAULT_INCLUDE_HEAD_IN_SCOPES)
 
 
     fun createToolWindowSettingsGroup(): ActionGroup {
@@ -120,10 +117,10 @@ object ToolWindowSettingsProvider {
 
         gutterSettingsGroup.add(object : ToggleAction(LstCrcBundle.message("settings.gutter.enable")) {
             override fun isSelected(e: AnActionEvent): Boolean =
-                propertiesComponent.getBoolean(APP_ENABLE_GUTTER_MARKERS_KEY, DEFAULT_ENABLE_GUTTER_MARKERS)
+                PropertiesComponent.getInstance().getBoolean(APP_ENABLE_GUTTER_MARKERS_KEY, DEFAULT_ENABLE_GUTTER_MARKERS)
 
             override fun setSelected(e: AnActionEvent, state: Boolean) {
-                propertiesComponent.setValue(APP_ENABLE_GUTTER_MARKERS_KEY, state, DEFAULT_ENABLE_GUTTER_MARKERS)
+                PropertiesComponent.getInstance().setValue(APP_ENABLE_GUTTER_MARKERS_KEY, state, DEFAULT_ENABLE_GUTTER_MARKERS)
                 e.project?.service<LstCrcGutterTrackerService>()?.settingsChanged()
             }
             override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
@@ -133,13 +130,13 @@ object ToolWindowSettingsProvider {
             override fun update(e: AnActionEvent) {
                 super.update(e)
                 // Only enable this sub-setting if the main gutter setting is enabled.
-                e.presentation.isEnabled = propertiesComponent.getBoolean(APP_ENABLE_GUTTER_MARKERS_KEY, DEFAULT_ENABLE_GUTTER_MARKERS)
+                e.presentation.isEnabled = PropertiesComponent.getInstance().getBoolean(APP_ENABLE_GUTTER_MARKERS_KEY, DEFAULT_ENABLE_GUTTER_MARKERS)
             }
             override fun isSelected(e: AnActionEvent): Boolean =
-                propertiesComponent.getBoolean(APP_ENABLE_GUTTER_FOR_NEW_FILES_KEY, DEFAULT_ENABLE_GUTTER_FOR_NEW_FILES)
+                PropertiesComponent.getInstance().getBoolean(APP_ENABLE_GUTTER_FOR_NEW_FILES_KEY, DEFAULT_ENABLE_GUTTER_FOR_NEW_FILES)
 
             override fun setSelected(e: AnActionEvent, state: Boolean) {
-                propertiesComponent.setValue(APP_ENABLE_GUTTER_FOR_NEW_FILES_KEY, state, DEFAULT_ENABLE_GUTTER_FOR_NEW_FILES)
+                PropertiesComponent.getInstance().setValue(APP_ENABLE_GUTTER_FOR_NEW_FILES_KEY, state, DEFAULT_ENABLE_GUTTER_FOR_NEW_FILES)
                 e.project?.service<LstCrcGutterTrackerService>()?.settingsChanged()
             }
             override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
@@ -157,7 +154,7 @@ object ToolWindowSettingsProvider {
                 }
                 override fun isSelected(e: AnActionEvent): Boolean = isShowContextForMultiRepoEnabled()
                 override fun setSelected(e: AnActionEvent, state: Boolean) {
-                    propertiesComponent.setValue(APP_SHOW_CONTEXT_MULTI_REPO_KEY, state, DEFAULT_SHOW_CONTEXT_MULTI_REPO)
+                    PropertiesComponent.getInstance().setValue(APP_SHOW_CONTEXT_MULTI_REPO_KEY, state, DEFAULT_SHOW_CONTEXT_MULTI_REPO)
                     val toolWindow = e.getData(PlatformDataKeys.TOOL_WINDOW) ?: return
                     val browser = toolWindow.contentManager.selectedContent?.component as? LstCrcChangesBrowser
                     browser?.rebuildView()
@@ -173,7 +170,7 @@ object ToolWindowSettingsProvider {
                 }
                 override fun isSelected(e: AnActionEvent): Boolean = isShowContextForSingleRepoEnabled()
                 override fun setSelected(e: AnActionEvent, state: Boolean) {
-                    propertiesComponent.setValue(APP_SHOW_CONTEXT_SINGLE_REPO_KEY, state, DEFAULT_SHOW_CONTEXT_SINGLE_REPO)
+                    PropertiesComponent.getInstance().setValue(APP_SHOW_CONTEXT_SINGLE_REPO_KEY, state, DEFAULT_SHOW_CONTEXT_SINGLE_REPO)
                     val toolWindow = e.getData(PlatformDataKeys.TOOL_WINDOW) ?: return
                     val browser = toolWindow.contentManager.selectedContent?.component as? LstCrcChangesBrowser
                     browser?.rebuildView()
@@ -188,7 +185,7 @@ object ToolWindowSettingsProvider {
                 }
                 override fun isSelected(e: AnActionEvent): Boolean = isShowContextForCommitsEnabled()
                 override fun setSelected(e: AnActionEvent, state: Boolean) {
-                    propertiesComponent.setValue(APP_SHOW_CONTEXT_FOR_COMMITS_KEY, state, DEFAULT_SHOW_CONTEXT_FOR_COMMITS)
+                    PropertiesComponent.getInstance().setValue(APP_SHOW_CONTEXT_FOR_COMMITS_KEY, state, DEFAULT_SHOW_CONTEXT_FOR_COMMITS)
                     val toolWindow = e.getData(PlatformDataKeys.TOOL_WINDOW) ?: return
                     val browser = toolWindow.contentManager.selectedContent?.component as? LstCrcChangesBrowser
                     browser?.rebuildView()
@@ -202,10 +199,10 @@ object ToolWindowSettingsProvider {
         // --- Other General Settings ---
         rootSettingsGroup.add(object : ToggleAction(LstCrcBundle.message("settings.show.tool.window.title")) {
             override fun isSelected(e: AnActionEvent): Boolean =
-                propertiesComponent.getBoolean(APP_SHOW_TOOL_WINDOW_TITLE_KEY, DEFAULT_SHOW_TOOL_WINDOW_TITLE)
+                PropertiesComponent.getInstance().getBoolean(APP_SHOW_TOOL_WINDOW_TITLE_KEY, DEFAULT_SHOW_TOOL_WINDOW_TITLE)
 
             override fun setSelected(e: AnActionEvent, state: Boolean) {
-                propertiesComponent.setValue(APP_SHOW_TOOL_WINDOW_TITLE_KEY, state, DEFAULT_SHOW_TOOL_WINDOW_TITLE)
+                PropertiesComponent.getInstance().setValue(APP_SHOW_TOOL_WINDOW_TITLE_KEY, state, DEFAULT_SHOW_TOOL_WINDOW_TITLE)
                 val toolWindow = e.getData(PlatformDataKeys.TOOL_WINDOW) ?: return
                 toolWindow.component.putClientProperty(ToolWindowContentUi.HIDE_ID_LABEL, if (state) null else "true")
                 (toolWindow.contentManager as? ContentManagerImpl)?.let {
@@ -217,10 +214,10 @@ object ToolWindowSettingsProvider {
 
         rootSettingsGroup.add(object : ToggleAction(LstCrcBundle.message("settings.show.widget.context")) {
             override fun isSelected(e: AnActionEvent): Boolean =
-                propertiesComponent.getBoolean(APP_SHOW_WIDGET_CONTEXT_KEY, DEFAULT_SHOW_WIDGET_CONTEXT)
+                PropertiesComponent.getInstance().getBoolean(APP_SHOW_WIDGET_CONTEXT_KEY, DEFAULT_SHOW_WIDGET_CONTEXT)
 
             override fun setSelected(e: AnActionEvent, state: Boolean) {
-                propertiesComponent.setValue(APP_SHOW_WIDGET_CONTEXT_KEY, state, DEFAULT_SHOW_WIDGET_CONTEXT)
+                PropertiesComponent.getInstance().setValue(APP_SHOW_WIDGET_CONTEXT_KEY, state, DEFAULT_SHOW_WIDGET_CONTEXT)
                 e.project?.messageBus?.syncPublisher(PLUGIN_SETTINGS_CHANGED_TOPIC)?.onSettingsChanged()
             }
             override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
@@ -255,11 +252,11 @@ object ToolWindowSettingsProvider {
         val rightClickSettingsGroup = DefaultActionGroup({ LstCrcBundle.message("settings.right.click.behavior") }, true)
         rightClickSettingsGroup.add(createToggleAction(LstCrcBundle.message("settings.right.click.show.menu"),
             { isContextMenuEnabled() },
-            { propertiesComponent.setValue(APP_SHOW_CONTEXT_MENU_KEY, true, DEFAULT_SHOW_CONTEXT_MENU) })
+            { PropertiesComponent.getInstance().setValue(APP_SHOW_CONTEXT_MENU_KEY, true, DEFAULT_SHOW_CONTEXT_MENU) })
         )
         rightClickSettingsGroup.add(createToggleAction(LstCrcBundle.message("settings.right.click.trigger.actions"),
             { !isContextMenuEnabled() },
-            { propertiesComponent.setValue(APP_SHOW_CONTEXT_MENU_KEY, false, DEFAULT_SHOW_CONTEXT_MENU) })
+            { PropertiesComponent.getInstance().setValue(APP_SHOW_CONTEXT_MENU_KEY, false, DEFAULT_SHOW_CONTEXT_MENU) })
         )
         mouseClickActionsGroup.add(rightClickSettingsGroup)
 
@@ -285,7 +282,7 @@ object ToolWindowSettingsProvider {
         )
         predefinedDelays.forEach { (label, value) ->
             delaySpeedGroup.add(createToggleAction(label,
-                { propertiesComponent.getInt(APP_USER_DOUBLE_CLICK_DELAY_KEY, DELAY_OPTION_SYSTEM_DEFAULT) == value },
+                { PropertiesComponent.getInstance().getInt(APP_USER_DOUBLE_CLICK_DELAY_KEY, DELAY_OPTION_SYSTEM_DEFAULT) == value },
                 { setUserDoubleClickDelayMs(value) }
             ))
         }
