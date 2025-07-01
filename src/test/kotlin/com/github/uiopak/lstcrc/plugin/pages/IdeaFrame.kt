@@ -7,7 +7,6 @@ import com.intellij.remoterobot.data.RemoteComponent
 import com.intellij.remoterobot.fixtures.*
 import com.intellij.remoterobot.search.locators.byXpath
 import com.intellij.remoterobot.stepsProcessing.step
-import com.intellij.remoterobot.utils.component
 import com.intellij.remoterobot.utils.waitFor
 import java.time.Duration
 

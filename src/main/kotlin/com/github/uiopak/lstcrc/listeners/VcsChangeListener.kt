@@ -24,7 +24,7 @@ class VcsChangeListener(private val project: Project) : ChangeListListener, Disp
 
     init {
         logger.info("VCS_CHANGE_LISTENER: Initializing for project ${project.name}")
-        // The listener is removed automatically when this service (which is a Disposable) is disposed.
+        // The listener is removed automatically when this service (which is a Disposable) is disposed of.
         ChangeListManager.getInstance(project).addChangeListListener(this, this)
     }
 

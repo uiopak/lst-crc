@@ -24,10 +24,10 @@ import java.time.Duration
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 @Disabled
 class LstCrcUITest {
-    // Get timeout from system property or use default (120 seconds)
+    // Get timeout from a system property or use default (120 seconds)
     private val timeout = System.getProperty("ui.test.timeout")?.toLongOrNull() ?: 120L
 
-    // Get robot server URL from system property or use default
+    // Get robot server URL from a system property or use default
     private val robotServerUrl = System.getProperty("robot.server.url") ?: "http://127.0.0.1:8082"
 
     private lateinit var remoteRobot: RemoteRobot
@@ -164,7 +164,7 @@ class LstCrcUITest {
     }
 
     /**
-     * Test that the GitChangesView tool window has a 'HEAD' tab and it contains a ChangesTree.
+     * Test that the GitChangesView tool window has a 'HEAD' tab, and it contains a ChangesTree.
      */
     @Test
     @Disabled
@@ -175,7 +175,7 @@ class LstCrcUITest {
         val toolWindow = ideFrame.find<CommonContainerFixture>(byXpath("//div[@accessiblename='GitChangesView' and @class='ToolWindowImpl']"))
 
         // Verify that the 'HEAD' tab is present.
-        // We look for a component with the text 'HEAD' which acts as the tab label.
+        // We look for a component with the text 'HEAD', which acts as the tab label.
         waitFor(Duration.ofSeconds(10)) {
             toolWindow.findAll<ComponentFixture>(byXpath("//div[@text='HEAD']")).isNotEmpty()
         }

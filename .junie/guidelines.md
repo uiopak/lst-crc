@@ -45,7 +45,7 @@ lst-crc/
 *   **Dedicated Tool Window**: A custom tool window ("GitChangesView") to display comparisons.
 *   **Flexible Comparisons**:
     *   Compare the current working tree (including uncommitted changes) against any local or remote branch.
-    *   View only local uncommitted changes by comparing against "HEAD" or the current branch.
+    *   View only local uncommitted changes by comparing them against "HEAD" or the current branch.
 *   **Tabbed Interface**: Manage multiple branch comparisons in individual, persistent tabs. Includes a non-closeable "HEAD" tab.
 *   **Hierarchical Change Tree**:
     *   Displays created, modified, moved, and deleted files in a structured tree.
@@ -59,9 +59,9 @@ lst-crc/
 *   **Automatic Refresh**: The content of the active comparison tab updates automatically using a multi-layered approach that responds to direct file saves (`VfsChangeListener`), standard VCS updates (`ChangeListListener`), and Git repository state changes (`GitRepositoryChangeListener`).
 *   **Persistent State**: Remembers open tabs and user-defined click action preferences across IDE restarts.
 *   **Branch Selection UI**: An "Add Tab" action opens a panel with a searchable list of local and remote branches to start new comparisons.
-*   **Robust Initial Loading**: On project open, intelligently delays loading initial diff data for the selected tab to ensure Git and the project system are fully ready.
+*   **Robust Initial Loading**: On a project open, intelligently delays loading initial diff data for the selected tab to ensure Git and the project system are fully ready.
 
-## Key Components
+## Key Parts
 
 ### Services
 
@@ -73,7 +73,7 @@ lst-crc/
 2.  **`ToolWindowStateService`** (`services/ToolWindowStateService.kt`):
     *   Manages the persistent state of the tool window (list of open tabs, index of the selected tab) using `PersistentStateComponent`.
     *   Orchestrates data loading for the currently selected tab: when a tab is selected, it triggers `GitService` to fetch changes and then updates `ProjectActiveDiffDataService`.
-    *   Coordinates refreshes for the active tab when its corresponding branch data changes.
+    *   Coordinates refresh for the active tab when its corresponding branch data changes.
 
 3.  **`ProjectActiveDiffDataService`** (`services/ProjectActiveDiffDataService.kt`):
     *   A central service that holds the change data (lists of created, modified, and moved `VirtualFile`s) for the *currently active* comparison tab.
@@ -108,7 +108,7 @@ lst-crc/
     *   Manages the lifecycle of tabs (content) within the tool window and syncs changes (add, remove, selection) with `ToolWindowStateService`.
 
 2.  **`ChangesTreePanel`**:
-    *   The core UI component displaying the hierarchical tree of changed files for a specific branch comparison.
+    *   The core UI component displays the hierarchical tree of changed files for a specific branch comparison.
     *   Handles user interactions like single/double clicks to open diffs or source files.
     *   As a listener, it automatically triggers data refreshes for its associated branch comparison.
 
@@ -118,7 +118,7 @@ lst-crc/
 ### Scopes (in `scopes/` package)
 
 1.  **`LstCrcScopeProvider` & `FileStatusScopes.kt`**:
-    *   Define and provide custom IDE scopes that dynamically query `ProjectActiveDiffDataService`. Because this service notifies `FileStatusManager` on data changes, the scopes update in real-time for use in the Project View, "Find in Files", and other IDE features.
+    *   Define and provide custom IDE scopes that dynamically query `ProjectActiveDiffDataService`. Because this service notifies `FileStatusManager` on data changes, the scopes update in real-time for use in the Project View, "Find in Files" and other IDE features.
 
 ## Technical Implementation Details
 

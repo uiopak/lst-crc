@@ -1,3 +1,5 @@
+@file:Suppress("KotlinConstantConditions")
+
 package com.github.uiopak.lstcrc.gutters
 
 import com.github.uiopak.lstcrc.services.GitService
@@ -56,7 +58,7 @@ class LstCrcLineStatusTrackerProvider : LineStatusTrackerContentLoader {
             return false
         }
 
-        // 3. In all other cases (on a custom branch tab, or on HEAD tab with the setting enabled),
+        // 3. In all other cases (on a custom branch tab or on the HEAD tab with the setting enabled),
         //    we are the authority. We claim any versioned file to either show our diff or suppress the native one.
         val status = FileStatusManager.getInstance(project).getStatus(file)
         return status != FileStatus.UNKNOWN && status != FileStatus.IGNORED
@@ -96,7 +98,7 @@ class LstCrcLineStatusTrackerProvider : LineStatusTrackerContentLoader {
      * Provides information about the base revision content we need. Here we decide if the file
      * is part of our diff and pass that information to `loadContent`.
      */
-    override fun getContentInfo(project: Project, file: VirtualFile): LineStatusTrackerContentLoader.ContentInfo? {
+    override fun getContentInfo(project: Project, file: VirtualFile): LineStatusTrackerContentLoader.ContentInfo {
         val diffDataService = project.service<ProjectActiveDiffDataService>()
         val branchName = diffDataService.activeBranchName
         val sessionId = diffDataService.diffSessionId

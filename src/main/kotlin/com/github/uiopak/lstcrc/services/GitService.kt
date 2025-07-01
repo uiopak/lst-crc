@@ -36,7 +36,7 @@ import java.util.concurrent.CompletableFuture
  * @param createdFiles A list of files considered new in the comparison.
  * @param modifiedFiles A list of files with content modifications.
  * @param movedFiles A list of files that were moved or renamed.
- * @param comparisonContext A map of repository root path to the branch/revision it was compared against.
+ * @param comparisonContext A map of a repository root path to the branch/revision it was compared against.
  */
 data class CategorizedChanges(
     val allChanges: List<Change>,
@@ -50,7 +50,7 @@ data class CategorizedChanges(
  * Encapsulates the complete result of a `getChanges` operation, including both successfully
  * retrieved changes and any failures that occurred for specific repositories.
  *
- * @param categorizedChanges The successfully categorized changes from all valid repositories.
+ * @param categorizedChanges Successfully categorized changes from all valid repositories.
  * @param failures A map of repositories that failed to a string representing the invalid revision.
  */
 data class GetChangesResult(
@@ -158,7 +158,7 @@ class GitService(private val project: Project) {
                             comparisonContext[repo.root.path] = "HEAD"
                         }
                     } else {
-                        val primaryRevision = tabInfo!!.branchName
+                        val primaryRevision = tabInfo.branchName
                         val overrides = tabInfo.comparisonMap
 
                         for (repo in repositories) {
@@ -303,9 +303,7 @@ class GitService(private val project: Project) {
                     GitContentRevision.createRevision(afterFilePath, null, project) // Working tree content
                 else null
 
-                if (beforeRevision != null || afterRevision != null) {
-                    changes.add(Change(beforeRevision, afterRevision, status))
-                }
+                changes.add(Change(beforeRevision, afterRevision, status))
             } catch (e: Exception) {
                 logger.error("Failed to parse git diff line: '$line'", e)
             }

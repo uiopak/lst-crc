@@ -1,3 +1,5 @@
+@file:Suppress("SameParameterValue")
+
 package com.github.uiopak.lstcrc.plugin.utils
 
 import com.intellij.remoterobot.RemoteRobot

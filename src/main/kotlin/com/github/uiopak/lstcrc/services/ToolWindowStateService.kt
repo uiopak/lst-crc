@@ -1,3 +1,5 @@
+@file:Suppress("DialogTitleCapitalization", "KotlinConstantConditions")
+
 package com.github.uiopak.lstcrc.services
 
 import com.github.uiopak.lstcrc.resources.LstCrcBundle
@@ -204,14 +206,14 @@ class ToolWindowStateService(private val project: Project) : PersistentStateComp
         var tabConfigUpdated = false
 
         actualBranchFailures.forEach { (repo, failedRevision) ->
-            // Check if the failed revision is an override for this repo
-            if (newComparisonMap[repo.root.path] == failedRevision) {
-                newComparisonMap[repo.root.path] = "HEAD"
-                tabConfigUpdated = true
-            }
-            // Check if the failed revision is the primary branch name and this repo was using it implicitly
-            else if (tabInfo.branchName == failedRevision && newComparisonMap[repo.root.path] == null) {
-                newComparisonMap[repo.root.path] = "HEAD" // Set an explicit override to HEAD
+            // Condition A: The failed revision was an explicit override for this repo.
+            val isExplicitOverrideFailure = newComparisonMap[repo.root.path] == failedRevision
+
+            // Condition B: The failed revision was the primary tab name, and this repo was using it implicitly.
+            val isImplicitPrimaryFailure = (tabInfo.branchName == failedRevision && newComparisonMap[repo.root.path] == null)
+
+            if (isExplicitOverrideFailure || isImplicitPrimaryFailure) {
+                newComparisonMap[repo.root.path] = "HEAD" // Reset the comparison for this repo to HEAD.
                 tabConfigUpdated = true
             }
         }

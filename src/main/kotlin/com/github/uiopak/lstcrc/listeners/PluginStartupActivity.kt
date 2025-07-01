@@ -116,12 +116,12 @@ class PluginStartupActivity : ProjectActivity {
 
 
         withContext(Dispatchers.EDT) {
-            // After all initial data loading is confirmed complete, ensure all UI components are synced.
+            // After all initial data loadings are confirmed complete, ensure all UI components are synced.
             if (project.isDisposed) return@withContext
             logger.info("STARTUP_LOGIC: Broadcasting final ToolWindowState to sync all UI components.")
             toolWindowStateService.broadcastCurrentState()
 
-            // Also send a direct update request to the status bar for our widget.
+            // Also, send a direct update request to the status bar for our widget.
             // This is a more robust way to ensure it refreshes on startup.
             val statusBar = WindowManager.getInstance().getStatusBar(project)
             statusBar?.updateWidget(LstCrcStatusWidget.ID)

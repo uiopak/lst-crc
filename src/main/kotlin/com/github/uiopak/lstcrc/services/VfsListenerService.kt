@@ -30,7 +30,7 @@ class VfsListenerService(private val project: Project) : BulkFileListener, Dispo
 
     init {
         logger.info("VFS_LISTENER: Initializing for project ${project.name}")
-        // The connection will be automatically disposed when this service (a Disposable) is disposed.
+        // The connection will be automatically disposed of when this service (a Disposable) is disposed.
         project.messageBus.connect(this).subscribe(VirtualFileManager.VFS_CHANGES, this)
         logger.info("VFS_LISTENER: Subscribed to VFS_CHANGES for project ${project.name}")
     }

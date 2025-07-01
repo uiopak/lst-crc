@@ -1,3 +1,5 @@
+@file:Suppress("DialogTitleCapitalization", "KotlinConstantConditions")
+
 package com.github.uiopak.lstcrc.toolWindow
 
 import com.github.uiopak.lstcrc.resources.LstCrcBundle
@@ -45,7 +47,7 @@ class MyToolWindowFactory : ToolWindowFactory {
                 val stateService = project.service<ToolWindowStateService>()
                 persistedState = stateService.state
 
-                // Only need to fetch current branch if there are no persisted tabs,
+                // Only need to fetch the current branch if there are no persisted tabs,
                 // which is a potentially slow operation.
                 if (persistedState.openTabs.isEmpty()) {
                     val gitService = project.service<GitService>()
@@ -122,7 +124,7 @@ class MyToolWindowFactory : ToolWindowFactory {
                         }
                     }
                 } else {
-                    // On first launch, use the branch name fetched in the background.
+                    // On the first launch, use the branch name fetched in the background.
                     // Capture the mutable property in a local, immutable variable for safe smart casting.
                     val branchNameToCreate = currentActualBranchName
                     if (branchNameToCreate != null) {

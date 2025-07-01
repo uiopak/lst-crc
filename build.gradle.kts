@@ -4,12 +4,12 @@ import org.jetbrains.intellij.platform.gradle.TestFrameworkType
 import java.time.Duration
 
 plugins {
-    id("java") // Java support
-    alias(libs.plugins.kotlin) // Kotlin support
-    alias(libs.plugins.intelliJPlatform) // IntelliJ Platform Gradle Plugin
-    alias(libs.plugins.changelog) // Gradle Changelog Plugin
-    alias(libs.plugins.qodana) // Gradle Qodana Plugin
-    alias(libs.plugins.kover) // Gradle Kover Plugin
+    id("java")
+    alias(libs.plugins.kotlin)
+    alias(libs.plugins.intelliJPlatform)
+    alias(libs.plugins.changelog)
+    alias(libs.plugins.qodana)
+    alias(libs.plugins.kover)
 }
 
 group = providers.gradleProperty("pluginGroup").get()
@@ -36,7 +36,7 @@ configurations.all {
         // Force a non-vulnerable version of commons-io, overriding the old version brought in by zt-exec.
         force(libs.commons.io)
 
-        // Substitute the vulnerable log4j:log4j with a safe SLF4J bridge.
+        // Substitute the vulnerable log4j: log4j with a safe SLF4J bridge.
         dependencySubstitution {
             // Eagerly resolve the dependency from the catalog to build the GAV string.
             // This is necessary because the `using(module(...))` API requires a concrete

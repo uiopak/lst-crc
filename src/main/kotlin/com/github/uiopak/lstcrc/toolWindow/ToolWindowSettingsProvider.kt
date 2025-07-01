@@ -1,3 +1,5 @@
+@file:Suppress("DialogTitleCapitalization")
+
 package com.github.uiopak.lstcrc.toolWindow
 
 import com.github.uiopak.lstcrc.messaging.PLUGIN_SETTINGS_CHANGED_TOPIC
@@ -150,7 +152,8 @@ object ToolWindowSettingsProvider {
             add(object : ToggleAction(LstCrcBundle.message("settings.tree.view.show.context.multi.repo")) {
                 override fun update(e: AnActionEvent) {
                     super.update(e)
-                    e.presentation.isEnabledAndVisible = e.project?.service<GitService>()?.getRepositories()?.size ?: 0 > 1
+                    e.presentation.isEnabledAndVisible =
+                        (e.project?.service<GitService>()?.getRepositories()?.size ?: 0) > 1
                 }
                 override fun isSelected(e: AnActionEvent): Boolean = isShowContextForMultiRepoEnabled()
                 override fun setSelected(e: AnActionEvent, state: Boolean) {
@@ -165,7 +168,8 @@ object ToolWindowSettingsProvider {
             add(object : ToggleAction(LstCrcBundle.message("settings.tree.view.show.context.single.repo")) {
                 override fun update(e: AnActionEvent) {
                     super.update(e)
-                    e.presentation.isEnabledAndVisible = e.project?.service<GitService>()?.getRepositories()?.size ?: 0 <= 1
+                    e.presentation.isEnabledAndVisible =
+                        (e.project?.service<GitService>()?.getRepositories()?.size ?: 0) <= 1
                 }
                 override fun isSelected(e: AnActionEvent): Boolean = isShowContextForSingleRepoEnabled()
                 override fun setSelected(e: AnActionEvent, state: Boolean) {
@@ -296,14 +300,14 @@ object ToolWindowSettingsProvider {
     private fun createClickActionChoiceGroup(titleKey: String, getter: () -> String, setter: (String) -> Unit): ActionGroup {
         val group = DefaultActionGroup({ LstCrcBundle.message(titleKey) }, true)
         val actions = mapOf(
-            "settings.action.none" to ACTION_NONE,
-            "settings.action.show.diff" to ACTION_OPEN_DIFF,
-            "settings.action.show.source" to ACTION_OPEN_SOURCE,
-            "settings.action.show.project.tree" to ACTION_SHOW_IN_PROJECT_TREE
+            LstCrcBundle.message("settings.action.none") to ACTION_NONE,
+            LstCrcBundle.message("settings.action.show.diff") to ACTION_OPEN_DIFF,
+            LstCrcBundle.message("settings.action.show.source") to ACTION_OPEN_SOURCE,
+            LstCrcBundle.message("settings.action.show.project.tree") to ACTION_SHOW_IN_PROJECT_TREE
         )
         actions.forEach { (textKey, actionValue) ->
             group.add(createToggleAction(
-                LstCrcBundle.message(textKey),
+                textKey,
                 { getter() == actionValue },
                 { setter(actionValue) }
             ))

@@ -238,7 +238,7 @@ class BranchSelectionPanel(
                     return
                 }
                 searchTextField.requestFocusInWindow()
-                searchTextField.text = searchTextField.text + e.keyChar
+                searchTextField.text += e.keyChar
             }
         })
 

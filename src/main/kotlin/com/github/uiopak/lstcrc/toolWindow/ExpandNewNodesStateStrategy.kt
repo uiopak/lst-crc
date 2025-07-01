@@ -18,13 +18,13 @@ import javax.swing.tree.TreePath
  * 1. `saveState`: It saves the complete current TreeState (selections and expansions) and also
  *    collects the set of all `Change` objects currently displayed in the tree.
  * 2. `restoreState`:
- *    a. It first applies the saved TreeState, which restores the user's previous expansions
+ *    A. It first applies the saved TreeState, which restores the user's previous expansions
  *       and collapses for nodes that still exist.
- *    b. It then determines which `Change` objects are new by comparing the current set of changes
+ *    B. It then determines which `Change` objects are new by comparing the current set of changes
  *       with the set saved in the state.
- *    c. For each new `Change`, it finds its path in the tree and collects all of its parent paths.
- *    d. Finally, it expands all of these parent paths, ensuring the new files are visible in the tree,
- *       without disturbing the state of previously existing, unchanged parts of the tree.
+ *    C. For each new `Change`, it finds its path in the tree and collects all of its parent paths.
+ *    D. Finally, it expands all the parent paths of the new files, ensuring they are visible in the tree,
+ *       while leaving the previously existing, unchanged parts of the tree untouched.
  */
 class ExpandNewNodesStateStrategy : ChangesTree.TreeStateStrategy<ExpandNewNodesStateStrategy.State> {
 

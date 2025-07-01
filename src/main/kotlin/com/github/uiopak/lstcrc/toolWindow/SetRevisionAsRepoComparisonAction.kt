@@ -8,8 +8,6 @@ import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.components.service
 import com.intellij.openapi.progress.ProgressIndicator
 import com.intellij.openapi.progress.Task
-import com.intellij.openapi.project.Project
-import com.intellij.vcs.log.CommitId
 import com.intellij.vcs.log.VcsLogDataKeys
 import git4idea.repo.GitRepository
 import git4idea.repo.GitRepositoryManager

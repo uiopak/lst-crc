@@ -35,7 +35,7 @@ class LstCrcGutterTrackerService(private val project: Project) : Disposable {
             }
         })
 
-        // Also perform an initial refresh to set up trackers for any already-open files.
+        // Also, perform an initial refresh to set up trackers for any already-open files.
         refreshFileStatuses()
     }
 

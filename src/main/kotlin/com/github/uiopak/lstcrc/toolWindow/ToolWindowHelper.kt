@@ -80,7 +80,7 @@ object ToolWindowHelper {
             stateService.addTab(branchName)
             val newIndex = stateService.state.openTabs.indexOfFirst { it.branchName == branchName }
             if (newIndex != -1) {
-                // Manually set index here, as the listener might race or not have the updated tab list yet.
+                // Manually set the index here, as the listener might race or not have the updated tab list yet.
                 stateService.setSelectedTab(newIndex)
             } else {
                 // Failsafe: if tab not found in state, still trigger a refresh for the content.

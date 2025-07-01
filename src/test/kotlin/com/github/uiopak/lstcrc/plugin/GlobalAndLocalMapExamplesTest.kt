@@ -17,7 +17,7 @@ class GlobalAndLocalMapExamplesTest {
         // Save message
         runJs("global.put('greeting', 'Hello from Idea')")
 
-        // Get message with other request
+        // Get a message with another request
         assert(callJs<String>("global.get('greeting')") == "Hello from Idea")
     }
 
@@ -46,7 +46,7 @@ class GlobalAndLocalMapExamplesTest {
 
     @Test
     fun local(remoteRobot: RemoteRobot) {
-        // local map is unique for each fixture even if two fixtures refers to the same component
+        // The local map is unique for each fixture even if two fixtures refer to the same component
         val frame1 = remoteRobot.find<FrameFixture>(byXpath("//div[@class='FlatWelcomeFrame']"), Duration.ofSeconds(10))
         val frame2 = remoteRobot.find<FrameFixture>(byXpath("//div[@class='FlatWelcomeFrame']"))
         assert(frame1.id != frame2.id)

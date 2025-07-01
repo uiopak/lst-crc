@@ -1,3 +1,4 @@
+@file:Suppress("KotlinConstantConditions")
 package com.github.uiopak.lstcrc.toolWindow
 
 import com.github.uiopak.lstcrc.messaging.PLUGIN_SETTINGS_CHANGED_TOPIC
@@ -88,7 +89,7 @@ class LstCrcStatusWidget(private val project: Project) : StatusBarWidget, Status
 
     /**
      * Computes the widget text on demand. This is the core of the "lazy" or "pull" model,
-     * ensuring the displayed text is always up-to-date when the IDE asks for it.
+     * ensuring the displayed text is always up to date when the IDE asks for it.
      */
     override fun getText(): String {
         if (project.isDisposed) return ""

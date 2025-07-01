@@ -1,10 +1,11 @@
+@file:Suppress("DialogTitleCapitalization")
+
 package com.github.uiopak.lstcrc.toolWindow
 
 import com.github.uiopak.lstcrc.resources.LstCrcBundle
 import com.github.uiopak.lstcrc.services.CategorizedChanges
 import com.github.uiopak.lstcrc.services.GitService
 import com.github.uiopak.lstcrc.services.ToolWindowStateService
-import com.github.uiopak.lstcrc.state.TabInfo
 import com.github.uiopak.lstcrc.utils.getTreePathForMouseCoordinates
 import com.intellij.icons.AllIcons
 import com.intellij.ide.DataManager
@@ -40,10 +41,9 @@ import javax.swing.JComponent
 import javax.swing.JPanel
 import javax.swing.SwingUtilities
 import javax.swing.Timer
-import javax.swing.tree.DefaultTreeModel
 
 /**
- * The main UI component for displaying the tree of file changes for a specific branch comparison.
+ * The main UI part for displaying the tree of file changes for a specific branch comparison.
  * It extends [AsyncChangesBrowserBase] to provide a fully custom asynchronous tree model, and
  * highly customized mouse click handling based on user settings.
  */
@@ -112,7 +112,7 @@ class LstCrcChangesBrowser(
             logger.debug("Removed a default PopupHandler to prevent empty context menu.")
         }
 
-        // Install a single master listener to gain full control over all mouse clicks.
+        // Install a single primary listener to gain full control over all mouse clicks.
         viewer.addMouseListener(object : MouseAdapter() {
             override fun mouseClicked(e: MouseEvent) {
                 val path = viewer.getTreePathForMouseCoordinates(e) ?: return
@@ -142,11 +142,11 @@ class LstCrcChangesBrowser(
             }
         })
 
-        // Setup toolbar border to appear on scroll, which is the idiomatic UI for tool windows.
+        // Set up the toolbar border to appear on scroll, which is the idiomatic UI for tool windows.
         val scrollPane = viewerScrollPane
 
         // To find the correct component to apply the border to, we must navigate the layout of the base class.
-        // The full toolbar is inside a top panel, which is at the NORTH position of the main layout.
+        // The full toolbar is inside the top panel, which is at the NORTH position of the main layout.
         val mainLayout = this.layout as? BorderLayout
         val topPanel = mainLayout?.getLayoutComponent(BorderLayout.NORTH) as? JPanel
 
@@ -157,7 +157,7 @@ class LstCrcChangesBrowser(
 
 
         if (fullToolbarComponent != null) {
-            // This is the standard 1px separator border used across the IDE for toolbars.
+            // This is the standard 1 px separator border used across the IDE for toolbars.
             val bottomBorder = JBUI.Borders.customLine(JBColor.border(), 0, 0, 1, 0)
 
             // This function checks the scroll position and applies or removes the border.
@@ -197,7 +197,7 @@ class LstCrcChangesBrowser(
         // Find the "Group by" action and insert our action right after it.
         val groupByActionIndex = actions.indexOfFirst { it.javaClass.simpleName == "GroupByActionGroup" }
 
-        val configureAction = ShowRepoComparisonInfoAction(this)
+        val configureAction = ShowRepoComparisonInfoAction()
 
         if (groupByActionIndex != -1) {
             actions.add(groupByActionIndex + 1, configureAction)
@@ -274,7 +274,7 @@ class LstCrcChangesBrowser(
                 }
             }.apply { isRepeats = false; start() }
         } else if (e.clickCount >= 2) {
-            // This is a double-click. Cancel any pending single-click action and fire the double-click one.
+            // This is a double click. Cancel any pending single-click action and fire the double-click one.
             if (clickState.actionHasFiredForPath == path) {
                 clickState.actionHasFiredForPath = null
                 clickState.timer?.stop()
@@ -464,11 +464,11 @@ class LstCrcChangesBrowser(
 }
 
 /**
- * Action to open a popup showing the current comparison context for each repository,
+ * Action to open a popup showing the current comparison context for each repository
  * and allowing the user to change it.
  */
 private class ShowRepoComparisonInfoAction(
-    private val browser: LstCrcChangesBrowser
+//    private val browser: LstCrcChangesBrowser
 ) : DumbAwareAction(
     LstCrcBundle.message("action.configure.repos.text"),
     LstCrcBundle.message("action.configure.repos.description"),

@@ -25,12 +25,12 @@ class WelcomeFrameFixture(remoteRobot: RemoteRobot, remoteComponent: RemoteCompo
         if (this.hasAnyComponent(byXpath("//div[@class='NewRecentProjectPanel']"))) {
             return find<ComponentFixture>(
                 ComponentFixture::class.java,
-                byXpath("//div[@class='JBOptionButton' and @text='" + text + "']")
+                byXpath("//div[@class='JBOptionButton' and @text='$text']")
             )
         }
         return find<ComponentFixture>(
             ComponentFixture::class.java,
-            byXpath("//div[(@class='MainButton' and @text='" + text + "') or (@accessiblename='" + text + "' and @class='JButton')]")
+            byXpath("//div[(@class='MainButton' and @text='$text') or (@accessiblename='$text' and @class='JButton')]")
         )
     }
 }

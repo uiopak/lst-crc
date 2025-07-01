@@ -75,7 +75,7 @@ class ProjectActiveDiffDataService(private val project: Project) : Disposable {
                 this.modifiedFiles = modifiedFilesFromEvent
                 this.movedFiles = movedFilesFromEvent
                 this.activeComparisonContext = comparisonContextFromEvent
-                this.diffSessionId = UUID.randomUUID() // Generate new session ID to force tracker updates
+                this.diffSessionId = UUID.randomUUID() // Generate a new session ID to force tracker updates
 
                 val newCreatedFiles = createdFilesFromEvent.toSet()
                 val newModifiedFiles = modifiedFilesFromEvent.toSet()
@@ -121,7 +121,7 @@ class ProjectActiveDiffDataService(private val project: Project) : Disposable {
             this.modifiedFiles = emptyList()
             this.movedFiles = emptyList()
             this.activeComparisonContext = emptyMap()
-            this.diffSessionId = UUID.randomUUID() // Generate new session ID to force tracker updates
+            this.diffSessionId = UUID.randomUUID() // Generate a new session ID to force tracker updates
 
             if (affectedFiles.isNotEmpty()) {
                 val fileStatusManager = FileStatusManager.getInstance(project)

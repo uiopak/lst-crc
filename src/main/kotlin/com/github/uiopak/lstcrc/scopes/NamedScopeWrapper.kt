@@ -30,10 +30,10 @@ class NamedScopeWrapper(
 
     override fun getDisplayName(): @Nls String = namedScope.presentableName
 
-    override fun getIcon(): Icon? = namedScope.icon
+    override fun getIcon(): Icon = namedScope.icon
 
     override fun contains(file: VirtualFile): Boolean {
-        // Guard against disposed project.
+        // Guard against a disposed project.
         if (project.isDisposed) return false
 
         val packageSet = namedScope.value ?: return false
@@ -45,7 +45,7 @@ class NamedScopeWrapper(
             val holderToUse = namedScopesHolder ?: NamedScopeManager.getInstance(project)
             packageSet.contains(psiFile, holderToUse)
         } else {
-            // If we can't get a PsiFile (e.g., for a binary file or one not in project structure),
+            // If we can't get a PsiFile (e.g., for a binary file or one not in the project structure),
             // it's unlikely to be contained in a typical PackageSet.
             false
         }

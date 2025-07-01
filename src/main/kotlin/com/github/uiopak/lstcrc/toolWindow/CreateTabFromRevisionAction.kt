@@ -37,7 +37,7 @@ class CreateTabFromRevisionAction : AnAction() {
         val revisionString = revisionNumber.asString()
         logger.info("Action performed: Create tab for revision '$revisionString'")
 
-        // First, ask the user for an alias in a simple dialog. This is better UX than a disconnected popup.
+        // First, ask the user for an alias in a simple dialog. This is a better UX than a disconnected popup.
         val newAlias = Messages.showInputDialog(
             project,
             LstCrcBundle.message("dialog.rename.tab.message"),
