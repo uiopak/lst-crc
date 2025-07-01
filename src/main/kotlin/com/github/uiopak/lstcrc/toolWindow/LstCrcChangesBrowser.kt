@@ -480,9 +480,9 @@ private class ShowRepoComparisonInfoAction(
             e.presentation.isEnabledAndVisible = false
             return
         }
-        val gitService = project.service<GitService>()
-        // This action is only useful in multi-repository projects.
-        e.presentation.isEnabledAndVisible = gitService.getRepositories().size > 1
+        // Action is enabled for any closable tab (i.e., not HEAD).
+        val stateService = project.service<ToolWindowStateService>()
+        e.presentation.isEnabledAndVisible = stateService.getSelectedTabInfo() != null
     }
 
     override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
@@ -494,6 +494,14 @@ private class ShowRepoComparisonInfoAction(
         val tabInfo = stateService.getSelectedTabInfo() ?: return
 
         val repositories = gitService.getRepositories()
+
+        // For single-repo projects, show the dialog directly for a better UX.
+        if (repositories.size == 1) {
+            SingleRepoBranchSelectionDialog(project, repositories.first(), tabInfo).show()
+            return
+        }
+
+        // For multi-repo projects, show the popup to choose a repository.
         val actionGroup = DefaultActionGroup()
 
         for (repo in repositories.sortedBy { it.root.name }) {

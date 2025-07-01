@@ -26,10 +26,14 @@
             <add-to-group group-id="ToolWindowContextMenu" anchor="last"/>
         </action>
 
-        <action id="com.github.uiopak.lstcrc.CreateTabFromRevisionAction"
-                class="com.github.uiopak.lstcrc.toolWindow.CreateTabFromRevisionAction">
+        <group id="LstCrc.Log.ActionsGroup" text="LST-CRC" popup="true">
+            <action id="com.github.uiopak.lstcrc.CreateTabFromRevisionAction"
+                    class="com.github.uiopak.lstcrc.toolWindow.CreateTabFromRevisionAction"/>
+            <action id="com.github.uiopak.lstcrc.toolWindow.SetRevisionAsRepoComparisonAction"
+                    class="com.github.uiopak.lstcrc.toolWindow.SetRevisionAsRepoComparisonAction"/>
+
             <add-to-group group-id="Vcs.Log.ContextMenu" anchor="last"/>
-        </action>
+        </group>
     </actions>
 
 </idea-plugin>

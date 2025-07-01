@@ -16,7 +16,7 @@ import com.intellij.psi.search.scope.packageSet.PackageSetBase
  * reducing boilerplate for different change types.
  */
 private class LstCrcPackageSet(
-    private val description: String,
+    private val descriptionKey: String, // Store the key, not the message
     private val filesExtractor: (ProjectActiveDiffDataService) -> Collection<VirtualFile>
 ) : PackageSetBase() {
 
@@ -34,26 +34,27 @@ private class LstCrcPackageSet(
         return file in relevantFiles
     }
 
-    override fun createCopy(): PackageSet = LstCrcPackageSet(description, filesExtractor)
-    override fun getText(): String = description
+    override fun createCopy(): PackageSet = LstCrcPackageSet(descriptionKey, filesExtractor)
+    // Defer the call to LstCrcBundle until getText() is actually called by the UI
+    override fun getText(): String = LstCrcBundle.message(descriptionKey)
     override fun getNodePriority(): Int = 1
 }
 
-// Instantiate the generic PackageSet for each change type.
+// Instantiate the generic PackageSet for each change type, passing the resource key.
 private val createdFilesPackageSet = LstCrcPackageSet(
-    LstCrcBundle.message("scope.created.description")
+    "scope.created.description"
 ) { it.createdFiles }
 
 private val modifiedFilesPackageSet = LstCrcPackageSet(
-    LstCrcBundle.message("scope.modified.description")
+    "scope.modified.description"
 ) { it.modifiedFiles }
 
 private val movedFilesPackageSet = LstCrcPackageSet(
-    LstCrcBundle.message("scope.moved.description")
+    "scope.moved.description"
 ) { it.movedFiles }
 
 private val changedFilesPackageSet = LstCrcPackageSet(
-    LstCrcBundle.message("scope.changed.description")
+    "scope.changed.description"
 ) { it.createdFiles + it.modifiedFiles + it.movedFiles }
 
 
@@ -61,7 +62,8 @@ private val changedFilesPackageSet = LstCrcPackageSet(
  * A `NamedScope` that includes all files newly created in the active LST-CRC comparison.
  */
 class CreatedFilesScope : NamedScope(
-    LstCrcBundle.message("scope.created.name"),
+    "LSTCRC.Created", // scopeId (stable, non-localized)
+    { LstCrcBundle.message("scope.created.name") }, // presentableNameSupplier
     AllIcons.General.Add,
     createdFilesPackageSet
 ){
@@ -72,7 +74,8 @@ class CreatedFilesScope : NamedScope(
  * A `NamedScope` that includes all files modified in the active LST-CRC comparison.
  */
 class ModifiedFilesScope : NamedScope(
-    LstCrcBundle.message("scope.modified.name"),
+    "LSTCRC.Modified", // scopeId
+    { LstCrcBundle.message("scope.modified.name") }, // presentableNameSupplier
     AllIcons.Actions.EditSource,
     modifiedFilesPackageSet
 ){
@@ -83,7 +86,8 @@ class ModifiedFilesScope : NamedScope(
  * A `NamedScope` that includes all files moved or renamed in the active LST-CRC comparison.
  */
 class MovedFilesScope : NamedScope(
-    LstCrcBundle.message("scope.moved.name"),
+    "LSTCRC.Moved", // scopeId
+    { LstCrcBundle.message("scope.moved.name") }, // presentableNameSupplier
     AllIcons.Nodes.Tag,
     movedFilesPackageSet
 ){
@@ -95,7 +99,8 @@ class MovedFilesScope : NamedScope(
  * A `NamedScope` that includes all files created, modified, or moved in the active LST-CRC comparison.
  */
 class ChangedFilesScope : NamedScope(
-    LstCrcBundle.message("scope.changed.name"),
+    "LSTCRC.Changed", // scopeId
+    { LstCrcBundle.message("scope.changed.name") }, // presentableNameSupplier
     AllIcons.Actions.ListChanges, // Use a standard IDE icon for consistency.
     changedFilesPackageSet
 )
