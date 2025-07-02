@@ -162,7 +162,6 @@ class ToolWindowStateService(private val project: Project) : PersistentStateComp
                     logger.debug("DATA_FLOW: Updating ProjectActiveDiffDataService for '$profileName'.")
                     diffDataService.updateActiveDiff(
                         profileName,
-                        categorizedChanges.allChanges,
                         categorizedChanges.createdFiles,
                         categorizedChanges.modifiedFiles,
                         categorizedChanges.movedFiles,
@@ -320,7 +319,7 @@ class ToolWindowStateService(private val project: Project) : PersistentStateComp
         return getSelectedTabInfo()?.branchName
     }
 
-    internal fun getActiveChangesBrowser(project: Project): LstCrcChangesBrowser? {
+    private fun getActiveChangesBrowser(project: Project): LstCrcChangesBrowser? {
         val toolWindowId = "GitChangesView"
         val toolWindow = ToolWindowManager.getInstance(project).getToolWindow(toolWindowId)
         val selectedContent = toolWindow?.contentManager?.selectedContent

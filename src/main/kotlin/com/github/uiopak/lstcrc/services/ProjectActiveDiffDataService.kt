@@ -9,7 +9,6 @@ import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vcs.FileStatusManager
-import com.intellij.openapi.vcs.changes.Change
 import com.intellij.openapi.vfs.VirtualFile
 import java.util.*
 
@@ -29,8 +28,6 @@ class ProjectActiveDiffDataService(private val project: Project) : Disposable {
 
     var activeBranchName: String? = null
         private set
-    var activeChanges: List<Change> = emptyList()
-        private set
     var createdFiles: List<VirtualFile> = emptyList()
         private set
     var modifiedFiles: List<VirtualFile> = emptyList()
@@ -42,7 +39,6 @@ class ProjectActiveDiffDataService(private val project: Project) : Disposable {
 
     fun updateActiveDiff(
         branchNameFromEvent: String,
-        changesFromEvent: List<Change>,
         createdFilesFromEvent: List<VirtualFile>,
         modifiedFilesFromEvent: List<VirtualFile>,
         movedFilesFromEvent: List<VirtualFile>,
@@ -70,7 +66,6 @@ class ProjectActiveDiffDataService(private val project: Project) : Disposable {
                 val oldMovedFiles = this.movedFiles.toSet()
 
                 this.activeBranchName = branchNameFromEvent
-                this.activeChanges = changesFromEvent
                 this.createdFiles = createdFilesFromEvent
                 this.modifiedFiles = modifiedFilesFromEvent
                 this.movedFiles = movedFilesFromEvent
@@ -112,11 +107,10 @@ class ProjectActiveDiffDataService(private val project: Project) : Disposable {
                 logger.info("Project ${project.name} is disposed (in clearActiveDiff invokeLater), skipping clear.")
                 return@invokeLater
             }
-            logger.debug("EDT: clearActiveDiff called. Clearing activeBranchName, activeChanges, and file lists.")
+            logger.debug("EDT: clearActiveDiff called. Clearing activeBranchName and file lists.")
             val affectedFiles = (this.createdFiles + this.modifiedFiles + this.movedFiles).toSet()
 
             this.activeBranchName = null
-            this.activeChanges = emptyList()
             this.createdFiles = emptyList()
             this.modifiedFiles = emptyList()
             this.movedFiles = emptyList()
@@ -156,13 +150,12 @@ class ProjectActiveDiffDataService(private val project: Project) : Disposable {
     }
 
     fun refreshCurrentColorings() {
-        logger.debug("refreshCurrentColorings() called. Active branch: $activeBranchName, Changes count: ${activeChanges.size}")
+        logger.debug("refreshCurrentColorings() called. Active branch: $activeBranchName")
         triggerEditorTabColorRefresh()
     }
 
     override fun dispose() {
         logger.info("Disposing ProjectActiveDiffDataService for project ${project.name}, clearing data.")
-        activeChanges = emptyList()
         activeBranchName = null
         createdFiles = emptyList()
         modifiedFiles = emptyList()

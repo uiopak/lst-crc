@@ -26,32 +26,32 @@ import javax.swing.UIManager
 object ToolWindowSettingsProvider {
 
     // --- Keys for Click Actions ---
-    internal const val ACTION_NONE = "NONE"
+    private const val ACTION_NONE = "NONE"
     internal const val ACTION_OPEN_DIFF = "OPEN_DIFF"
     internal const val ACTION_OPEN_SOURCE = "OPEN_SOURCE"
     internal const val ACTION_SHOW_IN_PROJECT_TREE = "SHOW_IN_PROJECT_TREE"
 
-    const val APP_SINGLE_CLICK_ACTION_KEY = "com.github.uiopak.lstcrc.app.singleClickAction"
-    const val APP_DOUBLE_CLICK_ACTION_KEY = "com.github.uiopak.lstcrc.app.doubleClickAction"
-    const val DEFAULT_SINGLE_CLICK_ACTION = ACTION_OPEN_SOURCE
-    const val DEFAULT_DOUBLE_CLICK_ACTION = ACTION_NONE
+    private const val APP_SINGLE_CLICK_ACTION_KEY: String = "com.github.uiopak.lstcrc.app.singleClickAction"
+    private const val APP_DOUBLE_CLICK_ACTION_KEY = "com.github.uiopak.lstcrc.app.doubleClickAction"
+    private const val DEFAULT_SINGLE_CLICK_ACTION = ACTION_OPEN_SOURCE
+    private const val DEFAULT_DOUBLE_CLICK_ACTION = ACTION_NONE
 
-    const val APP_MIDDLE_CLICK_ACTION_KEY = "com.github.uiopak.lstcrc.app.middleClickAction"
-    const val APP_DOUBLE_MIDDLE_CLICK_ACTION_KEY = "com.github.uiopak.lstcrc.app.doubleMiddleClickAction"
-    const val DEFAULT_MIDDLE_CLICK_ACTION = ACTION_SHOW_IN_PROJECT_TREE
-    const val DEFAULT_DOUBLE_MIDDLE_CLICK_ACTION = ACTION_NONE
+    private const val APP_MIDDLE_CLICK_ACTION_KEY = "com.github.uiopak.lstcrc.app.middleClickAction"
+    private const val APP_DOUBLE_MIDDLE_CLICK_ACTION_KEY = "com.github.uiopak.lstcrc.app.doubleMiddleClickAction"
+    private const val DEFAULT_MIDDLE_CLICK_ACTION = ACTION_SHOW_IN_PROJECT_TREE
+    private const val DEFAULT_DOUBLE_MIDDLE_CLICK_ACTION = ACTION_NONE
 
-    const val APP_RIGHT_CLICK_ACTION_KEY = "com.github.uiopak.lstcrc.app.rightClickAction"
-    const val APP_DOUBLE_RIGHT_CLICK_ACTION_KEY = "com.github.uiopak.lstcrc.app.doubleRightClickAction"
-    const val DEFAULT_RIGHT_CLICK_ACTION = ACTION_OPEN_DIFF
-    const val DEFAULT_DOUBLE_RIGHT_CLICK_ACTION = ACTION_NONE
+    private const val APP_RIGHT_CLICK_ACTION_KEY = "com.github.uiopak.lstcrc.app.rightClickAction"
+    private const val APP_DOUBLE_RIGHT_CLICK_ACTION_KEY = "com.github.uiopak.lstcrc.app.doubleRightClickAction"
+    private const val DEFAULT_RIGHT_CLICK_ACTION = ACTION_OPEN_DIFF
+    private const val DEFAULT_DOUBLE_RIGHT_CLICK_ACTION = ACTION_NONE
 
     // --- Keys for General Settings ---
-    const val APP_SHOW_CONTEXT_MENU_KEY = "com.github.uiopak.lstcrc.app.showContextMenu"
-    const val DEFAULT_SHOW_CONTEXT_MENU = false
+    private const val APP_SHOW_CONTEXT_MENU_KEY = "com.github.uiopak.lstcrc.app.showContextMenu"
+    private const val DEFAULT_SHOW_CONTEXT_MENU = false
 
-    const val APP_USER_DOUBLE_CLICK_DELAY_KEY = "com.github.uiopak.lstcrc.app.userDoubleClickDelay"
-    const val DELAY_OPTION_SYSTEM_DEFAULT = -1
+    private const val APP_USER_DOUBLE_CLICK_DELAY_KEY = "com.github.uiopak.lstcrc.app.userDoubleClickDelay"
+    private const val DELAY_OPTION_SYSTEM_DEFAULT = -1
 
     internal const val APP_INCLUDE_HEAD_IN_SCOPES_KEY = "com.github.uiopak.lstcrc.app.includeHeadInScopes"
     internal const val DEFAULT_INCLUDE_HEAD_IN_SCOPES = false
