@@ -150,13 +150,18 @@ class GitService(private val project: Project) {
                         for (repo in repositories) {
                             indicator.text = "Checking repository: ${repo.root.name}"
                             // Use the override if it exists, otherwise use the tab's primary revision.
-                            // The `git diff` command will fail if the revision is invalid for this repo,
-                            // which is caught below. This correctly handles commit hashes.
                             val target: String = overrides[repo.root.path] ?: primaryRevision
                             comparisonContext[repo.root.path] = target
                             logger.debug("Repo '${repo.root.path}': using target '$target'")
 
-                            if (target == "HEAD") {
+                            // If repo is fresh or target is HEAD, compare against local changes.
+                            if (repo.isFresh || target == "HEAD") {
+                                if (repo.isFresh) {
+                                    logger.info("Repo '${repo.root.name}' is fresh. Falling back to comparing against HEAD for target '$target'.")
+                                } else { // target == "HEAD"
+                                    logger.debug("Repo '${repo.root.name}' is targeting HEAD. Comparing against local changes.")
+                                }
+
                                 val allLocalChanges = ChangeListManager.getInstance(project).allChanges
                                 val repoChanges = allLocalChanges.filter { change ->
                                     val vf = change.virtualFile
@@ -324,7 +329,7 @@ class GitService(private val project: Project) {
                 val rawContent = String(revisionContentBytes, file.charset)
 
                 // The IntelliJ Document model requires LF ('\n') line endings, but Git on Windows might return CRLF ('\r\n').
-                // We must convert them to prevent a "Wrong line separators" AssertionError from the line status tracker.
+                // We must convert them to prevent a "Wrong line separators" from the line status tracker.
                 val normalizedContent = StringUtil.convertLineSeparators(rawContent)
 
                 logger.info("GUTTER_GIT_SERVICE: Successfully fetched content for '${relativePath}' in revision '${revision}'.")

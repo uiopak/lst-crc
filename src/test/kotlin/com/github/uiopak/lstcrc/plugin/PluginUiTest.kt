@@ -24,6 +24,7 @@ import com.intellij.remoterobot.utils.waitForIgnoringError
 import org.assertj.swing.core.MouseButton
 import com.github.uiopak.lstcrc.plugin.pages.*
 import com.github.uiopak.lstcrc.plugin.steps.KotlinExampleSteps
+import com.github.uiopak.lstcrc.plugin.steps.PluginUiTestSteps
 //import com.github.uiopak.lstcrc.plugin.steps.JavaExampleSteps
 import com.intellij.remoterobot.fixtures.HeavyWeightWindowFixture
 import com.intellij.remoterobot.stepsProcessing.step
@@ -45,7 +46,10 @@ class PluginUiTest {
 //    @Disabled
     @Video
     fun createTestProject(remoteRobot: RemoteRobot) = with(remoteRobot) {
-        val steps = CommonSteps(remoteRobot)
+        val commonSteps = CommonSteps(remoteRobot)
+        val uiSteps = PluginUiTestSteps(remoteRobot)
+
+        // Create a new project with a Git repository
         welcomeFrame {
             createNewProjectLink.click()
             dialog("New Project") {
@@ -54,183 +58,37 @@ class PluginUiTest {
                 button("Create").click()
             }
         }
+
         idea {
             step("Wait for smart mode 5 minutes") {
-                steps.waitForSmartMode(5)
+                commonSteps.waitForSmartMode(5)
             }
-            step("Left click on ActionButton") {
-                component("//div[@accessiblename='New File or Directory…']")
-                    .click()
-            }
-            step("Left click at text 'File' on ListPopupImpl") {
-                component("//div[@class='MyList']")
-                    .findText("File").click()
-            }
-            keyboard {
-                enterText("Test0")
-                enter()
-            }
-            step("Left click on Don't ask again") {
-                component("//div[@class='SouthPanel']/div[@class='JPanel']/div[@class='JCheckBox']")
-                    .click()
-            }
-            step("Left click on Add") {
-                component("//div[@accessiblename='Add' and @class='JButton']")
-                    .click()
-            }
-            keyboard {
-                enterText("Line1Commit0")
-            }
-            step("Left click on ProjectViewPane") {
-                component("//div[@accessiblename='Project structure tree']")
-                    .click()
-            }
-            step("Left click on ActionButton") {
-                component("//div[@accessiblename='New File or Directory…']")
-                    .click()
-            }
-            step("Left click on ListPopupImpl") {
-                component("//div[@class='MyList']")
-                    .findText("File").click()
-            }
-            keyboard {
-                enterText("Test1")
-                enter()
-            }
-            keyboard {
-                enterText("Line1Commit0")
-            }
-            step("Left click on ProjectViewPane") {
-                component("//div[@accessiblename='Project structure tree']")
-                    .click()
-            }
-            step("Left click on ActionButton") {
-                component("//div[@accessiblename='New File or Directory…']")
-                    .click()
-            }
-            step("Left click on ListPopupImpl") {
-                component("//div[@class='MyList']")
-                    .findText("File").click()
-            }
-            keyboard {
-                enterText("Test2")
-                enter()
-            }
-            keyboard {
-                enterText("Line1Commit0")
-            }
-            step("Left click on SquareStripeButton") {
-                component("//div[@accessiblename='Commit']")
-                    .click()
-            }
-            keyboard {
-                step("Press 'Ctrl+K', select all files from active changelist") { hotKey(17, 75) }
-            }
-            keyboard {
-                enterText("Commit0")
-            }
-            step("Left click on Commit") {
-                component("//div[@accessiblename='Commit' and @class='MainButton']")
-                    .click()
-            }
-            step("Left click on SquareStripeButton") {
-                component("//div[@accessiblename='Project']")
-                    .click()
-            }
-            step("Left click on ProjectViewPane") {
-                component("//div[@accessiblename='Project structure tree']")
-                    .click()
-            }
-            step("Left click on ActionButton") {
-                component("//div[@accessiblename='New File or Directory…']")
-                    .click()
-            }
-            step("Left click on ListPopupImpl") {
-                component("//div[@class='MyList']")
-                    .findText("File").click()
-            }
-            keyboard {
-                enterText("Test3")
-                enter()
-            }
-            keyboard {
-                enterText("Line1Commit1")
-            }
-            step("Left click on ProjectViewPane") {
-                component("//div[@accessiblename='Project structure tree']")
-                    .click()
-            }
-            step("Left click on ActionButton") {
-                component("//div[@accessiblename='New File or Directory…']")
-                    .click()
-            }
-            step("Left click on ListPopupImpl") {
-                component("//div[@class='MyList']")
-                    .findText("File").click()
-            }
-            keyboard {
-                enterText("Test4")
-                enter()
-            }
-            keyboard {
-                enterText("Line1Commit1")
-            }
-            step("Left click on ProjectViewPane") {
-                component("//div[@accessiblename='Project structure tree']")
-                    .click()
-            }
-            step("Left click on ActionButton") {
-                component("//div[@accessiblename='New File or Directory…']")
-                    .click()
-            }
-            step("Left click on ListPopupImpl") {
-                component("//div[@class='MyList']")
-                    .findText("File").click()
-            }
-            keyboard {
-                enterText("Test5")
-                enter()
-            }
-            keyboard {
-                enterText("Line1Commit1")
-            }
-            step("Left click on Test1") {
-                component("//div[@accessiblename='Test1' and @class='SimpleColoredComponent']")
-                    .click()
-            }
-            keyboard {
-                enter()
-                enterText("Line2Commit1")
-            }
-            step("Left click on Test2") {
-                component("//div[@accessiblename='Test2' and @class='SimpleColoredComponent']")
-                    .click()
-            }
-            keyboard {
-                step("Press 'Ctrl+A'") { hotKey(17, 65) }
-                enterText("Line1Commit1")
-                enter()
-                enterText("Line2Commit1")
-            }
-            step("Left click on SquareStripeButton") {
-                component("//div[@accessiblename='Commit']")
-                    .click()
-            }
-            keyboard {
-                step("Press 'Ctrl+K', select all files from active changelist") { hotKey(17, 75) }
-            }
-            step("Left click on Commit0") {
-                component("//div[@accessiblename='Commit Message']")
-                    .click()
-            }
-            keyboard {
-                step("Press 'Ctrl+A'") { hotKey(17, 65) }
-                enterText("Commit1")
-            }
-            step("Left click on Commit") {
-                component("//div[@accessiblename='Commit' and @class='MainButton']")
-                    .click()
-            }
+
+            // Commit the first set of files
+            uiSteps.commitChanges("initial commit")
+
+            // Create the first set of files for Commit0
+            uiSteps.createNewFile("Test0", "Line1Commit0")
+            uiSteps.createNewFile("Test1", "Line1Commit0")
+            uiSteps.createNewFile("Test2", "Line1Commit0")
+
+            // Commit the first set of files
+            uiSteps.commitChanges("Commit0")
+
+            // Switch to the Project view
+            uiSteps.switchToProjectView()
+
+            // Create the second set of files for Commit1
+            uiSteps.createNewFile("Test3", "Line1Commit1")
+            uiSteps.createNewFile("Test4", "Line1Commit1")
+            uiSteps.createNewFile("Test5", "Line1Commit1")
+
+            // Modify existing files
+            uiSteps.modifyFile("Test1", "Line2Commit1")
+            uiSteps.replaceFileContent("Test2", "Line1Commit1\nLine2Commit1")
+
+            // Commit the second set of changes
+            uiSteps.commitChanges("Commit1")
         }
     }
 }
