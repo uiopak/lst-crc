@@ -192,4 +192,6 @@ class MyToolWindowFactory : ToolWindowFactory {
     }
 
     override fun shouldBeAvailable(project: Project) = true
+
+    override suspend fun isApplicableAsync(project: Project): Boolean = true
 }
