@@ -326,7 +326,19 @@ class GitService(private val project: Project) {
                 }
 
                 val revisionContentBytes = GitFileUtils.getFileContent(project, repository.root, revision, relativePath)
-                val rawContent = String(revisionContentBytes, file.charset)
+                val rawContent = org.apache.commons.io.input.BOMInputStream.builder()
+                    .setInputStream(java.io.ByteArrayInputStream(revisionContentBytes))
+                    .setByteOrderMarks(
+                        org.apache.commons.io.ByteOrderMark.UTF_8,
+                        org.apache.commons.io.ByteOrderMark.UTF_16LE,
+                        org.apache.commons.io.ByteOrderMark.UTF_16BE,
+                        org.apache.commons.io.ByteOrderMark.UTF_32LE,
+                        org.apache.commons.io.ByteOrderMark.UTF_32BE
+                    )
+                    .get()
+                    .use {
+                        it.reader(file.charset).readText()
+                    }
 
                 // The IntelliJ Document model requires LF ('\n') line endings, but Git on Windows might return CRLF ('\r\n').
                 // We must convert them to prevent a "Wrong line separators" from the line status tracker.
