@@ -62,10 +62,10 @@ class PluginStartupActivity : ProjectActivity {
 
         // Eagerly initialize services that need to listen to events from the start to ensure
         // features like gutter markers and VFS-triggered refreshes work correctly.
-        logger.info("STARTUP_LOGIC: Eagerly initializing background services.")
         project.service<VfsListenerService>()
         project.service<LstCrcGutterTrackerService>()
         project.service<VcsChangeListener>()
+        project.service<com.github.uiopak.lstcrc.gutters.VisualTrackerManager>().init() // Initialize Visual Tracker Interceptor
         logger.info("STARTUP_LOGIC: Background services initialized.")
 
         // Perform a quick initial refresh for tab colors of already open files.

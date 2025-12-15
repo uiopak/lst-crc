@@ -40,52 +40,18 @@ class LstCrcLineStatusTrackerProvider : LineStatusTrackerContentLoader {
      * The main gatekeeper. It decides if our provider should handle a file at all.
      */
     override fun isTrackedFile(project: Project, file: VirtualFile): Boolean {
-        // 1. If our entire feature is turned off, do nothing.
-        if (!isOurGutterMarkersEnabled()) return false
-
-        val diffDataService = project.service<ProjectActiveDiffDataService>()
-        val branchName = diffDataService.activeBranchName
-        val isOnHeadTab = (branchName == "HEAD" || branchName == null) // HEAD tab or cleared state
-
-        val includeHeadInScopes = properties.getBoolean(
-            ToolWindowSettingsProvider.APP_INCLUDE_HEAD_IN_SCOPES_KEY,
-            ToolWindowSettingsProvider.DEFAULT_INCLUDE_HEAD_IN_SCOPES
-        )
-
-        // 2. The critical "yield" condition: If we are on the HEAD tab and the setting to include
-        //    HEAD changes is OFF, we must return false to let the native VCS tracker take over.
-        if (isOnHeadTab && !includeHeadInScopes) {
-            return false
-        }
-
-        // 3. New logic: Check if the "Target" of comparison effectively matches "Current Branch" (HEAD).
-        //    If so, we should ALSO yield (unless configured otherwise), to allow the native tracker
-        //    to provide Partial Commit checkboxes, which are disabled if we take over.
-        val gitService = project.service<GitService>()
-        val repository = gitService.getRepositoryForFile(file)
-        if (repository != null) {
-            val comparisonContext = diffDataService.activeComparisonContext
-            val targetRevision = comparisonContext[repository.root.path] ?: branchName
-
-            // If target is explicitly "HEAD", we already handled it above (via isOnHeadTab check approx).
-            // But if target is "main" and we are ON "main", we should also yield.
-            val currentBranchName = repository.currentBranchName
-            val currentRevision = repository.currentRevision
-
-            val isTargetSameAsCurrent = (targetRevision == currentBranchName) ||
-                    (targetRevision == currentRevision) ||
-                    (targetRevision == "HEAD")
-
-            if (isTargetSameAsCurrent && !includeHeadInScopes) {
-                // effective "HEAD" comparison -> yield to native tracker
-                return false
-            }
-        }
-
-        // 4. In all other cases (on a custom branch tab or on the HEAD tab with the setting enabled),
-        //    we are the authority. We claim any versioned file to either show our diff or suppress the native one.
-        val status = FileStatusManager.getInstance(project).getStatus(file)
-        return status != FileStatus.UNKNOWN && status != FileStatus.IGNORED
+        // We ALWAYS yield false here.
+        // Reason: We WANT the Native Tracker (ChangelistsLocalLineStatusTracker) to be created by the platform default provider.
+        // This ensures that the tracked file supports Partial Commits (internal platform logic).
+        //
+        // Our 'VisualTrackerManager' will then:
+        // 1. Detect that the Native Tracker was created.
+        // 2. Hide it (make it invisible).
+        // 3. Install our own Visual Tracker (SimpleLocalLineStatusTracker) for the Editor view.
+        //
+        // This 'Interceptor' strategy allows us to have Native Logic (Head Diff + Checkboxes)
+        // combined with Custom Visuals (Target Diff).
+        return false
     }
 
     /**
