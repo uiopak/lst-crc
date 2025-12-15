@@ -58,7 +58,31 @@ class LstCrcLineStatusTrackerProvider : LineStatusTrackerContentLoader {
             return false
         }
 
-        // 3. In all other cases (on a custom branch tab or on the HEAD tab with the setting enabled),
+        // 3. New logic: Check if the "Target" of comparison effectively matches "Current Branch" (HEAD).
+        //    If so, we should ALSO yield (unless configured otherwise), to allow the native tracker
+        //    to provide Partial Commit checkboxes, which are disabled if we take over.
+        val gitService = project.service<GitService>()
+        val repository = gitService.getRepositoryForFile(file)
+        if (repository != null) {
+            val comparisonContext = diffDataService.activeComparisonContext
+            val targetRevision = comparisonContext[repository.root.path] ?: branchName
+
+            // If target is explicitly "HEAD", we already handled it above (via isOnHeadTab check approx).
+            // But if target is "main" and we are ON "main", we should also yield.
+            val currentBranchName = repository.currentBranchName
+            val currentRevision = repository.currentRevision
+
+            val isTargetSameAsCurrent = (targetRevision == currentBranchName) ||
+                    (targetRevision == currentRevision) ||
+                    (targetRevision == "HEAD")
+
+            if (isTargetSameAsCurrent && !includeHeadInScopes) {
+                // effective "HEAD" comparison -> yield to native tracker
+                return false
+            }
+        }
+
+        // 4. In all other cases (on a custom branch tab or on the HEAD tab with the setting enabled),
         //    we are the authority. We claim any versioned file to either show our diff or suppress the native one.
         val status = FileStatusManager.getInstance(project).getStatus(file)
         return status != FileStatus.UNKNOWN && status != FileStatus.IGNORED
