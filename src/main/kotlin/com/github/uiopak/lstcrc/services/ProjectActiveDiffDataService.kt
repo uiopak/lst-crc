@@ -34,6 +34,8 @@ class ProjectActiveDiffDataService(private val project: Project) : Disposable {
         private set
     var movedFiles: List<VirtualFile> = emptyList()
         private set
+    var deletedFiles: List<VirtualFile> = emptyList()
+        private set
     var activeComparisonContext: Map<String, String> = emptyMap()
         private set
 
@@ -42,6 +44,7 @@ class ProjectActiveDiffDataService(private val project: Project) : Disposable {
         createdFilesFromEvent: List<VirtualFile>,
         modifiedFilesFromEvent: List<VirtualFile>,
         movedFilesFromEvent: List<VirtualFile>,
+        deletedFilesFromEvent: List<VirtualFile>,
         comparisonContextFromEvent: Map<String, String>
     ) {
         val currentToolWindowBranch = project.service<ToolWindowStateService>().getSelectedTabBranchName()
@@ -64,21 +67,24 @@ class ProjectActiveDiffDataService(private val project: Project) : Disposable {
                 val oldCreatedFiles = this.createdFiles.toSet()
                 val oldModifiedFiles = this.modifiedFiles.toSet()
                 val oldMovedFiles = this.movedFiles.toSet()
+                val oldDeletedFiles = this.deletedFiles.toSet()
 
                 this.activeBranchName = branchNameFromEvent
                 this.createdFiles = createdFilesFromEvent
                 this.modifiedFiles = modifiedFilesFromEvent
                 this.movedFiles = movedFilesFromEvent
+                this.deletedFiles = deletedFilesFromEvent
                 this.activeComparisonContext = comparisonContextFromEvent
                 this.diffSessionId = UUID.randomUUID() // Generate a new session ID to force tracker updates
 
                 val newCreatedFiles = createdFilesFromEvent.toSet()
                 val newModifiedFiles = modifiedFilesFromEvent.toSet()
                 val newMovedFiles = movedFilesFromEvent.toSet()
+                val newDeletedFiles = deletedFilesFromEvent.toSet()
 
                 // Combine all files whose status might have changed to notify the IDE.
-                val affectedFiles = oldCreatedFiles + oldModifiedFiles + oldMovedFiles +
-                        newCreatedFiles + newModifiedFiles + newMovedFiles
+                val affectedFiles = oldCreatedFiles + oldModifiedFiles + oldMovedFiles + oldDeletedFiles +
+                        newCreatedFiles + newModifiedFiles + newMovedFiles + newDeletedFiles
 
                 if (affectedFiles.isNotEmpty()) {
                     val fileStatusManager = FileStatusManager.getInstance(project)
@@ -108,12 +114,13 @@ class ProjectActiveDiffDataService(private val project: Project) : Disposable {
                 return@invokeLater
             }
             logger.debug("EDT: clearActiveDiff called. Clearing activeBranchName and file lists.")
-            val affectedFiles = (this.createdFiles + this.modifiedFiles + this.movedFiles).toSet()
+            val affectedFiles = (this.createdFiles + this.modifiedFiles + this.movedFiles + this.deletedFiles).toSet()
 
             this.activeBranchName = null
             this.createdFiles = emptyList()
             this.modifiedFiles = emptyList()
             this.movedFiles = emptyList()
+            this.deletedFiles = emptyList()
             this.activeComparisonContext = emptyMap()
             this.diffSessionId = UUID.randomUUID() // Generate a new session ID to force tracker updates
 
@@ -160,6 +167,7 @@ class ProjectActiveDiffDataService(private val project: Project) : Disposable {
         createdFiles = emptyList()
         modifiedFiles = emptyList()
         movedFiles = emptyList()
+        deletedFiles = emptyList()
         activeComparisonContext = emptyMap()
     }
 }

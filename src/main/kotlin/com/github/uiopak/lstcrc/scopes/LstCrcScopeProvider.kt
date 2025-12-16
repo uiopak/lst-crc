@@ -13,6 +13,7 @@ object LstCrcProvidedScopes {
     val CREATED_FILES_SCOPE by lazy { CreatedFilesScope() }
     val MODIFIED_FILES_SCOPE by lazy { ModifiedFilesScope() }
     val MOVED_FILES_SCOPE by lazy { MovedFilesScope() }
+    val DELETED_FILES_SCOPE by lazy { DeletedFilesScope() }
     val CHANGED_FILES_SCOPE by lazy { ChangedFilesScope() }
 }
 
@@ -29,6 +30,7 @@ class LstCrcScopeProvider : CustomScopesProvider {
             LstCrcProvidedScopes.CREATED_FILES_SCOPE,
             LstCrcProvidedScopes.MODIFIED_FILES_SCOPE,
             LstCrcProvidedScopes.MOVED_FILES_SCOPE,
+            LstCrcProvidedScopes.DELETED_FILES_SCOPE,
             LstCrcProvidedScopes.CHANGED_FILES_SCOPE
         )
     }

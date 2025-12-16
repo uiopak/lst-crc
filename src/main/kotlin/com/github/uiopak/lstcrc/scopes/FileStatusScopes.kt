@@ -17,7 +17,8 @@ import com.intellij.psi.search.scope.packageSet.PackageSetBase
  */
 private class LstCrcPackageSet(
     private val descriptionKey: String, // Store the key, not the message
-    private val filesExtractor: (ProjectActiveDiffDataService) -> Collection<VirtualFile>
+    private val filesExtractor: (ProjectActiveDiffDataService) -> Collection<VirtualFile>,
+    private val usePathMatching: Boolean = false // Flag for deleted files that need path-based matching
 ) : PackageSetBase() {
 
     override fun contains(file: VirtualFile, project: Project, holder: NamedScopesHolder?): Boolean {
@@ -30,11 +31,18 @@ private class LstCrcPackageSet(
             return false
         }
 
-        val relevantFiles = filesExtractor(diffDataService).toSet()
-        return file in relevantFiles
+        val relevantFiles = filesExtractor(diffDataService)
+        
+        // For deleted files scope or VcsVirtualFile, use path-based matching
+        // since file instances differ between tree nodes and opened editors
+        return if (usePathMatching || file is com.intellij.openapi.vcs.vfs.VcsVirtualFile) {
+            relevantFiles.any { it.path == file.path }
+        } else {
+            file in relevantFiles.toSet()
+        }
     }
 
-    override fun createCopy(): PackageSet = LstCrcPackageSet(descriptionKey, filesExtractor)
+    override fun createCopy(): PackageSet = LstCrcPackageSet(descriptionKey, filesExtractor, usePathMatching)
     // Defer the call to LstCrcBundle until getText() is actually called by the UI
     override fun getText(): String = LstCrcBundle.message(descriptionKey)
     override fun getNodePriority(): Int = 1
@@ -42,20 +50,63 @@ private class LstCrcPackageSet(
 
 // Instantiate the generic PackageSet for each change type, passing the resource key.
 private val createdFilesPackageSet = LstCrcPackageSet(
-    "scope.created.description"
-) { it.createdFiles }
+    "scope.created.description",
+    filesExtractor = { it.createdFiles }
+)
 
 private val modifiedFilesPackageSet = LstCrcPackageSet(
-    "scope.modified.description"
-) { it.modifiedFiles }
+    "scope.modified.description",
+    filesExtractor = { it.modifiedFiles }
+)
 
 private val movedFilesPackageSet = LstCrcPackageSet(
-    "scope.moved.description"
-) { it.movedFiles }
+    "scope.moved.description",
+    filesExtractor = { it.movedFiles }
+)
+
+// Custom PackageSet for deleted files that handles both:
+// 1. VcsVirtualFile path matching (for editor tabs when files are opened)
+// 2. Parent directory matching (for tree nodes - IDE passes parent dir for deleted files)
+private val deletedFilesPackageSet = object : PackageSetBase() {
+    override fun contains(file: VirtualFile, project: Project, holder: NamedScopesHolder?): Boolean {
+        if (project.isDisposed) return false
+        val diffDataService = project.service<ProjectActiveDiffDataService>()
+        
+        if (diffDataService.activeBranchName == null) {
+            return false
+        }
+        
+        val deletedFiles = diffDataService.deletedFiles
+        if (deletedFiles.isEmpty()) return false
+        
+        // For VcsVirtualFile (opened deleted file tab): match by exact path
+        if (file is com.intellij.openapi.vcs.vfs.VcsVirtualFile) {
+            return deletedFiles.any { it.path == file.path }
+        }
+        
+        // For tree nodes: IDE passes parent directory for deleted files
+        // Check if this directory is the parent of any deleted file
+        if (file.isDirectory) {
+            val dirPath = file.path
+            return deletedFiles.any { deletedFile ->
+                val deletedFilePath = deletedFile.path
+                val parentPath = deletedFilePath.substringBeforeLast('/', "")
+                parentPath == dirPath
+            }
+        }
+        
+        return false
+    }
+    
+    override fun createCopy(): PackageSet = this
+    override fun getText(): String = LstCrcBundle.message("scope.deleted.description")
+    override fun getNodePriority(): Int = 1
+}
 
 private val changedFilesPackageSet = LstCrcPackageSet(
-    "scope.changed.description"
-) { it.createdFiles + it.modifiedFiles + it.movedFiles }
+    "scope.changed.description",
+    filesExtractor = { it.createdFiles + it.modifiedFiles + it.movedFiles }
+)
 
 
 /**
@@ -92,6 +143,18 @@ class MovedFilesScope : NamedScope(
     movedFilesPackageSet
 ){
     override fun getDefaultColorName(): String = "Gray"
+}
+
+/**
+ * A `NamedScope` that includes all files deleted in the active LST-CRC comparison.
+ */
+class DeletedFilesScope : NamedScope(
+    "LSTCRC.Deleted", // scopeId
+    { LstCrcBundle.message("scope.deleted.name") }, // presentableNameSupplier
+    AllIcons.Actions.Cancel,
+    deletedFilesPackageSet
+){
+    override fun getDefaultColorName(): String = "Rose"
 }
 
 

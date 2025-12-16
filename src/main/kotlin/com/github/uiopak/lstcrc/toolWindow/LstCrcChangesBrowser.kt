@@ -23,7 +23,11 @@ import com.intellij.openapi.ui.popup.JBPopupFactory
 import com.intellij.openapi.vcs.changes.Change
 import com.intellij.openapi.vcs.changes.actions.diff.ShowDiffAction
 import com.intellij.openapi.vcs.changes.ui.*
+import com.intellij.openapi.vcs.history.VcsFileRevision
+import com.intellij.openapi.vcs.history.VcsRevisionNumber
+import com.intellij.openapi.vcs.vfs.VcsVirtualFile
 import com.intellij.openapi.vfs.VirtualFile
+import java.util.Date
 import com.intellij.openapi.wm.ToolWindowId
 import com.intellij.openapi.wm.ToolWindowManager
 import com.intellij.psi.PsiManager
@@ -337,6 +341,32 @@ class LstCrcChangesBrowser(
     }
 
     private fun openSource(change: Change) {
+        if (change.type == Change.Type.DELETED) {
+            val beforeRevision = change.beforeRevision
+            if (beforeRevision != null) {
+                try {
+                    val content = beforeRevision.content ?: return
+
+                    val vcsFileRevision = object : VcsFileRevision {
+                        override fun getRevisionNumber(): VcsRevisionNumber = beforeRevision.revisionNumber
+                        override fun getRevisionDate(): Date? = null
+                        override fun getAuthor(): String? = null
+                        override fun getCommitMessage(): String? = null
+                        override fun getBranchName(): String? = null
+                        override fun getChangedRepositoryPath(): com.intellij.openapi.vcs.RepositoryLocation? = null
+                        override fun loadContent(): ByteArray = content.toByteArray()
+                        override fun getContent(): ByteArray = loadContent()
+                    }
+
+                    val virtualFile = VcsVirtualFile(beforeRevision.file, vcsFileRevision)
+                    OpenFileDescriptor(project, virtualFile).navigate(true)
+                } catch (e: Exception) {
+                    Messages.showErrorDialog(project, LstCrcBundle.message("changes.browser.open.source.error.message", beforeRevision.file.path), "Error")
+                }
+            }
+            return
+        }
+
         val fileToOpen = getFileFromChange(change)
         if (fileToOpen != null && fileToOpen.isValid && !fileToOpen.isDirectory) {
             OpenFileDescriptor(project, fileToOpen).navigate(true)

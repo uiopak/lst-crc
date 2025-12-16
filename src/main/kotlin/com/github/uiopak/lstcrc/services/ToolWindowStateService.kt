@@ -165,6 +165,7 @@ class ToolWindowStateService(private val project: Project) : PersistentStateComp
                         categorizedChanges.createdFiles,
                         categorizedChanges.modifiedFiles,
                         categorizedChanges.movedFiles,
+                        categorizedChanges.deletedFiles,
                         categorizedChanges.comparisonContext
                     )
                 } else {

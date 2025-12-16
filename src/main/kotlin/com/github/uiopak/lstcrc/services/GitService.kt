@@ -36,6 +36,7 @@ import java.util.concurrent.CompletableFuture
  * @param createdFiles A list of files considered new in the comparison.
  * @param modifiedFiles A list of files with content modifications.
  * @param movedFiles A list of files that were moved or renamed.
+ * @param deletedFiles A list of virtual files representing deleted files.
  * @param comparisonContext A map of a repository root path to the branch/revision it was compared against.
  */
 data class CategorizedChanges(
@@ -43,6 +44,7 @@ data class CategorizedChanges(
     val createdFiles: List<VirtualFile>,
     val modifiedFiles: List<VirtualFile>,
     val movedFiles: List<VirtualFile>,
+    val deletedFiles: List<VirtualFile>,
     val comparisonContext: Map<String, String>
 )
 
@@ -122,7 +124,7 @@ class GitService(private val project: Project) {
         logger.debug("getChanges called for profile: $profileName")
 
         if (repositories.isEmpty()) {
-            val emptyChanges = CategorizedChanges(emptyList(), emptyList(), emptyList(), emptyList(), emptyMap())
+            val emptyChanges = CategorizedChanges(emptyList(), emptyList(), emptyList(), emptyList(), emptyList(), emptyMap())
             future.complete(GetChangesResult(emptyChanges, emptyMap()))
             return future
         }
@@ -134,6 +136,7 @@ class GitService(private val project: Project) {
                     val allCreatedFiles = mutableListOf<VirtualFile>()
                     val allModifiedFiles = mutableListOf<VirtualFile>()
                     val allMovedFiles = mutableListOf<VirtualFile>()
+                    val allDeletedFiles = mutableListOf<VirtualFile>()
                     val comparisonContext = mutableMapOf<String, String>()
                     val failures = mutableMapOf<GitRepository, String>()
 
@@ -197,7 +200,31 @@ class GitService(private val project: Project) {
                             Change.Type.NEW -> change.afterRevision?.file?.virtualFile?.let { allCreatedFiles.add(it) }
                             Change.Type.MODIFICATION -> change.afterRevision?.file?.virtualFile?.let { allModifiedFiles.add(it) }
                             Change.Type.MOVED -> change.afterRevision?.file?.virtualFile?.let { allMovedFiles.add(it) }
-                            else -> { /* Other types like DELETED are ignored for categorization */ }
+                            Change.Type.DELETED -> {
+                                val beforeRevision = change.beforeRevision
+                                if (beforeRevision != null) {
+                                    try {
+                                        val content = beforeRevision.content
+                                        if (content != null) {
+                                            val vcsFileRevision = object : com.intellij.openapi.vcs.history.VcsFileRevision {
+                                                override fun getRevisionNumber(): com.intellij.openapi.vcs.history.VcsRevisionNumber = beforeRevision.revisionNumber
+                                                override fun getRevisionDate(): java.util.Date? = null
+                                                override fun getAuthor(): String? = null
+                                                override fun getCommitMessage(): String? = null
+                                                override fun getBranchName(): String? = null
+                                                override fun getChangedRepositoryPath(): com.intellij.openapi.vcs.RepositoryLocation? = null
+                                                override fun loadContent(): ByteArray = content.toByteArray()
+                                                override fun getContent(): ByteArray = loadContent()
+                                            }
+                                            val vcsVirtualFile = com.intellij.openapi.vcs.vfs.VcsVirtualFile(beforeRevision.file, vcsFileRevision)
+                                            allDeletedFiles.add(vcsVirtualFile)
+                                        }
+                                    } catch (e: Exception) {
+                                        logger.warn("Failed to create VcsVirtualFile for deleted file: ${beforeRevision.file.path}", e)
+                                    }
+                                }
+                            }
+                            else -> { /* Other types are ignored */ }
                         }
                     }
 
@@ -206,6 +233,7 @@ class GitService(private val project: Project) {
                         allCreatedFiles.distinct(),
                         allModifiedFiles.distinct(),
                         allMovedFiles.distinct(),
+                        allDeletedFiles.distinct(),
                         comparisonContext
                     )
                     future.complete(GetChangesResult(categorizedChanges, failures))
