@@ -82,6 +82,13 @@ class VisualTrackerManager(private val project: Project, private val coroutineSc
      * - Visual -> Visual (Update Content)
      * - Visual -> Native (Dispose Visual, Restore Native)
      */
+    /**
+     * Re-evaluates all active native trackers to decide if we should Intercept or Yield.
+     * Handles transitions:
+     * - Native -> Visual (Create Visual, Hide Native)
+     * - Visual -> Visual (Update Content)
+     * - Visual -> Native (Dispose Visual, Restore Native)
+     */
     private fun refreshAllTrackers() {
         if (project.isDisposed) return
 
@@ -100,12 +107,12 @@ class VisualTrackerManager(private val project: Project, private val coroutineSc
                      val tracker = trackerManager.getLineStatusTracker(doc)
                      if (tracker is LocalLineStatusTracker<*>) {
                          val file = tracker.virtualFile ?: continue
-                         val shouldIntercept = needsInterception(file)
+                         val targetRevision = resolveTargetRevision(file)
 
                          withContext(Dispatchers.EDT) {
                              if (project.isDisposed) return@withContext
-                             if (shouldIntercept) {
-                                 performInterception(tracker) // Updates content if already intercepted
+                             if (targetRevision != null) {
+                                 performInterception(tracker, targetRevision) // Updates content with specific revision
                              } else {
                                  restoreNativeTracker(tracker)
                              }
@@ -124,10 +131,10 @@ class VisualTrackerManager(private val project: Project, private val coroutineSc
         if (!className.contains("ChangelistsLocalLineStatusTracker")) return
 
         coroutineScope.launch(Dispatchers.Default) {
-             val shouldIntercept = needsInterception(file)
-             if (shouldIntercept) {
+             val targetRevision = resolveTargetRevision(file)
+             if (targetRevision != null) {
                  withContext(Dispatchers.EDT) {
-                     performInterception(nativeTracker)
+                     performInterception(nativeTracker, targetRevision)
                  }
              }
         }
@@ -139,7 +146,7 @@ class VisualTrackerManager(private val project: Project, private val coroutineSc
         // Only act if we actually have something to clean up
         if (visualTrackers.containsKey(document)) {
             val file = nativeTracker.virtualFile
-            logger.warn("VISUAL_TRACKER: Restoring Native Tracker for ${file?.name}. Removing visual markers.")
+            logger.debug("VISUAL_TRACKER: Restoring Native Tracker for ${file?.name}. Removing visual markers.")
 
             // 1. Remove Visual Tracker
             val visualTracker = visualTrackers.remove(document)
@@ -156,21 +163,21 @@ class VisualTrackerManager(private val project: Project, private val coroutineSc
         }
     }
 
-    private fun needsInterception(file: com.intellij.openapi.vfs.VirtualFile): Boolean {
+    private fun resolveTargetRevision(file: com.intellij.openapi.vfs.VirtualFile): String? {
         val diffDataService = project.service<ProjectActiveDiffDataService>()
         val branchName = diffDataService.activeBranchName
         val gitService = project.service<GitService>()
-        val repository = gitService.getRepositoryForFile(file) ?: return false
+        val repository = gitService.getRepositoryForFile(file) ?: return null
 
         val comparisonContext = diffDataService.activeComparisonContext
         val targetRevision = repository.let { comparisonContext[it.root.path] } ?: branchName
 
         if (targetRevision == null) {
-            // Log at debug to avoid spam during mass refresh
             logger.debug("VISUAL_TRACKER: Yielding. Target revision is null for ${file.name}.")
-            return false
+            return null
         }
-
+        
+        // Check "Same as Current"
         val currentBranchName = repository.currentBranchName
         val currentRevision = repository.currentRevision
 
@@ -183,12 +190,25 @@ class VisualTrackerManager(private val project: Project, private val coroutineSc
             ToolWindowSettingsProvider.DEFAULT_INCLUDE_HEAD_IN_SCOPES
         )
 
-        if (isTargetSameAsCurrent && !includeHeadInScopes) return false
+        if (isTargetSameAsCurrent && !includeHeadInScopes) return null
+
+        // Check "Show Gutter for New Files" setting
+        val showForNewFiles = properties.getBoolean(
+            ToolWindowSettingsProvider.APP_ENABLE_GUTTER_FOR_NEW_FILES_KEY,
+            ToolWindowSettingsProvider.DEFAULT_ENABLE_GUTTER_FOR_NEW_FILES
+        )
+
+        if (!showForNewFiles) {
+            val isNewFile = diffDataService.createdFiles.contains(file)
+            if (isNewFile) {
+                return null
+            }
+        }
         
-        return true
+        return targetRevision
     }
 
-    private fun performInterception(nativeTracker: LocalLineStatusTracker<*>) {
+    private fun performInterception(nativeTracker: LocalLineStatusTracker<*>, targetRevision: String) {
         val file = nativeTracker.virtualFile ?: return
         
         // 1. Hide Native Tracker (Idempotent)
@@ -198,23 +218,19 @@ class VisualTrackerManager(private val project: Project, private val coroutineSc
         
         // 2. Ensure Visual Tracker Exists
         val visualTracker = visualTrackers.computeIfAbsent(document) {
-            logger.warn("VISUAL_TRACKER: Creating Visual Tracker for ${file.name}")
+            logger.debug("VISUAL_TRACKER: Creating Visual Tracker for ${file.name}")
             val tracker = SimpleLocalLineStatusTracker.createTracker(project, document, file)
             Disposer.register(this) { tracker.release() }
             tracker
         }
 
-        // 3. Always Update Content (Target might have changed)
+        // 3. Update Content using the PRE-RESOLVED targetRevision
         coroutineScope.launch {
-            val diffDataService = project.service<ProjectActiveDiffDataService>()
-            val branchName = diffDataService.activeBranchName
-            val gitService = project.service<GitService>()
-            val repository = gitService.getRepositoryForFile(file)
-            val comparisonContext = diffDataService.activeComparisonContext
-            val targetRevision = repository?.let { comparisonContext[it.root.path] } ?: branchName
-
             val content = loadTargetContent(file, targetRevision)
             withContext(Dispatchers.EDT) {
+                // Double check tracker is still valid/needed? 
+                // We rely on the fact that if it became invalid, refreshAllTrackers would have been called again 
+                // and might conflict, but `visualTracker` is the same instance.
                 visualTracker.setBaseRevision(content)
 
                 // 4. Install into all open editors (Idempotent-ish)
@@ -235,6 +251,14 @@ class VisualTrackerManager(private val project: Project, private val coroutineSc
          if (revision == null) {
              return fallbackContent
          }
+
+         // Optimization: If file is explicitly new in our diff data, return empty immediately.
+         // This avoids an unnecessary Git lookup that would throw/fail anyway.
+         val isNewFile = project.service<ProjectActiveDiffDataService>().createdFiles.contains(file)
+         if (isNewFile) {
+             return ""
+         }
+
          val gitService = project.service<GitService>()
          return withContext(Dispatchers.IO) {
              try {
@@ -279,6 +303,7 @@ class VisualTrackerManager(private val project: Project, private val coroutineSc
                 )
                 highlighter.gutterIconRenderer = rendererFn
                 list.add(highlighter)
+                logger.debug("VISUAL_TRACKER: Installed visual renderer for ${tracker.virtualFile.name}")
             }
         } catch (e: Exception) {
             logger.error("VISUAL_TRACKER: Failed to install renderer", e)
