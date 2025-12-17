@@ -64,44 +64,11 @@ private val movedFilesPackageSet = LstCrcPackageSet(
     filesExtractor = { it.movedFiles }
 )
 
-// Custom PackageSet for deleted files that handles both:
-// 1. VcsVirtualFile path matching (for editor tabs when files are opened)
-// 2. Parent directory matching (for tree nodes - IDE passes parent dir for deleted files)
-private val deletedFilesPackageSet = object : PackageSetBase() {
-    override fun contains(file: VirtualFile, project: Project, holder: NamedScopesHolder?): Boolean {
-        if (project.isDisposed) return false
-        val diffDataService = project.service<ProjectActiveDiffDataService>()
-        
-        if (diffDataService.activeBranchName == null) {
-            return false
-        }
-        
-        val deletedFiles = diffDataService.deletedFiles
-        if (deletedFiles.isEmpty()) return false
-        
-        // For VcsVirtualFile (opened deleted file tab): match by exact path
-        if (file is com.intellij.openapi.vcs.vfs.VcsVirtualFile) {
-            return deletedFiles.any { it.path == file.path }
-        }
-        
-        // For tree nodes: IDE passes parent directory for deleted files
-        // Check if this directory is the parent of any deleted file
-        if (file.isDirectory) {
-            val dirPath = file.path
-            return deletedFiles.any { deletedFile ->
-                val deletedFilePath = deletedFile.path
-                val parentPath = deletedFilePath.substringBeforeLast('/', "")
-                parentPath == dirPath
-            }
-        }
-        
-        return false
-    }
-    
-    override fun createCopy(): PackageSet = this
-    override fun getText(): String = LstCrcBundle.message("scope.deleted.description")
-    override fun getNodePriority(): Int = 1
-}
+private val deletedFilesPackageSet = LstCrcPackageSet(
+    "scope.deleted.description",
+    filesExtractor = { it.deletedFiles },
+    usePathMatching = true
+)
 
 private val changedFilesPackageSet = LstCrcPackageSet(
     "scope.changed.description",

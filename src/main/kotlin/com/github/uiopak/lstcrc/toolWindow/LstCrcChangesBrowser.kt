@@ -18,11 +18,13 @@ import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.fileEditor.OpenFileDescriptor
 import com.intellij.openapi.project.DumbAwareAction
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.util.registry.Registry
 import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.ui.popup.JBPopupFactory
 import com.intellij.openapi.vcs.changes.Change
 import com.intellij.openapi.vcs.changes.actions.diff.ShowDiffAction
 import com.intellij.openapi.vcs.changes.ui.*
+import com.intellij.openapi.vcs.changes.ui.AsyncChangesTreeModel
 import com.intellij.openapi.vcs.history.VcsFileRevision
 import com.intellij.openapi.vcs.history.VcsRevisionNumber
 import com.intellij.openapi.vcs.vfs.VcsVirtualFile
@@ -221,6 +223,41 @@ class LstCrcChangesBrowser(
      */
     override fun createPopupMenuActions(): MutableList<AnAction> {
         return mutableListOf()
+    }
+
+    override fun createTreeList(project: Project, showCheckboxes: Boolean, highlightProblems: Boolean): AsyncChangesTree {
+        return LstCrcAsyncChangesTree(project, showCheckboxes, highlightProblems)
+    }
+
+    /**
+     * Custom AsyncChangesTree that enables deleted file background coloring.
+     * Extends the standard tree to provide custom colors for deleted files while
+     * preserving all native coloring for other file types.
+     */
+    private inner class LstCrcAsyncChangesTree(
+        project: Project,
+        showCheckboxes: Boolean,
+        highlightProblems: Boolean
+    ) : AsyncChangesTree(project, showCheckboxes, highlightProblems) {
+
+        override val changesTreeModel: AsyncChangesTreeModel
+            get() = this@LstCrcChangesBrowser.changesTreeModel
+
+        override fun isFileColorsEnabled(): Boolean = true
+
+        override fun getFileColorForPath(path: javax.swing.tree.TreePath): java.awt.Color? {
+            // First try default coloring (for non-deleted files with VirtualFiles)
+            val defaultColor = super.getFileColorForPath(path)
+            if (defaultColor != null) return defaultColor
+
+            // Custom logic for deleted files (which don't have VirtualFiles)
+            val node = path.lastPathComponent as? ChangesBrowserNode<*> ?: return null
+            val change = node.userObject as? Change ?: return null
+            if (change.type == Change.Type.DELETED) {
+                return ToolWindowSettingsProvider.getDeletedFileBackgroundColor()
+            }
+            return null
+        }
     }
 
     override val changesTreeModel: AsyncChangesTreeModel =

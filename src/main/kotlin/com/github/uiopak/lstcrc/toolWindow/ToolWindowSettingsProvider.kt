@@ -17,6 +17,8 @@ import com.intellij.openapi.actionSystem.ToggleAction
 import com.intellij.openapi.components.service
 import com.intellij.openapi.wm.impl.content.ToolWindowContentUi
 import com.intellij.ui.content.impl.ContentManagerImpl
+import com.intellij.ui.JBColor
+import java.awt.Color
 import javax.swing.UIManager
 
 /**
@@ -75,6 +77,9 @@ object ToolWindowSettingsProvider {
     const val APP_SHOW_CONTEXT_FOR_COMMITS_KEY = "com.github.uiopak.lstcrc.app.showContextForCommits"
     const val DEFAULT_SHOW_CONTEXT_FOR_COMMITS = false
 
+    // --- Keys for File Coloring Settings ---
+    private const val APP_DELETED_FILE_BACKGROUND_COLOR_KEY = "com.github.uiopak.lstcrc.app.deletedFileBackgroundColor"
+
     // --- Public Getters for Settings ---
     fun getSingleClickAction(): String = PropertiesComponent.getInstance().getValue(APP_SINGLE_CLICK_ACTION_KEY, DEFAULT_SINGLE_CLICK_ACTION)
     fun getDoubleClickAction(): String = PropertiesComponent.getInstance().getValue(APP_DOUBLE_CLICK_ACTION_KEY, DEFAULT_DOUBLE_CLICK_ACTION)
@@ -86,6 +91,37 @@ object ToolWindowSettingsProvider {
     fun isShowContextForSingleRepoEnabled(): Boolean = PropertiesComponent.getInstance().getBoolean(APP_SHOW_CONTEXT_SINGLE_REPO_KEY, DEFAULT_SHOW_CONTEXT_SINGLE_REPO)
     fun isShowContextForMultiRepoEnabled(): Boolean = PropertiesComponent.getInstance().getBoolean(APP_SHOW_CONTEXT_MULTI_REPO_KEY, DEFAULT_SHOW_CONTEXT_MULTI_REPO)
     fun isShowContextForCommitsEnabled(): Boolean = PropertiesComponent.getInstance().getBoolean(APP_SHOW_CONTEXT_FOR_COMMITS_KEY, DEFAULT_SHOW_CONTEXT_FOR_COMMITS)
+
+    /**
+     * Gets the background color for deleted files in the tree view.
+     * Returns a theme-aware color or a user-customized color if set.
+     */
+    fun getDeletedFileBackgroundColor(): Color {
+        val colorString = PropertiesComponent.getInstance().getValue(APP_DELETED_FILE_BACKGROUND_COLOR_KEY)
+        return colorString?.let { 
+            try {
+                Color.decode(it)
+            } catch (e: NumberFormatException) {
+                null
+            }
+        } ?: JBColor.namedColor("FileColor.Rose",
+            Color(255, 220, 220)) // Light red background
+    }
+
+    /**
+     * Sets a custom background color for deleted files.
+     */
+    fun setDeletedFileBackgroundColor(color: Color) {
+        PropertiesComponent.getInstance().setValue(APP_DELETED_FILE_BACKGROUND_COLOR_KEY, 
+            String.format("#%02x%02x%02x", color.red, color.green, color.blue))
+    }
+
+    /**
+     * Resets the deleted file background color to the default theme color.
+     */
+    fun resetDeletedFileBackgroundColor() {
+        PropertiesComponent.getInstance().unsetValue(APP_DELETED_FILE_BACKGROUND_COLOR_KEY)
+    }
 
     fun getUserDoubleClickDelayMs(): Int {
         val storedValue = PropertiesComponent.getInstance().getInt(APP_USER_DOUBLE_CLICK_DELAY_KEY, DELAY_OPTION_SYSTEM_DEFAULT)
