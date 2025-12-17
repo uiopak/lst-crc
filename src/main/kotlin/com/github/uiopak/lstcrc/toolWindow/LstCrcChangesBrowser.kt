@@ -18,7 +18,6 @@ import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.fileEditor.OpenFileDescriptor
 import com.intellij.openapi.project.DumbAwareAction
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.util.registry.Registry
 import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.ui.popup.JBPopupFactory
 import com.intellij.openapi.vcs.changes.Change
@@ -28,12 +27,14 @@ import com.intellij.openapi.vcs.changes.ui.AsyncChangesTreeModel
 import com.intellij.openapi.vcs.history.VcsFileRevision
 import com.intellij.openapi.vcs.history.VcsRevisionNumber
 import com.intellij.openapi.vcs.vfs.VcsVirtualFile
-import com.intellij.openapi.vfs.VirtualFile
+import java.awt.Color
+import com.intellij.ui.FileColorManager
+import com.intellij.ui.JBColor
 import java.util.Date
 import com.intellij.openapi.wm.ToolWindowId
 import com.intellij.openapi.wm.ToolWindowManager
+import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.psi.PsiManager
-import com.intellij.ui.JBColor
 import com.intellij.ui.PopupHandler
 import com.intellij.util.ui.JBUI
 import git4idea.repo.GitRepository
@@ -246,7 +247,7 @@ class LstCrcChangesBrowser(
         override fun isFileColorsEnabled(): Boolean = true
 
         override fun getFileColorForPath(path: javax.swing.tree.TreePath): java.awt.Color? {
-            // First try default coloring (for non-deleted files with VirtualFiles)
+            // First try native pipeline for existing files (which have VirtualFiles)
             val defaultColor = super.getFileColorForPath(path)
             if (defaultColor != null) return defaultColor
 
@@ -254,10 +255,29 @@ class LstCrcChangesBrowser(
             val node = path.lastPathComponent as? ChangesBrowserNode<*> ?: return null
             val change = node.userObject as? Change ?: return null
             if (change.type == Change.Type.DELETED) {
-                return ToolWindowSettingsProvider.getDeletedFileBackgroundColor()
+                // Use scope-based coloring for deleted files
+                val scopeColorForDeletedFile = getScopeColorForDeletedFile(project)
+                return scopeColorForDeletedFile
             }
             return null
         }
+
+        private fun getScopeColorForDeletedFile(project: Project): Color {
+            // Use the existing DeletedFilesScope directly for zero memory overhead
+            val fileColorManager = FileColorManager.getInstance(project)
+
+            // Get the color configured for the "LSTCRC.Deleted" scope
+            // This uses your existing DeletedFilesScope infrastructure
+            val deletedScopeColor = fileColorManager.getScopeColor("LSTCRC.Deleted")
+            if (deletedScopeColor != null) {
+                return deletedScopeColor
+            }
+
+            // Fallback to default rose color if scope color is not configured
+            return JBColor.namedColor("FileColor.Rose", Color(255, 220, 220))
+        }
+
+
     }
 
     override val changesTreeModel: AsyncChangesTreeModel =
