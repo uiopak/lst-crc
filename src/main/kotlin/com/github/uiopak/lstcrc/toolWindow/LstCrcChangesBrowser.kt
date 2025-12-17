@@ -15,6 +15,7 @@ import com.intellij.openapi.actionSystem.*
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.service
 import com.intellij.openapi.diagnostic.thisLogger
+import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.fileEditor.OpenFileDescriptor
 import com.intellij.openapi.project.DumbAwareAction
 import com.intellij.openapi.project.Project
@@ -415,8 +416,29 @@ class LstCrcChangesBrowser(
                         override fun getContent(): ByteArray = loadContent()
                     }
 
-                    val virtualFile = VcsVirtualFile(beforeRevision.file, vcsFileRevision)
-                    OpenFileDescriptor(project, virtualFile).navigate(true)
+                    // If a VCS virtual file for this deleted file is already open, just focus it.
+                    val fileEditorManager = FileEditorManager.getInstance(project)
+                    val originalPath = beforeRevision.file.path
+                    val alreadyOpen = fileEditorManager.openFiles
+                        .filterIsInstance<VcsVirtualFile>()
+                        .firstOrNull { vf ->
+                            // VcsVirtualFile path typically contains protocol/revision; ensure we match by file path suffix
+                            // to avoid opening duplicates for the same deleted file.
+                            try {
+                                vf.path.endsWith(originalPath)
+                            } catch (_: Throwable) {
+                                false
+                            }
+                        }
+
+                    if (alreadyOpen != null) {
+                        // Bring the existing editor to front
+                        OpenFileDescriptor(project, alreadyOpen).navigate(true)
+                    } else {
+                        // Open a new read-only VCS virtual file
+                        val virtualFile = VcsVirtualFile(beforeRevision.file, vcsFileRevision)
+                        OpenFileDescriptor(project, virtualFile).navigate(true)
+                    }
                 } catch (e: Exception) {
                     Messages.showErrorDialog(project, LstCrcBundle.message("changes.browser.open.source.error.message", beforeRevision.file.path), "Error")
                 }
