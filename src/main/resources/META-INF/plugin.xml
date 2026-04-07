@@ -9,7 +9,7 @@
     <depends>Git4Idea</depends>
 
     <extensions defaultExtensionNs="com.intellij">
-        <toolWindow factoryClass="com.github.uiopak.lstcrc.toolWindow.MyToolWindowFactory" id="GitChangesView" anchor="left" secondary="true" canCloseContents="true"/>
+        <toolWindow factoryClass="com.github.uiopak.lstcrc.toolWindow.MyToolWindowFactory" id="GitChangesView" anchor="left" secondary="true" canCloseContents="true" icon="AllIcons.Actions.ListChanges"/>
         <customScopesProvider implementation="com.github.uiopak.lstcrc.scopes.LstCrcScopeProvider" />
         <searchScopesProvider implementation="com.github.uiopak.lstcrc.scopes.LstCrcSearchScopeProvider"/>
         <statusBarWidgetFactory implementation="com.github.uiopak.lstcrc.toolWindow.LstCrcStatusWidgetFactory" id="LstCrcStatusWidgetFactory" order="first"/>

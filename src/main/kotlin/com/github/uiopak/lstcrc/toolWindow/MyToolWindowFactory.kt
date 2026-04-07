@@ -7,7 +7,6 @@ import com.github.uiopak.lstcrc.services.GitService
 import com.github.uiopak.lstcrc.services.ToolWindowStateService
 import com.github.uiopak.lstcrc.state.ToolWindowState
 import com.github.uiopak.lstcrc.utils.LstCrcKeys
-import com.intellij.icons.AllIcons
 import com.intellij.ide.util.PropertiesComponent
 import com.intellij.openapi.actionSystem.ActionGroup
 import com.intellij.openapi.actionSystem.DefaultActionGroup
@@ -68,8 +67,6 @@ class MyToolWindowFactory : ToolWindowFactory {
                 val stateService = project.service<ToolWindowStateService>()
                 val contentManager = toolWindow.contentManager
 
-                // Programmatically set the icon to use a standard IDE icon.
-                toolWindow.setIcon(AllIcons.Actions.ListChanges)
 
                 val properties = PropertiesComponent.getInstance()
                 val showTitle = properties.getBoolean(

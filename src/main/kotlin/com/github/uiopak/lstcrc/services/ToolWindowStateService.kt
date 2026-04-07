@@ -134,51 +134,53 @@ class ToolWindowStateService(private val project: Project) : PersistentStateComp
         )
 
         gitService.getChanges(tabInfo).whenCompleteAsync { getChangesResult, throwable ->
-            if (project.isDisposed) {
-                resultFuture.complete(Unit)
-                return@whenCompleteAsync
-            }
-
-            val activeBrowser = getActiveChangesBrowser(project)
-
-            if (throwable != null) {
-                logger.error("DATA_FLOW: Error loading changes for '$profileName': ${throwable.message}", throwable)
-                diffDataService.clearActiveDiff()
-                activeBrowser?.displayChanges(null, profileName)
-                resultFuture.completeExceptionally(throwable)
-                return@whenCompleteAsync
-            }
-
-            if (getChangesResult != null) {
-                val categorizedChanges = getChangesResult.categorizedChanges
-                logger.info("DATA_FLOW: Successfully loaded ${categorizedChanges.allChanges.size} changes for '$profileName'.")
-
-                // Handle any branches that were not found during the fetch.
-                if (getChangesResult.failures.isNotEmpty() && tabInfo != null) {
-                    handleBranchFailures(tabInfo, getChangesResult.failures)
+            ApplicationManager.getApplication().invokeLater {
+                if (project.isDisposed) {
+                    resultFuture.complete(Unit)
+                    return@invokeLater
                 }
 
-                if (!isLoadingHead || includeHeadInScopes) {
-                    logger.debug("DATA_FLOW: Updating ProjectActiveDiffDataService for '$profileName'.")
-                    diffDataService.updateActiveDiff(
-                        profileName,
-                        categorizedChanges.createdFiles,
-                        categorizedChanges.modifiedFiles,
-                        categorizedChanges.movedFiles,
-                        categorizedChanges.deletedFiles,
-                        categorizedChanges.comparisonContext
-                    )
-                } else {
-                    logger.debug("DATA_FLOW: On HEAD tab with 'Include HEAD in Scopes' disabled. Clearing ProjectActiveDiffDataService.")
+                val activeBrowser = getActiveChangesBrowser(project)
+
+                if (throwable != null) {
+                    logger.error("DATA_FLOW: Error loading changes for '$profileName': ${throwable.message}", throwable)
                     diffDataService.clearActiveDiff()
+                    activeBrowser?.displayChanges(null, profileName)
+                    resultFuture.completeExceptionally(throwable)
+                    return@invokeLater
                 }
-                activeBrowser?.displayChanges(categorizedChanges, profileName)
-            } else {
-                logger.warn("DATA_FLOW: Changes for '$profileName' returned as null. Clearing data and UI.")
-                diffDataService.clearActiveDiff()
-                activeBrowser?.displayChanges(null, profileName)
+
+                if (getChangesResult != null) {
+                    val categorizedChanges = getChangesResult.categorizedChanges
+                    logger.info("DATA_FLOW: Successfully loaded ${categorizedChanges.allChanges.size} changes for '$profileName'.")
+
+                    // Handle any branches that were not found during the fetch.
+                    if (getChangesResult.failures.isNotEmpty() && tabInfo != null) {
+                        handleBranchFailures(tabInfo, getChangesResult.failures)
+                    }
+
+                    if (!isLoadingHead || includeHeadInScopes) {
+                        logger.debug("DATA_FLOW: Updating ProjectActiveDiffDataService for '$profileName'.")
+                        diffDataService.updateActiveDiff(
+                            profileName,
+                            categorizedChanges.createdFiles,
+                            categorizedChanges.modifiedFiles,
+                            categorizedChanges.movedFiles,
+                            categorizedChanges.deletedFiles,
+                            categorizedChanges.comparisonContext
+                        )
+                    } else {
+                        logger.debug("DATA_FLOW: On HEAD tab with 'Include HEAD in Scopes' disabled. Clearing ProjectActiveDiffDataService.")
+                        diffDataService.clearActiveDiff()
+                    }
+                    activeBrowser?.displayChanges(categorizedChanges, profileName)
+                } else {
+                    logger.warn("DATA_FLOW: Changes for '$profileName' returned as null. Clearing data and UI.")
+                    diffDataService.clearActiveDiff()
+                    activeBrowser?.displayChanges(null, profileName)
+                }
+                resultFuture.complete(Unit)
             }
-            resultFuture.complete(Unit)
         }
         return resultFuture
     }
