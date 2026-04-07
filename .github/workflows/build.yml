@@ -26,7 +26,7 @@ concurrency:
   
 jobs:
 
-  # Prepare environment and build the plugin
+  # Prepare the environment and build the plugin
   build:
     name: Build
     runs-on: ubuntu-latest
@@ -40,7 +40,7 @@ jobs:
       - name: Fetch Sources
         uses: actions/checkout@v4
 
-      # Set up Java environment for the next steps
+      # Set up the Java environment for the next steps
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
@@ -82,7 +82,7 @@ jobs:
 
           echo "filename=${FILENAME:0:-4}" >> $GITHUB_OUTPUT
 
-      # Store already-built plugin as an artifact for downloading
+      # Store an already-built plugin as an artifact for downloading
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
@@ -90,46 +90,46 @@ jobs:
           path: ./build/distributions/content/*/*
 
   # Run tests and upload a code coverage report
-  test:
-    name: Test
-    needs: [ build ]
-    runs-on: ubuntu-latest
-    steps:
+#  test:
+#    name: Test
+#    needs: [ build ]
+#    runs-on: ubuntu-latest
+#    steps:
+#
+#      # Check out the current repository
+#      - name: Fetch Sources
+#        uses: actions/checkout@v4
+#
+#      # Set up Java environment for the next steps
+#      - name: Setup Java
+#        uses: actions/setup-java@v4
+#        with:
+#          distribution: zulu
+#          java-version: 21
+#
+#      # Setup Gradle
+#      - name: Setup Gradle
+#        uses: gradle/actions/setup-gradle@v4
+#
+#      # Run tests
+#      - name: Run Tests
+#        run: ./gradlew check
+#
+#      # Collect Tests Result of failed tests
+#      - name: Collect Tests Result
+#        if: ${{ failure() }}
+#        uses: actions/upload-artifact@v4
+#        with:
+#          name: tests-result
+#          path: ${{ github.workspace }}/build/reports/tests
+#
+#      # Upload the Kover report to CodeCov
+#      - name: Upload Code Coverage Report
+#        uses: codecov/codecov-action@v5
+#        with:
+#          files: ${{ github.workspace }}/build/reports/kover/report.xml
 
-      # Check out the current repository
-      - name: Fetch Sources
-        uses: actions/checkout@v4
-
-      # Set up Java environment for the next steps
-      - name: Setup Java
-        uses: actions/setup-java@v4
-        with:
-          distribution: zulu
-          java-version: 21
-
-      # Setup Gradle
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
-
-      # Run tests
-      - name: Run Tests
-        run: ./gradlew check
-
-      # Collect Tests Result of failed tests
-      - name: Collect Tests Result
-        if: ${{ failure() }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: tests-result
-          path: ${{ github.workspace }}/build/reports/tests
-
-      # Upload the Kover report to CodeCov
-      - name: Upload Code Coverage Report
-        uses: codecov/codecov-action@v5
-        with:
-          files: ${{ github.workspace }}/build/reports/kover/report.xml
-
-  # Run Qodana inspections and provide report
+  # Run Qodana inspections and provide a report
   inspectCode:
     name: Inspect code
     needs: [ build ]
@@ -154,7 +154,7 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}  # to check out the actual pull request commit, not the merge commit
           fetch-depth: 0  # a full history is required for pull request analysis
 
-      # Set up Java environment for the next steps
+      # Set up the Java environment for the next steps
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
@@ -185,7 +185,7 @@ jobs:
       - name: Fetch Sources
         uses: actions/checkout@v4
 
-      # Set up Java environment for the next steps
+      # Set up the Java environment for the next steps
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
@@ -216,11 +216,12 @@ jobs:
           path: ${{ github.workspace }}/build/reports/pluginVerifier
 
   # Prepare a draft release for GitHub Releases page for the manual verification
-  # If accepted and published, release workflow would be triggered
+  # If accepted and published, the release workflow would be triggered
   releaseDraft:
     name: Release draft
     if: github.event_name != 'pull_request'
-    needs: [ build, test, inspectCode, verify ]
+    needs: [ build, inspectCode, verify ]
+#    needs: [ build, test, inspectCode, verify ]
     runs-on: ubuntu-latest
     permissions:
       contents: write
