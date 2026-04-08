@@ -2,7 +2,7 @@
 # libraries
 junit = "4.13.2"
 opentest4j = "1.3.0"
-junitJupiter = "5.10.0"
+junitJupiter = "6.0.3"
 junitJupiterEngine = "5.9.2"
 junitPlatformLauncher = "1.11.4"
 remoteRobot = "0.11.23"
