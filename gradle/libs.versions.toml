@@ -3,7 +3,7 @@
 junit = "4.13.2"
 opentest4j = "1.3.0"
 junitJupiter = "6.0.3"
-junitJupiterEngine = "5.9.2"
+junitJupiterEngine = "6.0.3"
 junitPlatformLauncher = "1.11.4"
 remoteRobot = "0.11.23"
 okhttpLogging = "4.12.0"
