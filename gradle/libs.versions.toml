@@ -10,7 +10,7 @@ okhttpLogging = "4.12.0"
 videoRecorderJunit5 = "2.0"
 # Forced/Substituted versions for security
 commonsIo = "2.16.1"
-slf4j = "2.0.13"
+slf4j = "2.0.17"
 
 
 # plugins
