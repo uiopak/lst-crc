@@ -6,6 +6,7 @@ import com.intellij.remoterobot.fixtures.*
 import com.intellij.remoterobot.search.locators.byXpath
 import com.intellij.remoterobot.stepsProcessing.step
 import com.intellij.remoterobot.utils.waitFor
+import org.assertj.swing.core.MouseButton
 import java.time.Duration
 
 fun IdeaFrame.gitChangesView(function: GitChangesViewFixture.() -> Unit) {
@@ -36,6 +37,28 @@ class GitChangesViewFixture(remoteRobot: RemoteRobot, remoteComponent: RemoteCom
 
     val changesTree: ContainerFixture
         get() = remoteRobot.find(byXpath("//div[@class='LstCrcAsyncChangesTree' or @class='ChangesTree']"))
+
+    fun clickChange(fileName: String, button: MouseButton = MouseButton.LEFT_BUTTON) {
+        step("Click '$fileName' with $button") {
+            waitFor(Duration.ofSeconds(10), interval = Duration.ofMillis(250)) {
+                changesTree.findAllText(fileName).isNotEmpty()
+            }
+            changesTree.findText(fileName).click(button)
+        }
+    }
+
+    fun doubleClickChange(fileName: String) {
+        step("Double click '$fileName'") {
+            waitFor(Duration.ofSeconds(10), interval = Duration.ofMillis(250)) {
+                changesTree.findAllText(fileName).isNotEmpty()
+            }
+            changesTree.findText(fileName).doubleClick()
+        }
+    }
+
+    fun rightClickChange(fileName: String) {
+        clickChange(fileName, MouseButton.RIGHT_BUTTON)
+    }
 
     fun addTab() {
         step("Click 'Add Tab' button") {

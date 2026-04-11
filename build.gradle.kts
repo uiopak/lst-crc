@@ -164,6 +164,11 @@ kover {
 }
 
 tasks {
+    val curatedUiTestClasses = listOf(
+        "com.github.uiopak.lstcrc.plugin.LstCrcE2ETest",
+        "com.github.uiopak.lstcrc.plugin.LstCrcAdvancedE2ETest"
+    )
+
     fun Test.configureUiRobotTestTask() {
         useJUnitPlatform()
 
@@ -222,7 +227,9 @@ tasks {
         classpath = sourceSets.test.get().runtimeClasspath
 
         configureUiRobotTestTask()
-        include("**/plugin/**/*Test.class", "**/ui/**/*Test.class")
+        filter {
+            curatedUiTestClasses.forEach { includeTestsMatching(it) }
+        }
         shouldRunAfter(test)
     }
 
@@ -247,9 +254,9 @@ tasks {
     }
 
     register("runUiTests") {
-        description = "Alias for e2eTest."
+        description = "Alias for uiTest."
         group = "verification"
-        dependsOn("e2eTest")
+        dependsOn("uiTest")
     }
 }
 

@@ -108,6 +108,12 @@ class PluginUiTestSteps(private val remoteRobot: RemoteRobot) {
         }
     }
 
+    fun gitRevision(reference: String): String = with(remoteRobot) {
+        step("Resolve git revision for $reference") {
+            runGitCommand("rev-parse", reference)
+        }
+    }
+
     fun initializeGitRepository() = with(remoteRobot) {
         step("Initialize Git repository") {
             runJs(

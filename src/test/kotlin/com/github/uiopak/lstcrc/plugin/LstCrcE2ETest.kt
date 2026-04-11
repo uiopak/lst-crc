@@ -3,6 +3,7 @@ package com.github.uiopak.lstcrc.plugin
 import com.automation.remarks.junit5.Video
 import com.github.uiopak.lstcrc.plugin.pages.*
 import com.github.uiopak.lstcrc.plugin.steps.PluginUiTestSteps
+import com.github.uiopak.lstcrc.plugin.utils.createFreshProjectFromWelcomeScreen
 import com.github.uiopak.lstcrc.plugin.utils.RemoteRobotExtension
 import com.github.uiopak.lstcrc.plugin.utils.StepsLogger
 import com.intellij.remoterobot.RemoteRobot
@@ -22,25 +23,7 @@ class LstCrcE2ETest {
     }
 
     private fun RemoteRobot.prepareFreshProject() {
-        val welcomeFrameVisible = findAll<ComponentFixture>(byXpath("Welcome frame", "//div[@class='FlatWelcomeFrame']")).isNotEmpty()
-
-        step("Prepare welcome screen for a fresh project") {
-            // When the IDE starts directly in an untitled project, we use it as-is.
-        }
-
-        if (!welcomeFrameVisible) return
-
-        welcomeFrame {
-            createNewProjectLink.click()
-            if (findAll<ComponentFixture>(DialogFixture.byTitle("New Project")).isEmpty()) {
-                return@welcomeFrame
-            }
-            dialog("New Project") {
-                findText("Empty Project").click()
-                checkBox("Create Git repository").select()
-                button("Create").click()
-            }
-        }
+        createFreshProjectFromWelcomeScreen()
     }
 
     @Test

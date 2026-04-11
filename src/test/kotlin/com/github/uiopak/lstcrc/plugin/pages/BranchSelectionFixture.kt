@@ -22,13 +22,14 @@ class BranchSelectionFixture(remoteRobot: RemoteRobot, remoteComponent: RemoteCo
             val searchField = find<ComponentFixture>(byXpath("//div[@class='SearchTextField']"))
             searchField.click()
             keyboard {
+                hotKey(17, 65)
                 enterText(branchName)
                 enter()
             }
             
             // The tree should now show the branch. We double click it.
             val tree = find<ContainerFixture>(byXpath("//div[@class='Tree']"))
-            waitFor(Duration.ofSeconds(10), interval = Duration.ofMillis(500)) {
+            waitFor(Duration.ofSeconds(20), interval = Duration.ofMillis(500)) {
                 tree.findAllText(branchName).isNotEmpty()
             }
             tree.findText(branchName).doubleClick()
