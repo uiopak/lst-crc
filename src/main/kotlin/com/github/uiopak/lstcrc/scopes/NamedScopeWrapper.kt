@@ -8,6 +8,7 @@ import com.intellij.psi.search.GlobalSearchScope
 import com.intellij.psi.search.scope.packageSet.NamedScope
 import com.intellij.psi.search.scope.packageSet.NamedScopesHolder
 import com.intellij.psi.search.scope.packageSet.NamedScopeManager
+import com.intellij.psi.search.scope.packageSet.PackageSetBase
 import javax.swing.Icon
 import org.jetbrains.annotations.Nls
 import com.intellij.psi.PsiManager
@@ -37,18 +38,13 @@ class NamedScopeWrapper(
         if (project.isDisposed) return false
 
         val packageSet = namedScope.value ?: return false
-        val psiFile: PsiFile? = PsiManager.getInstance(project).findFile(file)
-
-        return if (psiFile != null) {
-            // If namedScopesHolder is null, try to get the default one for the project.
-            // Some PackageSet implementations might not strictly need it or can work with null.
-            val holderToUse = namedScopesHolder ?: NamedScopeManager.getInstance(project)
-            packageSet.contains(psiFile, holderToUse)
-        } else {
-            // If we can't get a PsiFile (e.g., for a binary file or one not in the project structure),
-            // it's unlikely to be contained in a typical PackageSet.
-            false
+        val holderToUse = namedScopesHolder ?: NamedScopeManager.getInstance(project)
+        if (packageSet is PackageSetBase) {
+            return packageSet.contains(file, project, holderToUse)
         }
+
+        val psiFile: PsiFile = PsiManager.getInstance(project).findFile(file) ?: return false
+        return packageSet.contains(psiFile, holderToUse)
     }
 
     override fun isSearchInModuleContent(module: com.intellij.openapi.module.Module): Boolean = true

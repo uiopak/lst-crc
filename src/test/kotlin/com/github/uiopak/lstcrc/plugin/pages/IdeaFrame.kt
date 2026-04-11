@@ -88,4 +88,81 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
         """, true
         )
     }
+
+    fun openGitChangesView() {
+        step("Open GitChangesView tool window") {
+            runJs(
+                """
+                const frameHelper = com.intellij.openapi.wm.impl.ProjectFrameHelper.getFrameHelper(component);
+                const project = frameHelper ? frameHelper.getProject() : null;
+                if (project) {
+                    const toolWindow = com.intellij.openapi.wm.ToolWindowManager.getInstance(project).getToolWindow("GitChangesView");
+                    if (toolWindow) {
+                        toolWindow.show();
+                        toolWindow.activate(null);
+                    }
+                }
+
+                const actionManager = com.intellij.openapi.actionSystem.ActionManager.getInstance();
+                const gitChangesViewAction = actionManager.getAction("ActivateGitChangesViewToolWindow");
+                if (gitChangesViewAction) {
+                    const dataContext = com.intellij.ide.DataManager.getInstance().getDataContext();
+                    const event = com.intellij.openapi.actionSystem.AnActionEvent.createFromAnAction(gitChangesViewAction, null, "test", dataContext);
+                    gitChangesViewAction.actionPerformed(event);
+                }
+            """, true
+            )
+
+            val toolWindowVisible = runCatching {
+                waitFor(Duration.ofSeconds(5), interval = Duration.ofMillis(250)) {
+                    remoteRobot.findAll<ComponentFixture>(byXpath("//div[@class='LstCrcChangesBrowser']")).isNotEmpty()
+                }
+                true
+            }.getOrDefault(false)
+
+            if (!toolWindowVisible) {
+                remoteRobot.find<ComponentFixture>(
+                    byXpath("//div[@class='TextPresentationComponent' and contains(@tooltiptext, 'LST-CRC')]")
+                ).click()
+            }
+        }
+    }
+
+    fun resetGitChangesViewState() {
+        step("Reset GitChangesView state") {
+            runJs(
+                """
+                const frameHelper = com.intellij.openapi.wm.impl.ProjectFrameHelper.getFrameHelper(component);
+                const project = frameHelper ? frameHelper.getProject() : null;
+                if (project) {
+                    com.intellij.ide.util.PropertiesComponent.getInstance().setValue(
+                        "com.github.uiopak.lstcrc.app.includeHeadInScopes",
+                        false,
+                        false
+                    );
+
+                    const toolWindow = com.intellij.openapi.wm.ToolWindowManager.getInstance(project).getToolWindow("GitChangesView");
+                    if (toolWindow) {
+                        const contentManager = toolWindow.getContentManager();
+                        const contents = contentManager.getContents();
+                        for (let i = contents.length - 1; i >= 0; i--) {
+                            const content = contents[i];
+                            if (content.isCloseable()) {
+                                contentManager.removeContent(content, true);
+                            }
+                        }
+
+                        const remainingContents = contentManager.getContents();
+                        if (remainingContents.length > 0) {
+                            contentManager.setSelectedContent(remainingContents[0], true);
+                        }
+
+                        toolWindow.hide();
+                    }
+                }
+                """,
+                true
+            )
+        }
+    }
 }

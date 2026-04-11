@@ -164,6 +164,26 @@ kover {
 }
 
 tasks {
+    fun Test.configureUiRobotTestTask() {
+        useJUnitPlatform()
+
+        jvmArgs("--add-opens=java.base/java.lang=ALL-UNNAMED")
+
+        testLogging {
+            events("passed", "skipped", "failed", "standardOut", "standardError")
+            showExceptions = true
+            showCauses = true
+            showStackTraces = true
+            exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+        }
+
+        systemProperty("robot-server.auto.run", "false")
+        systemProperty("robot.server.url", System.getProperty("robot.server.url") ?: "http://127.0.0.1:8082")
+        systemProperty("ui.test.timeout", System.getProperty("ui.test.timeout") ?: "600")
+
+        timeout.set(Duration.ofMinutes(20))
+    }
+
     wrapper {
         gradleVersion = providers.gradleProperty("gradleVersion").get()
     }
@@ -174,7 +194,6 @@ tasks {
 
     // Configure the test task to use JUnit Platform (JUnit 5)
     test {
-        enabled = false
         useJUnitPlatform()
 
         testLogging {
@@ -189,7 +208,48 @@ tasks {
         systemProperty("robot.server.url", "http://127.0.0.1:8082")
         systemProperty("ui.test.timeout", "120")
 
+        exclude("**/plugin/**/*Test.class", "**/ui/**/*Test.class")
+        failOnNoDiscoveredTests = false
+
         timeout.set(Duration.ofMinutes(10))
+    }
+
+    register<Test>("uiTest") {
+        description = "Runs Remote Robot UI tests against an IDE started with runIdeForUiTests."
+        group = "verification"
+
+        testClassesDirs = sourceSets.test.get().output.classesDirs
+        classpath = sourceSets.test.get().runtimeClasspath
+
+        configureUiRobotTestTask()
+        include("**/plugin/**/*Test.class", "**/ui/**/*Test.class")
+        shouldRunAfter(test)
+    }
+
+    register<Test>("e2eTest") {
+        description = "Runs the LstCrc end-to-end UI tests against an IDE started with runIdeForUiTests."
+        group = "verification"
+
+        testClassesDirs = sourceSets.test.get().output.classesDirs
+        classpath = sourceSets.test.get().runtimeClasspath
+
+        configureUiRobotTestTask()
+        filter {
+            includeTestsMatching("com.github.uiopak.lstcrc.plugin.LstCrcE2ETest")
+        }
+        shouldRunAfter(test)
+    }
+
+    register("startIdeForUiTests") {
+        description = "Alias for runIdeForUiTests."
+        group = "verification"
+        dependsOn("runIdeForUiTests")
+    }
+
+    register("runUiTests") {
+        description = "Alias for e2eTest."
+        group = "verification"
+        dependsOn("e2eTest")
     }
 }
 
