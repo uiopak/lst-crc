@@ -12,6 +12,10 @@ import java.time.Duration
 
 private val welcomeFrameLocator = byXpath("Welcome frame", "//div[@class='FlatWelcomeFrame']")
 private val ideaFrameLocator = byXpath("Idea frame", "//div[@class='IdeFrameImpl']")
+private val newProjectButtonLocator = byXpath(
+    "New Project button",
+    "//div[(@class='MainButton' and @text='New Project') or (@accessiblename='New Project' and @class='JButton')]"
+)
 
 fun RemoteRobot.resetIdeToWelcomeScreen() {
     step("Reset IDE to welcome screen") {
@@ -30,12 +34,18 @@ fun RemoteRobot.createFreshProjectFromWelcomeScreen() {
     resetIdeToWelcomeScreen()
 
     step("Create a fresh empty project from the welcome screen") {
-        welcomeFrame {
-            createNewProjectLink.click()
-        }
+        waitFor(Duration.ofSeconds(30), interval = Duration.ofMillis(500)) {
+            if (findAll<ComponentFixture>(DialogFixture.byTitle("New Project")).isNotEmpty()) {
+                return@waitFor true
+            }
 
-        waitFor(Duration.ofSeconds(15), interval = Duration.ofMillis(250)) {
-            findAll<ComponentFixture>(DialogFixture.byTitle("New Project")).isNotEmpty()
+            if (findAll<ComponentFixture>(welcomeFrameLocator).isNotEmpty()) {
+                runCatching {
+                    find<ComponentFixture>(newProjectButtonLocator, Duration.ofSeconds(2)).click()
+                }
+            }
+
+            false
         }
 
         find<DialogFixture>(DialogFixture.byTitle("New Project"), Duration.ofSeconds(15)).apply {

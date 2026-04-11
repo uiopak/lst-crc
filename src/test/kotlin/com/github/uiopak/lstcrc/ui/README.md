@@ -1,87 +1,55 @@
 # UI Testing Guide for lst-crc
 
-This document provides instructions for running UI tests for the lst-crc plugin.
+This document describes the maintained Remote Robot UI suite for the LST-CRC plugin.
 
-## Overview
+## Suite Layout
 
-The UI tests use IntelliJ's Remote Robot framework to test the plugin in a real IDE environment. The tests verify that:
+The active UI tests live in `com.github.uiopak.lstcrc.plugin` and are split by feature:
 
-1. The GitChangesView tool window is available and can be opened
-2. The status bar widget is available
-3. Custom scopes are registered and available
-4. The tool window displays changes and content correctly
+1. `LstCrcBranchComparisonUiTest`
+2. `LstCrcFileScopeUiTest`
+3. `LstCrcInteractionUiTest`
+4. `LstCrcVisualUiTest`
+
+All Remote Robot classes are tagged as `ui` and only run when `runUiTests=true` is set. That keeps normal `test` runs and generic IDE `Run Tests` actions from accidentally launching Robot tests.
 
 ## Running UI Tests
 
-There are two ways to run the UI tests:
+### Step 1: Start the IDE with Robot Server
 
-### Method 1: Using the Run Scripts (Recommended)
+Use the shared `Start IDE with Robot Server` run configuration or execute:
 
-The project includes scripts that automate the process of starting the IDE and running the tests:
-
-#### Windows:
-```
-scripts\run-ui-tests.bat
+```powershell
+.\gradlew.bat runIdeForUiTests
 ```
 
-#### Linux/macOS:
-```
-./scripts/run-ui-tests.sh
-```
+Wait for the sandbox IDE to finish loading.
 
-These scripts will:
-1. Start the IDE with Robot Server in a separate process
-2. Wait for the IDE to initialize
-3. Run the UI tests against the running IDE
+### Step 2: Run the UI suite
 
-### Method 2: Manual Two-Step Process
+Use the shared `Run UI Tests` run configuration or execute:
 
-If you prefer more control over the process, you can run the steps manually:
-
-#### Step 1: Start the IDE with Robot Server
-
-Run the "Start IDE for UI Tests (Separate Process)" run configuration or execute:
-
-```
-./gradlew startIdeForUiTests
+```powershell
+.\gradlew.bat uiTest
 ```
 
-This will start the IDE with Robot Server in a separate process. Wait for the IDE to fully initialize.
+To run a single UI class or method, keep the IDE running and use:
 
-#### Step 2: Run the UI Tests
-
-Once the IDE is running, run the "Run UI Tests" run configuration or execute:
-
+```powershell
+.\gradlew.bat uiTest --tests "com.github.uiopak.lstcrc.plugin.LstCrcInteractionUiTest"
+.\gradlew.bat uiTest --tests "com.github.uiopak.lstcrc.plugin.LstCrcInteractionUiTest.testStatusWidgetAndRevisionActions"
 ```
-./gradlew runUiTests
-```
-
-This will run the UI tests against the already running IDE.
 
 ## Troubleshooting
 
-If you encounter issues with the UI tests:
+1. If tests cannot connect to Robot Server, verify port `8082` is open.
+2. If UI startup is slow, increase the timeout with `-Dui.test.timeout=180`.
+3. If you run a UI test from an IDE JUnit configuration, make sure it sets `-DrunUiTests=true`.
+4. Videos are written under `video/` for post-failure inspection.
 
-1. **IDE doesn't start**: Make sure you have sufficient memory allocated to the Gradle JVM.
+## Coverage Rules
 
-2. **Tests can't connect to Robot Server**: Verify that the Robot Server is running by checking if port 8082 is open:
-   ```
-   netstat -an | findstr 8082  # Windows
-   netstat -an | grep 8082     # Linux/macOS
-   ```
-
-3. **Tests fail with timeout**: Increase the timeout value by setting the system property:
-   ```
-   ./gradlew runUiTests -Dui.test.timeout=180
-   ```
-
-4. **IDE starts but tests don't run**: Make sure you're running the tests after the IDE has fully initialized.
-
-## Adding New UI Tests
-
-When adding new UI tests:
-
-1. Add them to the `com.github.uiopak.lstcrc.ui` package
-2. Use the `RemoteRobot` API to interact with the IDE
-3. Add appropriate wait conditions to ensure the UI is ready before testing
-4. Use descriptive test names and add comments explaining what the test is verifying
+1. Put new Robot tests in `com.github.uiopak.lstcrc.plugin`.
+2. Group tests by feature, not by “basic” or “advanced” buckets.
+3. Prefer UI-observable assertions over internal state when practical.
+4. Keep the normal `test` task free of Robot execution.

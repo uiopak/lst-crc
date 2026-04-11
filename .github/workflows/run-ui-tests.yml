@@ -26,17 +26,17 @@ jobs:
               ./gradlew runIdeForUiTests --info --scan &> build/reports/idea.log &
             runTests: |
               export DISPLAY=:99.0
-              ./gradlew test --info
+              ./gradlew uiTest --info
             url: http://127.0.0.1:8082
             reportName: ui-test-fails-report-linux
           - os: macOS-latest
             runIde: ./gradlew runIdeForUiTests --info --scan &> build/reports/idea.log &
-            runTests: ./gradlew test --info
+            runTests: ./gradlew uiTest --info
             url: http://127.0.0.1:8082
             reportName: ui-test-fails-report-mac
           - os: windows-latest
             runIde: cmd.exe /c "start /b gradlew.bat runIdeForUiTests --info --scan > build/reports/idea.log 2>&1"
-            runTests: ./gradlew test --info
+            runTests: .\gradlew.bat uiTest --info
             url: http://localhost:8082
             reportName: ui-test-fails-report-windows
 

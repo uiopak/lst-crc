@@ -23,9 +23,19 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
     companion object {
         private const val SINGLE_CLICK_ACTION_KEY = "com.github.uiopak.lstcrc.app.singleClickAction"
         private const val DOUBLE_CLICK_ACTION_KEY = "com.github.uiopak.lstcrc.app.doubleClickAction"
+        private const val MIDDLE_CLICK_ACTION_KEY = "com.github.uiopak.lstcrc.app.middleClickAction"
+        private const val DOUBLE_MIDDLE_CLICK_ACTION_KEY = "com.github.uiopak.lstcrc.app.doubleMiddleClickAction"
         private const val RIGHT_CLICK_ACTION_KEY = "com.github.uiopak.lstcrc.app.rightClickAction"
         private const val DOUBLE_RIGHT_CLICK_ACTION_KEY = "com.github.uiopak.lstcrc.app.doubleRightClickAction"
         private const val SHOW_CONTEXT_MENU_KEY = "com.github.uiopak.lstcrc.app.showContextMenu"
+        private const val DOUBLE_CLICK_DELAY_KEY = "com.github.uiopak.lstcrc.app.userDoubleClickDelay"
+        private const val INCLUDE_HEAD_IN_SCOPES_KEY = "com.github.uiopak.lstcrc.app.includeHeadInScopes"
+        private const val ENABLE_GUTTER_MARKERS_KEY = "com.github.uiopak.lstcrc.app.enableGutterMarkers"
+        private const val ENABLE_GUTTER_FOR_NEW_FILES_KEY = "com.github.uiopak.lstcrc.app.enableGutterForNewFiles"
+        private const val SHOW_TOOL_WINDOW_TITLE_KEY = "com.github.uiopak.lstcrc.app.showToolWindowTitle"
+        private const val SHOW_WIDGET_CONTEXT_KEY = "com.github.uiopak.lstcrc.app.showWidgetContext"
+        private const val SHOW_CONTEXT_SINGLE_REPO_KEY = "com.github.uiopak.lstcrc.app.showContextSingleRepo"
+        private const val SHOW_CONTEXT_FOR_COMMITS_KEY = "com.github.uiopak.lstcrc.app.showContextForCommits"
     }
 
     val projectViewTree
@@ -144,14 +154,29 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
                 const frameHelper = com.intellij.openapi.wm.impl.ProjectFrameHelper.getFrameHelper(component);
                 const project = frameHelper ? frameHelper.getProject() : null;
                 if (project) {
-                    com.intellij.ide.util.PropertiesComponent.getInstance().setValue(
-                        "com.github.uiopak.lstcrc.app.includeHeadInScopes",
-                        false,
-                        false
-                    );
+                    const properties = com.intellij.ide.util.PropertiesComponent.getInstance();
+                    properties.setValue("com.github.uiopak.lstcrc.app.singleClickAction", "OPEN_SOURCE");
+                    properties.setValue("com.github.uiopak.lstcrc.app.doubleClickAction", "NONE");
+                    properties.setValue("com.github.uiopak.lstcrc.app.middleClickAction", "SHOW_IN_PROJECT_TREE");
+                    properties.setValue("com.github.uiopak.lstcrc.app.doubleMiddleClickAction", "NONE");
+                    properties.setValue("com.github.uiopak.lstcrc.app.rightClickAction", "OPEN_DIFF");
+                    properties.setValue("com.github.uiopak.lstcrc.app.doubleRightClickAction", "NONE");
+                    properties.setValue("com.github.uiopak.lstcrc.app.showContextMenu", false, false);
+                    properties.setValue("com.github.uiopak.lstcrc.app.userDoubleClickDelay", "-1");
+                    properties.setValue("com.github.uiopak.lstcrc.app.includeHeadInScopes", false, false);
+                    properties.setValue("com.github.uiopak.lstcrc.app.enableGutterMarkers", true, true);
+                    properties.setValue("com.github.uiopak.lstcrc.app.enableGutterForNewFiles", false, false);
+                    properties.setValue("com.github.uiopak.lstcrc.app.showToolWindowTitle", false, false);
+                    properties.setValue("com.github.uiopak.lstcrc.app.showWidgetContext", false, false);
+                    properties.setValue("com.github.uiopak.lstcrc.app.showContextSingleRepo", true, true);
+                    properties.setValue("com.github.uiopak.lstcrc.app.showContextForCommits", false, false);
 
                     const toolWindow = com.intellij.openapi.wm.ToolWindowManager.getInstance(project).getToolWindow("GitChangesView");
                     if (toolWindow) {
+                        toolWindow.getComponent().putClientProperty(
+                            com.intellij.openapi.wm.impl.content.ToolWindowContentUi.HIDE_ID_LABEL,
+                            "true"
+                        );
                         const contentManager = toolWindow.getContentManager();
                         const contents = contentManager.getContents();
                         for (let i = contents.length - 1; i >= 0; i--) {
@@ -178,6 +203,8 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
     fun configureLstCrcClickActions(
         singleClickAction: String? = null,
         doubleClickAction: String? = null,
+        middleClickAction: String? = null,
+        doubleMiddleClickAction: String? = null,
         rightClickAction: String? = null,
         doubleRightClickAction: String? = null,
         showContextMenu: Boolean? = null
@@ -186,6 +213,8 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
             val updates = buildList {
                 singleClickAction?.let { add("properties.setValue('$SINGLE_CLICK_ACTION_KEY', ${toJsStringLiteral(it)});") }
                 doubleClickAction?.let { add("properties.setValue('$DOUBLE_CLICK_ACTION_KEY', ${toJsStringLiteral(it)});") }
+                middleClickAction?.let { add("properties.setValue('$MIDDLE_CLICK_ACTION_KEY', ${toJsStringLiteral(it)});") }
+                doubleMiddleClickAction?.let { add("properties.setValue('$DOUBLE_MIDDLE_CLICK_ACTION_KEY', ${toJsStringLiteral(it)});") }
                 rightClickAction?.let { add("properties.setValue('$RIGHT_CLICK_ACTION_KEY', ${toJsStringLiteral(it)});") }
                 doubleRightClickAction?.let { add("properties.setValue('$DOUBLE_RIGHT_CLICK_ACTION_KEY', ${toJsStringLiteral(it)});") }
                 showContextMenu?.let { add("properties.setValue('$SHOW_CONTEXT_MENU_KEY', ${if (it) "true" else "false"}, false);") }
@@ -197,6 +226,42 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
                 """
                 const properties = com.intellij.ide.util.PropertiesComponent.getInstance();
                 ${updates.joinToString("\n")}
+                """.trimIndent(),
+                true
+            )
+        }
+    }
+
+    fun clickSettingsSnapshot(): String {
+        return step("Read LST-CRC click settings") {
+            callJs<String>(
+                """
+                (function() {
+                    const properties = com.intellij.ide.util.PropertiesComponent.getInstance();
+                    const values = [
+                        properties.getValue('$SINGLE_CLICK_ACTION_KEY', ''),
+                        properties.getValue('$DOUBLE_CLICK_ACTION_KEY', ''),
+                        properties.getValue('$MIDDLE_CLICK_ACTION_KEY', ''),
+                        properties.getValue('$DOUBLE_MIDDLE_CLICK_ACTION_KEY', ''),
+                        properties.getValue('$RIGHT_CLICK_ACTION_KEY', ''),
+                        properties.getValue('$DOUBLE_RIGHT_CLICK_ACTION_KEY', ''),
+                        String(properties.getBoolean('$SHOW_CONTEXT_MENU_KEY', false)),
+                        properties.getValue('$DOUBLE_CLICK_DELAY_KEY', '')
+                    ];
+                    return values.join("|");
+                })();
+                """.trimIndent(),
+                true
+            )
+        }
+    }
+
+    fun setDoubleClickDelayMs(delay: Int) {
+        step("Set double click delay to ${delay}ms") {
+            runJs(
+                """
+                const properties = com.intellij.ide.util.PropertiesComponent.getInstance();
+                properties.setValue('$DOUBLE_CLICK_DELAY_KEY', ${toJsStringLiteral(delay.toString())});
                 """.trimIndent(),
                 true
             )
@@ -218,6 +283,52 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
                     const file = selectedFiles[0];
                     const fileType = file.getFileType();
                     return file.getName() + "|" + file.getClass().getName() + "|" + (fileType ? fileType.getName() : "");
+                })();
+                """.trimIndent(),
+                true
+            )
+        }
+    }
+
+    fun closeAllEditors() {
+        step("Close all editors") {
+            runJs(
+                """
+                const project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
+                if (project) {
+                    com.intellij.openapi.fileEditor.FileEditorManager.getInstance(project).closeAllFiles();
+                }
+                """.trimIndent(),
+                true
+            )
+        }
+    }
+
+    fun selectedProjectViewDescriptor(): String {
+        return step("Read selected project view item") {
+            callJs<String>(
+                """
+                (function() {
+                    const project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
+                    if (!project) return "";
+
+                    const projectView = com.intellij.ide.projectView.ProjectView.getInstance(project);
+                    const pane = projectView ? projectView.getCurrentProjectViewPane() : null;
+                    if (!pane) return "";
+
+                    const selected = pane.getSelectedElements ? pane.getSelectedElements() : null;
+                    if (selected && selected.length > 0) {
+                        const first = selected[0];
+                        if (first && first.getName) return String(first.getName());
+                        return String(first);
+                    }
+
+                    const tree = pane.getTree ? pane.getTree() : null;
+                    const path = tree ? tree.getSelectionPath() : null;
+                    if (!path) return "";
+
+                    const node = path.getLastPathComponent();
+                    return node == null ? "" : String(node);
                 })();
                 """.trimIndent(),
                 true
@@ -303,6 +414,239 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
         }
     }
 
+    fun setShowWidgetContext(show: Boolean) {
+        step("Set widget context prefix to $show") {
+            runJs(
+                """
+                const properties = com.intellij.ide.util.PropertiesComponent.getInstance();
+                properties.setValue('$SHOW_WIDGET_CONTEXT_KEY', ${if (show) "true" else "false"}, false);
+                """.trimIndent(),
+                true
+            )
+        }
+    }
+
+    fun setShowToolWindowTitle(show: Boolean) {
+        step("Set tool window title visibility to $show") {
+            runJs(
+                """
+                (function() {
+                    const properties = com.intellij.ide.util.PropertiesComponent.getInstance();
+                    properties.setValue('$SHOW_TOOL_WINDOW_TITLE_KEY', ${if (show) "true" else "false"}, false);
+
+                    const project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
+                    if (!project) return;
+
+                    const toolWindow = com.intellij.openapi.wm.ToolWindowManager.getInstance(project).getToolWindow("GitChangesView");
+                    if (!toolWindow) return;
+
+                    toolWindow.getComponent().putClientProperty(
+                        com.intellij.openapi.wm.impl.content.ToolWindowContentUi.HIDE_ID_LABEL,
+                        ${if (show) "null" else "'true'"}
+                    );
+
+                    const contentManager = toolWindow.getContentManager();
+                    if (contentManager instanceof com.intellij.ui.content.impl.ContentManagerImpl) {
+                        const ui = contentManager.getUI();
+                        if (ui instanceof com.intellij.openapi.wm.impl.content.ToolWindowContentUi) {
+                            ui.update();
+                        }
+                    }
+                })();
+                """.trimIndent(),
+                true
+            )
+        }
+    }
+
+    fun isToolWindowTitleVisible(): Boolean {
+        return step("Read tool window title visibility") {
+            callJs<Boolean>(
+                """
+                (function() {
+                    const project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
+                    if (!project) return false;
+
+                    const toolWindow = com.intellij.openapi.wm.ToolWindowManager.getInstance(project).getToolWindow("GitChangesView");
+                    if (!toolWindow) return false;
+
+                    return toolWindow.getComponent().getClientProperty(
+                        com.intellij.openapi.wm.impl.content.ToolWindowContentUi.HIDE_ID_LABEL
+                    ) == null;
+                })();
+                """.trimIndent(),
+                true
+            )
+        }
+    }
+
+    fun setIncludeHeadInScopes(include: Boolean) {
+        step("Set include HEAD in scopes to $include") {
+            runJs(
+                """
+                (function() {
+                    const properties = com.intellij.ide.util.PropertiesComponent.getInstance();
+                    properties.setValue('$INCLUDE_HEAD_IN_SCOPES_KEY', ${if (include) "true" else "false"}, false);
+
+                    const project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
+                    if (!project) return;
+
+                    const toolWindow = com.intellij.openapi.wm.ToolWindowManager.getInstance(project).getToolWindow("GitChangesView");
+                    const browser = toolWindow && toolWindow.getContentManager().getSelectedContent()
+                        ? toolWindow.getContentManager().getSelectedContent().getComponent()
+                        : null;
+                    if (browser && browser.requestRefreshData) {
+                        browser.requestRefreshData();
+                    }
+                })();
+                """.trimIndent(),
+                true
+            )
+        }
+    }
+
+    fun setGutterSettings(enableMarkers: Boolean? = null, enableForNewFiles: Boolean? = null) {
+        step("Update gutter settings") {
+            check(enableMarkers != null || enableForNewFiles != null) { "At least one gutter setting must be provided" }
+
+            val updates = buildList {
+                enableMarkers?.let { add("properties.setValue('$ENABLE_GUTTER_MARKERS_KEY', ${if (it) "true" else "false"}, true);") }
+                enableForNewFiles?.let { add("properties.setValue('$ENABLE_GUTTER_FOR_NEW_FILES_KEY', ${if (it) "true" else "false"}, false);") }
+            }
+
+            runJs(
+                """
+                (function() {
+                    const properties = com.intellij.ide.util.PropertiesComponent.getInstance();
+                    ${updates.joinToString("\n")}
+                })();
+                """.trimIndent(),
+                true
+            )
+        }
+    }
+
+    fun setTreeContextSettings(showSingleRepo: Boolean? = null, showCommits: Boolean? = null) {
+        step("Update tree context settings") {
+            check(showSingleRepo != null || showCommits != null) { "At least one tree context setting must be provided" }
+
+            val updates = buildList {
+                showSingleRepo?.let { add("properties.setValue('$SHOW_CONTEXT_SINGLE_REPO_KEY', ${if (it) "true" else "false"}, true);") }
+                showCommits?.let { add("properties.setValue('$SHOW_CONTEXT_FOR_COMMITS_KEY', ${if (it) "true" else "false"}, false);") }
+            }
+
+            runJs(
+                """
+                (function() {
+                    const properties = com.intellij.ide.util.PropertiesComponent.getInstance();
+                    ${updates.joinToString("\n")}
+
+                    const project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
+                    if (!project) return;
+
+                    const toolWindow = com.intellij.openapi.wm.ToolWindowManager.getInstance(project).getToolWindow("GitChangesView");
+                    const browser = toolWindow && toolWindow.getContentManager().getSelectedContent()
+                        ? toolWindow.getContentManager().getSelectedContent().getComponent()
+                        : null;
+                    if (browser && browser.rebuildView) {
+                        browser.rebuildView();
+                    }
+                })();
+                """.trimIndent(),
+                true
+            )
+        }
+    }
+
+    fun treeContextSettingsSnapshot(): String {
+        return step("Read tree context settings") {
+            callJs<String>(
+                """
+                (function() {
+                    const properties = com.intellij.ide.util.PropertiesComponent.getInstance();
+                    return String(properties.getBoolean('$SHOW_CONTEXT_SINGLE_REPO_KEY', true)) + "|" +
+                        String(properties.getBoolean('$SHOW_CONTEXT_FOR_COMMITS_KEY', false));
+                })();
+                """.trimIndent(),
+                true
+            )
+        }
+    }
+
+    fun gutterSettingsSnapshot(): String {
+        return step("Read gutter settings") {
+            callJs<String>(
+                """
+                (function() {
+                    const properties = com.intellij.ide.util.PropertiesComponent.getInstance();
+                    return String(properties.getBoolean('$ENABLE_GUTTER_MARKERS_KEY', true)) + "|" +
+                        String(properties.getBoolean('$ENABLE_GUTTER_FOR_NEW_FILES_KEY', false)) + "|" +
+                        String(properties.getBoolean('$INCLUDE_HEAD_IN_SCOPES_KEY', false));
+                })();
+                """.trimIndent(),
+                true
+            )
+        }
+    }
+
+    fun selectedChangesTreeSnapshot(): String {
+        return step("Read selected changes tree snapshot") {
+            callJs<String>(
+                """
+                (function() {
+                    const project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
+                    if (!project) return "";
+
+                    const toolWindow = com.intellij.openapi.wm.ToolWindowManager.getInstance(project).getToolWindow("GitChangesView");
+                    const browser = toolWindow && toolWindow.getContentManager().getSelectedContent()
+                        ? toolWindow.getContentManager().getSelectedContent().getComponent()
+                        : null;
+                    if (!browser || !browser.getViewer) return "";
+
+                    const viewer = browser.getViewer();
+                    const renderer = viewer.getCellRenderer();
+                    const model = viewer.getModel();
+                    const rows = [];
+
+                    for (let row = 0; row < viewer.getRowCount(); row++) {
+                        const path = viewer.getPathForRow(row);
+                        if (!path) continue;
+
+                        const node = path.getLastPathComponent();
+                        const rendered = renderer.getTreeCellRendererComponent(
+                            viewer,
+                            node,
+                            viewer.isRowSelected(row),
+                            viewer.isExpanded(row),
+                            model.isLeaf(node),
+                            row,
+                            false
+                        );
+
+                        let text = "";
+                        const context = rendered.getAccessibleContext ? rendered.getAccessibleContext() : null;
+                        if (context) {
+                            text = context.getAccessibleName() || "";
+                        }
+                        if ((!text || text.length === 0) && rendered.getText) {
+                            text = String(rendered.getText());
+                        }
+                        if ((!text || text.length === 0) && rendered.getCharSequence) {
+                            text = String(rendered.getCharSequence(false));
+                        }
+                        if (text && text.length > 0) {
+                            rows.push(text);
+                        }
+                    }
+
+                    return rows.join("\n");
+                })();
+                """.trimIndent(),
+                true
+            )
+        }
+    }
+
     fun selectedLstCrcTabName(): String {
         return step("Read selected LST-CRC tab") {
             callJs<String>(
@@ -324,6 +668,12 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
                 true
             )
         }
+    }
+
+    fun hasLstCrcTab(tabName: String): Boolean {
+        return remoteRobot.findAll<ComponentFixture>(
+            byXpath("//div[@class='ContentTabLabel' and (@text='$tabName' or @accessiblename='$tabName' or @visible_text='$tabName')]")
+        ).isNotEmpty()
     }
 
     fun selectedTabComparisonMap(): String {
@@ -447,6 +797,29 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
                         }
                     }));
                 }
+                """.trimIndent(),
+                true
+            )
+        }
+    }
+
+    fun updateTabAlias(branchName: String, newAlias: String?) {
+        step("Update tab alias for $branchName") {
+            runJs(
+                """
+                const branchName = ${toJsStringLiteral(branchName)};
+                const newAlias = ${newAlias?.let(::toJsStringLiteral) ?: "null"};
+                const project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
+                if (!project) {
+                    throw new java.lang.IllegalStateException("No open project available for tab alias update");
+                }
+
+                const toolWindow = com.intellij.openapi.wm.ToolWindowManager.getInstance(project).getToolWindow("GitChangesView");
+                const content = toolWindow ? toolWindow.getContentManager().getSelectedContent() : null;
+                const classLoader = content ? content.getComponent().getClass().getClassLoader() : project.getClass().getClassLoader();
+                const stateServiceClass = java.lang.Class.forName("com.github.uiopak.lstcrc.services.ToolWindowStateService", true, classLoader);
+                const stateService = project.getService(stateServiceClass);
+                stateService.updateTabAlias(branchName, newAlias);
                 """.trimIndent(),
                 true
             )

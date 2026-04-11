@@ -69,6 +69,7 @@ dependencies {
     testImplementation(libs.junit.jupiter.api)
     testRuntimeOnly(libs.junit.jupiter.engine)
     testRuntimeOnly(libs.junit.platform.launcher)
+    testRuntimeOnly(libs.slf4j.simple)
 
     // IntelliJ Platform Gradle Plugin Dependencies Extension - read more: https://plugins.jetbrains.com/docs/intellij/tools-intellij-platform-gradle-plugin-dependencies-extension.html
     intellijPlatform {
@@ -164,15 +165,8 @@ kover {
 }
 
 tasks {
-    val curatedUiTestClasses = listOf(
-        "com.github.uiopak.lstcrc.plugin.LstCrcE2ETest",
-        "com.github.uiopak.lstcrc.plugin.LstCrcAdvancedE2ETest"
-    )
-
-    fun Test.configureUiRobotTestTask() {
+    fun Test.configureCommonTestTask() {
         useJUnitPlatform()
-
-        jvmArgs("--add-opens=java.base/java.lang=ALL-UNNAMED")
 
         testLogging {
             events("passed", "skipped", "failed", "standardOut", "standardError")
@@ -181,7 +175,18 @@ tasks {
             showStackTraces = true
             exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
         }
+    }
 
+    fun Test.configureUiRobotTestTask() {
+        useJUnitPlatform {
+            includeTags("ui")
+        }
+
+        jvmArgs("--add-opens=java.base/java.lang=ALL-UNNAMED")
+
+        maxParallelForks = 1
+
+        systemProperty("runUiTests", "true")
         systemProperty("robot-server.auto.run", "false")
         systemProperty("robot.server.url", System.getProperty("robot.server.url") ?: "http://127.0.0.1:8082")
         systemProperty("ui.test.timeout", System.getProperty("ui.test.timeout") ?: "600")
@@ -199,23 +204,12 @@ tasks {
 
     // Configure the test task to use JUnit Platform (JUnit 5)
     test {
-        useJUnitPlatform()
-
-        testLogging {
-            events("passed", "skipped", "failed", "standardOut", "standardError")
-            showExceptions = true
-            showCauses = true
-            showStackTraces = true
-            exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+        useJUnitPlatform {
+            excludeTags("ui")
         }
 
-        systemProperty("robot-server.auto.run", "false")
-        systemProperty("robot.server.url", "http://127.0.0.1:8082")
-        systemProperty("ui.test.timeout", "120")
-
-        exclude("**/plugin/**/*Test.class", "**/ui/**/*Test.class")
+        configureCommonTestTask()
         failOnNoDiscoveredTests = false
-
         timeout.set(Duration.ofMinutes(10))
     }
 
@@ -226,37 +220,9 @@ tasks {
         testClassesDirs = sourceSets.test.get().output.classesDirs
         classpath = sourceSets.test.get().runtimeClasspath
 
+        configureCommonTestTask()
         configureUiRobotTestTask()
-        filter {
-            curatedUiTestClasses.forEach { includeTestsMatching(it) }
-        }
         shouldRunAfter(test)
-    }
-
-    register<Test>("e2eTest") {
-        description = "Runs the LstCrc end-to-end UI tests against an IDE started with runIdeForUiTests."
-        group = "verification"
-
-        testClassesDirs = sourceSets.test.get().output.classesDirs
-        classpath = sourceSets.test.get().runtimeClasspath
-
-        configureUiRobotTestTask()
-        filter {
-            includeTestsMatching("com.github.uiopak.lstcrc.plugin.LstCrcE2ETest")
-        }
-        shouldRunAfter(test)
-    }
-
-    register("startIdeForUiTests") {
-        description = "Alias for runIdeForUiTests."
-        group = "verification"
-        dependsOn("runIdeForUiTests")
-    }
-
-    register("runUiTests") {
-        description = "Alias for uiTest."
-        group = "verification"
-        dependsOn("uiTest")
     }
 }
 

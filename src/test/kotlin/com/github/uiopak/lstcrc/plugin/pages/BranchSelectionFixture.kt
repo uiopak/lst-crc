@@ -10,7 +10,10 @@ import com.intellij.remoterobot.utils.waitFor
 import java.time.Duration
 
 fun IdeaFrame.branchSelection(function: BranchSelectionFixture.() -> Unit) {
-    find<BranchSelectionFixture>(byXpath("//div[@class='BranchSelectionPanel']"), Duration.ofSeconds(10)).apply(function)
+    waitFor(Duration.ofSeconds(30), interval = Duration.ofMillis(500)) {
+        remoteRobot.findAll<ComponentFixture>(byXpath("//div[@class='BranchSelectionPanel']")).isNotEmpty()
+    }
+    remoteRobot.find<BranchSelectionFixture>(byXpath("//div[@class='BranchSelectionPanel']"), Duration.ofSeconds(5)).apply(function)
 }
 
 @FixtureName("BranchSelection")

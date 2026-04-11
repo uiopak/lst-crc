@@ -3,13 +3,9 @@ package com.github.uiopak.lstcrc.plugin
 import com.automation.remarks.junit5.Video
 import com.github.uiopak.lstcrc.plugin.pages.actionMenuItem
 import com.github.uiopak.lstcrc.plugin.pages.branchSelection
-import com.github.uiopak.lstcrc.plugin.pages.dialog
 import com.github.uiopak.lstcrc.plugin.pages.gitChangesView
 import com.github.uiopak.lstcrc.plugin.pages.idea
 import com.github.uiopak.lstcrc.plugin.steps.PluginUiTestSteps
-import com.github.uiopak.lstcrc.plugin.utils.RemoteRobotExtension
-import com.github.uiopak.lstcrc.plugin.utils.StepsLogger
-import com.github.uiopak.lstcrc.plugin.utils.createFreshProjectFromWelcomeScreen
 import com.intellij.remoterobot.RemoteRobot
 import com.intellij.remoterobot.fixtures.ComponentFixture
 import com.intellij.remoterobot.search.locators.byXpath
@@ -18,18 +14,10 @@ import com.intellij.remoterobot.utils.keyboard
 import com.intellij.remoterobot.utils.waitFor
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
-import org.junit.jupiter.api.extension.ExtendWith
 import java.time.Duration
 
-@ExtendWith(RemoteRobotExtension::class)
-class LstCrcAdvancedE2ETest {
-    init {
-        StepsLogger.init()
-    }
-
-    private fun RemoteRobot.prepareFreshProject() {
-        createFreshProjectFromWelcomeScreen()
-    }
+@LstCrcUiTest
+class LstCrcInteractionUiTest : LstCrcUiTestSupport() {
 
     @Test
     @Video
@@ -104,6 +92,53 @@ class LstCrcAdvancedE2ETest {
                     findAll<ComponentFixture>(
                         byXpath("//div[@visible_text='1 difference' or @text='1 difference']")
                     ).isNotEmpty()
+            }
+        }
+    }
+
+    @Test
+    @Video
+    fun testContextMenuActionsWhenEnabled(remoteRobot: RemoteRobot) = with(remoteRobot) {
+        val uiSteps = PluginUiTestSteps(remoteRobot)
+
+        prepareFreshProject()
+
+        idea {
+            step("Wait for smart mode") {
+                dumbAware(Duration.ofMinutes(5)) {}
+            }
+
+            uiSteps.initializeGitRepository()
+            resetGitChangesViewState()
+
+            uiSteps.createNewFile("Main.txt", "Base line\n")
+            uiSteps.commitChanges("Initial commit")
+            val defaultBranch = uiSteps.defaultBranchName()
+
+            uiSteps.createBranch("feature-context")
+            uiSteps.modifyFile("Main.txt", "Feature context line\n")
+            uiSteps.commitChanges("Feature context commit")
+            uiSteps.checkoutBranch(defaultBranch)
+
+            openGitChangesView()
+            gitChangesView {
+                addTab()
+            }
+            branchSelection {
+                searchAndSelect("feature-context")
+            }
+
+            configureLstCrcClickActions(showContextMenu = true)
+
+            gitChangesView {
+                selectTab("feature-context")
+                rightClickChange("Main.txt")
+            }
+
+            waitFor(Duration.ofSeconds(10)) {
+                actionMenuItem("Show Diff").isShowing &&
+                    actionMenuItem("Open Source").isShowing &&
+                    actionMenuItem("Show in Project Tree").isShowing
             }
         }
     }
@@ -228,7 +263,7 @@ class LstCrcAdvancedE2ETest {
 
     @Test
     @Video
-    fun testVisualGutterMarkers(remoteRobot: RemoteRobot) = with(remoteRobot) {
+    fun testTabRenameUpdatesWidgetContext(remoteRobot: RemoteRobot) = with(remoteRobot) {
         val uiSteps = PluginUiTestSteps(remoteRobot)
 
         prepareFreshProject()
@@ -241,13 +276,13 @@ class LstCrcAdvancedE2ETest {
             uiSteps.initializeGitRepository()
             resetGitChangesViewState()
 
-            uiSteps.createNewFile("Main.txt", "alpha\nbeta\n")
+            uiSteps.createNewFile("Main.txt", "Base line\n")
             uiSteps.commitChanges("Initial commit")
             val defaultBranch = uiSteps.defaultBranchName()
 
-            uiSteps.createBranch("feature-gutter")
-            uiSteps.modifyFile("Main.txt", "alpha changed\nbeta\n")
-            uiSteps.commitChanges("Gutter commit")
+            uiSteps.createBranch("feature-rename")
+            uiSteps.modifyFile("Main.txt", "Renamed alias line\n")
+            uiSteps.commitChanges("Rename alias commit")
             uiSteps.checkoutBranch(defaultBranch)
 
             openGitChangesView()
@@ -255,20 +290,38 @@ class LstCrcAdvancedE2ETest {
                 addTab()
             }
             branchSelection {
-                searchAndSelect("feature-gutter")
+                searchAndSelect("feature-rename")
             }
 
-            uiSteps.modifyFile("Main.txt", "alpha local change\nbeta\n")
-            openFile("Main.txt")
-            var latestSummary = ""
-            waitFor(Duration.ofSeconds(20), interval = Duration.ofMillis(500)) {
-                latestSummary = visualGutterSummaryForSelectedEditor()
-                latestSummary.contains("MODIFIED") && latestSummary.contains("highlighters=") && !latestSummary.endsWith("highlighters=0")
+            waitFor(Duration.ofSeconds(10)) {
+                statusWidgetText().contains("feature-rename")
             }
 
-            val summary = visualGutterSummaryForSelectedEditor()
-            assertTrue(summary.contains("MODIFIED"), "Expected modified gutter range, got: $summary (last observed: $latestSummary)")
-            assertTrue(summary.contains("highlighters="), "Expected installed gutter highlighters, got: $summary (last observed: $latestSummary)")
+            updateTabAlias("feature-rename", "renamed-feature")
+
+            waitFor(Duration.ofSeconds(10)) {
+                hasLstCrcTab("renamed-feature") &&
+                    selectedLstCrcTabName() == "renamed-feature" &&
+                    statusWidgetText().contains("renamed-feature")
+            }
+
+            setShowWidgetContext(true)
+            waitFor(Duration.ofSeconds(10)) {
+                statusWidgetText().startsWith("Context:") && statusWidgetText().contains("renamed-feature")
+            }
+
+            setShowWidgetContext(false)
+            waitFor(Duration.ofSeconds(10)) {
+                !statusWidgetText().startsWith("Context:")
+            }
+
+            updateTabAlias("feature-rename", null)
+
+            waitFor(Duration.ofSeconds(10)) {
+                hasLstCrcTab("feature-rename") &&
+                    selectedLstCrcTabName() == "feature-rename" &&
+                    statusWidgetText().contains("feature-rename")
+            }
         }
     }
 }

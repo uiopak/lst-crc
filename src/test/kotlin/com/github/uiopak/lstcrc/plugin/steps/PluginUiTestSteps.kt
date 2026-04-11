@@ -11,7 +11,7 @@ import com.intellij.remoterobot.utils.waitFor
 import java.time.Duration
 
 /**
- * Helper class for UI test interactions in PluginUiTest
+ * Shared helper operations for the LST-CRC Remote Robot UI suite.
  */
 class PluginUiTestSteps(private val remoteRobot: RemoteRobot) {
     companion object {
@@ -116,41 +116,73 @@ class PluginUiTestSteps(private val remoteRobot: RemoteRobot) {
 
     fun initializeGitRepository() = with(remoteRobot) {
         step("Initialize Git repository") {
-            runJs(
-                """
-                const project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
-                function deleteRecursively(file) {
-                    if (file.isDirectory()) {
-                        const children = file.listFiles();
-                        if (children) {
-                            for (let i = 0; i < children.length; i++) {
-                                deleteRecursively(children[i]);
+            var lastFailure: Throwable? = null
+
+            repeat(3) { attempt ->
+                val initialized = runCatching {
+                    runJs(
+                        """
+                        const project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
+                        if (project) {
+                            com.intellij.openapi.application.ApplicationManager.getApplication().invokeAndWait(new java.lang.Runnable({
+                                run: function() {
+                                    com.intellij.openapi.fileEditor.FileDocumentManager.getInstance().saveAllDocuments();
+                                    com.intellij.openapi.fileEditor.FileEditorManager.getInstance(project).closeAllFiles();
+                                }
+                            }));
+
+                            function deleteRecursively(file) {
+                                if (file.isDirectory()) {
+                                    const children = file.listFiles();
+                                    if (children) {
+                                        for (let i = 0; i < children.length; i++) {
+                                            deleteRecursively(children[i]);
+                                        }
+                                    }
+                                }
+
+                                if (!file.delete() && file.exists()) {
+                                    throw new java.io.IOException("Could not delete " + file.getAbsolutePath());
+                                }
+                            }
+
+                            const basePathFile = new java.io.File(project.getBasePath());
+                            const projectFileName = project.getName() + ".iml";
+                            const children = basePathFile.listFiles();
+                            if (children) {
+                                for (let i = 0; i < children.length; i++) {
+                                    const child = children[i];
+                                    const childName = child.getName();
+                                    if (childName !== ".idea" && childName !== projectFileName) {
+                                        deleteRecursively(child);
+                                    }
+                                }
                             }
                         }
-                    }
-
-                    if (!file.delete() && file.exists()) {
-                        throw new java.io.IOException("Could not delete " + file.getAbsolutePath());
-                    }
+                        """.trimIndent(),
+                        true
+                    )
+                    runGitCommand("init")
+                    refreshProjectAfterGitCommand()
                 }
 
-                const basePathFile = new java.io.File(project.getBasePath());
-                const projectFileName = project.getName() + ".iml";
-                const children = basePathFile.listFiles();
-                if (children) {
-                    for (let i = 0; i < children.length; i++) {
-                        const child = children[i];
-                        const childName = child.getName();
-                        if (childName !== ".idea" && childName !== projectFileName) {
-                            deleteRecursively(child);
-                        }
+                if (initialized.isSuccess) {
+                    return@step
+                }
+
+                lastFailure = initialized.exceptionOrNull()
+                if (attempt < 2) {
+                    waitFor(Duration.ofSeconds(5), interval = Duration.ofMillis(250)) {
+                        runCatching {
+                            callJs<Boolean>(
+                                "com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects().length > 0"
+                            )
+                        }.getOrDefault(false)
                     }
                 }
-                """.trimIndent(),
-                true
-            )
-            runGitCommand("init")
-            refreshProjectAfterGitCommand()
+            }
+
+            throw IllegalStateException("Failed to initialize Git repository after 3 attempts", lastFailure)
         }
     }
 

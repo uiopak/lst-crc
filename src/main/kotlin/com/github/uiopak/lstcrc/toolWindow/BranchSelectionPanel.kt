@@ -42,7 +42,7 @@ class BranchSelectionPanel(
 
     private val searchTextField = SearchTextField(false)
     private val tree: Tree
-    private val fullTreeModel: DefaultTreeModel
+    private var fullTreeModel: DefaultTreeModel
 
     // Data classes to represent nodes in the tree clearly.
     private data class BranchCategory(val type: BranchCategoryType, val displayName: String)
@@ -73,7 +73,12 @@ class BranchSelectionPanel(
         val newModel = if (searchTerm.isBlank()) {
             fullTreeModel
         } else {
-            DefaultTreeModel(buildFilteredRoot(searchTerm))
+            var filteredRoot = buildFilteredRoot(searchTerm)
+            if (filteredRoot.childCount == 0) {
+                fullTreeModel = buildFullBranchTreeModel()
+                filteredRoot = buildFilteredRoot(searchTerm)
+            }
+            DefaultTreeModel(filteredRoot)
         }
         tree.model = newModel
         TreeUtil.expandAll(tree)
@@ -251,6 +256,7 @@ class BranchSelectionPanel(
         val remoteCategory = BranchCategory(BranchCategoryType.REMOTE, LstCrcBundle.message("branch.type.remote"))
 
         // If a specific repository is provided, use its branches. Otherwise, use the primary one.
+        // Repository refresh must happen off the EDT before constructing this panel.
         val targetRepo = repository ?: gitService.getPrimaryRepository()
 
         val localBranches = targetRepo?.branches?.localBranches?.map { it.name } ?: emptyList()

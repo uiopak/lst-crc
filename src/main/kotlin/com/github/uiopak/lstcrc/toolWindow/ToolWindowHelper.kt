@@ -119,7 +119,7 @@ object ToolWindowHelper {
 
                 override fun run(indicator: ProgressIndicator) {
                     // This runs on a BGT, safe for slow operations.
-                    primaryRepo = project.service<GitService>().getPrimaryRepository()
+                    primaryRepo = project.service<GitService>().getPrimaryRepository()?.also { it.update() }
                 }
 
                 override fun onSuccess() {
