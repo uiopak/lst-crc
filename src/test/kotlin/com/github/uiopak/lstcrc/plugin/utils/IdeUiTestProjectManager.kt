@@ -16,9 +16,19 @@ private val newProjectButtonLocator = byXpath(
     "New Project button",
     "//div[(@class='MainButton' and @text='New Project') or (@accessiblename='New Project' and @class='JButton')]"
 )
+private val newUsersOnboardingDialogLocator = byXpath(
+    "New users onboarding dialog",
+    "//div[@accessiblename.key='newUiOnboarding.dialog.title' or @text.key='newUiOnboarding.dialog.title']"
+)
+private val newUsersOnboardingSkipLocator = byXpath(
+    "New users onboarding skip",
+    "//div[@class='ActionLink' and (@accessiblename.key='dialog.skip' or @text.key='dialog.skip' or @accessiblename='Skip' or @text='Skip')]"
+)
 
 fun RemoteRobot.resetIdeToWelcomeScreen() {
     step("Reset IDE to welcome screen") {
+        suppressNewUsersOnboarding()
+
         waitFor(Duration.ofMinutes(2), interval = Duration.ofSeconds(1)) {
             if (findAll<ComponentFixture>(welcomeFrameLocator).isNotEmpty()) {
                 return@waitFor true
@@ -34,6 +44,8 @@ fun RemoteRobot.createFreshProjectFromWelcomeScreen() {
     resetIdeToWelcomeScreen()
 
     step("Create a fresh empty project from the welcome screen") {
+        suppressNewUsersOnboarding()
+
         waitFor(Duration.ofSeconds(30), interval = Duration.ofMillis(500)) {
             if (findAll<ComponentFixture>(DialogFixture.byTitle("New Project")).isNotEmpty()) {
                 return@waitFor true
@@ -56,6 +68,39 @@ fun RemoteRobot.createFreshProjectFromWelcomeScreen() {
 
         waitFor(Duration.ofMinutes(1), interval = Duration.ofSeconds(1)) {
             findAll<ComponentFixture>(ideaFrameLocator).isNotEmpty()
+        }
+
+        dismissNewUsersOnboardingIfPresent()
+    }
+}
+
+private fun RemoteRobot.suppressNewUsersOnboarding() {
+    runJs(
+        """
+        try {
+            com.intellij.openapi.util.registry.Registry.get("ide.newUsersOnboarding").setValue(false);
+        }
+        catch (ignored) {
+        }
+
+        com.intellij.ide.util.PropertiesComponent.getInstance().setValue("NEW_USERS_ONBOARDING_DIALOG_SHOWN", true);
+        """.trimIndent(),
+        true
+    )
+}
+
+private fun RemoteRobot.dismissNewUsersOnboardingIfPresent() {
+    step("Dismiss new users onboarding if present") {
+        waitFor(Duration.ofSeconds(15), interval = Duration.ofMillis(500)) {
+            if (findAll<ComponentFixture>(newUsersOnboardingDialogLocator).isEmpty()) {
+                return@waitFor true
+            }
+
+            runCatching {
+                find<ComponentFixture>(newUsersOnboardingSkipLocator, Duration.ofSeconds(2)).click()
+            }
+
+            findAll<ComponentFixture>(newUsersOnboardingDialogLocator).isEmpty()
         }
     }
 }
