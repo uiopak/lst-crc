@@ -76,6 +76,21 @@ jobs:
       - name: Create reports directory
         run: mkdir -p build/reports
 
+      - name: Set Windows screen resolution
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          Get-Command Set-DisplayResolution
+          Set-DisplayResolution -Width 1920 -Height 1080 -Force
+
+      - name: Set macOS screen resolution
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          system_profiler SPDisplaysDataType | grep Resolution
+          "/Library/Application Support/VMware Tools/vmware-resolutionSet" 2560 1440
+          system_profiler SPDisplaysDataType | grep Resolution
+
       # Run IDEA prepared for UI testing
       - name: Run IDE
         run: ${{ matrix.runIde }}

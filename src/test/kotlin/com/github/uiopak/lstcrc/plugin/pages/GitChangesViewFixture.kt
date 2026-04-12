@@ -118,11 +118,10 @@ class GitChangesViewFixture(remoteRobot: RemoteRobot, remoteComponent: RemoteCom
                 hasContentTab(tabName)
             }
 
-            val visibleTabs = remoteRobot.findAll<ComponentFixture>(tabLocator(tabName))
-            if (visibleTabs.isNotEmpty()) {
+            if (!selectContentTab(tabName)) {
+                val visibleTabs = remoteRobot.findAll<ComponentFixture>(tabLocator(tabName))
+                check(visibleTabs.isNotEmpty()) { "Could not find tab '$tabName'" }
                 visibleTabs.first().click()
-            } else {
-                check(selectContentTab(tabName)) { "Could not select tab '$tabName' via content manager" }
             }
 
             waitFor(Duration.ofSeconds(10), interval = Duration.ofMillis(250)) {
