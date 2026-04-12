@@ -1,6 +1,7 @@
 package com.github.uiopak.lstcrc.toolWindow
 
 import com.github.uiopak.lstcrc.resources.LstCrcBundle
+import com.github.uiopak.lstcrc.services.BranchSnapshot
 import com.github.uiopak.lstcrc.services.GitService
 import com.github.uiopak.lstcrc.utils.getTreePathForMouseCoordinates
 import com.intellij.icons.AllIcons
@@ -37,6 +38,7 @@ import javax.swing.tree.DefaultTreeModel
 class BranchSelectionPanel(
     private val gitService: GitService,
     private val repository: GitRepository?,
+    private val branchSnapshot: BranchSnapshot? = null,
     private val onBranchSelected: (branchName: String) -> Unit
 ) : JBPanel<BranchSelectionPanel>(BorderLayout()) {
 
@@ -255,12 +257,16 @@ class BranchSelectionPanel(
         val localCategory = BranchCategory(BranchCategoryType.LOCAL, LstCrcBundle.message("branch.type.local"))
         val remoteCategory = BranchCategory(BranchCategoryType.REMOTE, LstCrcBundle.message("branch.type.remote"))
 
-        // If a specific repository is provided, use its branches. Otherwise, use the primary one.
-        // Repository refresh must happen off the EDT before constructing this panel.
-        val targetRepo = repository ?: gitService.getPrimaryRepository()
+        val snapshot = branchSnapshot ?: run {
+            val targetRepo = repository ?: gitService.getPrimaryRepository()
+            BranchSnapshot(
+                targetRepo?.branches?.localBranches?.map { it.name } ?: emptyList(),
+                targetRepo?.branches?.remoteBranches?.map { it.name } ?: emptyList()
+            )
+        }
 
-        val localBranches = targetRepo?.branches?.localBranches?.map { it.name } ?: emptyList()
-        val remoteBranches = targetRepo?.branches?.remoteBranches?.map { it.name } ?: emptyList()
+        val localBranches = snapshot.localBranches
+        val remoteBranches = snapshot.remoteBranches
 
         val localBranchesNode = DefaultMutableTreeNode(localCategory)
         addBranchNodes(localBranchesNode, localBranches)

@@ -10,7 +10,10 @@ import org.assertj.swing.core.MouseButton
 import java.time.Duration
 
 fun IdeaFrame.gitChangesView(function: GitChangesViewFixture.() -> Unit) {
-    find<GitChangesViewFixture>(byXpath("//div[@class='LstCrcChangesBrowser']"), Duration.ofSeconds(10)).apply(function)
+    waitFor(Duration.ofSeconds(10), interval = Duration.ofMillis(250)) {
+        findAll<GitChangesViewFixture>(byXpath("//div[@class='LstCrcChangesBrowser' and @visible='true']")).isNotEmpty()
+    }
+    find<GitChangesViewFixture>(byXpath("//div[@class='LstCrcChangesBrowser' and @visible='true']"), Duration.ofSeconds(10)).apply(function)
 }
 
 @FixtureName("GitChangesView")

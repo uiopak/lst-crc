@@ -22,16 +22,15 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.ui.popup.JBPopupFactory
 import com.intellij.openapi.vcs.changes.Change
+import com.intellij.openapi.vcs.changes.ContentRevision
+import com.intellij.openapi.vcs.changes.ChangesUtil
 import com.intellij.openapi.vcs.changes.actions.diff.ShowDiffAction
 import com.intellij.openapi.vcs.changes.ui.*
 import com.intellij.openapi.vcs.changes.ui.AsyncChangesTreeModel
-import com.intellij.openapi.vcs.history.VcsFileRevision
-import com.intellij.openapi.vcs.history.VcsRevisionNumber
-import com.intellij.openapi.vcs.vfs.VcsVirtualFile
+import com.intellij.openapi.vcs.vfs.ContentRevisionVirtualFile
 import java.awt.Color
 import com.intellij.ui.FileColorManager
 import com.intellij.ui.JBColor
-import java.util.Date
 import com.intellij.openapi.wm.ToolWindowId
 import com.intellij.openapi.wm.ToolWindowManager
 import com.intellij.openapi.vfs.VirtualFile
@@ -403,42 +402,7 @@ class LstCrcChangesBrowser(
             val beforeRevision = change.beforeRevision
             if (beforeRevision != null) {
                 try {
-                    val content = beforeRevision.content ?: return
-
-                    val vcsFileRevision = object : VcsFileRevision {
-                        override fun getRevisionNumber(): VcsRevisionNumber = beforeRevision.revisionNumber
-                        override fun getRevisionDate(): Date? = null
-                        override fun getAuthor(): String? = null
-                        override fun getCommitMessage(): String? = null
-                        override fun getBranchName(): String? = null
-                        override fun getChangedRepositoryPath(): com.intellij.openapi.vcs.RepositoryLocation? = null
-                        override fun loadContent(): ByteArray = content.toByteArray()
-                        override fun getContent(): ByteArray = loadContent()
-                    }
-
-                    // If a VCS virtual file for this deleted file is already open, just focus it.
-                    val fileEditorManager = FileEditorManager.getInstance(project)
-                    val originalPath = beforeRevision.file.path
-                    val alreadyOpen = fileEditorManager.openFiles
-                        .filterIsInstance<VcsVirtualFile>()
-                        .firstOrNull { vf ->
-                            // VcsVirtualFile path typically contains protocol/revision; ensure we match by file path suffix
-                            // to avoid opening duplicates for the same deleted file.
-                            try {
-                                vf.path.endsWith(originalPath)
-                            } catch (_: Throwable) {
-                                false
-                            }
-                        }
-
-                    if (alreadyOpen != null) {
-                        // Bring the existing editor to front
-                        OpenFileDescriptor(project, alreadyOpen).navigate(true)
-                    } else {
-                        // Open a new read-only VCS virtual file
-                        val virtualFile = VcsVirtualFile(beforeRevision.file, vcsFileRevision)
-                        OpenFileDescriptor(project, virtualFile).navigate(true)
-                    }
+                    openRevisionSource(beforeRevision)
                 } catch (e: Exception) {
                     Messages.showErrorDialog(project, LstCrcBundle.message("changes.browser.open.source.error.message", beforeRevision.file.path), "Error")
                 }
@@ -449,9 +413,46 @@ class LstCrcChangesBrowser(
         val fileToOpen = getFileFromChange(change)
         if (fileToOpen != null && fileToOpen.isValid && !fileToOpen.isDirectory) {
             OpenFileDescriptor(project, fileToOpen).navigate(true)
+            return
+        }
+
+        val revisionToOpen = change.afterRevision ?: change.beforeRevision
+        if (revisionToOpen != null) {
+            try {
+                openRevisionSource(revisionToOpen)
+                return
+            } catch (e: Exception) {
+                val pathForMessage = revisionToOpen.file.path
+                Messages.showWarningDialog(project, LstCrcBundle.message("changes.browser.open.source.error.message", pathForMessage), LstCrcBundle.message("changes.browser.open.source.error.title"))
+                return
+            }
         } else {
             val pathForMessage = (change.afterRevision?.file ?: change.beforeRevision?.file)?.path ?: LstCrcBundle.message("changes.browser.open.source.error.unknown.path")
             Messages.showWarningDialog(project, LstCrcBundle.message("changes.browser.open.source.error.message", pathForMessage), LstCrcBundle.message("changes.browser.open.source.error.title"))
+        }
+    }
+
+    private fun openRevisionSource(revision: ContentRevision) {
+        ApplicationManager.getApplication().executeOnPooledThread {
+            try {
+                ChangesUtil.loadContentRevision(revision)
+
+                ApplicationManager.getApplication().invokeLater {
+                    if (project.isDisposed) return@invokeLater
+                    val virtualFile = ContentRevisionVirtualFile.create(revision)
+                    FileEditorManager.getInstance(project).openFile(virtualFile, true, true)
+                }
+            } catch (e: Exception) {
+                logger.warn("Failed to preload revision-backed file '${revision.file.path}'.", e)
+                ApplicationManager.getApplication().invokeLater {
+                    if (project.isDisposed) return@invokeLater
+                    Messages.showWarningDialog(
+                        project,
+                        LstCrcBundle.message("changes.browser.open.source.error.message", revision.file.path),
+                        LstCrcBundle.message("changes.browser.open.source.error.title")
+                    )
+                }
+            }
         }
     }
 
