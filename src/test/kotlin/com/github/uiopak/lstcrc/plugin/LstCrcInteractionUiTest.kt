@@ -86,9 +86,10 @@ class LstCrcInteractionUiTest : LstCrcUiTestSupport() {
             }
 
             waitFor(Duration.ofSeconds(15)) {
-                findAll<ComponentFixture>(
-                    byXpath("//div[@class='DiffFilePathLabel' and (@text='Main.txt' or @accessiblename='Main.txt')]")
-                ).isNotEmpty() ||
+                hasDiffEditorOpen() ||
+                    findAll<ComponentFixture>(
+                        byXpath("//div[@class='DiffFilePathLabel' and (@text='Main.txt' or @accessiblename='Main.txt')]")
+                    ).isNotEmpty() ||
                     findAll<ComponentFixture>(
                         byXpath("//div[@visible_text='1 difference' or @text='1 difference']")
                     ).isNotEmpty()

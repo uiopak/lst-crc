@@ -117,6 +117,8 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
 
     fun openGitChangesView() {
         step("Open GitChangesView tool window") {
+            val visibleTimeout = if (System.getenv("GITHUB_ACTIONS") == "true") Duration.ofSeconds(15) else Duration.ofSeconds(5)
+
             runJs(
                 """
                 const frameHelper = com.intellij.openapi.wm.impl.ProjectFrameHelper.getFrameHelper(component);
@@ -140,16 +142,22 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
             )
 
             val toolWindowVisible = runCatching {
-                waitFor(Duration.ofSeconds(5), interval = Duration.ofMillis(250)) {
+                waitFor(visibleTimeout, interval = Duration.ofMillis(250)) {
                     remoteRobot.findAll<ComponentFixture>(byXpath("//div[@class='LstCrcChangesBrowser']")).isNotEmpty()
                 }
                 true
             }.getOrDefault(false)
 
             if (!toolWindowVisible) {
-                remoteRobot.find<ComponentFixture>(
-                    byXpath("//div[@class='TextPresentationComponent' and contains(@tooltiptext, 'LST-CRC')]")
-                ).click()
+                runCatching {
+                    remoteRobot.find<ComponentFixture>(
+                        byXpath("//div[@class='TextPresentationComponent' and contains(@tooltiptext, 'LST-CRC')]"),
+                        Duration.ofSeconds(5)
+                    ).click()
+                }
+                waitFor(visibleTimeout, interval = Duration.ofMillis(250)) {
+                    remoteRobot.findAll<ComponentFixture>(byXpath("//div[@class='LstCrcChangesBrowser']")).isNotEmpty()
+                }
             }
         }
     }

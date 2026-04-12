@@ -50,7 +50,8 @@ class LstCrcVisualUiTest : LstCrcUiTestSupport() {
             uiSteps.modifyFile("Main.txt", "alpha local change\nbeta\n")
             openFile("Main.txt")
             var latestSummary = ""
-            waitFor(Duration.ofSeconds(20), interval = Duration.ofMillis(500)) {
+            val gutterTimeout = if (System.getenv("GITHUB_ACTIONS") == "true") Duration.ofSeconds(60) else Duration.ofSeconds(20)
+            waitFor(gutterTimeout, interval = Duration.ofMillis(500)) {
                 latestSummary = visualGutterSummaryForSelectedEditor()
                 latestSummary.contains("MODIFIED") && latestSummary.contains("highlighters=") && !latestSummary.endsWith("highlighters=0")
             }

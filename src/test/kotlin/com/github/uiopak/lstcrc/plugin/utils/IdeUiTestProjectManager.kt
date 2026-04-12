@@ -24,13 +24,15 @@ private val newUsersOnboardingSkipLocator = byXpath(
     "New users onboarding skip",
     "//div[@class='ActionLink' and (@accessiblename.key='dialog.skip' or @text.key='dialog.skip' or @accessiblename='Skip' or @text='Skip')]"
 )
-
 fun RemoteRobot.resetIdeToWelcomeScreen() {
     step("Reset IDE to welcome screen") {
         suppressNewUsersOnboarding()
 
         waitFor(Duration.ofMinutes(2), interval = Duration.ofSeconds(1)) {
-            if (findAll<ComponentFixture>(welcomeFrameLocator).isNotEmpty()) {
+            val welcomeVisible = findAll<ComponentFixture>(welcomeFrameLocator).isNotEmpty()
+            val ideaFrameVisible = findAll<ComponentFixture>(ideaFrameLocator).isNotEmpty()
+
+            if (welcomeVisible && !ideaFrameVisible) {
                 return@waitFor true
             }
 
@@ -61,8 +63,12 @@ fun RemoteRobot.createFreshProjectFromWelcomeScreen() {
         }
 
         find<DialogFixture>(DialogFixture.byTitle("New Project"), Duration.ofSeconds(15)).apply {
-            findText("Empty Project").click()
-            checkBox("Create Git repository").select()
+            runCatching {
+                waitFor(Duration.ofSeconds(5), interval = Duration.ofMillis(250)) {
+                    findAllText("Empty Project").isNotEmpty()
+                }
+                findText("Empty Project").click()
+            }
             button("Create").click()
         }
 
@@ -91,16 +97,31 @@ private fun RemoteRobot.suppressNewUsersOnboarding() {
 
 private fun RemoteRobot.dismissNewUsersOnboardingIfPresent() {
     step("Dismiss new users onboarding if present") {
-        waitFor(Duration.ofSeconds(15), interval = Duration.ofMillis(500)) {
-            if (findAll<ComponentFixture>(newUsersOnboardingDialogLocator).isEmpty()) {
-                return@waitFor true
+        val watchWindow = if (System.getenv("GITHUB_ACTIONS") == "true") {
+            Duration.ofSeconds(15)
+        } else {
+            Duration.ofSeconds(3)
+        }
+        val quietPeriodNanos = Duration.ofSeconds(2).toNanos()
+        val watchDeadline = System.nanoTime() + watchWindow.toNanos()
+        var lastSeenAtNanos: Long? = null
+
+        waitFor(watchWindow.plusSeconds(2), interval = Duration.ofMillis(500)) {
+            val dialogVisible = findAll<ComponentFixture>(newUsersOnboardingDialogLocator).isNotEmpty()
+            if (dialogVisible) {
+                lastSeenAtNanos = System.nanoTime()
+                runCatching {
+                    find<ComponentFixture>(newUsersOnboardingSkipLocator, Duration.ofSeconds(2)).click()
+                }
+                return@waitFor false
             }
 
-            runCatching {
-                find<ComponentFixture>(newUsersOnboardingSkipLocator, Duration.ofSeconds(2)).click()
+            val lastSeen = lastSeenAtNanos
+            if (lastSeen != null) {
+                return@waitFor System.nanoTime() - lastSeen >= quietPeriodNanos
             }
 
-            findAll<ComponentFixture>(newUsersOnboardingDialogLocator).isEmpty()
+            System.nanoTime() >= watchDeadline
         }
     }
 }
