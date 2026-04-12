@@ -17,21 +17,114 @@ fun IdeaFrame.gitChangesView(function: GitChangesViewFixture.() -> Unit) {
 class GitChangesViewFixture(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
     CommonContainerFixture(remoteRobot, remoteComponent) {
 
+    private fun toJsStringLiteral(value: String): String {
+        return buildString {
+            append('"')
+            value.forEach { character ->
+                when (character) {
+                    '\\' -> append("\\\\")
+                    '"' -> append("\\\"")
+                    '\n' -> append("\\n")
+                    '\r' -> append("\\r")
+                    '\t' -> append("\\t")
+                    else -> append(character)
+                }
+            }
+            append('"')
+        }
+    }
+
+    private fun tabLocator(tabName: String) = byXpath(
+        "Tab '$tabName'",
+        "//div[@class='ContentTabLabel' and (@text='$tabName' or @accessiblename='$tabName' or @visible_text='$tabName')]"
+    )
+
+    private fun hasContentTab(tabName: String): Boolean = remoteRobot.callJs(
+        """
+        const project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
+        if (!project) {
+            false;
+        } else {
+            const toolWindow = com.intellij.openapi.wm.ToolWindowManager.getInstance(project).getToolWindow("GitChangesView");
+            const contentManager = toolWindow ? toolWindow.getContentManager() : null;
+            if (!contentManager) {
+                false;
+            } else {
+                const tabName = ${toJsStringLiteral(tabName)};
+                java.util.Arrays.stream(contentManager.getContents())
+                    .anyMatch(content => tabName.equals(content.getDisplayName()));
+            }
+        }
+        """.trimIndent(),
+        true
+    )
+
+    private fun selectContentTab(tabName: String): Boolean = remoteRobot.callJs(
+        """
+        const project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
+        if (!project) {
+            false;
+        } else {
+            const toolWindow = com.intellij.openapi.wm.ToolWindowManager.getInstance(project).getToolWindow("GitChangesView");
+            const contentManager = toolWindow ? toolWindow.getContentManager() : null;
+            if (!contentManager) {
+                false;
+            } else {
+                const tabName = ${toJsStringLiteral(tabName)};
+                const content = java.util.Arrays.stream(contentManager.getContents())
+                    .filter(item => tabName.equals(item.getDisplayName()))
+                    .findFirst()
+                    .orElse(null);
+                if (content == null) {
+                    false;
+                } else {
+                    contentManager.setSelectedContent(content, true);
+                    true;
+                }
+            }
+        }
+        """.trimIndent(),
+        true
+    )
+
+    private fun selectedContentTabName(): String? = remoteRobot.callJs(
+        """
+        const project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
+        if (!project) {
+            null;
+        } else {
+            const toolWindow = com.intellij.openapi.wm.ToolWindowManager.getInstance(project).getToolWindow("GitChangesView");
+            const contentManager = toolWindow ? toolWindow.getContentManager() : null;
+            const selectedContent = contentManager ? contentManager.getSelectedContent() : null;
+            selectedContent ? selectedContent.getDisplayName() : null;
+        }
+        """.trimIndent(),
+        true
+    )
+
     val tabContents: List<ComponentFixture>
         get() = remoteRobot.findAll(byXpath("//div[@class='ContentTabLabel']"))
 
     fun hasTab(tabName: String): Boolean {
-        return remoteRobot.findAll<ComponentFixture>(
-            byXpath("//div[@class='ContentTabLabel' and (@text='$tabName' or @accessiblename='$tabName' or @visible_text='$tabName')]")
-        ).isNotEmpty()
+        return hasContentTab(tabName)
     }
 
     fun selectTab(tabName: String) {
         step("Select tab '$tabName'") {
             waitFor(Duration.ofSeconds(10), interval = Duration.ofMillis(500)) {
-                remoteRobot.findAll<ComponentFixture>(byXpath("//div[@class='ContentTabLabel' and (@text='$tabName' or @accessiblename='$tabName' or @visible_text='$tabName')]")).isNotEmpty()
+                hasContentTab(tabName)
             }
-            remoteRobot.find<ComponentFixture>(byXpath("//div[@class='ContentTabLabel' and (@text='$tabName' or @accessiblename='$tabName' or @visible_text='$tabName')]")).click()
+
+            val visibleTabs = remoteRobot.findAll<ComponentFixture>(tabLocator(tabName))
+            if (visibleTabs.isNotEmpty()) {
+                visibleTabs.first().click()
+            } else {
+                check(selectContentTab(tabName)) { "Could not select tab '$tabName' via content manager" }
+            }
+
+            waitFor(Duration.ofSeconds(10), interval = Duration.ofMillis(250)) {
+                selectedContentTabName() == tabName
+            }
         }
     }
 
