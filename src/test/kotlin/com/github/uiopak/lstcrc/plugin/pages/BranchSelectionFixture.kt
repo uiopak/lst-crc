@@ -21,6 +21,17 @@ fun IdeaFrame.branchSelection(function: BranchSelectionFixture.() -> Unit) {
 class BranchSelectionFixture(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
     CommonContainerFixture(remoteRobot, remoteComponent) {
 
+    companion object {
+        private val searchFieldLocator = byXpath(
+            "Branch search field",
+            "//div[@class='BranchSelectionPanel']//div[@accessiblename='Search' and @class='TextFieldWithProcessing']"
+        )
+        private val treeLocator = byXpath(
+            "Branch selection tree",
+            "//div[@class='BranchSelectionPanel']//div[@class='Tree']"
+        )
+    }
+
     fun searchAndSelect(branchName: String) {
         step("Search and select branch '$branchName'") {
             remoteRobot.runJs(
@@ -50,7 +61,12 @@ class BranchSelectionFixture(remoteRobot: RemoteRobot, remoteComponent: RemoteCo
                 true
             )
 
-            val searchField = find<ComponentFixture>(byXpath("//div[@class='SearchTextField']"))
+            val searchTimeout = if (System.getenv("GITHUB_ACTIONS") == "true") Duration.ofSeconds(30) else Duration.ofSeconds(10)
+            waitFor(searchTimeout, interval = Duration.ofMillis(250)) {
+                remoteRobot.findAll<ComponentFixture>(searchFieldLocator).isNotEmpty()
+            }
+
+            val searchField = remoteRobot.find<ComponentFixture>(searchFieldLocator, Duration.ofSeconds(5))
             searchField.click()
             keyboard {
                 hotKey(17, 65)
@@ -59,7 +75,7 @@ class BranchSelectionFixture(remoteRobot: RemoteRobot, remoteComponent: RemoteCo
             }
 
             // The tree should now show the branch. We double click it.
-            val tree = find<ContainerFixture>(byXpath("//div[@class='Tree']"))
+            val tree = remoteRobot.find<ContainerFixture>(treeLocator, Duration.ofSeconds(5))
             val timeout = if (System.getenv("GITHUB_ACTIONS") == "true") Duration.ofSeconds(60) else Duration.ofSeconds(20)
             waitFor(timeout, interval = Duration.ofMillis(500)) {
                 tree.findAllText(branchName).isNotEmpty()
