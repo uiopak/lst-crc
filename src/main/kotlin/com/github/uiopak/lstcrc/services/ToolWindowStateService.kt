@@ -112,7 +112,12 @@ class ToolWindowStateService(private val project: Project) : PersistentStateComp
             refreshDataForCurrentSelection()
 
         } else {
-            logger.debug("Selected tab index $validIndex is already set. No action taken.")
+            if (validIndex == -1 && activeRefreshFuture == null) {
+                logger.info("HEAD tab is already selected, but no refresh is active. Triggering initial HEAD refresh.")
+                refreshDataForCurrentSelection()
+            } else {
+                logger.debug("Selected tab index $validIndex is already set. No action taken.")
+            }
         }
     }
 

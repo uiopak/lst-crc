@@ -67,7 +67,7 @@ class BranchSelectionFixture(remoteRobot: RemoteRobot, remoteComponent: RemoteCo
             }
 
             val searchField = remoteRobot.find<ComponentFixture>(searchFieldLocator, Duration.ofSeconds(5))
-            searchField.click()
+            searchField.click()            
             keyboard {
                 hotKey(17, 65)
                 enterText(branchName)

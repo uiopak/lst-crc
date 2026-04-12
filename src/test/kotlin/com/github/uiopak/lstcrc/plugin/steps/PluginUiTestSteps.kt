@@ -164,7 +164,9 @@ class PluginUiTestSteps(private val remoteRobot: RemoteRobot) {
                     )
                     runGitCommand("init")
                     configureGitIdentity()
+                    enableGitVcsIntegration()
                     refreshProjectAfterGitCommand()
+                    waitForGitRepository()
                 }
 
                 if (initialized.isSuccess) {
@@ -237,6 +239,37 @@ class PluginUiTestSteps(private val remoteRobot: RemoteRobot) {
 
     private fun currentBranchName(): String = with(remoteRobot) {
         runGitCommand("rev-parse", "--abbrev-ref", "HEAD")
+    }
+
+    private fun enableGitVcsIntegration() = with(remoteRobot) {
+        runJs(
+            """
+            const project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
+            if (project) {
+                com.intellij.openapi.application.ApplicationManager.getApplication().invokeAndWait(new java.lang.Runnable({
+                    run: function() {
+                        const basePath = project.getBasePath();
+                        if (!basePath) {
+                            return;
+                        }
+
+                        const localFileSystem = com.intellij.openapi.vfs.LocalFileSystem.getInstance();
+                        const baseDir = localFileSystem.refreshAndFindFileByPath(basePath);
+                        const vcsManager = com.intellij.openapi.vcs.ProjectLevelVcsManager.getInstance(project);
+                        vcsManager.setDirectoryMapping(basePath, "Git");
+                        vcsManager.scheduleMappedRootsUpdate();
+
+                        if (baseDir != null) {
+                            baseDir.refresh(false, true);
+                        }
+
+                        com.intellij.openapi.vcs.changes.VcsDirtyScopeManager.getInstance(project).markEverythingDirty();
+                    }
+                }));
+            }
+            """.trimIndent(),
+            true
+        )
     }
 
     private fun configureGitIdentity() = with(remoteRobot) {
@@ -367,12 +400,8 @@ class PluginUiTestSteps(private val remoteRobot: RemoteRobot) {
             if (project) {
                 com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater(new java.lang.Runnable({
                     run: function() {
-                        const repositoryManager = git4idea.repo.GitRepositoryManager.getInstance(project);
-                        const repositories = repositoryManager.getRepositories();
-                        for (let i = 0; i < repositories.size(); i++) {
-                            repositories.get(i).update();
-                        }
-                        com.intellij.openapi.vcs.changes.ChangeListManager.getInstance(project).scheduleUpdate();
+                        const vcsManager = com.intellij.openapi.vcs.ProjectLevelVcsManager.getInstance(project);
+                        vcsManager.scheduleMappedRootsUpdate();
                         com.intellij.openapi.vcs.changes.VcsDirtyScopeManager.getInstance(project).markEverythingDirty();
                     }
                 }));
@@ -380,6 +409,34 @@ class PluginUiTestSteps(private val remoteRobot: RemoteRobot) {
             """,
             true
         )
+    }
+
+    private fun waitForGitRepository() = with(remoteRobot) {
+        waitFor(Duration.ofSeconds(30), interval = Duration.ofSeconds(1)) {
+            runCatching {
+                callJs<Boolean>(
+                    """
+                    const project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
+                    if (!project) {
+                        false;
+                    }
+                    else {
+                        const basePath = project.getBasePath();
+                        if (!basePath) {
+                            false;
+                        }
+                        else {
+                            const baseDir = com.intellij.openapi.vfs.LocalFileSystem.getInstance().refreshAndFindFileByPath(basePath);
+                            const vcsManager = com.intellij.openapi.vcs.ProjectLevelVcsManager.getInstance(project);
+                            const gitDir = baseDir ? com.intellij.openapi.vfs.LocalFileSystem.getInstance().refreshAndFindFileByPath(basePath + "/.git") : null;
+                            gitDir != null && vcsManager.checkVcsIsActive("Git") && vcsManager.getVcsFor(baseDir) != null;
+                        }
+                    }
+                    """.trimIndent(),
+                    true
+                )
+            }.getOrDefault(false)
+        }
     }
 
     private fun waitForBranch(branchName: String) = with(remoteRobot) {

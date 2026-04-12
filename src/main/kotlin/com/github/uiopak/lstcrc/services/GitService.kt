@@ -122,27 +122,37 @@ class GitService(private val project: Project) {
 
     fun getBranchSnapshot(repository: GitRepository?): BranchSnapshot {
         val targetRepository = repository ?: getPrimaryRepository()
-        if (targetRepository == null) {
+        val branchRoot = targetRepository?.root ?: project.basePath
+            ?.let { LocalFileSystem.getInstance().refreshAndFindFileByPath(it) }
+            ?.takeIf { it.findChild(".git") != null }
+
+        if (branchRoot == null) {
             logger.debug("getBranchSnapshot() called with no repository available.")
             return BranchSnapshot(emptyList(), emptyList())
         }
 
-        targetRepository.update()
+        if (targetRepository == null) {
+            logger.info("getBranchSnapshot() is using the project base path fallback: ${branchRoot.path}")
+        } else {
+            targetRepository.update()
+        }
 
-        val localBranches = runBranchList(targetRepository, includeRemoteBranches = false)
-        val remoteBranches = runBranchList(targetRepository, includeRemoteBranches = true)
+        val localBranches = runBranchList(branchRoot, includeRemoteBranches = false)
+        val remoteBranches = runBranchList(branchRoot, includeRemoteBranches = true)
 
         val snapshot = if (localBranches.isNotEmpty() || remoteBranches.isNotEmpty()) {
             BranchSnapshot(localBranches, remoteBranches)
-        } else {
+        } else if (targetRepository != null) {
             BranchSnapshot(
                 targetRepository.branches.localBranches.map { it.name },
                 targetRepository.branches.remoteBranches.map { it.name }
             )
+        } else {
+            BranchSnapshot(emptyList(), emptyList())
         }
 
         logger.info(
-            "Loaded branch snapshot for repo '${targetRepository.root.name}': " +
+            "Loaded branch snapshot for repo '${branchRoot.name}': " +
                 "${snapshot.localBranches.size} local, ${snapshot.remoteBranches.size} remote branches."
         )
         return snapshot
@@ -261,8 +271,8 @@ class GitService(private val project: Project) {
         return future
     }
 
-    private fun runBranchList(repository: GitRepository, includeRemoteBranches: Boolean): List<String> {
-        val handler = GitLineHandler(project, repository.root, GitCommand.BRANCH)
+    private fun runBranchList(root: VirtualFile, includeRemoteBranches: Boolean): List<String> {
+        val handler = GitLineHandler(project, root, GitCommand.BRANCH)
         handler.setSilent(true)
         handler.addParameters("--list")
         handler.addParameters("--format=%(refname:short)")
@@ -273,7 +283,7 @@ class GitService(private val project: Project) {
         val result = Git.getInstance().runCommand(handler)
         if (result.exitCode != 0) {
             logger.warn(
-                "Failed to load ${if (includeRemoteBranches) "remote" else "local"} branches for repo '${repository.root.name}': " +
+                "Failed to load ${if (includeRemoteBranches) "remote" else "local"} branches for repo '${root.name}': " +
                     result.errorOutputAsJoinedString
             )
             return emptyList()
