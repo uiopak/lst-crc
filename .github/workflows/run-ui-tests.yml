@@ -87,9 +87,15 @@ jobs:
         if: runner.os == 'macOS'
         shell: bash
         run: |
-          system_profiler SPDisplaysDataType | grep Resolution
-          "/Library/Application Support/VMware Tools/vmware-resolutionSet" 2560 1440
-          system_profiler SPDisplaysDataType | grep Resolution
+          system_profiler SPDisplaysDataType | grep Resolution || echo "Resolution line not reported before resize"
+
+          if [ -x "/Library/Application Support/VMware Tools/vmware-resolutionSet" ]; then
+            "/Library/Application Support/VMware Tools/vmware-resolutionSet" 2560 1440 || echo "Failed to change macOS screen resolution"
+          else
+            echo "vmware-resolutionSet is not available on this macOS runner"
+          fi
+
+          system_profiler SPDisplaysDataType | grep Resolution || echo "Resolution line not reported after resize"
 
       # Run IDEA prepared for UI testing
       - name: Run IDE
