@@ -163,6 +163,7 @@ class PluginUiTestSteps(private val remoteRobot: RemoteRobot) {
                         true
                     )
                     runGitCommand("init")
+                    configureGitIdentity()
                     refreshProjectAfterGitCommand()
                 }
 
@@ -236,6 +237,11 @@ class PluginUiTestSteps(private val remoteRobot: RemoteRobot) {
 
     private fun currentBranchName(): String = with(remoteRobot) {
         runGitCommand("rev-parse", "--abbrev-ref", "HEAD")
+    }
+
+    private fun configureGitIdentity() = with(remoteRobot) {
+        runGitCommand("config", "user.name", "LST-CRC UI Tests")
+        runGitCommand("config", "user.email", "lst-crc-ui-tests@example.invalid")
     }
 
     private fun runGitCommand(vararg args: String): String = with(remoteRobot) {

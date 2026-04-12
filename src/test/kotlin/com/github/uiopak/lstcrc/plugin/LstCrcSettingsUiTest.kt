@@ -199,6 +199,8 @@ class LstCrcSettingsUiTest : LstCrcUiTestSupport() {
                 singleClickAction = "OPEN_SOURCE",
                 doubleClickAction = "OPEN_DIFF"
             )
+            val singleClickDelayMs = if (System.getenv("GITHUB_ACTIONS") == "true") 1500 else 500
+            setDoubleClickDelayMs(singleClickDelayMs)
             closeAllEditors()
 
             gitChangesView {
@@ -206,7 +208,7 @@ class LstCrcSettingsUiTest : LstCrcUiTestSupport() {
                 clickChange("Main.txt")
             }
 
-            Thread.sleep(150)
+            Thread.sleep(if (singleClickDelayMs >= 1000) 300 else 150)
             assertFalse(selectedEditorDescriptor().contains("Main.txt"), "Single-click action fired before configured delay elapsed")
 
             waitFor(Duration.ofSeconds(5)) {

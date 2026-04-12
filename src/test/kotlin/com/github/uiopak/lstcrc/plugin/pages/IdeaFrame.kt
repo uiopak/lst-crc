@@ -21,6 +21,7 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
     CommonContainerFixture(remoteRobot, remoteComponent) {
 
     companion object {
+        private val CI_SMART_MODE_TIMEOUT: Duration = Duration.ofMinutes(10)
         private const val SINGLE_CLICK_ACTION_KEY = "com.github.uiopak.lstcrc.app.singleClickAction"
         private const val DOUBLE_CLICK_ACTION_KEY = "com.github.uiopak.lstcrc.app.doubleClickAction"
         private const val MIDDLE_CLICK_ACTION_KEY = "com.github.uiopak.lstcrc.app.middleClickAction"
@@ -51,13 +52,19 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
 
     @JvmOverloads
     fun dumbAware(timeout: Duration = Duration.ofMinutes(5), function: () -> Unit) {
+        val effectiveTimeout = if (System.getenv("GITHUB_ACTIONS") == "true" && timeout < CI_SMART_MODE_TIMEOUT) {
+            CI_SMART_MODE_TIMEOUT
+        } else {
+            timeout
+        }
+
         step("Wait for smart mode") {
-            waitFor(duration = timeout, interval = Duration.ofSeconds(5)) {
+            waitFor(duration = effectiveTimeout, interval = Duration.ofSeconds(5)) {
                 runCatching { isDumbMode().not() }.getOrDefault(false)
             }
             function()
             step("..wait for smart mode again") {
-                waitFor(duration = timeout, interval = Duration.ofSeconds(5)) {
+                waitFor(duration = effectiveTimeout, interval = Duration.ofSeconds(5)) {
                     isDumbMode().not()
                 }
             }
