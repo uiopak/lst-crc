@@ -23,7 +23,15 @@ Use the shared `Start IDE with Robot Server` run configuration or execute:
 .\gradlew.bat runIdeForUiTests
 ```
 
-Wait for the sandbox IDE to finish loading.
+This task is long-running by design. Gradle will look "stuck" near the end of the progress bar because the IDE process stays alive until you stop it.
+
+To get an explicit readiness signal instead of guessing with a timer, run in another terminal:
+
+```powershell
+.\gradlew.bat uiTestReady
+```
+
+That task succeeds only when the Remote Robot server is reachable.
 
 ### Step 2: Run the UI suite
 
@@ -32,6 +40,8 @@ Use the shared `Run UI Tests` run configuration or execute:
 ```powershell
 .\gradlew.bat uiTest
 ```
+
+`uiTest` now depends on `uiTestReady`, so if the IDE was not started first it fails fast with a clear message instead of waiting for the full suite timeout.
 
 To run a single UI class or method, keep the IDE running and use:
 
@@ -43,7 +53,8 @@ To run a single UI class or method, keep the IDE running and use:
 ## Troubleshooting
 
 1. If tests cannot connect to Robot Server, verify port `8082` is open.
-2. If UI startup is slow, increase the timeout with `-Dui.test.timeout=180`.
+2. If IDE startup is slow, increase the readiness wait with `-Dui.test.server.wait.timeout=180`.
+3. If Remote Robot connects slowly after the port is open, increase the test-side connection wait with `-Dui.test.connection.timeout=60`.
 3. If you run a UI test from an IDE JUnit configuration, make sure it sets `-DrunUiTests=true`.
 4. Videos are written under `video/` for post-failure inspection.
 

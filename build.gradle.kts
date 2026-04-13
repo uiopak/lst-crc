@@ -1,6 +1,10 @@
 import org.jetbrains.changelog.Changelog
 import org.jetbrains.changelog.markdownToHTML
 import org.jetbrains.intellij.platform.gradle.TestFrameworkType
+import java.net.URI
+import java.net.http.HttpClient
+import java.net.http.HttpRequest
+import java.net.http.HttpResponse
 import java.time.Duration
 
 plugins {
@@ -165,6 +169,11 @@ kover {
 }
 
 tasks {
+    val defaultRobotServerUrl = "http://127.0.0.1:8082"
+    val robotServerUrlProvider = providers.systemProperty("robot.server.url").orElse(defaultRobotServerUrl)
+    val robotServerWaitTimeoutProvider = providers.systemProperty("ui.test.server.wait.timeout").orElse("90")
+    val robotConnectionTimeoutProvider = providers.systemProperty("ui.test.connection.timeout").orElse("30")
+
     fun Test.configureCommonTestTask() {
         useJUnitPlatform()
 
@@ -188,10 +197,59 @@ tasks {
 
         systemProperty("runUiTests", "true")
         systemProperty("robot-server.auto.run", "false")
-        systemProperty("robot.server.url", System.getProperty("robot.server.url") ?: "http://127.0.0.1:8082")
+        systemProperty("robot.server.url", robotServerUrlProvider.get())
+        systemProperty("ui.test.connection.timeout", robotConnectionTimeoutProvider.get())
         systemProperty("ui.test.timeout", System.getProperty("ui.test.timeout") ?: "600")
 
         timeout.set(Duration.ofMinutes(20))
+    }
+
+    register("uiTestReady") {
+        description = "Waits for the Remote Robot server exposed by runIdeForUiTests and fails fast with guidance if it never becomes reachable."
+        group = "verification"
+
+        doLast {
+            val serverUrl = robotServerUrlProvider.get().trimEnd('/')
+            val waitTimeout = Duration.ofSeconds(robotServerWaitTimeoutProvider.get().toLong())
+            val deadline = System.nanoTime() + waitTimeout.toNanos()
+            val client = HttpClient.newBuilder()
+                .connectTimeout(Duration.ofSeconds(5))
+                .build()
+
+            logger.lifecycle("Waiting for Remote Robot server at $serverUrl for up to $waitTimeout.")
+
+            var attempt = 0
+            var lastFailure: String? = null
+            while (System.nanoTime() < deadline) {
+                attempt += 1
+                try {
+                    val request = HttpRequest.newBuilder(URI.create("$serverUrl/"))
+                        .timeout(Duration.ofSeconds(5))
+                        .GET()
+                        .build()
+                    val response = client.send(request, HttpResponse.BodyHandlers.discarding())
+                    if (response.statusCode() in 200..299) {
+                        logger.lifecycle("Remote Robot server is ready at $serverUrl after $attempt check(s).")
+                        return@doLast
+                    }
+                    lastFailure = "unexpected HTTP ${response.statusCode()}"
+                } catch (exception: Exception) {
+                    lastFailure = exception.message ?: exception.javaClass.simpleName
+                }
+
+                Thread.sleep(3000)
+            }
+
+            throw GradleException(
+                buildString {
+                    append("Remote Robot server at $serverUrl did not become ready within $waitTimeout. ")
+                    append("Start './gradlew runIdeForUiTests' in another terminal, wait for this readiness task to pass, then run './gradlew uiTest'.")
+                    if (!lastFailure.isNullOrBlank()) {
+                        append(" Last error: $lastFailure")
+                    }
+                }
+            )
+        }
     }
 
     wrapper {
@@ -222,6 +280,7 @@ tasks {
 
         configureCommonTestTask()
         configureUiRobotTestTask()
+        dependsOn("uiTestReady")
         shouldRunAfter(test)
     }
 }
@@ -249,5 +308,13 @@ intellijPlatformTesting {
                 robotServerPlugin()
             }
         }
+    }
+}
+
+tasks.named("runIdeForUiTests") {
+    doFirst {
+        logger.lifecycle(
+            "runIdeForUiTests starts the IDE and intentionally stays running. Use './gradlew uiTestReady' for an explicit readiness check and './gradlew uiTest' in another terminal to run the suite."
+        )
     }
 }

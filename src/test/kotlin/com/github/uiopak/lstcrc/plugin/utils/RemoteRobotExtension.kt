@@ -26,7 +26,9 @@ class RemoteRobotExtension : AfterTestExecutionCallback, ParameterResolver {
         ?: System.getProperty("remote-robot-url")
         ?: "http://127.0.0.1:8082"
     private val connectionTimeout: Duration = Duration.ofSeconds(
-        System.getProperty("ui.test.timeout")?.toLongOrNull() ?: 600L
+        System.getProperty("ui.test.connection.timeout")?.toLongOrNull()
+            ?: System.getProperty("ui.test.timeout")?.toLongOrNull()
+            ?: 30L
     )
     private val remoteRobot: RemoteRobot = if (System.getProperty("debug-retrofit")?.equals("enable") == true) {
         val interceptor: HttpLoggingInterceptor = HttpLoggingInterceptor().apply {
@@ -144,8 +146,21 @@ class RemoteRobotExtension : AfterTestExecutionCallback, ParameterResolver {
     }
 
     private fun waitForRemoteRobot() {
-        waitFor(connectionTimeout, interval = Duration.ofSeconds(2)) {
-            runCatching { remoteRobot.callJs<Boolean>("true") }.getOrDefault(false)
+        val endpoint = url.trimEnd('/') + "/"
+        val ready = runCatching {
+            waitFor(connectionTimeout, interval = Duration.ofSeconds(2)) {
+                val response = runCatching {
+                    client.newCall(Request.Builder().url(endpoint).build()).execute()
+                }.getOrNull()
+                val httpReady = response?.use { it.isSuccessful } == true
+                httpReady && runCatching { remoteRobot.callJs<Boolean>("true") }.getOrDefault(false)
+            }
+            true
+        }.getOrDefault(false)
+
+        check(ready) {
+            "Remote Robot server at $url was not ready within $connectionTimeout. " +
+                "Start './gradlew runIdeForUiTests', wait for './gradlew uiTestReady' to pass, and then rerun the UI tests."
         }
     }
 }
