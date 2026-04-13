@@ -5,6 +5,7 @@ package com.github.uiopak.lstcrc.plugin.utils
 import com.intellij.remoterobot.RemoteRobot
 import com.intellij.remoterobot.fixtures.ContainerFixture
 import com.intellij.remoterobot.search.locators.byXpath
+import com.intellij.remoterobot.utils.waitFor
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.logging.HttpLoggingInterceptor
@@ -17,10 +18,18 @@ import java.io.ByteArrayOutputStream
 import java.io.File
 import java.lang.IllegalStateException
 import java.lang.reflect.Method
+import java.time.Duration
 import javax.imageio.ImageIO
 
 class RemoteRobotExtension : AfterTestExecutionCallback, ParameterResolver {
-    private val url: String = System.getProperty("remote-robot-url") ?: "http://127.0.0.1:8082"
+    private val url: String = System.getProperty("robot.server.url")
+        ?: System.getProperty("remote-robot-url")
+        ?: "http://127.0.0.1:8082"
+    private val connectionTimeout: Duration = Duration.ofSeconds(
+        System.getProperty("ui.test.connection.timeout")?.toLongOrNull()
+            ?: System.getProperty("ui.test.timeout")?.toLongOrNull()
+            ?: 30L
+    )
     private val remoteRobot: RemoteRobot = if (System.getProperty("debug-retrofit")?.equals("enable") == true) {
         val interceptor: HttpLoggingInterceptor = HttpLoggingInterceptor().apply {
             this.level = HttpLoggingInterceptor.Level.BODY
@@ -34,16 +43,17 @@ class RemoteRobotExtension : AfterTestExecutionCallback, ParameterResolver {
     }
     private val client = OkHttpClient()
 
-    override fun supportsParameter(parameterContext: ParameterContext?, extensionContext: ExtensionContext?): Boolean {
-        return parameterContext?.parameter?.type?.equals(RemoteRobot::class.java) ?: false
+    override fun supportsParameter(parameterContext: ParameterContext, extensionContext: ExtensionContext): Boolean {
+        return parameterContext.parameter?.type?.equals(RemoteRobot::class.java) ?: false
     }
 
-    override fun resolveParameter(parameterContext: ParameterContext?, extensionContext: ExtensionContext?): Any {
+    override fun resolveParameter(parameterContext: ParameterContext, extensionContext: ExtensionContext): Any {
+        waitForRemoteRobot()
         return remoteRobot
     }
 
-    override fun afterTestExecution(context: ExtensionContext?) {
-        val testMethod: Method = context?.requiredTestMethod ?: throw IllegalStateException("test method is null")
+    override fun afterTestExecution(context: ExtensionContext) {
+        val testMethod: Method = context.requiredTestMethod ?: throw IllegalStateException("test method is null")
         val testMethodName = testMethod.name
         val testFailed: Boolean = context.executionException?.isPresent ?: false
         if (testFailed) {
@@ -132,6 +142,25 @@ class RemoteRobotExtension : AfterTestExecutionCallback, ParameterResolver {
         """
         ).inputStream().use {
             ImageIO.read(it)
+        }
+    }
+
+    private fun waitForRemoteRobot() {
+        val endpoint = url.trimEnd('/') + "/"
+        val ready = runCatching {
+            waitFor(connectionTimeout, interval = Duration.ofSeconds(2)) {
+                val response = runCatching {
+                    client.newCall(Request.Builder().url(endpoint).build()).execute()
+                }.getOrNull()
+                val httpReady = response?.use { it.isSuccessful } == true
+                httpReady && runCatching { remoteRobot.callJs<Boolean>("true") }.getOrDefault(false)
+            }
+            true
+        }.getOrDefault(false)
+
+        check(ready) {
+            "Remote Robot server at $url was not ready within $connectionTimeout. " +
+                "Start './gradlew runIdeForUiTests', wait for './gradlew uiTestReady' to pass, and then rerun the UI tests."
         }
     }
 }

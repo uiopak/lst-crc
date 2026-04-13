@@ -48,6 +48,11 @@ data class CategorizedChanges(
     val comparisonContext: Map<String, String>
 )
 
+data class BranchSnapshot(
+    val localBranches: List<String>,
+    val remoteBranches: List<String>
+)
+
 /**
  * Encapsulates the complete result of a `getChanges` operation, including both successfully
  * retrieved changes and any failures that occurred for specific repositories.
@@ -113,6 +118,44 @@ class GitService(private val project: Project) {
         // Fallback to the first repository if no better match is found.
         logger.warn("Multiple Git repositories found, but none contains the project base path. Using the first one: ${repositories.first().root.path}")
         return repositories.first()
+    }
+
+    fun getBranchSnapshot(repository: GitRepository?): BranchSnapshot {
+        val targetRepository = repository ?: getPrimaryRepository()
+        val branchRoot = targetRepository?.root ?: project.basePath
+            ?.let { LocalFileSystem.getInstance().refreshAndFindFileByPath(it) }
+            ?.takeIf { it.findChild(".git") != null }
+
+        if (branchRoot == null) {
+            logger.debug("getBranchSnapshot() called with no repository available.")
+            return BranchSnapshot(emptyList(), emptyList())
+        }
+
+        if (targetRepository == null) {
+            logger.info("getBranchSnapshot() is using the project base path fallback: ${branchRoot.path}")
+        } else {
+            targetRepository.update()
+        }
+
+        val localBranches = runBranchList(branchRoot, includeRemoteBranches = false)
+        val remoteBranches = runBranchList(branchRoot, includeRemoteBranches = true)
+
+        val snapshot = if (localBranches.isNotEmpty() || remoteBranches.isNotEmpty()) {
+            BranchSnapshot(localBranches, remoteBranches)
+        } else if (targetRepository != null) {
+            BranchSnapshot(
+                targetRepository.branches.localBranches.map { it.name },
+                targetRepository.branches.remoteBranches.map { it.name }
+            )
+        } else {
+            BranchSnapshot(emptyList(), emptyList())
+        }
+
+        logger.info(
+            "Loaded branch snapshot for repo '${branchRoot.name}': " +
+                "${snapshot.localBranches.size} local, ${snapshot.remoteBranches.size} remote branches."
+        )
+        return snapshot
     }
 
     fun getChanges(tabInfo: TabInfo?): CompletableFuture<GetChangesResult> {
@@ -200,29 +243,8 @@ class GitService(private val project: Project) {
                             Change.Type.NEW -> change.afterRevision?.file?.virtualFile?.let { allCreatedFiles.add(it) }
                             Change.Type.MODIFICATION -> change.afterRevision?.file?.virtualFile?.let { allModifiedFiles.add(it) }
                             Change.Type.MOVED -> change.afterRevision?.file?.virtualFile?.let { allMovedFiles.add(it) }
-                            Change.Type.DELETED -> {
-                                val beforeRevision = change.beforeRevision
-                                if (beforeRevision != null) {
-                                    try {
-                                        val content = beforeRevision.content
-                                        if (content != null) {
-                                            val vcsFileRevision = object : com.intellij.openapi.vcs.history.VcsFileRevision {
-                                                override fun getRevisionNumber(): com.intellij.openapi.vcs.history.VcsRevisionNumber = beforeRevision.revisionNumber
-                                                override fun getRevisionDate(): java.util.Date? = null
-                                                override fun getAuthor(): String? = null
-                                                override fun getCommitMessage(): String? = null
-                                                override fun getBranchName(): String? = null
-                                                override fun getChangedRepositoryPath(): com.intellij.openapi.vcs.RepositoryLocation? = null
-                                                override fun loadContent(): ByteArray = content.toByteArray()
-                                                override fun getContent(): ByteArray = loadContent()
-                                            }
-                                            val vcsVirtualFile = com.intellij.openapi.vcs.vfs.VcsVirtualFile(beforeRevision.file, vcsFileRevision)
-                                            allDeletedFiles.add(vcsVirtualFile)
-                                        }
-                                    } catch (e: Exception) {
-                                        logger.warn("Failed to create VcsVirtualFile for deleted file: ${beforeRevision.file.path}", e)
-                                    }
-                                }
+                            Change.Type.DELETED -> change.beforeRevision?.let { beforeRevision ->
+                                createDeletedVirtualFile(beforeRevision)?.let { allDeletedFiles.add(it) }
                             }
                             else -> { /* Other types are ignored */ }
                         }
@@ -247,6 +269,58 @@ class GitService(private val project: Project) {
         }.queue()
 
         return future
+    }
+
+    private fun runBranchList(root: VirtualFile, includeRemoteBranches: Boolean): List<String> {
+        val handler = GitLineHandler(project, root, GitCommand.BRANCH)
+        handler.setSilent(true)
+        handler.addParameters("--list")
+        handler.addParameters("--format=%(refname:short)")
+        if (includeRemoteBranches) {
+            handler.addParameters("--remotes")
+        }
+
+        val result = Git.getInstance().runCommand(handler)
+        if (result.exitCode != 0) {
+            logger.warn(
+                "Failed to load ${if (includeRemoteBranches) "remote" else "local"} branches for repo '${root.name}': " +
+                    result.errorOutputAsJoinedString
+            )
+            return emptyList()
+        }
+
+        return result.outputAsJoinedString
+            .lineSequence()
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+            .filterNot { includeRemoteBranches && it.endsWith("/HEAD") }
+            .toList()
+    }
+
+    private fun createDeletedVirtualFile(beforeRevision: ContentRevision): VirtualFile? {
+        return try {
+            val vcsFileRevision = object : com.intellij.openapi.vcs.history.VcsFileRevision {
+                override fun getRevisionNumber(): com.intellij.openapi.vcs.history.VcsRevisionNumber = beforeRevision.revisionNumber
+                override fun getRevisionDate(): java.util.Date? = null
+                override fun getAuthor(): String? = null
+                override fun getCommitMessage(): String? = null
+                override fun getBranchName(): String? = null
+                override fun getChangedRepositoryPath(): com.intellij.openapi.vcs.RepositoryLocation? = null
+
+                override fun loadContent(): ByteArray {
+                    val content = beforeRevision.content
+                    return content?.toByteArray() ?: ByteArray(0)
+                }
+
+                override fun getContent(): ByteArray = loadContent()
+            }
+
+            logger.debug("Prepared lazy deleted-file virtual file for '${beforeRevision.file.path}'.")
+            com.intellij.openapi.vcs.vfs.VcsVirtualFile(beforeRevision.file, vcsFileRevision)
+        } catch (e: Exception) {
+            logger.warn("Failed to create VcsVirtualFile for deleted file: ${beforeRevision.file.path}", e)
+            null
+        }
     }
 
     private fun parseNameStatusOutput(repo: GitRepository, targetRevision: String, output: String): List<Change> {

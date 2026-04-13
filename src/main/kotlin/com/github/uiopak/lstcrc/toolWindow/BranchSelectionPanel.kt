@@ -1,6 +1,7 @@
 package com.github.uiopak.lstcrc.toolWindow
 
 import com.github.uiopak.lstcrc.resources.LstCrcBundle
+import com.github.uiopak.lstcrc.services.BranchSnapshot
 import com.github.uiopak.lstcrc.services.GitService
 import com.github.uiopak.lstcrc.utils.getTreePathForMouseCoordinates
 import com.intellij.icons.AllIcons
@@ -37,12 +38,13 @@ import javax.swing.tree.DefaultTreeModel
 class BranchSelectionPanel(
     private val gitService: GitService,
     private val repository: GitRepository?,
+    private val branchSnapshot: BranchSnapshot? = null,
     private val onBranchSelected: (branchName: String) -> Unit
 ) : JBPanel<BranchSelectionPanel>(BorderLayout()) {
 
     private val searchTextField = SearchTextField(false)
     private val tree: Tree
-    private val fullTreeModel: DefaultTreeModel
+    private var fullTreeModel: DefaultTreeModel
 
     // Data classes to represent nodes in the tree clearly.
     private data class BranchCategory(val type: BranchCategoryType, val displayName: String)
@@ -71,9 +73,17 @@ class BranchSelectionPanel(
         tree.putClientProperty("search.term", searchTerm) // Pass term to renderer for highlighting
 
         val newModel = if (searchTerm.isBlank()) {
+            if (isTreeModelEmpty(fullTreeModel)) {
+                fullTreeModel = buildFullBranchTreeModel(forceRefresh = true)
+            }
             fullTreeModel
         } else {
-            DefaultTreeModel(buildFilteredRoot(searchTerm))
+            var filteredRoot = buildFilteredRoot(searchTerm)
+            if (filteredRoot.childCount == 0) {
+                fullTreeModel = buildFullBranchTreeModel(forceRefresh = true)
+                filteredRoot = buildFilteredRoot(searchTerm)
+            }
+            DefaultTreeModel(filteredRoot)
         }
         tree.model = newModel
         TreeUtil.expandAll(tree)
@@ -245,16 +255,15 @@ class BranchSelectionPanel(
         return newTree
     }
 
-    private fun buildFullBranchTreeModel(): DefaultTreeModel {
+    private fun buildFullBranchTreeModel(forceRefresh: Boolean = false): DefaultTreeModel {
         val rootNode = DefaultMutableTreeNode("Root")
         val localCategory = BranchCategory(BranchCategoryType.LOCAL, LstCrcBundle.message("branch.type.local"))
         val remoteCategory = BranchCategory(BranchCategoryType.REMOTE, LstCrcBundle.message("branch.type.remote"))
 
-        // If a specific repository is provided, use its branches. Otherwise, use the primary one.
-        val targetRepo = repository ?: gitService.getPrimaryRepository()
+        val snapshot = resolveBranchSnapshot(forceRefresh)
 
-        val localBranches = targetRepo?.branches?.localBranches?.map { it.name } ?: emptyList()
-        val remoteBranches = targetRepo?.branches?.remoteBranches?.map { it.name } ?: emptyList()
+        val localBranches = snapshot.localBranches
+        val remoteBranches = snapshot.remoteBranches
 
         val localBranchesNode = DefaultMutableTreeNode(localCategory)
         addBranchNodes(localBranchesNode, localBranches)
@@ -267,6 +276,25 @@ class BranchSelectionPanel(
             rootNode.add(remoteBranchesNode)
         }
         return DefaultTreeModel(rootNode)
+    }
+
+    private fun resolveBranchSnapshot(forceRefresh: Boolean): BranchSnapshot {
+        if (!forceRefresh) {
+            branchSnapshot?.takeIf { it.hasBranches() }?.let { return it }
+        }
+
+        return gitService.getBranchSnapshot(repository).takeIf { it.hasBranches() }
+            ?: branchSnapshot?.takeIf { it.hasBranches() }
+            ?: BranchSnapshot(emptyList(), emptyList())
+    }
+
+    private fun isTreeModelEmpty(model: DefaultTreeModel): Boolean {
+        val root = model.root as? DefaultMutableTreeNode ?: return true
+        return root.childCount == 0
+    }
+
+    private fun BranchSnapshot?.hasBranches(): Boolean {
+        return this != null && (localBranches.isNotEmpty() || remoteBranches.isNotEmpty())
     }
 
     private fun addBranchNodes(parentNode: DefaultMutableTreeNode, branches: List<String>) {

@@ -1,6 +1,10 @@
 import org.jetbrains.changelog.Changelog
 import org.jetbrains.changelog.markdownToHTML
 import org.jetbrains.intellij.platform.gradle.TestFrameworkType
+import java.net.URI
+import java.net.http.HttpClient
+import java.net.http.HttpRequest
+import java.net.http.HttpResponse
 import java.time.Duration
 
 plugins {
@@ -69,6 +73,7 @@ dependencies {
     testImplementation(libs.junit.jupiter.api)
     testRuntimeOnly(libs.junit.jupiter.engine)
     testRuntimeOnly(libs.junit.platform.launcher)
+    testRuntimeOnly(libs.slf4j.simple)
 
     // IntelliJ Platform Gradle Plugin Dependencies Extension - read more: https://plugins.jetbrains.com/docs/intellij/tools-intellij-platform-gradle-plugin-dependencies-extension.html
     intellijPlatform {
@@ -164,6 +169,89 @@ kover {
 }
 
 tasks {
+    val defaultRobotServerUrl = "http://127.0.0.1:8082"
+    val robotServerUrlProvider = providers.systemProperty("robot.server.url").orElse(defaultRobotServerUrl)
+    val robotServerWaitTimeoutProvider = providers.systemProperty("ui.test.server.wait.timeout").orElse("90")
+    val robotConnectionTimeoutProvider = providers.systemProperty("ui.test.connection.timeout").orElse("30")
+
+    fun Test.configureCommonTestTask() {
+        useJUnitPlatform()
+
+        testLogging {
+            events("passed", "skipped", "failed", "standardOut", "standardError")
+            showExceptions = true
+            showCauses = true
+            showStackTraces = true
+            exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+        }
+    }
+
+    fun Test.configureUiRobotTestTask() {
+        useJUnitPlatform {
+            includeTags("ui")
+        }
+
+        jvmArgs("--add-opens=java.base/java.lang=ALL-UNNAMED")
+
+        maxParallelForks = 1
+
+        systemProperty("runUiTests", "true")
+        systemProperty("robot-server.auto.run", "false")
+        systemProperty("robot.server.url", robotServerUrlProvider.get())
+        systemProperty("ui.test.connection.timeout", robotConnectionTimeoutProvider.get())
+        systemProperty("ui.test.timeout", System.getProperty("ui.test.timeout") ?: "600")
+
+        timeout.set(Duration.ofMinutes(20))
+    }
+
+    register("uiTestReady") {
+        description = "Waits for the Remote Robot server exposed by runIdeForUiTests and fails fast with guidance if it never becomes reachable."
+        group = "verification"
+
+        doLast {
+            val serverUrl = robotServerUrlProvider.get().trimEnd('/')
+            val waitTimeout = Duration.ofSeconds(robotServerWaitTimeoutProvider.get().toLong())
+            val deadline = System.nanoTime() + waitTimeout.toNanos()
+            val client = HttpClient.newBuilder()
+                .connectTimeout(Duration.ofSeconds(5))
+                .build()
+
+            logger.lifecycle("Waiting for Remote Robot server at $serverUrl for up to $waitTimeout.")
+
+            var attempt = 0
+            var lastFailure: String? = null
+            while (System.nanoTime() < deadline) {
+                attempt += 1
+                try {
+                    val request = HttpRequest.newBuilder(URI.create("$serverUrl/"))
+                        .timeout(Duration.ofSeconds(5))
+                        .GET()
+                        .build()
+                    val response = client.send(request, HttpResponse.BodyHandlers.discarding())
+                    if (response.statusCode() in 200..299) {
+                        logger.lifecycle("Remote Robot server is ready at $serverUrl after $attempt check(s).")
+                        return@doLast
+                    }
+                    lastFailure = "unexpected HTTP ${response.statusCode()}"
+                } catch (exception: Exception) {
+                    lastFailure = exception.message ?: exception.javaClass.simpleName
+                }
+
+                Thread.sleep(3000)
+            }
+
+            throw GradleException(
+                buildString {
+                    append("Remote Robot server at $serverUrl did not become ready within $waitTimeout. ")
+                    append("Start './gradlew runIdeForUiTests' in another terminal, wait for this readiness task to pass, then run './gradlew uiTest'.")
+                    if (!lastFailure.isNullOrBlank()) {
+                        append(" Last error: $lastFailure")
+                    }
+                }
+            )
+        }
+    }
+
     wrapper {
         gradleVersion = providers.gradleProperty("gradleVersion").get()
     }
@@ -174,22 +262,26 @@ tasks {
 
     // Configure the test task to use JUnit Platform (JUnit 5)
     test {
-        enabled = false
-        useJUnitPlatform()
-
-        testLogging {
-            events("passed", "skipped", "failed", "standardOut", "standardError")
-            showExceptions = true
-            showCauses = true
-            showStackTraces = true
-            exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+        useJUnitPlatform {
+            excludeTags("ui")
         }
 
-        systemProperty("robot-server.auto.run", "false")
-        systemProperty("robot.server.url", "http://127.0.0.1:8082")
-        systemProperty("ui.test.timeout", "120")
-
+        configureCommonTestTask()
+        failOnNoDiscoveredTests = false
         timeout.set(Duration.ofMinutes(10))
+    }
+
+    register<Test>("uiTest") {
+        description = "Runs Remote Robot UI tests against an IDE started with runIdeForUiTests."
+        group = "verification"
+
+        testClassesDirs = sourceSets.test.get().output.classesDirs
+        classpath = sourceSets.test.get().runtimeClasspath
+
+        configureCommonTestTask()
+        configureUiRobotTestTask()
+        dependsOn("uiTestReady")
+        shouldRunAfter(test)
     }
 }
 
@@ -216,5 +308,13 @@ intellijPlatformTesting {
                 robotServerPlugin()
             }
         }
+    }
+}
+
+tasks.named("runIdeForUiTests") {
+    doFirst {
+        logger.lifecycle(
+            "runIdeForUiTests starts the IDE and intentionally stays running. Use './gradlew uiTestReady' for an explicit readiness check and './gradlew uiTest' in another terminal to run the suite."
+        )
     }
 }

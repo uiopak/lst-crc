@@ -26,17 +26,17 @@ jobs:
               ./gradlew runIdeForUiTests --info --scan &> build/reports/idea.log &
             runTests: |
               export DISPLAY=:99.0
-              ./gradlew test --info
+              ./gradlew uiTest --info
             url: http://127.0.0.1:8082
             reportName: ui-test-fails-report-linux
           - os: macOS-latest
             runIde: ./gradlew runIdeForUiTests --info --scan &> build/reports/idea.log &
-            runTests: ./gradlew test --info
+            runTests: ./gradlew uiTest --info
             url: http://127.0.0.1:8082
             reportName: ui-test-fails-report-mac
           - os: windows-latest
             runIde: cmd.exe /c "start /b gradlew.bat runIdeForUiTests --info --scan > build/reports/idea.log 2>&1"
-            runTests: ./gradlew test --info
+            runTests: .\gradlew.bat uiTest --info
             url: http://localhost:8082
             reportName: ui-test-fails-report-windows
 
@@ -76,6 +76,27 @@ jobs:
       - name: Create reports directory
         run: mkdir -p build/reports
 
+      - name: Set Windows screen resolution
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          Get-Command Set-DisplayResolution
+          Set-DisplayResolution -Width 1920 -Height 1080 -Force
+
+      - name: Set macOS screen resolution
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          system_profiler SPDisplaysDataType | grep Resolution || echo "Resolution line not reported before resize"
+
+          if [ -x "/Library/Application Support/VMware Tools/vmware-resolutionSet" ]; then
+            "/Library/Application Support/VMware Tools/vmware-resolutionSet" 2560 1440 || echo "Failed to change macOS screen resolution"
+          else
+            echo "vmware-resolutionSet is not available on this macOS runner"
+          fi
+
+          system_profiler SPDisplaysDataType | grep Resolution || echo "Resolution line not reported after resize"
+
       # Run IDEA prepared for UI testing
       - name: Run IDE
         run: ${{ matrix.runIde }}
@@ -93,7 +114,7 @@ jobs:
         run: ${{ matrix.runTests }}
 
       - name: Move video
-      #  if: ${{ failure() }}
+        if: ${{ failure() }}
         run: |
           if [ -e video ]; then
             mv video build/reports
@@ -109,7 +130,7 @@ jobs:
         shell: bash
 
       - name: Save fails report
-      #  if: ${{ failure() }}
+        if: ${{ failure() }}
         uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.reportName }}

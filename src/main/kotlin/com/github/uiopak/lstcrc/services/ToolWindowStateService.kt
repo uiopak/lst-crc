@@ -46,6 +46,9 @@ class ToolWindowStateService(private val project: Project) : PersistentStateComp
     private var myState = ToolWindowState()
     private val logger = thisLogger()
     private val isRefreshing = AtomicBoolean(false)
+    private val refreshQueued = AtomicBoolean(false)
+    @Volatile
+    private var activeRefreshFuture: CompletableFuture<Unit>? = null
 
     override fun getState(): ToolWindowState {
         logger.debug("getState() called. Current state: $myState")
@@ -109,7 +112,12 @@ class ToolWindowStateService(private val project: Project) : PersistentStateComp
             refreshDataForCurrentSelection()
 
         } else {
-            logger.debug("Selected tab index $validIndex is already set. No action taken.")
+            if (validIndex == -1 && activeRefreshFuture == null) {
+                logger.info("HEAD tab is already selected, but no refresh is active. Triggering initial HEAD refresh.")
+                refreshDataForCurrentSelection()
+            } else {
+                logger.debug("Selected tab index $validIndex is already set. No action taken.")
+            }
         }
     }
 
@@ -289,17 +297,41 @@ class ToolWindowStateService(private val project: Project) : PersistentStateComp
      */
     fun refreshDataForCurrentSelection(): CompletableFuture<Unit> {
         if (!isRefreshing.compareAndSet(false, true)) {
-            logger.debug("ACTION: Refresh for current selection is already in progress. Skipping.")
-            return CompletableFuture.completedFuture(Unit)
+            logger.debug("ACTION: Refresh for current selection is already in progress. Queueing another refresh.")
+            refreshQueued.set(true)
+            return activeRefreshFuture ?: CompletableFuture.completedFuture(Unit)
         }
 
+        val refreshFuture = CompletableFuture<Unit>()
+        activeRefreshFuture = refreshFuture
+        runRefreshCycle(refreshFuture)
+        return refreshFuture
+    }
+
+    private fun runRefreshCycle(refreshFuture: CompletableFuture<Unit>) {
         val tabInfoToRefresh = getSelectedTabInfo()
         val profileName = tabInfoToRefresh?.branchName ?: "HEAD"
         logger.info("ACTION: Refreshing data for current selection: '$profileName'")
 
-        return loadDataForTab(tabInfoToRefresh).whenComplete { _, _ ->
+        loadDataForTab(tabInfoToRefresh).whenComplete { _, throwable ->
+            if (throwable != null) {
+                isRefreshing.set(false)
+                activeRefreshFuture = null
+                logger.debug("ACTION: Refreshing lock released after failure.")
+                refreshFuture.completeExceptionally(throwable)
+                return@whenComplete
+            }
+
+            if (refreshQueued.getAndSet(false) && !project.isDisposed) {
+                logger.debug("ACTION: Running queued refresh for the latest selection.")
+                runRefreshCycle(refreshFuture)
+                return@whenComplete
+            }
+
             isRefreshing.set(false)
+            activeRefreshFuture = null
             logger.debug("ACTION: Refreshing lock released.")
+            refreshFuture.complete(Unit)
         }
     }
 

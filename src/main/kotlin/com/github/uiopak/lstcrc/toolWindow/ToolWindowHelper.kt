@@ -1,6 +1,7 @@
 package com.github.uiopak.lstcrc.toolWindow
 
 import com.github.uiopak.lstcrc.resources.LstCrcBundle
+import com.github.uiopak.lstcrc.services.BranchSnapshot
 import com.github.uiopak.lstcrc.services.GitService
 import com.github.uiopak.lstcrc.services.ToolWindowStateService
 import com.github.uiopak.lstcrc.utils.LstCrcKeys
@@ -116,10 +117,13 @@ object ToolWindowHelper {
             // Fetching repository info can be slow, so run it in a background task.
             object : Task.Backgroundable(project, LstCrcBundle.message("git.task.repo.info"), true) {
                 var primaryRepo: GitRepository? = null
+                var branchSnapshot: BranchSnapshot = BranchSnapshot(emptyList(), emptyList())
 
                 override fun run(indicator: ProgressIndicator) {
                     // This runs on a BGT, safe for slow operations.
-                    primaryRepo = project.service<GitService>().getPrimaryRepository()
+                    val gitService = project.service<GitService>()
+                    primaryRepo = gitService.getPrimaryRepository()?.also { it.update() }
+                    branchSnapshot = gitService.getBranchSnapshot(primaryRepo)
                 }
 
                 override fun onSuccess() {
@@ -130,7 +134,7 @@ object ToolWindowHelper {
                     val stateService = project.service<ToolWindowStateService>()
                     val contentFactory = ContentFactory.getInstance()
 
-                    val branchSelectionUi = BranchSelectionPanel(gitService, primaryRepo) { selectedBranchName ->
+                    val branchSelectionUi = BranchSelectionPanel(gitService, primaryRepo, branchSnapshot) { selectedBranchName ->
                         logger.info("HELPER (Callback): Branch '$selectedBranchName' selected from panel.")
                         val manager: ContentManager = toolWindow.contentManager
                         val selectionTabContent = manager.findContent(selectionTabName)

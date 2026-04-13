@@ -42,6 +42,7 @@ video-recorder-junit5 = { group = "com.automation-remarks", name = "video-record
 # Forced dependencies for security mitigation
 commons-io = { group = "commons-io", name = "commons-io", version.ref = "commonsIo" }
 log4j-over-slf4j = { group = "org.slf4j", name = "log4j-over-slf4j", version.ref = "slf4j" }
+slf4j-simple = { group = "org.slf4j", name = "slf4j-simple", version.ref = "slf4j" }
 
 [plugins]
 changelog = { id = "org.jetbrains.changelog", version.ref = "changelog" }
