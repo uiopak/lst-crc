@@ -21,6 +21,23 @@ fun IdeaFrame.branchSelection(function: BranchSelectionFixture.() -> Unit) {
 class BranchSelectionFixture(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
     CommonContainerFixture(remoteRobot, remoteComponent) {
 
+    private fun toJsStringLiteral(value: String): String {
+        return buildString {
+            append('"')
+            value.forEach { character ->
+                when (character) {
+                    '\\' -> append("\\\\")
+                    '"' -> append("\\\"")
+                    '\n' -> append("\\n")
+                    '\r' -> append("\\r")
+                    '\t' -> append("\\t")
+                    else -> append(character)
+                }
+            }
+            append('"')
+        }
+    }
+
     companion object {
         private val searchFieldLocator = byXpath(
             "Branch search field",
@@ -67,10 +84,24 @@ class BranchSelectionFixture(remoteRobot: RemoteRobot, remoteComponent: RemoteCo
             }
 
             val searchField = remoteRobot.find<ComponentFixture>(searchFieldLocator, Duration.ofSeconds(5))
-            searchField.click()            
+            searchField.click()
+
+            remoteRobot.runJs(
+                """
+                const value = ${toJsStringLiteral(branchName)};
+                const focusOwner = java.awt.KeyboardFocusManager.getCurrentKeyboardFocusManager().getFocusOwner();
+                com.intellij.openapi.application.ApplicationManager.getApplication().invokeAndWait(new java.lang.Runnable({
+                    run: function() {
+                        if (focusOwner instanceof javax.swing.text.JTextComponent) {
+                            focusOwner.setText(value);
+                        }
+                    }
+                }));
+                """.trimIndent(),
+                true
+            )
+
             keyboard {
-                hotKey(17, 65)
-                enterText(branchName)
                 enter()
             }
 

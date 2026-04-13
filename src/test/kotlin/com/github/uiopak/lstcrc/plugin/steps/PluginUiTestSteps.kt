@@ -26,6 +26,7 @@ class PluginUiTestSteps(private val remoteRobot: RemoteRobot) {
         step("Create new file: $fileName") {
             writeProjectFile(fileName, content)
             handleAddFileToGitDialogIfPresent()
+            waitForGitIdle()
         }
     }
 
@@ -167,6 +168,7 @@ class PluginUiTestSteps(private val remoteRobot: RemoteRobot) {
                     enableGitVcsIntegration()
                     refreshProjectAfterGitCommand()
                     waitForGitRepository()
+                    waitForGitIdle()
                 }
 
                 if (initialized.isSuccess) {
@@ -279,17 +281,14 @@ class PluginUiTestSteps(private val remoteRobot: RemoteRobot) {
 
     private fun runGitCommand(vararg args: String): String = with(remoteRobot) {
         val commandArguments = listOf("git", *args).joinToString(", ") { "\"$it\"" }
+        waitForGitIdle()
+
         fun executeGitCommand(): String = callJs<String>(
             """
             const project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
             let output = "";
             let exitCode = -1;
             if (project) {
-                const lockFile = new java.io.File(project.getBasePath() + "/.git/index.lock");
-                if (lockFile.exists()) {
-                    lockFile.delete();
-                }
-
                 const builder = new java.lang.ProcessBuilder();
                 builder.command(java.util.Arrays.asList($commandArguments));
                 builder.directory(new java.io.File(project.getBasePath()));
@@ -313,6 +312,7 @@ class PluginUiTestSteps(private val remoteRobot: RemoteRobot) {
             ?: error("Could not parse git command exit code from: $result")
         var output = result.substringAfter('\n', "").trim()
         if (exitCode != 0 && output.contains("index.lock")) {
+            waitForGitIdle()
             result = executeGitCommand()
             output = result.substringAfter('\n', "").trim()
             val retriedExitCode = result.substringBefore('\n').toIntOrNull()
@@ -429,7 +429,56 @@ class PluginUiTestSteps(private val remoteRobot: RemoteRobot) {
                             const baseDir = com.intellij.openapi.vfs.LocalFileSystem.getInstance().refreshAndFindFileByPath(basePath);
                             const vcsManager = com.intellij.openapi.vcs.ProjectLevelVcsManager.getInstance(project);
                             const gitDir = baseDir ? com.intellij.openapi.vfs.LocalFileSystem.getInstance().refreshAndFindFileByPath(basePath + "/.git") : null;
-                            gitDir != null && vcsManager.checkVcsIsActive("Git") && vcsManager.getVcsFor(baseDir) != null;
+                            const statusBuilder = new java.lang.ProcessBuilder();
+                            statusBuilder.command(java.util.Arrays.asList("git", "status", "--porcelain"));
+                            statusBuilder.directory(new java.io.File(basePath));
+                            statusBuilder.redirectErrorStream(true);
+                            const statusProcess = statusBuilder.start();
+                            const statusExitCode = statusProcess.waitFor();
+                            gitDir != null && vcsManager.checkVcsIsActive("Git") && vcsManager.getVcsFor(baseDir) != null && statusExitCode === 0;
+                        }
+                    }
+                    """.trimIndent(),
+                    true
+                )
+            }.getOrDefault(false)
+        }
+    }
+
+    private fun waitForGitIdle() = with(remoteRobot) {
+        val timeout = if (System.getenv("GITHUB_ACTIONS") == "true") Duration.ofSeconds(60) else Duration.ofSeconds(20)
+        waitFor(timeout, interval = Duration.ofMillis(500)) {
+            runCatching {
+                callJs<Boolean>(
+                    """
+                    const project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
+                    if (!project) {
+                        false;
+                    }
+                    else {
+                        const basePath = project.getBasePath();
+                        if (!basePath) {
+                            false;
+                        }
+                        else {
+                            const gitDir = new java.io.File(basePath, ".git");
+                            if (!gitDir.exists()) {
+                                true;
+                            }
+                            else {
+                                const lockFile = new java.io.File(gitDir, "index.lock");
+                                if (lockFile.exists()) {
+                                    false;
+                                }
+                                else {
+                                    const builder = new java.lang.ProcessBuilder();
+                                    builder.command(java.util.Arrays.asList("git", "status", "--porcelain"));
+                                    builder.directory(new java.io.File(basePath));
+                                    builder.redirectErrorStream(true);
+                                    const process = builder.start();
+                                    process.waitFor() === 0;
+                                }
+                            }
                         }
                     }
                     """.trimIndent(),

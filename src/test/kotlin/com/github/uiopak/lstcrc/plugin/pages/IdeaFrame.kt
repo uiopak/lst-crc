@@ -117,7 +117,8 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
 
     fun openGitChangesView() {
         step("Open GitChangesView tool window") {
-            val visibleTimeout = if (System.getenv("GITHUB_ACTIONS") == "true") Duration.ofSeconds(15) else Duration.ofSeconds(5)
+            val visibleTimeout = if (System.getenv("GITHUB_ACTIONS") == "true") Duration.ofSeconds(30) else Duration.ofSeconds(10)
+            val readyTimeout = if (System.getenv("GITHUB_ACTIONS") == "true") Duration.ofMinutes(2) else Duration.ofSeconds(30)
 
             runJs(
                 """
@@ -158,6 +159,13 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
                 waitFor(visibleTimeout, interval = Duration.ofMillis(250)) {
                     remoteRobot.findAll<ComponentFixture>(byXpath("//div[@class='LstCrcChangesBrowser']")).isNotEmpty()
                 }
+            }
+
+            waitFor(readyTimeout, interval = Duration.ofMillis(500)) {
+                val placeholderVisible = remoteRobot.findAll<ComponentFixture>(
+                    byXpath("//div[contains(@visible_text,'until indexes are built')]")
+                ).isNotEmpty()
+                !isDumbMode() && !placeholderVisible
             }
         }
     }
