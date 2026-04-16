@@ -14,6 +14,7 @@ plugins {
     alias(libs.plugins.changelog) // Gradle Changelog Plugin
     alias(libs.plugins.qodana) // Gradle Qodana Plugin
     alias(libs.plugins.kover) // Gradle Kover Plugin
+    idea // IntelliJ IDEA support
 }
 
 group = providers.gradleProperty("pluginGroup").get()
@@ -30,11 +31,34 @@ kotlin {
 // Configure project's dependencies
 repositories {
     mavenCentral()
+    maven("https://cache-redirector.jetbrains.com/packages.jetbrains.team/maven/p/ij/intellij-ide-starter")
     // IntelliJ Platform Gradle Plugin Repositories Extension - read more: https://plugins.jetbrains.com/docs/intellij/tools-intellij-platform-gradle-plugin-repositories-extension.html
     intellijPlatform {
         defaultRepositories()
 //        mavenCentral()
     }
+}
+
+sourceSets {
+    create("uiTest") {
+        compileClasspath += sourceSets.main.get().output + sourceSets.test.get().output
+        runtimeClasspath += sourceSets.main.get().output + sourceSets.test.get().output
+    }
+}
+
+idea {
+    module {
+        testSources.from(sourceSets["uiTest"].kotlin.srcDirs)
+        testResources.from(sourceSets["uiTest"].resources.srcDirs)
+    }
+}
+
+configurations.named("uiTestImplementation") {
+    extendsFrom(configurations.testImplementation.get())
+}
+
+configurations.named("uiTestRuntimeOnly") {
+    extendsFrom(configurations.testRuntimeOnly.get())
 }
 
 // Global configuration to handle vulnerable transitive dependencies.
@@ -43,6 +67,8 @@ configurations.all {
     resolutionStrategy {
         // Force a non-vulnerable version of commons-io, overriding the old version brought in by zt-exec.
         force(libs.commons.io)
+        // Force a non-vulnerable commons-lang3 version for transitive test dependencies (e.g. video-recorder-junit5).
+        force(libs.commons.lang3)
 
         // Substitute the vulnerable log4j: log4j with a safe SLF4J bridge.
         dependencySubstitution {
@@ -75,6 +101,14 @@ dependencies {
     testRuntimeOnly(libs.junit.platform.launcher)
     testRuntimeOnly(libs.slf4j.simple)
 
+    add("uiTestImplementation", libs.opentest4j)
+    add("uiTestImplementation", libs.junit.jupiter.api)
+    add("uiTestRuntimeOnly", libs.junit.jupiter.engine)
+    add("uiTestRuntimeOnly", libs.junit.platform.launcher)
+    add("uiTestRuntimeOnly", libs.slf4j.simple)
+    add("uiTestImplementation", "org.kodein.di:kodein-di-jvm:7.26.1")
+    add("uiTestImplementation", "org.jetbrains.kotlinx:kotlinx-coroutines-core-jvm:1.10.2")
+
     // IntelliJ Platform Gradle Plugin Dependencies Extension - read more: https://plugins.jetbrains.com/docs/intellij/tools-intellij-platform-gradle-plugin-dependencies-extension.html
     intellijPlatform {
         intellijIdea(providers.gradleProperty("platformVersion"))
@@ -89,6 +123,8 @@ dependencies {
         bundledModules(providers.gradleProperty("platformBundledModules").map { it.split(',') })
 
         testFramework(TestFrameworkType.Platform)
+        testFramework(TestFrameworkType.Starter, configurationName = "uiTestImplementation")
+        testFramework(TestFrameworkType.JUnit5, configurationName = "uiTestImplementation")
     }
 }
 
@@ -159,10 +195,39 @@ changelog {
 
 // Configure Gradle Kover Plugin - read more: https://kotlin.github.io/kotlinx-kover/gradle-plugin/#configuration-details
 kover {
+    currentProject {
+        instrumentation.disabledForTestTasks.addAll("starterUiTest", "uiTest")
+    }
+
     reports {
         total {
             xml {
                 onCheck = true
+            }
+        }
+    }
+}
+
+// Exclude the IDE Starter test bridge from the published plugin JAR by default.
+// The bridge (@Service) is only needed when running starterUiTest.
+// It is auto-included when starterUiTest is requested, or manually via -PincludeTestBridge=true.
+val includeTestBridge = providers.gradleProperty("includeTestBridge")
+    .map { it.toBoolean() }
+    .orElse(gradle.startParameter.taskNames.any { it.contains("starterUiTest") })
+
+if (!includeTestBridge.get()) {
+    sourceSets.main {
+        kotlin.exclude("com/github/uiopak/lstcrc/testing/**")
+    }
+}
+
+val remoteUiIdeDir = layout.buildDirectory.dir("remote-ui-ide/idea")
+val preparedRemoteUiIdeDir = providers.provider {
+    remoteUiIdeDir.get().also { targetDir ->
+        if (!targetDir.asFile.resolve("product-info.json").isFile) {
+            copy {
+                from(intellijPlatform.platformPath)
+                into(targetDir.asFile)
             }
         }
     }
@@ -173,6 +238,11 @@ tasks {
     val robotServerUrlProvider = providers.systemProperty("robot.server.url").orElse(defaultRobotServerUrl)
     val robotServerWaitTimeoutProvider = providers.systemProperty("ui.test.server.wait.timeout").orElse("90")
     val robotConnectionTimeoutProvider = providers.systemProperty("ui.test.connection.timeout").orElse("30")
+
+    val prepareRunIdeForUiTestsIde by registering(Sync::class) {
+        from(intellijPlatform.platformPath)
+        into(remoteUiIdeDir)
+    }
 
     fun Test.configureCommonTestTask() {
         useJUnitPlatform()
@@ -283,12 +353,63 @@ tasks {
         dependsOn("uiTestReady")
         shouldRunAfter(test)
     }
+
+    register<Test>("starterUiTest") {
+        description = "Runs IntelliJ IDE Starter UI tests. The test bridge is auto-included in the plugin JAR."
+        group = "verification"
+
+        testClassesDirs = sourceSets["uiTest"].output.classesDirs
+        classpath = sourceSets["uiTest"].runtimeClasspath
+
+        configureCommonTestTask()
+        useJUnitPlatform {
+            includeTags("starter")
+        }
+
+        notCompatibleWithConfigurationCache("Starter UI test discovery is unstable when this task is restored from configuration cache.")
+
+        maxParallelForks = 1
+        minHeapSize = "1g"
+        maxHeapSize = "4g"
+        timeout.set(Duration.ofMinutes(30))
+
+        systemProperty("path.to.build.plugin", buildPlugin.get().archiveFile.get().asFile.absolutePath)
+        systemProperty("idea.home.path", prepareTestSandbox.get().getDestinationDir().parentFile.absolutePath)
+        systemProperty("local.ide.path", intellijPlatform.platformPath.toString())
+        systemProperty("lstcrc.starter.driver.jmx.port", System.getProperty("lstcrc.starter.driver.jmx.port") ?: "17777")
+        systemProperty("lstcrc.starter.driver.rpc.port", System.getProperty("lstcrc.starter.driver.rpc.port") ?: "24000")
+        systemProperty(
+            "allure.results.directory",
+            project.layout.buildDirectory.get().asFile.absolutePath + "/allure-results/starter-ui"
+        )
+        systemProperty("idea.test.cyclic.buffer.size", "0")
+
+        jvmArgumentProviders += CommandLineArgumentProvider {
+            mutableListOf(
+                "--add-opens=java.base/java.lang=ALL-UNNAMED",
+                "--add-opens=java.desktop/javax.swing=ALL-UNNAMED"
+            )
+        }
+
+        dependsOn(buildPlugin)
+        shouldRunAfter(test)
+    }
+
+    register<Delete>("cleanStarterArtifacts") {
+        description = "Removes IDE Starter test artifacts (out/ide-tests) that accumulate outside the build directory."
+        group = "build"
+        delete(rootProject.file("out/ide-tests"))
+    }
 }
 
 intellijPlatformTesting {
     runIde {
         register("runIdeForUiTests") {
+            localPath.set(preparedRemoteUiIdeDir)
+
             task {
+                dependsOn(tasks.named("prepareRunIdeForUiTestsIde"))
+
                 jvmArgumentProviders += CommandLineArgumentProvider {
                     listOf(
                         "-Drobot-server.port=8082",
@@ -317,4 +438,8 @@ tasks.named("runIdeForUiTests") {
             "runIdeForUiTests starts the IDE and intentionally stays running. Use './gradlew uiTestReady' for an explicit readiness check and './gradlew uiTest' in another terminal to run the suite."
         )
     }
+}
+
+tasks.named("prepareSandbox_runIdeForUiTests") {
+    dependsOn("prepareRunIdeForUiTestsIde")
 }

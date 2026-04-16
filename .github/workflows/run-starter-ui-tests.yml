@@ -1,0 +1,49 @@
+# GitHub Actions Workflow for running IntelliJ IDE Starter UI tests.
+#
+# Unlike the legacy Remote Robot UI tests (run-ui-tests.yml), IDE Starter tests
+# launch and manage their own IDE instance internally via runIdeWithDriver(),
+# so there is no need to start the IDE separately.
+#
+# Workflow is triggered manually.
+
+name: Run Starter UI Tests
+on:
+  workflow_dispatch
+
+jobs:
+  starter-ui-test:
+    name: Starter UI Tests (Linux)
+    runs-on: ubuntu-latest
+    steps:
+
+      - name: Fetch Sources
+        uses: actions/checkout@v6
+
+      - name: Setup Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: zulu
+          java-version: 21
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Setup virtual display
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq xvfb x11-utils
+          Xvfb -ac :99 -screen 0 1920x1080x24 &
+          echo "DISPLAY=:99.0" >> $GITHUB_ENV
+
+      - name: Run Starter UI Tests
+        run: ./gradlew starterUiTest --info
+
+      - name: Collect test results
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: starter-ui-test-results
+          path: |
+            build/reports/tests/starterUiTest/
+            build/allure-results/starter-ui/
+            build/starter-ui-tests/

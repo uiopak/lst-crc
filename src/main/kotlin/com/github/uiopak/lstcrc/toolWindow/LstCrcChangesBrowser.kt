@@ -246,7 +246,7 @@ class LstCrcChangesBrowser(
 
         override fun isFileColorsEnabled(): Boolean = true
 
-        override fun getFileColorForPath(path: javax.swing.tree.TreePath): java.awt.Color? {
+        override fun getFileColorForPath(path: javax.swing.tree.TreePath): Color? {
             // First try native pipeline for existing files (which have VirtualFiles)
             val defaultColor = super.getFileColorForPath(path)
             if (defaultColor != null) return defaultColor
@@ -499,6 +499,113 @@ class LstCrcChangesBrowser(
         }
     }
 
+    // -- Test bridge helpers: used only by LstCrcUiTestBridge for IDE Starter tests --
+
+    @org.jetbrains.annotations.ApiStatus.Internal
+    internal fun debugRenderedRowsSnapshot(): String {
+        val renderer = viewer.cellRenderer
+        val model = viewer.model
+        val rows = mutableListOf<String>()
+
+        for (row in 0 until viewer.rowCount) {
+            val path = viewer.getPathForRow(row) ?: continue
+            val node = path.lastPathComponent
+            val rendered = renderer.getTreeCellRendererComponent(
+                viewer,
+                node,
+                viewer.isRowSelected(row),
+                viewer.isExpanded(row),
+                model.isLeaf(node),
+                row,
+                false
+            )
+
+            val text = rendered.accessibleContext?.accessibleName
+                ?: (rendered as? javax.swing.JLabel)?.text
+                ?: rendered.name
+
+            if (!text.isNullOrBlank()) {
+                rows.add(text)
+            }
+        }
+
+        return rows.joinToString("\n")
+    }
+
+    @org.jetbrains.annotations.ApiStatus.Internal
+    internal fun debugChangeFileNamesSnapshot(): String {
+        return currentChanges?.allChanges
+            ?.mapNotNull { change ->
+                change.afterRevision?.file?.name ?: change.beforeRevision?.file?.name
+            }
+            ?.distinct()
+            ?.joinToString("\n")
+            .orEmpty()
+    }
+
+    @org.jetbrains.annotations.ApiStatus.Internal
+    internal fun invokeConfiguredActionForFile(fileName: String, button: String, clickCount: Int) {
+        val path = findPathByFileName(fileName)
+            ?: error("Could not find change for file '$fileName' in '$targetBranchToCompare'.")
+        val change = ((path.lastPathComponent as? ChangesBrowserNode<*>)?.userObject as? Change)
+            ?: error("Could not find change for file '$fileName' in '$targetBranchToCompare'.")
+
+        if (button.equals("RIGHT", ignoreCase = true) && isContextMenuEnabled()) {
+            error("Context menu is enabled for right click. Query contextMenuActionTitlesForFile() instead of invoking a configured action.")
+        }
+
+        val awtButton = when {
+            button.equals("LEFT", ignoreCase = true) -> MouseEvent.BUTTON1
+            button.equals("MIDDLE", ignoreCase = true) -> MouseEvent.BUTTON2
+            button.equals("RIGHT", ignoreCase = true) -> MouseEvent.BUTTON3
+            else -> error("Unsupported mouse button '$button'.")
+        }
+        val event = MouseEvent(
+            viewer,
+            MouseEvent.MOUSE_CLICKED,
+            System.currentTimeMillis(),
+            0,
+            1,
+            1,
+            clickCount,
+            false,
+            awtButton
+        )
+
+        when {
+            button.equals("LEFT", ignoreCase = true) -> {
+                middleClickState.clear()
+                rightClickState.clear()
+                handleGenericClick(event, change, path, getSingleClickAction(), getDoubleClickAction(), leftClickState)
+            }
+            button.equals("MIDDLE", ignoreCase = true) -> {
+                leftClickState.clear()
+                rightClickState.clear()
+                handleGenericClick(event, change, path, getMiddleClickAction(), getDoubleMiddleClickAction(), middleClickState)
+            }
+            button.equals("RIGHT", ignoreCase = true) -> {
+                leftClickState.clear()
+                middleClickState.clear()
+                handleGenericClick(event, change, path, getRightClickAction(), getDoubleRightClickAction(), rightClickState)
+            }
+        }
+    }
+
+    @org.jetbrains.annotations.ApiStatus.Internal
+    internal fun contextMenuActionTitlesForFile(fileName: String): String {
+        val change = findChangeByFileName(fileName)
+            ?: error("Could not find change for file '$fileName' in '$targetBranchToCompare'.")
+
+        val titles = mutableListOf(
+            LstCrcBundle.message("context.menu.show.diff"),
+            LstCrcBundle.message("context.menu.open.source")
+        )
+        if (change.type != Change.Type.DELETED) {
+            titles.add(LstCrcBundle.message("context.menu.show.project.tree"))
+        }
+        return titles.joinToString("|")
+    }
+
 
     override fun repositoryChanged(repository: GitRepository) {
         if (repository.project == project) {
@@ -574,15 +681,30 @@ class LstCrcChangesBrowser(
     private fun getDoubleMiddleClickAction(): String = ToolWindowSettingsProvider.getDoubleMiddleClickAction()
     private fun getRightClickAction(): String = ToolWindowSettingsProvider.getRightClickAction()
     private fun getDoubleRightClickAction(): String = ToolWindowSettingsProvider.getDoubleRightClickAction()
+
+    private fun findChangeByFileName(fileName: String): Change? {
+        return currentChanges?.allChanges?.firstOrNull { change ->
+            change.afterRevision?.file?.name == fileName || change.beforeRevision?.file?.name == fileName
+        }
+    }
+
+    private fun findPathByFileName(fileName: String): javax.swing.tree.TreePath? {
+        for (row in 0 until viewer.rowCount) {
+            val path = viewer.getPathForRow(row) ?: continue
+            val change = (path.lastPathComponent as? ChangesBrowserNode<*>)?.userObject as? Change ?: continue
+            if (change.afterRevision?.file?.name == fileName || change.beforeRevision?.file?.name == fileName) {
+                return path
+            }
+        }
+        return null
+    }
 }
 
 /**
  * Action to open a popup showing the current comparison context for each repository
  * and allowing the user to change it.
  */
-private class ShowRepoComparisonInfoAction(
-//    private val browser: LstCrcChangesBrowser
-) : DumbAwareAction(
+private class ShowRepoComparisonInfoAction : DumbAwareAction(
     LstCrcBundle.message("action.configure.repos.text"),
     LstCrcBundle.message("action.configure.repos.description"),
     AllIcons.General.GearPlain

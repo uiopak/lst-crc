@@ -1,3 +1,5 @@
+@file:Suppress("UsePropertyAccessSyntax")
+
 package com.github.uiopak.lstcrc.services
 
 import com.github.uiopak.lstcrc.resources.LstCrcBundle
@@ -12,8 +14,8 @@ import com.intellij.openapi.vcs.FilePath
 import com.intellij.openapi.vcs.FileStatus
 import com.intellij.openapi.vcs.VcsException
 import com.intellij.openapi.vcs.changes.Change
-import com.intellij.openapi.vcs.changes.ChangeListManager
 import com.intellij.openapi.vcs.changes.ContentRevision
+import com.intellij.openapi.vcs.vfs.ContentRevisionVirtualFile
 import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.openapi.vfs.VfsUtilCore
 import com.intellij.openapi.vfs.VirtualFile
@@ -27,6 +29,8 @@ import git4idea.repo.GitRepository
 import git4idea.repo.GitRepositoryManager
 import git4idea.util.GitFileUtils
 import git4idea.util.StringScanner
+import kotlinx.collections.immutable.toImmutableList
+import kotlinx.collections.immutable.toImmutableMap
 import java.util.concurrent.CompletableFuture
 
 /**
@@ -74,6 +78,9 @@ data class GetChangesResult(
 class GitService(private val project: Project) {
 
     private val logger = thisLogger()
+    // Git `--name-status` prefixes handled by this parser:
+    // C = copied, A = added, D = deleted, U = unmerged, M = modified, R = renamed, T = type changed.
+    private val validNameStatusCodes = setOf('C', 'A', 'D', 'U', 'M', 'R', 'T')
 
     internal fun getRepositoryForFile(file: VirtualFile): GitRepository? {
         val repositoryManager = GitRepositoryManager.getInstance(project)
@@ -184,14 +191,14 @@ class GitService(private val project: Project) {
                     val failures = mutableMapOf<GitRepository, String>()
 
                     if (isLoadingHead) {
-                        logger.debug("Using ChangeListManager for HEAD across all repositories.")
-                        allChanges.addAll(ChangeListManager.getInstance(project).allChanges)
+                        logger.debug("Using direct Git status for HEAD across all repositories.")
                         repositories.forEach { repo ->
+                            allChanges.addAll(loadLocalChanges(repo))
                             comparisonContext[repo.root.path] = "HEAD"
                         }
                     } else {
                         val primaryRevision = tabInfo.branchName
-                        val overrides = tabInfo.comparisonMap
+                        val overrides = tabInfo.comparisonMap.toImmutableMap()
 
                         for (repo in repositories) {
                             indicator.text = "Checking repository: ${repo.root.name}"
@@ -208,12 +215,7 @@ class GitService(private val project: Project) {
                                     logger.debug("Repo '${repo.root.name}' is targeting HEAD. Comparing against local changes.")
                                 }
 
-                                val allLocalChanges = ChangeListManager.getInstance(project).allChanges
-                                val repoChanges = allLocalChanges.filter { change ->
-                                    val vf = change.virtualFile
-                                    vf != null && VfsUtilCore.isAncestor(repo.root, vf, false)
-                                }
-                                allChanges.addAll(repoChanges)
+                                allChanges.addAll(loadLocalChanges(repo))
                             } else {
                                 // Use the low-level Git command to prevent fatal exceptions for bad revisions.
                                 val handler = GitLineHandler(project, repo.root, GitCommand.DIFF)
@@ -297,26 +299,74 @@ class GitService(private val project: Project) {
             .toList()
     }
 
+    private fun loadLocalChanges(repo: GitRepository): List<Change> {
+        val trackedChanges = loadTrackedChangesAgainstHead(repo)
+        val untrackedChanges = loadUntrackedChanges(repo)
+        return (trackedChanges + untrackedChanges).distinctBy { changeKey(it) }
+    }
+
+    private fun loadTrackedChangesAgainstHead(repo: GitRepository): List<Change> {
+        if (repo.isFresh) {
+            return emptyList()
+        }
+
+        val handler = GitLineHandler(project, repo.root, GitCommand.DIFF)
+        handler.setSilent(true)
+        handler.addParameters("--name-status", "--find-renames", "HEAD")
+        val result = Git.getInstance().runCommand(handler)
+
+        if (result.exitCode != 0) {
+            logger.warn(
+                "Failed to load tracked local changes for repo '${repo.root.name}' against HEAD: " +
+                    result.errorOutputAsJoinedString
+            )
+            return emptyList()
+        }
+
+        return parseNameStatusOutput(repo, "HEAD", result.outputAsJoinedString)
+    }
+
+    private fun loadUntrackedChanges(repo: GitRepository): List<Change> {
+        val handler = GitLineHandler(project, repo.root, GitCommand.LS_FILES)
+        handler.setSilent(true)
+        handler.addParameters("--others", "--exclude-standard", "-z")
+        val result = Git.getInstance().runCommand(handler)
+
+        if (result.exitCode != 0) {
+            logger.warn(
+                "Failed to load untracked local changes for repo '${repo.root.name}': " +
+                    result.errorOutputAsJoinedString
+            )
+            return emptyList()
+        }
+
+        return result.outputAsJoinedString
+            .split('\u0000')
+            .asSequence()
+            .filter { it.isNotBlank() }
+            .mapNotNull { relativePath ->
+                try {
+                    val afterFilePath = GitContentRevision.createPathFromEscaped(repo.root, relativePath)
+                    val afterRevision = GitContentRevision.createRevision(afterFilePath, null, project)
+                    Change(null, afterRevision, FileStatus.ADDED)
+                } catch (e: Exception) {
+                    logger.error("Failed to parse untracked file path '$relativePath' for repo '${repo.root.name}'", e)
+                    null
+                }
+            }
+            .toList()
+    }
+
+    private fun changeKey(change: Change): String {
+        val beforePath = change.beforeRevision?.file?.path.orEmpty()
+        val afterPath = change.afterRevision?.file?.path.orEmpty()
+        return "${change.type}:$beforePath->$afterPath"
+    }
+
     private fun createDeletedVirtualFile(beforeRevision: ContentRevision): VirtualFile? {
         return try {
-            val vcsFileRevision = object : com.intellij.openapi.vcs.history.VcsFileRevision {
-                override fun getRevisionNumber(): com.intellij.openapi.vcs.history.VcsRevisionNumber = beforeRevision.revisionNumber
-                override fun getRevisionDate(): java.util.Date? = null
-                override fun getAuthor(): String? = null
-                override fun getCommitMessage(): String? = null
-                override fun getBranchName(): String? = null
-                override fun getChangedRepositoryPath(): com.intellij.openapi.vcs.RepositoryLocation? = null
-
-                override fun loadContent(): ByteArray {
-                    val content = beforeRevision.content
-                    return content?.toByteArray() ?: ByteArray(0)
-                }
-
-                override fun getContent(): ByteArray = loadContent()
-            }
-
             logger.debug("Prepared lazy deleted-file virtual file for '${beforeRevision.file.path}'.")
-            com.intellij.openapi.vcs.vfs.VcsVirtualFile(beforeRevision.file, vcsFileRevision)
+            ContentRevisionVirtualFile.create(beforeRevision)
         } catch (e: Exception) {
             logger.warn("Failed to create VcsVirtualFile for deleted file: ${beforeRevision.file.path}", e)
             null
@@ -339,7 +389,7 @@ class GitService(private val project: Project) {
                 scanner.nextLine()
                 continue
             }
-            if ("CADUMRT".indexOf(scanner.peek()) == -1) {
+            if (scanner.peek() !in validNameStatusCodes) {
                 logger.warn("Exiting status line parse loop due to unexpected char: '${scanner.peek()}'")
                 break
             }
@@ -443,7 +493,7 @@ class GitService(private val project: Project) {
                     }
 
                 // The IntelliJ Document model requires LF ('\n') line endings, but Git on Windows might return CRLF ('\r\n').
-                // We must convert them to prevent a "Wrong line separators" from the line status tracker.
+                // We must convert them to prevent "Wrong line separators" from the line status tracker.
                 val normalizedContent = StringUtil.convertLineSeparators(rawContent)
 
                 logger.info("GUTTER_GIT_SERVICE: Successfully fetched content for '${relativePath}' in revision '${revision}'.")

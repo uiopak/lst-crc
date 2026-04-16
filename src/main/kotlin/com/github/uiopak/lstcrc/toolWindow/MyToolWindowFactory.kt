@@ -1,4 +1,4 @@
-@file:Suppress("DialogTitleCapitalization", "KotlinConstantConditions")
+@file:Suppress("DialogTitleCapitalization")
 
 package com.github.uiopak.lstcrc.toolWindow
 

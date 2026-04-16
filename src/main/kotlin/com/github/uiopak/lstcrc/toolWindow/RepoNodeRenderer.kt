@@ -81,14 +81,16 @@ class RepoNodeRenderer(
             // Check if the node is a unique, top-level node under the invisible root.
             if (parentNode != null && parentNode == rootNode && parentNode.childCount == 1) {
                 var shouldAnnotate = false
-                when {
-                    node is ChangesBrowserModuleNode && groupingSupport[ChangesGroupingSupport.MODULE_GROUPING] -> {
+                when (node) {
+                    is ChangesBrowserModuleNode if groupingSupport[ChangesGroupingSupport.MODULE_GROUPING] -> {
                         shouldAnnotate = true
                     }
-                    node is ChangesBrowserFilePathNode && groupingSupport.isDirectory && !groupingSupport[ChangesGroupingSupport.MODULE_GROUPING] -> {
+
+                    is ChangesBrowserFilePathNode if groupingSupport.isDirectory && !groupingSupport[ChangesGroupingSupport.MODULE_GROUPING] -> {
                         shouldAnnotate = true
                     }
-                    node is ChangesBrowserChangeListNode && groupingSupport.isNone -> {
+
+                    is ChangesBrowserChangeListNode if groupingSupport.isNone -> {
                         shouldAnnotate = true
                     }
                 }

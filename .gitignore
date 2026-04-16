@@ -3,4 +3,5 @@
 .intellijPlatform
 .qodana
 build
+out
 /intellij-community/

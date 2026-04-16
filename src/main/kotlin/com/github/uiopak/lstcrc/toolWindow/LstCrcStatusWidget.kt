@@ -1,4 +1,3 @@
-@file:Suppress("KotlinConstantConditions")
 package com.github.uiopak.lstcrc.toolWindow
 
 import com.github.uiopak.lstcrc.messaging.PLUGIN_SETTINGS_CHANGED_TOPIC

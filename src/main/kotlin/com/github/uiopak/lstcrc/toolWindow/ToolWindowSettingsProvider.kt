@@ -17,8 +17,6 @@ import com.intellij.openapi.actionSystem.ToggleAction
 import com.intellij.openapi.components.service
 import com.intellij.openapi.wm.impl.content.ToolWindowContentUi
 import com.intellij.ui.content.impl.ContentManagerImpl
-import com.intellij.ui.JBColor
-import java.awt.Color
 import javax.swing.UIManager
 
 /**
