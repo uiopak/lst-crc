@@ -9,7 +9,7 @@ import com.intellij.ide.util.PropertiesComponent
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.EDT
-import com.intellij.openapi.application.runReadActionBlocking
+import com.intellij.openapi.application.readActionBlocking
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.service
 import com.intellij.openapi.diagnostic.thisLogger
@@ -251,38 +251,37 @@ class VisualTrackerManager(private val project: Project, private val coroutineSc
     }
 
     private suspend fun loadTargetContent(file: com.intellij.openapi.vfs.VirtualFile, revision: String?): CharSequence {
-         val fallbackContent by lazy {
-             runReadActionBlocking { FileDocumentManager.getInstance().getDocument(file)?.text ?: "" }
-         }
+        suspend fun fallbackContent(): CharSequence =
+            readActionBlocking { FileDocumentManager.getInstance().getDocument(file)?.text ?: "" }
 
-         if (revision == null) {
-             return fallbackContent
-         }
+        if (revision == null) {
+            return fallbackContent()
+        }
 
-         // Optimization: If a file is explicitly new in our diff data, return empty immediately.
-         // This avoids an unnecessary Git lookup that would throw/fail anyway.
-         val isNewFile = project.service<ProjectActiveDiffDataService>().createdFiles.contains(file)
-         if (isNewFile) {
-             return ""
-         }
+        // Optimization: If a file is explicitly new in our diff data, return empty immediately.
+        // This avoids an unnecessary Git lookup that would throw/fail anyway.
+        val isNewFile = project.service<ProjectActiveDiffDataService>().createdFiles.contains(file)
+        if (isNewFile) {
+            return ""
+        }
 
-         val gitService = project.service<GitService>()
-         return withContext(Dispatchers.IO) {
-             try {
-                 val future = gitService.getFileContentForRevision(revision, file)
-                 val content = future.get() ?: return@withContext fallbackContent
-                 StringUtil.convertLineSeparators(content)
-             } catch (e: Exception) {
-                 val rootCause = if (e is java.util.concurrent.ExecutionException) e.cause ?: e else e
-                 
-                 if (rootCause is VcsException && rootCause.message.contains("does not exist in", ignoreCase = true)) {
-                     ""
-                 } else {
-                     logger.warn("VISUAL_TRACKER: Failed to load content for ${file.path}. Error: ${rootCause.message}")
-                     fallbackContent
-                 }
-             }
-         }
+        val gitService = project.service<GitService>()
+        return withContext(Dispatchers.IO) {
+            try {
+                val future = gitService.getFileContentForRevision(revision, file)
+                val content = future.get() ?: return@withContext fallbackContent()
+                StringUtil.convertLineSeparators(content)
+            } catch (e: Exception) {
+                val rootCause = if (e is java.util.concurrent.ExecutionException) e.cause ?: e else e
+
+                if (rootCause is VcsException && rootCause.message.contains("does not exist in", ignoreCase = true)) {
+                    ""
+                } else {
+                    logger.warn("VISUAL_TRACKER: Failed to load content for ${file.path}. Error: ${rootCause.message}")
+                    fallbackContent()
+                }
+            }
+        }
     }
 
     private fun installVisualRenderer(markupModel: MarkupModel, document: Document) {
