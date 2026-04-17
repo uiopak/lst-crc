@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-**lst-crc** (likely "Local Status To Commit/Ref Comparison") is a JetBrains IDE plugin designed to enhance developer workflows by providing a dedicated tool window for visualizing and tracking file changes. It allows users to:
+**lst-crc** (likely "Line Status Tracker To Commit/Ref Comparison") is a JetBrains IDE plugin designed to enhance developer workflows by providing a dedicated tool window for visualizing and tracking file changes. It allows users to:
 
 1.  **Compare Current Work**: View differences between the current **working tree** (including uncommitted local modifications) and any selected Git branch, commit, or tag.
 2.  **Tabbed Comparisons**: Open multiple comparisons in separate, persistent tabs within the tool window.
