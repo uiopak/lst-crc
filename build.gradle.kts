@@ -221,16 +221,26 @@ if (!includeTestBridge.get()) {
     }
 }
 
-val remoteUiIdeDir = layout.buildDirectory.dir("remote-ui-ide/idea")
-val preparedRemoteUiIdeDir = providers.provider {
-    remoteUiIdeDir.get().also { targetDir ->
-        if (!targetDir.asFile.resolve("product-info.json").isFile) {
-            copy {
-                from(intellijPlatform.platformPath)
-                into(targetDir.asFile)
-            }
+// Resolve IntelliJ once via the Gradle plugin, then keep a single shared workspace copy for
+// UI-related tasks. This avoids maintaining separate 4+ GB copies for Remote Robot and
+// IDE Starter, while also keeping the running IDEs off the mutable Gradle transform cache.
+val resolvedIdeHome = intellijPlatform.platformPath
+val sharedUiIdeDir = layout.buildDirectory.dir("shared-ui-ide/idea")
+val preparedSharedUiIdeDir = providers.provider {
+    val sourceIdeDir = resolvedIdeHome.toFile()
+    val targetIdeDir = sharedUiIdeDir.get().asFile
+    val sourceBuild = sourceIdeDir.resolve("build.txt").takeIf { it.isFile }?.readText()?.trim().orEmpty()
+    val targetBuild = targetIdeDir.resolve("build.txt").takeIf { it.isFile }?.readText()?.trim().orEmpty()
+
+    if (!targetIdeDir.resolve("product-info.json").isFile || sourceBuild != targetBuild) {
+        delete(targetIdeDir)
+        copy {
+            from(sourceIdeDir)
+            into(targetIdeDir)
         }
     }
+
+    sharedUiIdeDir.get()
 }
 
 tasks {
@@ -238,11 +248,6 @@ tasks {
     val robotServerUrlProvider = providers.systemProperty("robot.server.url").orElse(defaultRobotServerUrl)
     val robotServerWaitTimeoutProvider = providers.systemProperty("ui.test.server.wait.timeout").orElse("90")
     val robotConnectionTimeoutProvider = providers.systemProperty("ui.test.connection.timeout").orElse("30")
-
-    val prepareRunIdeForUiTestsIde by registering(Sync::class) {
-        from(intellijPlatform.platformPath)
-        into(remoteUiIdeDir)
-    }
 
     fun Test.configureCommonTestTask() {
         useJUnitPlatform()
@@ -375,7 +380,7 @@ tasks {
 
         systemProperty("path.to.build.plugin", buildPlugin.get().archiveFile.get().asFile.absolutePath)
         systemProperty("idea.home.path", prepareTestSandbox.get().getDestinationDir().parentFile.absolutePath)
-        systemProperty("local.ide.path", intellijPlatform.platformPath.toString())
+        systemProperty("local.ide.path", preparedSharedUiIdeDir.get().asFile.absolutePath)
         systemProperty("lstcrc.starter.driver.jmx.port", System.getProperty("lstcrc.starter.driver.jmx.port") ?: "17777")
         systemProperty("lstcrc.starter.driver.rpc.port", System.getProperty("lstcrc.starter.driver.rpc.port") ?: "24000")
         systemProperty(
@@ -396,20 +401,22 @@ tasks {
     }
 
     register<Delete>("cleanStarterArtifacts") {
-        description = "Removes IDE Starter test artifacts (out/ide-tests) that accumulate outside the build directory."
+        description = "Removes IDE Starter artifacts plus obsolete copied IDE directories left by older UI test setups."
         group = "build"
-        delete(rootProject.file("out/ide-tests"))
+        delete(
+            rootProject.file("out/ide-tests"),
+            layout.buildDirectory.dir("remote-ui-ide"),
+            layout.buildDirectory.dir("starter-ui-ides"),
+        )
     }
 }
 
 intellijPlatformTesting {
     runIde {
         register("runIdeForUiTests") {
-            localPath.set(preparedRemoteUiIdeDir)
+            localPath.set(preparedSharedUiIdeDir)
 
             task {
-                dependsOn(tasks.named("prepareRunIdeForUiTestsIde"))
-
                 jvmArgumentProviders += CommandLineArgumentProvider {
                     listOf(
                         "-Drobot-server.port=8082",
@@ -440,6 +447,3 @@ tasks.named("runIdeForUiTests") {
     }
 }
 
-tasks.named("prepareSandbox_runIdeForUiTests") {
-    dependsOn("prepareRunIdeForUiTestsIde")
-}

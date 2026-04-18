@@ -34,13 +34,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import java.security.MessageDigest
-import kotlin.io.path.ExperimentalPathApi
 import kotlin.io.path.Path
-import kotlin.io.path.copyToRecursively
-import kotlin.io.path.createDirectories
-import kotlin.io.path.deleteRecursively
 import kotlin.io.path.exists
-import kotlin.io.path.name
 import kotlin.io.path.readText
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
@@ -56,8 +51,8 @@ abstract class LstCrcStarterUiTestBase {
      * the locally resolved IDE via [SharedLocalIdeInstaller] instead of downloading from
      * the public JetBrains API (which fails for unreleased or expired EAP builds).
      *
-     * A single shared IDE copy is reused across all tests to avoid copying ~4 GB per
-     * test method. The copy is invalidated automatically when the source IDE changes.
+     * The locally resolved IDE is reused directly across all tests and other Gradle tasks,
+     * which avoids creating additional ~4 GB workspace copies for each UI stack.
      *
      * The locally resolved IDE is IntelliJ IDEA Ultimate (`IU`) because that is what
      * the IntelliJ Platform Gradle Plugin resolves via `intellijIdea(platformVersion)`.
@@ -169,18 +164,16 @@ abstract class LstCrcStarterUiTestBase {
     }
 
     /**
-     * Installs the local IDE into a single shared directory under `build/starter-ui-ides/`.
-     * Reuses the existing copy when the source IDE has not changed (validated by comparing
-     * `product-info.json` fingerprints). Copies into a temporary directory first and
-     * atomically renames to avoid broken partial copies.
+     * Reuses the already installed local IDE directly instead of copying it into
+     * `build/starter-ui-ides/`.
      *
-     * The returned `installId` is stable across runs for the same IDE build, which also
-     * stabilises the `out/ide-tests/` output paths and prevents unbounded growth.
+     * The returned `installId` is stable across runs for the same IDE build, which keeps
+     * the `out/ide-tests/` output paths stable while still invalidating them automatically
+     * when the underlying IDE changes.
      */
     private class SharedLocalIdeInstaller(
         private val installedIdePath: java.nio.file.Path
     ) : IdeInstaller {
-        @OptIn(ExperimentalPathApi::class)
         override suspend fun install(ideInfo: IdeInfo): Pair<String, InstalledIde> {
             val sourceProductInfo = installedIdePath.resolve("product-info.json")
             val fingerprint = if (sourceProductInfo.exists()) {
@@ -190,30 +183,11 @@ abstract class LstCrcStarterUiTestBase {
             } else {
                 "unknown"
             }
-            val installId = "locally-installed-ide"
-            val installDir = java.nio.file.Path.of("build", "starter-ui-ides", installId)
-            val destDir = installDir.resolve(installedIdePath.name)
-            val cachedFingerprint = destDir.resolve(".ide-fingerprint")
-
-            val cacheValid = cachedFingerprint.exists() &&
-                cachedFingerprint.readText().trim() == fingerprint &&
-                destDir.resolve("product-info.json").exists()
-
-            if (!cacheValid) {
-                // Atomic copy: write to temp dir, then rename into place
-                val tmpDir = java.nio.file.Path.of("build", "starter-ui-ides", "$installId-tmp")
-                if (tmpDir.exists()) tmpDir.deleteRecursively()
-                val tmpDest = tmpDir.resolve(installedIdePath.name)
-                installedIdePath.copyToRecursively(tmpDest.createDirectories(), followLinks = false, overwrite = true)
-                tmpDest.resolve(".ide-fingerprint").toFile().writeText(fingerprint)
-
-                if (destDir.exists()) destDir.deleteRecursively()
-                installDir.createDirectories()
-                java.nio.file.Files.move(tmpDest, destDir)
-                if (tmpDir.exists()) tmpDir.deleteRecursively()
-            }
-
-            return installId to DefaultIdeDistributionFactory.installIDE(installDir.toFile(), ideInfo.executableFileName)
+            val installId = "shared-local-ide-$fingerprint"
+            return installId to DefaultIdeDistributionFactory.installIDE(
+                installedIdePath.parent.toFile(),
+                ideInfo.executableFileName,
+            )
         }
     }
 }
