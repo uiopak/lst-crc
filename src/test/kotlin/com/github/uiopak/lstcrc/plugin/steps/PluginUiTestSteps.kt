@@ -1,12 +1,10 @@
 package com.github.uiopak.lstcrc.plugin.steps
 
-import com.github.uiopak.lstcrc.plugin.pages.idea
 import com.intellij.remoterobot.RemoteRobot
 import com.intellij.remoterobot.fixtures.ComponentFixture
 import com.intellij.remoterobot.search.locators.byXpath
 import com.intellij.remoterobot.stepsProcessing.step
 import com.intellij.remoterobot.utils.component
-import com.intellij.remoterobot.utils.keyboard
 import com.intellij.remoterobot.utils.waitFor
 import java.time.Duration
 
@@ -22,97 +20,58 @@ class PluginUiTestSteps(private val remoteRobot: RemoteRobot) {
     /**
      * Creates a new file with the given name and content
      */
-    fun createNewFile(fileName: String, content: String) = with(remoteRobot) {
-        step("Create new file: $fileName") {
-            writeProjectFile(fileName, content)
-            handleAddFileToGitDialogIfPresent()
-            waitForGitIdle()
-        }
+    fun createNewFile(fileName: String, content: String) = step("Create new file: $fileName") {
+        writeProjectFile(fileName, content)
+        handleAddFileToGitDialogIfPresent()
+        waitForGitIdle()
     }
 
     /**
      * Modifies an existing file by clicking on it and adding content
      */
-    fun modifyFile(fileName: String, content: String) = with(remoteRobot) {
-        step("Modify file: $fileName") {
-            writeProjectFile(fileName, content)
-        }
-    }
-
-    /**
-     * Replaces content in an existing file
-     */
-    fun replaceFileContent(fileName: String, content: String) = with(remoteRobot) {
-        step("Replace content in file: $fileName") {
-            step("Left click on $fileName") {
-                component("//div[@accessiblename='$fileName' and @class='SimpleColoredComponent']")
-                    .click()
-            }
-            keyboard {
-                step("Press 'Ctrl+A'") { hotKey(17, 65) }
-
-                // Split content by newlines and enter each line separately
-                val lines = content.split("\n")
-                for (i in lines.indices) {
-                    enterText(lines[i])
-                    if (i < lines.size - 1) {
-                        // Press Enter between lines, but not after the last line
-                        enter()
-                    }
-                }
-            }
-        }
+    fun modifyFile(fileName: String, content: String) = step("Modify file: $fileName") {
+        writeProjectFile(fileName, content)
     }
 
     /**
      * Performs a Git commit with the given commit message
      */
-    fun commitChanges(commitMessage: String) = with(remoteRobot) {
-        step("Commit changes with message: $commitMessage") {
-            runGitCommand("add", "-A")
-            runGitCommand("commit", "-m", commitMessage, "--no-gpg-sign")
-            refreshProjectAfterGitCommand()
+    fun commitChanges(commitMessage: String) = step("Commit changes with message: $commitMessage") {
+        runGitCommand("add", "-A")
+        runGitCommand("commit", "-m", commitMessage, "--no-gpg-sign")
+        refreshProjectAfterGitCommand()
 
-            waitForNoLocalChanges()
-        }
+        waitForNoLocalChanges()
     }
 
     /**
      * Creates a new Git branch
      */
-    fun createBranch(branchName: String) = with(remoteRobot) {
-        step("Create branch: $branchName") {
-            runGitCommand("checkout", "-B", branchName)
-            refreshProjectAfterGitCommand()
+    fun createBranch(branchName: String) = step("Create branch: $branchName") {
+        runGitCommand("checkout", "-B", branchName)
+        refreshProjectAfterGitCommand()
 
-            waitForBranch(branchName)
-        }
+        waitForBranch(branchName)
     }
 
     /**
      * Switches to a Git branch
      */
-    fun checkoutBranch(branchName: String) = with(remoteRobot) {
-        step("Checkout branch: $branchName") {
-            runGitCommand("checkout", branchName)
-            refreshProjectAfterGitCommand()
+    fun checkoutBranch(branchName: String) = step("Checkout branch: $branchName") {
+        runGitCommand("checkout", branchName)
+        refreshProjectAfterGitCommand()
 
-            waitForBranch(branchName)
-        }
+        waitForBranch(branchName)
     }
 
-    fun defaultBranchName(): String = with(remoteRobot) {
-        step("Resolve default branch name") {
-            val branchName = currentBranchName()
-            check(branchName.isNotBlank()) { "Could not resolve current Git branch name" }
-            branchName
-        }
+    fun defaultBranchName(): String = step("Resolve default branch name") {
+        val branchName = currentBranchName()
+        check(branchName.isNotBlank()) { "Could not resolve current Git branch name" }
+        branchName
     }
 
-    fun gitRevision(reference: String): String = with(remoteRobot) {
-        step("Resolve git revision for $reference") {
-            runGitCommand("rev-parse", reference)
-        }
+    fun gitRevision(reference: String): String = step("Resolve git revision for $reference") {
+        runGitCommand("rev-parse", reference)
     }
 
     fun initializeGitRepository() = with(remoteRobot) {
@@ -125,7 +84,7 @@ class PluginUiTestSteps(private val remoteRobot: RemoteRobot) {
                         """
                         const project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
                         if (project) {
-                            com.intellij.openapi.application.ApplicationManager.getApplication().invokeAndWait(new java.lang.Runnable({
+                            com.intellij.openapi.application.TransactionGuard.getInstance().submitTransactionAndWait(new java.lang.Runnable({
                                 run: function() {
                                     com.intellij.openapi.fileEditor.FileDocumentManager.getInstance().saveAllDocuments();
                                     com.intellij.openapi.fileEditor.FileEditorManager.getInstance(project).closeAllFiles();
@@ -364,7 +323,6 @@ class PluginUiTestSteps(private val remoteRobot: RemoteRobot) {
             if (project) {
                 com.intellij.openapi.command.WriteCommandAction.runWriteCommandAction(project, new java.lang.Runnable({
                     run: function() {
-                        const baseDir = project.getBaseDir();
                         $operationScript
                         com.intellij.openapi.vcs.changes.VcsDirtyScopeManager.getInstance(project).markEverythingDirty();
                     }
@@ -487,22 +445,18 @@ class PluginUiTestSteps(private val remoteRobot: RemoteRobot) {
         }
     }
 
-    private fun waitForBranch(branchName: String) = with(remoteRobot) {
-        waitFor(Duration.ofSeconds(30), interval = Duration.ofSeconds(1)) {
-            currentBranchName() == branchName
-        }
+    private fun waitForBranch(branchName: String) = waitFor(Duration.ofSeconds(30), interval = Duration.ofSeconds(1)) {
+        currentBranchName() == branchName
     }
 
-    private fun waitForNoLocalChanges() = with(remoteRobot) {
-        waitFor(Duration.ofSeconds(30), interval = Duration.ofSeconds(1)) {
-            runGitCommand("status", "--porcelain")
-                .lineSequence()
-                .map { it.trim() }
-                .filter { it.isNotBlank() }
-                .none { line ->
-                    val path = line.substringAfter(' ').substringAfter(' ').trim()
-                    !path.startsWith(".idea/") && !path.endsWith(".iml")
-                }
-        }
+    private fun waitForNoLocalChanges() = waitFor(Duration.ofSeconds(30), interval = Duration.ofSeconds(1)) {
+        runGitCommand("status", "--porcelain")
+            .lineSequence()
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .none { line ->
+                val path = line.substringAfter(' ').substringAfter(' ').trim()
+                !path.startsWith(".idea/") && !path.endsWith(".iml")
+            }
     }
 }

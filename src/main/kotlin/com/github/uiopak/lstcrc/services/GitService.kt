@@ -29,7 +29,6 @@ import git4idea.repo.GitRepository
 import git4idea.repo.GitRepositoryManager
 import git4idea.util.GitFileUtils
 import git4idea.util.StringScanner
-import kotlinx.collections.immutable.toImmutableList
 import kotlinx.collections.immutable.toImmutableMap
 import java.util.concurrent.CompletableFuture
 

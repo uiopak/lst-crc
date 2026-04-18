@@ -18,11 +18,14 @@ jobs:
       UI_TEST_SERVER_WAIT_TIMEOUT: 1200
       UI_TEST_CONNECTION_TIMEOUT: 90
       UI_TEST_TIMEOUT: 900
+      UI_TEST_IDE_RUNTIME_WARMUP_TIMEOUT: 1200
+      UI_TEST_IDE_RUNTIME_RETRY_DELAY: 60
     strategy:
       fail-fast: false
       matrix:
         include:
           - os: ubuntu-latest
+            prepareIdeRuntime: ./gradlew runIdeForUiTests --dry-run --stacktrace
             runIde: |
               export DISPLAY=:99.0
               Xvfb -ac :99 -screen 0 1920x1080x24 &
@@ -34,13 +37,15 @@ jobs:
             url: http://127.0.0.1:8082
             reportName: ui-test-fails-report-linux
           - os: macOS-latest
+            prepareIdeRuntime: ./gradlew runIdeForUiTests --dry-run --stacktrace
             runIde: ./gradlew runIdeForUiTests --info --stacktrace --scan &> build/reports/idea.log &
             runTests: ./gradlew uiTest --info --stacktrace -Dui.test.connection.timeout=${UI_TEST_CONNECTION_TIMEOUT} -Dui.test.timeout=${UI_TEST_TIMEOUT}
             url: http://127.0.0.1:8082
             reportName: ui-test-fails-report-mac
           - os: windows-latest
+            prepareIdeRuntime: cmd.exe /c "gradlew.bat runIdeForUiTests --dry-run --stacktrace"
             runIde: cmd.exe /c "start /b gradlew.bat runIdeForUiTests --info --stacktrace --scan > build/reports/idea.log 2>&1"
-            runTests: .\gradlew.bat uiTest --info --stacktrace -Dui.test.connection.timeout=%UI_TEST_CONNECTION_TIMEOUT% -Dui.test.timeout=%UI_TEST_TIMEOUT%
+            runTests: cmd.exe /c "gradlew.bat uiTest --info --stacktrace -Dui.test.connection.timeout=%UI_TEST_CONNECTION_TIMEOUT% -Dui.test.timeout=%UI_TEST_TIMEOUT%"
             url: http://localhost:8082
             reportName: ui-test-fails-report-windows
 
@@ -83,6 +88,30 @@ jobs:
       - name: Prepare UI test classpath
         run: ./gradlew buildPlugin testClasses --stacktrace
         shell: bash
+
+      - name: Prepare UI test IDE runtime
+        timeout-minutes: 25
+        shell: bash
+        run: |
+          deadline=$(( $(date +%s) + UI_TEST_IDE_RUNTIME_WARMUP_TIMEOUT ))
+          attempt=1
+
+          while true; do
+            if ${{ matrix.prepareIdeRuntime }}; then
+              exit 0
+            fi
+
+            now=$(date +%s)
+            if [ "$now" -ge "$deadline" ]; then
+              echo "IDE runtime warmup timed out after ${UI_TEST_IDE_RUNTIME_WARMUP_TIMEOUT}s"
+              exit 1
+            fi
+
+            remaining=$(( deadline - now ))
+            echo "IDE runtime warmup failed on attempt $attempt. ${remaining}s remaining before timeout. Retrying in ${UI_TEST_IDE_RUNTIME_RETRY_DELAY}s..."
+            sleep "$UI_TEST_IDE_RUNTIME_RETRY_DELAY"
+            attempt=$(( attempt + 1 ))
+          done
 
       - name: Set Windows screen resolution
         if: runner.os == 'Windows'
