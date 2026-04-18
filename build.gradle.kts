@@ -425,6 +425,8 @@ intellijPlatformTesting {
                         "-Dide.mac.message.dialogs.as.sheets=false",
                         "-Djb.privacy.policy.text=<!--999.999-->",
                         "-Djb.consents.confirmation.enabled=false",
+                        "-Didea.diagnostic.opentelemetry.metrics.file=",
+                        "-Didea.diagnostic.opentelemetry.meters.file.json=",
                         "-Dide.newUsersOnboarding=false",
                         "-DNEW_USERS_ONBOARDING_DIALOG_SHOWN=true",
                         "-Dide.mac.file.chooser.native=false",
