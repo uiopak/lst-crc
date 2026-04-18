@@ -117,8 +117,8 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
 
     fun openGitChangesView() {
         step("Open GitChangesView tool window") {
-            val visibleTimeout = if (System.getenv("GITHUB_ACTIONS") == "true") Duration.ofSeconds(30) else Duration.ofSeconds(10)
-            val readyTimeout = if (System.getenv("GITHUB_ACTIONS") == "true") Duration.ofMinutes(2) else Duration.ofSeconds(30)
+            val visibleTimeout = if (System.getenv("GITHUB_ACTIONS") == "true") Duration.ofSeconds(60) else Duration.ofSeconds(10)
+            val readyTimeout = if (System.getenv("GITHUB_ACTIONS") == "true") Duration.ofMinutes(3) else Duration.ofSeconds(30)
 
             runJs(
                 """

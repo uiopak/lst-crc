@@ -255,8 +255,7 @@ class PluginUiTestSteps(private val remoteRobot: RemoteRobot) {
                             return;
                         }
 
-                        const localFileSystem = com.intellij.openapi.vfs.LocalFileSystem.getInstance();
-                        const baseDir = localFileSystem.refreshAndFindFileByPath(basePath);
+                        const baseDir = project.getBaseDir();
                         const vcsManager = com.intellij.openapi.vcs.ProjectLevelVcsManager.getInstance(project);
                         vcsManager.setDirectoryMapping(basePath, "Git");
                         vcsManager.scheduleMappedRootsUpdate();
@@ -346,9 +345,9 @@ class PluginUiTestSteps(private val remoteRobot: RemoteRobot) {
                 }
 
                 if (!dialogHandled) {
-                    runCatching {
-                        find<ComponentFixture>(byXpath("//div[@accessiblename='Don\'t ask again' and @class='JCheckBox']")).click()
-                    }
+                    findAll<ComponentFixture>(
+                        byXpath("//div[@accessiblename='Don\'t ask again' and @class='JCheckBox']")
+                    ).firstOrNull()?.click()
                     dialogHandled = true
                 }
 
@@ -426,16 +425,16 @@ class PluginUiTestSteps(private val remoteRobot: RemoteRobot) {
                             false;
                         }
                         else {
-                            const baseDir = com.intellij.openapi.vfs.LocalFileSystem.getInstance().refreshAndFindFileByPath(basePath);
+                            const baseDir = project.getBaseDir();
                             const vcsManager = com.intellij.openapi.vcs.ProjectLevelVcsManager.getInstance(project);
-                            const gitDir = baseDir ? com.intellij.openapi.vfs.LocalFileSystem.getInstance().refreshAndFindFileByPath(basePath + "/.git") : null;
+                            const gitDir = new java.io.File(basePath, ".git");
                             const statusBuilder = new java.lang.ProcessBuilder();
                             statusBuilder.command(java.util.Arrays.asList("git", "status", "--porcelain"));
                             statusBuilder.directory(new java.io.File(basePath));
                             statusBuilder.redirectErrorStream(true);
                             const statusProcess = statusBuilder.start();
                             const statusExitCode = statusProcess.waitFor();
-                            gitDir != null && vcsManager.checkVcsIsActive("Git") && vcsManager.getVcsFor(baseDir) != null && statusExitCode === 0;
+                            gitDir.exists() && baseDir != null && vcsManager.checkVcsIsActive("Git") && vcsManager.getVcsFor(baseDir) != null && statusExitCode === 0;
                         }
                     }
                     """.trimIndent(),

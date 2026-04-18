@@ -244,10 +244,12 @@ val preparedSharedUiIdeDir = providers.provider {
 }
 
 tasks {
+    val isCi = providers.environmentVariable("GITHUB_ACTIONS").orNull == "true"
     val defaultRobotServerUrl = "http://127.0.0.1:8082"
     val robotServerUrlProvider = providers.systemProperty("robot.server.url").orElse(defaultRobotServerUrl)
-    val robotServerWaitTimeoutProvider = providers.systemProperty("ui.test.server.wait.timeout").orElse("90")
-    val robotConnectionTimeoutProvider = providers.systemProperty("ui.test.connection.timeout").orElse("30")
+    val robotServerWaitTimeoutProvider = providers.systemProperty("ui.test.server.wait.timeout").orElse(if (isCi) "240" else "90")
+    val robotConnectionTimeoutProvider = providers.systemProperty("ui.test.connection.timeout").orElse(if (isCi) "90" else "30")
+    val uiTestTimeoutProvider = providers.systemProperty("ui.test.timeout").orElse(if (isCi) "900" else "600")
 
     fun Test.configureCommonTestTask() {
         useJUnitPlatform()
@@ -274,7 +276,7 @@ tasks {
         systemProperty("robot-server.auto.run", "false")
         systemProperty("robot.server.url", robotServerUrlProvider.get())
         systemProperty("ui.test.connection.timeout", robotConnectionTimeoutProvider.get())
-        systemProperty("ui.test.timeout", System.getProperty("ui.test.timeout") ?: "600")
+        systemProperty("ui.test.timeout", uiTestTimeoutProvider.get())
 
         timeout.set(Duration.ofMinutes(20))
     }
@@ -423,6 +425,8 @@ intellijPlatformTesting {
                         "-Dide.mac.message.dialogs.as.sheets=false",
                         "-Djb.privacy.policy.text=<!--999.999-->",
                         "-Djb.consents.confirmation.enabled=false",
+                        "-Dide.newUsersOnboarding=false",
+                        "-DNEW_USERS_ONBOARDING_DIALOG_SHOWN=true",
                         "-Dide.mac.file.chooser.native=false",
                         "-DjbScreenMenuBar.enabled=false",
                         "-Dapple.laf.useScreenMenuBar=false",
