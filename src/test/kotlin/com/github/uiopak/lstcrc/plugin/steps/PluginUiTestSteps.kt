@@ -84,7 +84,7 @@ class PluginUiTestSteps(private val remoteRobot: RemoteRobot) {
                         """
                         const project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
                         if (project) {
-                            com.intellij.openapi.application.TransactionGuard.getInstance().submitTransactionAndWait(new java.lang.Runnable({
+                            com.intellij.openapi.application.WriteIntentReadAction.run(new java.lang.Runnable({
                                 run: function() {
                                     com.intellij.openapi.fileEditor.FileDocumentManager.getInstance().saveAllDocuments();
                                     com.intellij.openapi.fileEditor.FileEditorManager.getInstance(project).closeAllFiles();
@@ -216,8 +216,12 @@ class PluginUiTestSteps(private val remoteRobot: RemoteRobot) {
 
                         const baseDir = project.getBaseDir();
                         const vcsManager = com.intellij.openapi.vcs.ProjectLevelVcsManager.getInstance(project);
+                        const vcsManagerEx = com.intellij.openapi.vcs.ex.ProjectLevelVcsManagerEx.getInstanceEx(project);
                         vcsManager.setDirectoryMapping(basePath, "Git");
                         vcsManager.scheduleMappedRootsUpdate();
+                        vcsManagerEx
+                            .getConfirmation(com.intellij.openapi.vcs.VcsConfiguration.StandardConfirmation.ADD)
+                            .setValue(com.intellij.openapi.vcs.VcsShowConfirmationOption.Value.DO_NOTHING_SILENTLY);
 
                         if (baseDir != null) {
                             baseDir.refresh(false, true);
@@ -296,22 +300,24 @@ class PluginUiTestSteps(private val remoteRobot: RemoteRobot) {
     }
 
     private fun handleAddFileToGitDialogIfPresent() = with(remoteRobot) {
+        val dialogXpath = "//div[@class='MyDialog' and (@title='Add File to Git' or .//div[@accessiblename='Add File to Git'])]"
+        val addButtonXpath = "$dialogXpath//div[@accessiblename='Add' and @class='JButton']"
+        val dontAskAgainXpath = "$dialogXpath//div[@accessiblename=\"Don't ask again\" and @class='JCheckBox']"
+
         runCatching {
             waitFor(Duration.ofSeconds(5), interval = Duration.ofMillis(250)) {
-                val addButtons = findAll<ComponentFixture>(byXpath("//div[@accessiblename='Add' and @class='JButton']"))
+                val addButtons = findAll<ComponentFixture>(byXpath(addButtonXpath))
                 if (addButtons.isEmpty()) {
                     return@waitFor false
                 }
 
                 if (!dialogHandled) {
-                    findAll<ComponentFixture>(
-                        byXpath("//div[@accessiblename='Don\'t ask again' and @class='JCheckBox']")
-                    ).firstOrNull()?.click()
+                    findAll<ComponentFixture>(byXpath(dontAskAgainXpath)).firstOrNull()?.click()
                     dialogHandled = true
                 }
 
                 addButtons.first().click()
-                true
+                findAll<ComponentFixture>(byXpath(addButtonXpath)).isEmpty()
             }
         }
     }
@@ -323,6 +329,10 @@ class PluginUiTestSteps(private val remoteRobot: RemoteRobot) {
             if (project) {
                 com.intellij.openapi.command.WriteCommandAction.runWriteCommandAction(project, new java.lang.Runnable({
                     run: function() {
+                        const baseDir = project.getBaseDir();
+                        if (!baseDir) {
+                            return;
+                        }
                         $operationScript
                         com.intellij.openapi.vcs.changes.VcsDirtyScopeManager.getInstance(project).markEverythingDirty();
                     }
