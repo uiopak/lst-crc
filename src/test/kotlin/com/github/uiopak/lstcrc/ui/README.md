@@ -43,6 +43,20 @@ Use the shared `Run UI Tests` run configuration or execute:
 
 `uiTest` now depends on `uiTestReady`, so if the IDE was not started first it fails fast with a clear message instead of waiting for the full suite timeout.
 
+### Cleanup
+
+When you are done with Remote Robot runs, stop the long-lived IDE process explicitly:
+
+```powershell
+.\gradlew.bat stopUiTestProcesses
+```
+
+If you also want to release stale Gradle daemons after a batch of UI-test runs, follow with:
+
+```powershell
+.\gradlew.bat --stop
+```
+
 To run a single UI class or method, keep the IDE running and use:
 
 ```powershell

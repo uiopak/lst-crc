@@ -34,18 +34,27 @@ jobs:
             runTests: |
               export DISPLAY=:99.0
               ./gradlew uiTest --info --stacktrace -Dui.test.connection.timeout=${UI_TEST_CONNECTION_TIMEOUT} -Dui.test.timeout=${UI_TEST_TIMEOUT}
+            cleanup: |
+              ./gradlew stopUiTestProcesses --stacktrace || true
+              ./gradlew --stop || true
             url: http://127.0.0.1:8082
             reportName: ui-test-fails-report-linux
           - os: macOS-latest
             prepareIdeRuntime: ./gradlew runIdeForUiTests --dry-run --stacktrace
             runIde: ./gradlew runIdeForUiTests --info --stacktrace --scan &> build/reports/idea.log &
             runTests: ./gradlew uiTest --info --stacktrace -Dui.test.connection.timeout=${UI_TEST_CONNECTION_TIMEOUT} -Dui.test.timeout=${UI_TEST_TIMEOUT}
+            cleanup: |
+              ./gradlew stopUiTestProcesses --stacktrace || true
+              ./gradlew --stop || true
             url: http://127.0.0.1:8082
             reportName: ui-test-fails-report-mac
           - os: windows-latest
             prepareIdeRuntime: cmd.exe /c "gradlew.bat runIdeForUiTests --dry-run --stacktrace"
             runIde: cmd.exe /c "start /b gradlew.bat runIdeForUiTests --info --stacktrace --scan > build/reports/idea.log 2>&1"
             runTests: cmd.exe /c "gradlew.bat uiTest --info --stacktrace -Dui.test.connection.timeout=%UI_TEST_CONNECTION_TIMEOUT% -Dui.test.timeout=%UI_TEST_TIMEOUT%"
+            cleanup: |
+              cmd.exe /c "gradlew.bat stopUiTestProcesses --stacktrace" || true
+              cmd.exe /c "gradlew.bat --stop" || true
             url: http://localhost:8082
             reportName: ui-test-fails-report-windows
 
@@ -170,3 +179,8 @@ jobs:
           name: ${{ matrix.reportName }}
           path: |
             build/reports
+
+      - name: Stop UI test IDE and daemons
+        if: ${{ always() }}
+        run: ${{ matrix.cleanup }}
+        shell: bash

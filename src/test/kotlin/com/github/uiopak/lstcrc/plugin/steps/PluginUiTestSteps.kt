@@ -223,10 +223,6 @@ class PluginUiTestSteps(private val remoteRobot: RemoteRobot) {
                             .getConfirmation(com.intellij.openapi.vcs.VcsConfiguration.StandardConfirmation.ADD)
                             .setValue(com.intellij.openapi.vcs.VcsShowConfirmationOption.Value.DO_NOTHING_SILENTLY);
 
-                        if (baseDir != null) {
-                            baseDir.refresh(false, true);
-                        }
-
                         com.intellij.openapi.vcs.changes.VcsDirtyScopeManager.getInstance(project).markEverythingDirty();
                     }
                 }));
@@ -294,7 +290,15 @@ class PluginUiTestSteps(private val remoteRobot: RemoteRobot) {
             if (!file) {
                 file = baseDir.createChildData(null, ${toJsStringLiteral(fileName)});
             }
-            com.intellij.openapi.vfs.VfsUtil.saveText(file, ${toJsStringLiteral(content)});
+            const fileDocumentManager = com.intellij.openapi.fileEditor.FileDocumentManager.getInstance();
+            const document = fileDocumentManager.getDocument(file);
+            if (document) {
+                document.setText(${toJsStringLiteral(content)});
+                fileDocumentManager.saveDocument(document);
+            }
+            else {
+                com.intellij.openapi.vfs.VfsUtil.saveText(file, ${toJsStringLiteral(content)});
+            }
             """.trimIndent()
         )
     }
@@ -327,16 +331,26 @@ class PluginUiTestSteps(private val remoteRobot: RemoteRobot) {
             """
             const project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
             if (project) {
-                com.intellij.openapi.command.WriteCommandAction.runWriteCommandAction(project, new java.lang.Runnable({
+                const application = com.intellij.openapi.application.ApplicationManager.getApplication();
+                const modalityState = com.intellij.openapi.application.ModalityState.defaultModalityState();
+                application.invokeAndWait(new java.lang.Runnable({
                     run: function() {
-                        const baseDir = project.getBaseDir();
-                        if (!baseDir) {
-                            return;
-                        }
-                        $operationScript
-                        com.intellij.openapi.vcs.changes.VcsDirtyScopeManager.getInstance(project).markEverythingDirty();
+                        com.intellij.openapi.application.WriteIntentReadAction.run(new java.lang.Runnable({
+                            run: function() {
+                                com.intellij.openapi.command.WriteCommandAction.runWriteCommandAction(project, new java.lang.Runnable({
+                                    run: function() {
+                                        const baseDir = project.getBaseDir();
+                                        if (!baseDir) {
+                                            return;
+                                        }
+                                        $operationScript
+                                        com.intellij.openapi.vcs.changes.VcsDirtyScopeManager.getInstance(project).markEverythingDirty();
+                                    }
+                                }));
+                            }
+                        }));
                     }
-                }));
+                }), modalityState);
             }
             """,
             true

@@ -329,6 +329,134 @@ tasks {
         }
     }
 
+    register("stopUiTestProcesses") {
+        description = "Stops IDE and launcher processes started by runIdeForUiTests."
+        group = "verification"
+
+        doLast {
+            val markers = listOf(
+                "runideforuitests",
+                "plugins_runideforuitests",
+                "robot-server.port=8082",
+                "shared-ui-ide",
+            )
+
+            fun runCommand(vararg command: String): String {
+                val process = ProcessBuilder(*command)
+                    .redirectErrorStream(true)
+                    .start()
+                val output = process.inputStream.bufferedReader().use { it.readText() }
+                process.waitFor()
+                return output.trim()
+            }
+
+            fun findMatchingProcesses(): List<Pair<String, String>> {
+                val osName = System.getProperty("os.name").lowercase()
+                return if (osName.contains("windows")) {
+                    val script = """
+                        ${'$'}regex = 'runIdeForUiTests|plugins_runIdeForUiTests|robot-server\.port=8082|shared-ui-ide'
+                        Get-CimInstance Win32_Process |
+                            Where-Object {
+                                ${'$'}_.CommandLine -and
+                                ${'$'}_.Name -ne 'powershell.exe' -and
+                                ${'$'}_.CommandLine -match ${'$'}regex
+                            } |
+                            ForEach-Object { ${'$'}_.ProcessId.ToString() + '|' + ${'$'}_.Name }
+                    """.trimIndent()
+
+                    runCommand("powershell", "-NoProfile", "-Command", script)
+                        .lineSequence()
+                        .mapNotNull { line ->
+                            val separatorIndex = line.indexOf('|')
+                            if (separatorIndex <= 0) {
+                                null
+                            }
+                            else {
+                                line.substring(0, separatorIndex).trim() to line.substring(separatorIndex + 1).trim()
+                            }
+                        }
+                        .toList()
+                }
+                else {
+                    runCommand("ps", "-ax", "-o", "pid=,command=")
+                        .lineSequence()
+                        .mapNotNull { line ->
+                            val trimmed = line.trim()
+                            if (trimmed.isBlank()) {
+                                return@mapNotNull null
+                            }
+                            val parts = trimmed.split(Regex("\\s+"), limit = 2)
+                            if (parts.size < 2) {
+                                return@mapNotNull null
+                            }
+                            val commandLine = parts[1].trim()
+                            if (markers.none { commandLine.lowercase().contains(it) }) {
+                                return@mapNotNull null
+                            }
+                            parts[0] to commandLine
+                        }
+                        .toList()
+                }
+            }
+
+            val matchingProcesses = findMatchingProcesses()
+
+            if (matchingProcesses.isEmpty()) {
+                logger.lifecycle("No runIdeForUiTests processes found.")
+                return@doLast
+            }
+
+            logger.lifecycle("Stopping ${matchingProcesses.size} runIdeForUiTests process(es).")
+            val osName = System.getProperty("os.name").lowercase()
+            matchingProcesses.forEach { (pid, commandLine) ->
+                logger.lifecycle("Stopping PID $pid: $commandLine")
+                if (osName.contains("windows")) {
+                    runCommand("taskkill", "/PID", pid, "/T", "/F")
+                }
+                else {
+                    runCommand("kill", pid)
+                }
+            }
+
+            val gracefulDeadline = System.nanoTime() + Duration.ofSeconds(10).toNanos()
+            while (System.nanoTime() < gracefulDeadline) {
+                if (findMatchingProcesses().isEmpty()) {
+                    logger.lifecycle("All runIdeForUiTests processes stopped.")
+                    return@doLast
+                }
+                Thread.sleep(250)
+            }
+
+            val survivors = findMatchingProcesses()
+            survivors.forEach { (pid, commandLine) ->
+                logger.lifecycle("Force stopping PID $pid: $commandLine")
+                if (osName.contains("windows")) {
+                    runCommand("taskkill", "/PID", pid, "/T", "/F")
+                }
+                else {
+                    runCommand("kill", "-9", pid)
+                }
+            }
+
+            val forceDeadline = System.nanoTime() + Duration.ofSeconds(5).toNanos()
+            while (System.nanoTime() < forceDeadline) {
+                if (findMatchingProcesses().isEmpty()) {
+                    logger.lifecycle("All runIdeForUiTests processes stopped.")
+                    return@doLast
+                }
+                Thread.sleep(250)
+            }
+
+            val stillAlive = findMatchingProcesses()
+            check(stillAlive.isEmpty()) {
+                stillAlive.joinToString(
+                    prefix = "Failed to stop runIdeForUiTests processes: ",
+                    separator = "; "
+                ) { (pid, commandLine) -> "PID $pid ($commandLine)" }
+            }
+        }
+    }
+
     wrapper {
         gradleVersion = providers.gradleProperty("gradleVersion").get()
     }
@@ -448,7 +576,7 @@ intellijPlatformTesting {
 tasks.named("runIdeForUiTests") {
     doFirst {
         logger.lifecycle(
-            "runIdeForUiTests starts the IDE and intentionally stays running. Use './gradlew uiTestReady' for an explicit readiness check and './gradlew uiTest' in another terminal to run the suite."
+            "runIdeForUiTests starts the IDE and intentionally stays running. Use './gradlew uiTestReady' for an explicit readiness check, './gradlew uiTest' in another terminal to run the suite, and './gradlew stopUiTestProcesses' when you want to tear it down."
         )
     }
 }
