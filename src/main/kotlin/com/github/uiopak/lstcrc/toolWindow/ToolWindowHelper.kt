@@ -5,16 +5,19 @@ import com.github.uiopak.lstcrc.services.BranchSnapshot
 import com.github.uiopak.lstcrc.services.GitService
 import com.github.uiopak.lstcrc.services.ToolWindowStateService
 import com.github.uiopak.lstcrc.utils.LstCrcKeys
+import com.intellij.openapi.application.EDT
 import com.intellij.openapi.components.service
 import com.intellij.openapi.diagnostic.thisLogger
-import com.intellij.openapi.progress.ProgressIndicator
-import com.intellij.openapi.progress.Task
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.wm.ToolWindow
+import com.intellij.platform.ide.progress.withBackgroundProgress
 import com.intellij.ui.content.Content
 import com.intellij.ui.content.ContentFactory
 import com.intellij.ui.content.ContentManager
 import git4idea.repo.GitRepository
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * A helper object for common tool window UI operations.
@@ -70,25 +73,33 @@ object ToolWindowHelper {
         if (existingContent != null) {
             logger.info("HELPER: Tab for '$branchName' already exists. Selecting it.")
             contentManager.setSelectedContent(existingContent, true)
-            // The ContentManagerListener will trigger stateService.setSelectedTab
         } else {
             logger.info("HELPER: Creating new tab for '$branchName'")
             val newContent = createBranchContent(project, toolWindow, branchName, branchName, contentManager)
             contentManager.setSelectedContent(newContent, true)
-
-            // Sync state service. The ContentManagerListener will handle selection change, but we need to add the tab.
-            stateService.addTab(branchName)
-            val newIndex = stateService.state.openTabs.indexOfFirst { it.branchName == branchName }
-            if (newIndex != -1) {
-                // Manually set the index here, as the listener might race or not have the updated tab list yet.
-                stateService.setSelectedTab(newIndex)
-            } else {
-                // Failsafe: if tab not found in state, still trigger a refresh for the content.
-                (newContent.component as? LstCrcChangesBrowser)?.requestRefreshData()
-            }
+            addAndSelectTabInState(project, stateService, branchName, newContent.component as? LstCrcChangesBrowser)
         }
     }
 
+
+    /**
+     * Registers a newly created tab in the state service and selects it,
+     * triggering a data refresh. Falls back to direct refresh if state sync fails.
+     */
+    private fun addAndSelectTabInState(
+        project: Project,
+        stateService: ToolWindowStateService,
+        branchName: String,
+        browser: LstCrcChangesBrowser?
+    ) {
+        stateService.addTab(branchName)
+        val newIndex = stateService.state.openTabs.indexOfFirst { it.branchName == branchName }
+        if (newIndex != -1) {
+            stateService.setSelectedTab(newIndex)
+        } else {
+            browser?.requestRefreshData()
+        }
+    }
 
     /**
      * Opens a temporary "Select Branch" tab in the tool window.
@@ -113,27 +124,24 @@ object ToolWindowHelper {
                 return@activate
             }
 
-            // Fetching repository info can be slow, so run it in a background task.
-            object : Task.Backgroundable(project, LstCrcBundle.message("git.task.repo.info"), true) {
-                var primaryRepo: GitRepository? = null
-                var branchSnapshot: BranchSnapshot = BranchSnapshot(emptyList(), emptyList())
+            val stateService = project.service<ToolWindowStateService>()
 
-                override fun run(indicator: ProgressIndicator) {
-                    // This runs on a BGT, safe for slow operations.
+            stateService.coroutineScope.launch {
+                data class BranchSelectionData(val primaryRepo: GitRepository?, val branchSnapshot: BranchSnapshot)
+
+                val data = withBackgroundProgress(project, LstCrcBundle.message("git.task.repo.info")) {
                     val gitService = project.service<GitService>()
-                    primaryRepo = gitService.getPrimaryRepository()?.also { it.update() }
-                    branchSnapshot = gitService.getBranchSnapshot(primaryRepo)
+                    val repo = gitService.getPrimaryRepository()?.also { it.update() }
+                    BranchSelectionData(repo, gitService.getBranchSnapshot(repo))
                 }
 
-                override fun onSuccess() {
-                    // This runs on the EDT, safe for UI operations.
-                    if (project.isDisposed || toolWindow.isDisposed) return
+                withContext(Dispatchers.EDT) {
+                    if (project.isDisposed || toolWindow.isDisposed) return@withContext
 
                     val gitService = project.service<GitService>()
-                    val stateService = project.service<ToolWindowStateService>()
                     val contentFactory = ContentFactory.getInstance()
 
-                    val branchSelectionUi = BranchSelectionPanel(gitService, primaryRepo, branchSnapshot) { selectedBranchName ->
+                    val branchSelectionUi = BranchSelectionPanel(gitService, data.primaryRepo, data.branchSnapshot) { selectedBranchName ->
                         logger.info("HELPER (Callback): Branch '$selectedBranchName' selected from panel.")
                         val manager: ContentManager = toolWindow.contentManager
                         val selectionTabContent = manager.findContent(selectionTabName)
@@ -156,14 +164,7 @@ object ToolWindowHelper {
                             selectionTabContent.putUserData(LstCrcKeys.BRANCH_NAME_KEY, selectedBranchName)
 
                             manager.setSelectedContent(selectionTabContent, true)
-                            stateService.addTab(selectedBranchName)
-
-                            val newIndex = stateService.state.openTabs.indexOfFirst { it.branchName == selectedBranchName }
-                            if (newIndex != -1) {
-                                stateService.setSelectedTab(newIndex)
-                            } else {
-                                (newBranchContentView as? LstCrcChangesBrowser)?.requestRefreshData()
-                            }
+                            addAndSelectTabInState(project, stateService, selectedBranchName, newBranchContentView)
                         }
                     }
 
@@ -175,7 +176,7 @@ object ToolWindowHelper {
                     contentManager.setSelectedContent(newContent, true)
                     branchSelectionUi.requestFocusOnSearchField()
                 }
-            }.queue()
+            }
 
         }, true, true)
     }

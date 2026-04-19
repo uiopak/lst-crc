@@ -4,7 +4,6 @@ import com.intellij.ide.util.treeView.TreeState
 import com.intellij.openapi.vcs.changes.Change
 import com.intellij.openapi.vcs.changes.ui.ChangesTree
 import com.intellij.openapi.vcs.changes.ui.VcsTreeModelData
-import com.intellij.util.containers.JBTreeTraverser
 import com.intellij.util.ui.tree.TreeUtil
 import java.util.Comparator
 import javax.swing.tree.DefaultMutableTreeNode
@@ -68,11 +67,10 @@ class ExpandNewNodesStateStrategy : ChangesTree.TreeStateStrategy<ExpandNewNodes
 
         // Build a map of user objects to their nodes for efficient lookup.
         val userObjectToNodeMap = mutableMapOf<Any, DefaultMutableTreeNode>()
-        val traverser: JBTreeTraverser<DefaultMutableTreeNode> = TreeUtil.treeNodeTraverser(tree.root)
-            .expandAndFilter { it is DefaultMutableTreeNode }
-            .map { it as DefaultMutableTreeNode }
+        val traverser = TreeUtil.treeNodeTraverser(tree.root)
 
-        traverser.forEach { node ->
+        traverser.forEach { treeNode ->
+            val node = treeNode as? DefaultMutableTreeNode ?: return@forEach
             node.userObject?.let { userObject ->
                 userObjectToNodeMap[userObject] = node
             }

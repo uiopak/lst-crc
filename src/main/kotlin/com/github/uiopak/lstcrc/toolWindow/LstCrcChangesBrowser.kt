@@ -130,20 +130,20 @@ class LstCrcChangesBrowser(
                     SwingUtilities.isLeftMouseButton(e) -> {
                         middleClickState.clear()
                         rightClickState.clear()
-                        handleGenericClick(e, change, path, getSingleClickAction(), getDoubleClickAction(), leftClickState)
+                        handleGenericClick(e, change, path, ToolWindowSettingsProvider.getSingleClickAction(), ToolWindowSettingsProvider.getDoubleClickAction(), leftClickState)
                     }
                     SwingUtilities.isMiddleMouseButton(e) -> {
                         leftClickState.clear()
                         rightClickState.clear()
-                        handleGenericClick(e, change, path, getMiddleClickAction(), getDoubleMiddleClickAction(), middleClickState)
+                        handleGenericClick(e, change, path, ToolWindowSettingsProvider.getMiddleClickAction(), ToolWindowSettingsProvider.getDoubleMiddleClickAction(), middleClickState)
                     }
                     SwingUtilities.isRightMouseButton(e) -> {
-                        if (isContextMenuEnabled()) {
+                        if (ToolWindowSettingsProvider.isContextMenuEnabled()) {
                             showContextMenu(e)
                         } else {
                             leftClickState.clear()
                             middleClickState.clear()
-                            handleGenericClick(e, change, path, getRightClickAction(), getDoubleRightClickAction(), rightClickState)
+                            handleGenericClick(e, change, path, ToolWindowSettingsProvider.getRightClickAction(), ToolWindowSettingsProvider.getDoubleRightClickAction(), rightClickState)
                         }
                     }
                 }
@@ -548,7 +548,7 @@ class LstCrcChangesBrowser(
         val change = ((path.lastPathComponent as? ChangesBrowserNode<*>)?.userObject as? Change)
             ?: error("Could not find change for file '$fileName' in '$targetBranchToCompare'.")
 
-        if (button.equals("RIGHT", ignoreCase = true) && isContextMenuEnabled()) {
+        if (button.equals("RIGHT", ignoreCase = true) && ToolWindowSettingsProvider.isContextMenuEnabled()) {
             error("Context menu is enabled for right click. Query contextMenuActionTitlesForFile() instead of invoking a configured action.")
         }
 
@@ -574,17 +574,17 @@ class LstCrcChangesBrowser(
             button.equals("LEFT", ignoreCase = true) -> {
                 middleClickState.clear()
                 rightClickState.clear()
-                handleGenericClick(event, change, path, getSingleClickAction(), getDoubleClickAction(), leftClickState)
+                handleGenericClick(event, change, path, ToolWindowSettingsProvider.getSingleClickAction(), ToolWindowSettingsProvider.getDoubleClickAction(), leftClickState)
             }
             button.equals("MIDDLE", ignoreCase = true) -> {
                 leftClickState.clear()
                 rightClickState.clear()
-                handleGenericClick(event, change, path, getMiddleClickAction(), getDoubleMiddleClickAction(), middleClickState)
+                handleGenericClick(event, change, path, ToolWindowSettingsProvider.getMiddleClickAction(), ToolWindowSettingsProvider.getDoubleMiddleClickAction(), middleClickState)
             }
             button.equals("RIGHT", ignoreCase = true) -> {
                 leftClickState.clear()
                 middleClickState.clear()
-                handleGenericClick(event, change, path, getRightClickAction(), getDoubleRightClickAction(), rightClickState)
+                handleGenericClick(event, change, path, ToolWindowSettingsProvider.getRightClickAction(), ToolWindowSettingsProvider.getDoubleRightClickAction(), rightClickState)
             }
         }
     }
@@ -664,14 +664,6 @@ class LstCrcChangesBrowser(
         popupMenu.component.show(e.component, e.x, e.y)
     }
 
-
-    private fun isContextMenuEnabled(): Boolean = ToolWindowSettingsProvider.isContextMenuEnabled()
-    private fun getSingleClickAction(): String = ToolWindowSettingsProvider.getSingleClickAction()
-    private fun getDoubleClickAction(): String = ToolWindowSettingsProvider.getDoubleClickAction()
-    private fun getMiddleClickAction(): String = ToolWindowSettingsProvider.getMiddleClickAction()
-    private fun getDoubleMiddleClickAction(): String = ToolWindowSettingsProvider.getDoubleMiddleClickAction()
-    private fun getRightClickAction(): String = ToolWindowSettingsProvider.getRightClickAction()
-    private fun getDoubleRightClickAction(): String = ToolWindowSettingsProvider.getDoubleRightClickAction()
 
     private fun findChangeByFileName(fileName: String): Change? {
         return currentChanges?.allChanges?.firstOrNull { change ->

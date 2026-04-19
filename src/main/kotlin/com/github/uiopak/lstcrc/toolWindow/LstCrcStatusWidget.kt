@@ -35,12 +35,7 @@ class LstCrcStatusWidgetFactory : StatusBarWidgetFactory {
     override fun getDisplayName(): String = LstCrcBundle.message("widget.display.name")
     override fun isAvailable(project: Project): Boolean = true
     override fun createWidget(project: Project): StatusBarWidget = LstCrcStatusWidget(project)
-    override fun disposeWidget(widget: StatusBarWidget) {
-        if (widget is LstCrcStatusWidget) {
-            widget.dispose()
-        }
-    }
-    override fun canBeEnabledOn(statusBar: StatusBar): Boolean = true
+    // disposeWidget and canBeEnabledOn use default implementations from StatusBarWidgetFactory
 }
 
 /**
@@ -58,7 +53,6 @@ class LstCrcStatusWidget(private val project: Project) : StatusBarWidget, Status
 
     companion object {
         const val ID = "LstCrcStatusWidget"
-        private const val GIT_CHANGES_TOOL_WINDOW_ID = LstCrcConstants.TOOL_WINDOW_ID
     }
 
     override fun ID(): String = ID
@@ -135,11 +129,10 @@ class LstCrcStatusWidget(private val project: Project) : StatusBarWidget, Status
             actions.add(object : AnAction(LstCrcBundle.message("tab.name.head")) {
                 override fun actionPerformed(e: AnActionEvent) {
                     val toolWindowManager = ToolWindowManager.getInstance(project)
-                    val toolWindow = toolWindowManager.getToolWindow(GIT_CHANGES_TOOL_WINDOW_ID) ?: return
+                    val toolWindow = toolWindowManager.getToolWindow(LstCrcConstants.TOOL_WINDOW_ID) ?: return
 
                     toolWindow.activate({
                         val contentManager = toolWindow.contentManager
-                        // The HEAD tab is identified by being the non-closable tab.
                         val headContent = contentManager.contents.find { !it.isCloseable }
 
                         if (headContent != null) {
@@ -158,7 +151,7 @@ class LstCrcStatusWidget(private val project: Project) : StatusBarWidget, Status
                     override fun actionPerformed(e: AnActionEvent) {
                         val branchNameToSelect = tabInfo.branchName
                         val toolWindowManager = ToolWindowManager.getInstance(project)
-                        val toolWindow = toolWindowManager.getToolWindow(GIT_CHANGES_TOOL_WINDOW_ID) ?: return
+                        val toolWindow = toolWindowManager.getToolWindow(LstCrcConstants.TOOL_WINDOW_ID) ?: return
 
                         toolWindow.activate({
                             val contentManager = toolWindow.contentManager
@@ -180,7 +173,7 @@ class LstCrcStatusWidget(private val project: Project) : StatusBarWidget, Status
             actions.add(object : AnAction(LstCrcBundle.message("widget.action.add.tab")) {
                 override fun actionPerformed(e: AnActionEvent) {
                     val toolWindowManager = ToolWindowManager.getInstance(project)
-                    val toolWindow = toolWindowManager.getToolWindow(GIT_CHANGES_TOOL_WINDOW_ID) ?: return
+                    val toolWindow = toolWindowManager.getToolWindow(LstCrcConstants.TOOL_WINDOW_ID) ?: return
                     ToolWindowHelper.openBranchSelectionTab(project, toolWindow)
                 }
             })

@@ -15,8 +15,6 @@ import com.intellij.openapi.actionSystem.DefaultActionGroup
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.service
 import com.intellij.openapi.diagnostic.thisLogger
-import com.intellij.openapi.progress.ProgressIndicator
-import com.intellij.openapi.progress.Task
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.wm.ToolWindow
 import com.intellij.openapi.wm.ToolWindowFactory
@@ -35,53 +33,32 @@ class MyToolWindowFactory : ToolWindowFactory {
     private val logger = thisLogger()
 
     override fun createToolWindowContent(project: Project, toolWindow: ToolWindow) {
-        logger.info("createToolWindowContent called for project: ${project.name}. Scheduling data fetch and UI setup.")
+        logger.info("createToolWindowContent called for project: ${project.name}.")
 
-        object : Task.Backgroundable(project, LstCrcBundle.message("git.task.initializing"), false) {
-            lateinit var persistedState: ToolWindowState
-            var currentActualBranchName: String? = null
+        val stateService = project.service<ToolWindowStateService>()
+        val persistedState = stateService.state
+        var currentActualBranchName: String? = null
 
-            override fun run(indicator: ProgressIndicator) {
-                indicator.text = "Fetching Git repository info..."
-                val stateService = project.service<ToolWindowStateService>()
-                persistedState = stateService.state
+        if (persistedState.openTabs.isEmpty()) {
+            currentActualBranchName = project.service<GitService>().getPrimaryRepository()?.currentBranchName
+        }
 
-                if (persistedState.openTabs.isEmpty()) {
-                    val gitService = project.service<GitService>()
-                    currentActualBranchName = gitService.getPrimaryRepository()?.currentBranchName
-                }
-            }
+        val contentManager = toolWindow.contentManager
 
-            override fun onSuccess() {
-                if (project.isDisposed || toolWindow.isDisposed) {
-                    logger.info("Project or tool window disposed before UI setup.")
-                    return
-                }
-                logger.info("Setting up tool window UI on EDT.")
+        applyToolWindowTitleSetting(toolWindow)
+        subscribeToStateChanges(project, toolWindow)
+        val headContent = createHeadTab(project, toolWindow)
+        val selectedContentRestored = restoreOrCreateInitialTabs(
+            project, toolWindow, stateService, persistedState, currentActualBranchName
+        )
+        if (!selectedContentRestored) {
+            contentManager.setSelectedContent(headContent, true)
+            stateService.setSelectedTab(-1)
+        }
+        registerContentManagerListener(project, toolWindow, stateService)
+        setupToolWindowActions(project, toolWindow)
 
-                val stateService = project.service<ToolWindowStateService>()
-                val contentManager = toolWindow.contentManager
-
-                applyToolWindowTitleSetting(toolWindow)
-                subscribeToStateChanges(project, toolWindow)
-                val headContent = createHeadTab(project, toolWindow)
-                val selectedContentRestored = restoreOrCreateInitialTabs(
-                    project, toolWindow, stateService, persistedState, currentActualBranchName
-                )
-                if (!selectedContentRestored) {
-                    contentManager.setSelectedContent(headContent, true)
-                    stateService.setSelectedTab(-1)
-                }
-                registerContentManagerListener(project, toolWindow, stateService)
-                setupToolWindowActions(project, toolWindow)
-
-                logger.info("Tool window UI setup complete.")
-            }
-
-            override fun onThrowable(error: Throwable) {
-                logger.error("Failed to initialize tool window content.", error)
-            }
-        }.queue()
+        logger.info("Tool window UI setup complete.")
     }
 
     private fun applyToolWindowTitleSetting(toolWindow: ToolWindow) {

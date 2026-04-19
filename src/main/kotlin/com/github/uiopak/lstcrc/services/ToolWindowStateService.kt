@@ -1,10 +1,7 @@
-@file:Suppress("DialogTitleCapitalization")
-
 package com.github.uiopak.lstcrc.services
 
 import com.github.uiopak.lstcrc.LstCrcConstants
 import com.github.uiopak.lstcrc.messaging.TOOL_WINDOW_STATE_TOPIC
-import com.github.uiopak.lstcrc.messaging.ToolWindowStateListener
 import com.github.uiopak.lstcrc.resources.LstCrcBundle
 import com.github.uiopak.lstcrc.state.TabInfo
 import com.github.uiopak.lstcrc.state.ToolWindowState
@@ -26,8 +23,8 @@ import com.intellij.openapi.components.service
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.wm.ToolWindowManager
-import com.intellij.util.xmlb.XmlSerializerUtil
 import git4idea.repo.GitRepository
+import kotlinx.coroutines.CoroutineScope
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -42,7 +39,7 @@ import java.util.concurrent.atomic.AtomicBoolean
     storages = [Storage("gitTabsIdeaPluginState.xml")]
 )
 @Service(Service.Level.PROJECT)
-class ToolWindowStateService(private val project: Project) : PersistentStateComponent<ToolWindowState> {
+class ToolWindowStateService(private val project: Project, val coroutineScope: CoroutineScope) : PersistentStateComponent<ToolWindowState> {
 
     private var myState = ToolWindowState()
     private val logger = thisLogger()
@@ -53,22 +50,23 @@ class ToolWindowStateService(private val project: Project) : PersistentStateComp
 
     override fun getState(): ToolWindowState {
         logger.debug("getState() called. Current state: $myState")
-        return myState
+        return myState.deepCopy()
     }
 
     override fun loadState(state: ToolWindowState) {
         logger.info("loadState() called. Loading state: $state")
-        XmlSerializerUtil.copyBean(state, myState)
-        project.messageBus.syncPublisher(TOOL_WINDOW_STATE_TOPIC).stateChanged(myState.copy())
+        myState = state.deepCopy()
+        project.messageBus.syncPublisher(TOOL_WINDOW_STATE_TOPIC).stateChanged(myState.deepCopy())
     }
 
     override fun noStateLoaded() {
         logger.info("noStateLoaded() called. Initializing with default state.")
         myState = ToolWindowState()
-        project.messageBus.syncPublisher(TOOL_WINDOW_STATE_TOPIC).stateChanged(myState.copy())
+        project.messageBus.syncPublisher(TOOL_WINDOW_STATE_TOPIC).stateChanged(myState.deepCopy())
     }
 
     fun addTab(branchName: String) {
+        if (project.isDisposed) return
         logger.info("addTab('$branchName') called.")
         val currentTabs = myState.openTabs.toMutableList()
         if (currentTabs.none { it.branchName == branchName }) {
@@ -82,6 +80,7 @@ class ToolWindowStateService(private val project: Project) : PersistentStateComp
     }
 
     fun removeTab(branchName: String) {
+        if (project.isDisposed) return
         logger.info("removeTab($branchName) called.")
         val currentTabs = myState.openTabs.toMutableList()
         currentTabs.removeAll { it.branchName == branchName }
@@ -91,6 +90,7 @@ class ToolWindowStateService(private val project: Project) : PersistentStateComp
     }
 
     fun setSelectedTab(index: Int) {
+        if (project.isDisposed) return
         val validIndex = if (index >= myState.openTabs.size || index < -1) {
             logger.warn("setSelectedTab called with invalid index: $index. Open tabs: ${myState.openTabs.size}. Clamping to valid range.")
             if (myState.openTabs.isEmpty()) -1 else myState.openTabs.size - 1
@@ -100,7 +100,6 @@ class ToolWindowStateService(private val project: Project) : PersistentStateComp
 
         if (myState.selectedTabIndex != validIndex) {
             myState.selectedTabIndex = validIndex
-            myState = myState.copy()
             logger.info("Selected tab index set to $validIndex. New state: $myState")
 
             // Broadcast state change first to update UI like the status bar widget immediately.
@@ -294,6 +293,7 @@ class ToolWindowStateService(private val project: Project) : PersistentStateComp
      * @return A [CompletableFuture] that completes when the refresh operation is finished.
      */
     fun refreshDataForCurrentSelection(): CompletableFuture<Unit> {
+        if (project.isDisposed) return CompletableFuture.completedFuture(Unit)
         if (!isRefreshing.compareAndSet(false, true)) {
             logger.debug("ACTION: Refresh for current selection is already in progress. Queueing another refresh.")
             refreshQueued.set(true)
@@ -333,21 +333,19 @@ class ToolWindowStateService(private val project: Project) : PersistentStateComp
         }
     }
 
-    /**
-     * Ensures the state copy is fresh and broadcasts it to all listeners.
-     * This is the single place where state mutations are finalized.
-     */
     private fun commitStateAndBroadcast() {
-        myState = myState.copy()
-        project.messageBus.syncPublisher(TOOL_WINDOW_STATE_TOPIC).stateChanged(myState.copy())
+        if (project.isDisposed) return
+        logger.debug("commitStateAndBroadcast: broadcasting state to listeners.")
+        project.messageBus.syncPublisher(TOOL_WINDOW_STATE_TOPIC).stateChanged(myState.deepCopy())
     }
 
     /**
      * Explicitly broadcasts the current state to all listeners on the message bus.
      */
     fun broadcastCurrentState() {
+        if (project.isDisposed) return
         logger.info("Broadcasting current state explicitly to all listeners.")
-        project.messageBus.syncPublisher(TOOL_WINDOW_STATE_TOPIC).stateChanged(myState.copy())
+        project.messageBus.syncPublisher(TOOL_WINDOW_STATE_TOPIC).stateChanged(myState.deepCopy())
     }
 
     fun getSelectedTabInfo(): TabInfo? {
@@ -368,6 +366,7 @@ class ToolWindowStateService(private val project: Project) : PersistentStateComp
     }
 
     fun updateTabAlias(branchName: String, newAlias: String?) {
+        if (project.isDisposed) return
         logger.info("updateTabAlias called for branch '$branchName' with new alias '$newAlias'.")
         val tabIndex = myState.openTabs.indexOfFirst { it.branchName == branchName }
 
@@ -389,6 +388,7 @@ class ToolWindowStateService(private val project: Project) : PersistentStateComp
     }
 
     fun updateTabComparisonMap(branchName: String, newMap: Map<String, String>, triggerRefresh: Boolean = true) {
+        if (project.isDisposed) return
         logger.info("updateTabComparisonMap called for branch '$branchName'.")
         val tabIndex = myState.openTabs.indexOfFirst { it.branchName == branchName }
 
@@ -416,15 +416,6 @@ class ToolWindowStateService(private val project: Project) : PersistentStateComp
     }
 
     companion object {
-        // Kept for backward compatibility — prefer TOOL_WINDOW_STATE_TOPIC from LstCrcTopics.kt directly.
-        @Suppress("unused")
-        @Deprecated("Use TOOL_WINDOW_STATE_TOPIC from LstCrcTopics.kt", ReplaceWith("TOOL_WINDOW_STATE_TOPIC", "com.github.uiopak.lstcrc.messaging.TOOL_WINDOW_STATE_TOPIC"))
-        val TOPIC = TOOL_WINDOW_STATE_TOPIC
-
-        @Suppress("unused")
-        @Deprecated("Use ToolWindowStateListener from LstCrcTopics.kt", ReplaceWith("ToolWindowStateListener", "com.github.uiopak.lstcrc.messaging.ToolWindowStateListener"))
-        typealias ToolWindowStateListener = com.github.uiopak.lstcrc.messaging.ToolWindowStateListener
-
         fun getInstance(project: Project): ToolWindowStateService {
             return project.getService(ToolWindowStateService::class.java)
         }

@@ -14,11 +14,6 @@ import com.intellij.openapi.components.service
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.editor.Document
 import com.intellij.openapi.editor.EditorFactory
-import com.intellij.openapi.editor.event.EditorFactoryEvent
-import com.intellij.openapi.editor.event.EditorFactoryListener
-import com.intellij.openapi.editor.markup.HighlighterTargetArea
-import com.intellij.openapi.editor.markup.MarkupModel
-import com.intellij.openapi.editor.markup.RangeHighlighter
 import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Disposer
@@ -40,7 +35,6 @@ import java.util.concurrent.ConcurrentHashMap
 class VisualTrackerManager(private val project: Project, private val coroutineScope: CoroutineScope) : Disposable {
     private val logger = thisLogger()
     private val visualTrackers = ConcurrentHashMap<Document, SimpleLocalLineStatusTracker>()
-    private val installedHighlighters = ConcurrentHashMap<Document, MutableList<RangeHighlighter>>()
 
     fun init() {
         val busConnection = project.messageBus.connect(this)
@@ -60,15 +54,6 @@ class VisualTrackerManager(private val project: Project, private val coroutineSc
             }
         })
 
-        // Listen for Editor creation
-        EditorFactory.getInstance().addEditorFactoryListener(object : EditorFactoryListener {
-            override fun editorCreated(event: EditorFactoryEvent) {
-                val doc = event.editor.document
-                if (visualTrackers.containsKey(doc)) {
-                    installVisualRenderer(event.editor.markupModel, doc)
-                }
-            }
-        }, this)
     }
 
     private fun isOurGutterMarkersEnabled(): Boolean =
@@ -160,11 +145,7 @@ class VisualTrackerManager(private val project: Project, private val coroutineSc
             val visualTracker = visualTrackers.remove(document)
             visualTracker?.release()
 
-            // 2. Remove Highlighters
-            val highlighters = installedHighlighters.remove(document)
-            highlighters?.forEach { it.dispose() }
-
-            // 3. Un-hide Native Tracker
+            // 2. Un-hide Native Tracker
             // Assuming standard trackers are visible by default. 
             // We set the mode back to a state where it shows gutters.
             nativeTracker.mode = LocalLineStatusTracker.Mode(
@@ -242,13 +223,6 @@ class VisualTrackerManager(private val project: Project, private val coroutineSc
                 // We rely on the fact that if it became invalid, refreshAllTrackers would have been called again 
                 // and might conflict, but `visualTracker` is the same instance.
                 visualTracker.setBaseRevision(content)
-
-                // 4. Install into all open editors (Idempotent-ish)
-                EditorFactory.getInstance().allEditors.forEach { editor ->
-                    if (editor.document == document) {
-                        installVisualRenderer(editor.markupModel, document)
-                    }
-                }
             }
         }
     }
@@ -287,53 +261,7 @@ class VisualTrackerManager(private val project: Project, private val coroutineSc
         }
     }
 
-    private fun installVisualRenderer(markupModel: MarkupModel, document: Document) {
-        val tracker = visualTrackers[document] ?: return
-
-        val list = installedHighlighters.computeIfAbsent(document) { mutableListOf() }
-        // Clean up invalid highlighters first
-        list.removeIf { !it.isValid }
-        
-        if (list.any { it.gutterIconRenderer != null }) return 
-
-        try {
-            val rendererFn = getProtectedRenderer(tracker)
-            if (rendererFn != null) {
-                val highlighter = markupModel.addRangeHighlighter(
-                    0,
-                    document.textLength,
-                    com.intellij.openapi.editor.markup.HighlighterLayer.FIRST - 1,
-                    null,
-                    HighlighterTargetArea.LINES_IN_RANGE
-                )
-                highlighter.gutterIconRenderer = rendererFn
-                list.add(highlighter)
-                logger.debug("VISUAL_TRACKER: Installed visual renderer for ${tracker.virtualFile.name}")
-            }
-        } catch (e: Exception) {
-            logger.error("VISUAL_TRACKER: Failed to install renderer", e)
-        }
-    }
-
-    private fun getProtectedRenderer(instance: Any): com.intellij.openapi.editor.markup.GutterIconRenderer? {
-        var clazz: Class<*>? = instance.javaClass
-        while (clazz != null) {
-            try {
-                val method = clazz.getDeclaredMethod("getRenderer")
-                method.isAccessible = true
-                return method.invoke(instance) as? com.intellij.openapi.editor.markup.GutterIconRenderer
-            } catch (ignored: NoSuchMethodException) {
-            }
-            clazz = clazz.superclass
-        }
-        return null
-    }
-
     override fun dispose() {
         visualTrackers.clear()
-        installedHighlighters.forEach { (_, highlighters) ->
-            highlighters.forEach { it.dispose() }
-        }
-        installedHighlighters.clear()
     }
 }
