@@ -10,6 +10,7 @@ okhttpLogging = "5.3.2"
 videoRecorderJunit5 = "2.0"
 # Forced/Substituted versions for security
 commonsIo = "2.21.0"
+commonsLang3 = "3.18.0"
 slf4j = "2.0.17"
 
 
@@ -41,6 +42,7 @@ video-recorder-junit5 = { group = "com.automation-remarks", name = "video-record
 
 # Forced dependencies for security mitigation
 commons-io = { group = "commons-io", name = "commons-io", version.ref = "commonsIo" }
+commons-lang3 = { group = "org.apache.commons", name = "commons-lang3", version.ref = "commonsLang3" }
 log4j-over-slf4j = { group = "org.slf4j", name = "log4j-over-slf4j", version.ref = "slf4j" }
 slf4j-simple = { group = "org.slf4j", name = "slf4j-simple", version.ref = "slf4j" }
 

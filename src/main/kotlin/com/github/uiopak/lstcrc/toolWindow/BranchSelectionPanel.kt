@@ -73,14 +73,11 @@ class BranchSelectionPanel(
         tree.putClientProperty("search.term", searchTerm) // Pass term to renderer for highlighting
 
         val newModel = if (searchTerm.isBlank()) {
-            if (isTreeModelEmpty(fullTreeModel)) {
-                fullTreeModel = buildFullBranchTreeModel(forceRefresh = true)
-            }
             fullTreeModel
         } else {
             var filteredRoot = buildFilteredRoot(searchTerm)
             if (filteredRoot.childCount == 0) {
-                fullTreeModel = buildFullBranchTreeModel(forceRefresh = true)
+                fullTreeModel = buildFullBranchTreeModel()
                 filteredRoot = buildFilteredRoot(searchTerm)
             }
             DefaultTreeModel(filteredRoot)
@@ -255,15 +252,21 @@ class BranchSelectionPanel(
         return newTree
     }
 
-    private fun buildFullBranchTreeModel(forceRefresh: Boolean = false): DefaultTreeModel {
+    private fun buildFullBranchTreeModel(): DefaultTreeModel {
         val rootNode = DefaultMutableTreeNode("Root")
         val localCategory = BranchCategory(BranchCategoryType.LOCAL, LstCrcBundle.message("branch.type.local"))
         val remoteCategory = BranchCategory(BranchCategoryType.REMOTE, LstCrcBundle.message("branch.type.remote"))
 
-        val snapshot = resolveBranchSnapshot(forceRefresh)
-
-        val localBranches = snapshot.localBranches
-        val remoteBranches = snapshot.remoteBranches
+        // Use the pre-fetched snapshot if available; otherwise fall back to the
+        // Git4Idea repository model which is already cached in memory (no I/O).
+        // This method may be called on the EDT so it must never run git commands.
+        val targetRepo = repository ?: gitService.getPrimaryRepository()
+        val localBranches = branchSnapshot?.localBranches?.takeIf { it.isNotEmpty() }
+            ?: targetRepo?.branches?.localBranches?.map { it.name }
+            ?: emptyList()
+        val remoteBranches = branchSnapshot?.remoteBranches?.takeIf { it.isNotEmpty() }
+            ?: targetRepo?.branches?.remoteBranches?.map { it.name }
+            ?: emptyList()
 
         val localBranchesNode = DefaultMutableTreeNode(localCategory)
         addBranchNodes(localBranchesNode, localBranches)
@@ -276,25 +279,6 @@ class BranchSelectionPanel(
             rootNode.add(remoteBranchesNode)
         }
         return DefaultTreeModel(rootNode)
-    }
-
-    private fun resolveBranchSnapshot(forceRefresh: Boolean): BranchSnapshot {
-        if (!forceRefresh) {
-            branchSnapshot?.takeIf { it.hasBranches() }?.let { return it }
-        }
-
-        return gitService.getBranchSnapshot(repository).takeIf { it.hasBranches() }
-            ?: branchSnapshot?.takeIf { it.hasBranches() }
-            ?: BranchSnapshot(emptyList(), emptyList())
-    }
-
-    private fun isTreeModelEmpty(model: DefaultTreeModel): Boolean {
-        val root = model.root as? DefaultMutableTreeNode ?: return true
-        return root.childCount == 0
-    }
-
-    private fun BranchSnapshot?.hasBranches(): Boolean {
-        return this != null && (localBranches.isNotEmpty() || remoteBranches.isNotEmpty())
     }
 
     private fun addBranchNodes(parentNode: DefaultMutableTreeNode, branches: List<String>) {

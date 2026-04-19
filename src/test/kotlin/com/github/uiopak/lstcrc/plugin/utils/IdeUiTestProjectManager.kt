@@ -8,6 +8,8 @@ import com.intellij.remoterobot.fixtures.ComponentFixture
 import com.intellij.remoterobot.search.locators.byXpath
 import com.intellij.remoterobot.stepsProcessing.step
 import com.intellij.remoterobot.utils.waitFor
+import java.nio.file.Files
+import java.nio.file.Path
 import java.time.Duration
 
 private val welcomeFrameLocator = byXpath("Welcome frame", "//div[@class='FlatWelcomeFrame']")
@@ -48,35 +50,68 @@ fun RemoteRobot.createFreshProjectFromWelcomeScreen() {
     step("Create a fresh empty project from the welcome screen") {
         suppressNewUsersOnboarding()
 
-        waitFor(Duration.ofSeconds(30), interval = Duration.ofMillis(500)) {
-            if (findAll<ComponentFixture>(DialogFixture.byTitle("New Project")).isNotEmpty()) {
-                return@waitFor true
-            }
+        val projectDir = createFreshProjectDirectory()
+        val projectDirJs = toJsStringLiteral(projectDir.toString())
+        val projectNameJs = toJsStringLiteral(projectDir.fileName.toString())
 
-            if (findAll<ComponentFixture>(welcomeFrameLocator).isNotEmpty()) {
-                runCatching {
-                    find<ComponentFixture>(newProjectButtonLocator, Duration.ofSeconds(2)).click()
+        runJs(
+            """
+            importPackage(java.nio.file)
+            importPackage(com.intellij.ide.impl)
+            importPackage(com.intellij.openapi.application)
+            importPackage(com.intellij.openapi.project.ex)
+
+            ApplicationManager.getApplication().invokeLater(new java.lang.Runnable({
+                run: function() {
+                    const projectDir = Paths.get($projectDirJs);
+                    Files.createDirectories(projectDir);
+
+                    const projectManager = ProjectManagerEx.getInstanceEx();
+                    const options = OpenProjectTask.build().asNewProject().withProjectName($projectNameJs);
+                    const project = projectManager.newProject(projectDir, options);
+                    if (project == null) {
+                        throw new java.lang.IllegalStateException("Failed to create project at " + projectDir);
+                    }
+
+                    const openedProject = projectManager.openProject(projectDir, options.withProject(project));
+                    if (openedProject == null) {
+                        throw new java.lang.IllegalStateException("Failed to open project at " + projectDir);
+                    }
                 }
-            }
-
-            false
-        }
-
-        find<DialogFixture>(DialogFixture.byTitle("New Project"), Duration.ofSeconds(15)).apply {
-            runCatching {
-                waitFor(Duration.ofSeconds(5), interval = Duration.ofMillis(250)) {
-                    findAllText("Empty Project").isNotEmpty()
-                }
-                findText("Empty Project").click()
-            }
-            button("Create").click()
-        }
+            }));
+            """.trimIndent(),
+            true
+        )
 
         waitFor(Duration.ofMinutes(1), interval = Duration.ofSeconds(1)) {
-            findAll<ComponentFixture>(ideaFrameLocator).isNotEmpty()
+            findAll<ComponentFixture>(ideaFrameLocator).isNotEmpty() &&
+                findAll<ComponentFixture>(welcomeFrameLocator).isEmpty()
         }
 
         dismissNewUsersOnboardingIfPresent()
+    }
+}
+
+private fun createFreshProjectDirectory(): Path {
+    val root = Path.of("build", "remote-ui-projects").toAbsolutePath().normalize()
+    Files.createDirectories(root)
+    return Files.createTempDirectory(root, "remote-ui-project-")
+}
+
+private fun toJsStringLiteral(value: String): String {
+    return buildString {
+        append('"')
+        value.forEach { character ->
+            when (character) {
+                '\\' -> append("\\\\")
+                '"' -> append("\\\"")
+                '\n' -> append("\\n")
+                '\r' -> append("\\r")
+                '\t' -> append("\\t")
+                else -> append(character)
+            }
+        }
+        append('"')
     }
 }
 

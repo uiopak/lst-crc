@@ -9,7 +9,7 @@ import com.intellij.ide.util.PropertiesComponent
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.EDT
-import com.intellij.openapi.application.runReadAction
+import com.intellij.openapi.application.readActionBlocking
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.service
 import com.intellij.openapi.diagnostic.thisLogger
@@ -29,7 +29,6 @@ import com.intellij.openapi.vcs.ex.LineStatusTracker
 import com.intellij.openapi.vcs.ex.LocalLineStatusTracker
 import com.intellij.openapi.vcs.ex.SimpleLocalLineStatusTracker
 import com.intellij.openapi.vcs.impl.LineStatusTrackerManager
-import com.intellij.util.messages.MessageBusConnection
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -106,7 +105,7 @@ class VisualTrackerManager(private val project: Project, private val coroutineSc
                 for (doc in documents) {
                      val tracker = trackerManager.getLineStatusTracker(doc)
                      if (tracker is LocalLineStatusTracker<*>) {
-                         val file = tracker.virtualFile ?: continue
+                         val file = tracker.virtualFile
                          val targetRevision = resolveTargetRevision(file)
 
                          withContext(Dispatchers.EDT) {
@@ -126,7 +125,7 @@ class VisualTrackerManager(private val project: Project, private val coroutineSc
     private fun maybeInterceptTracker(nativeTracker: LocalLineStatusTracker<*>) {
         if (!isOurGutterMarkersEnabled()) return
 
-        val file = nativeTracker.virtualFile ?: return
+        val file = nativeTracker.virtualFile
         val className = nativeTracker.javaClass.name
         if (!className.contains("ChangelistsLocalLineStatusTracker")) return
 
@@ -146,7 +145,7 @@ class VisualTrackerManager(private val project: Project, private val coroutineSc
         // Only act if we actually have something to clean up
         if (visualTrackers.containsKey(document)) {
             val file = nativeTracker.virtualFile
-            logger.debug("VISUAL_TRACKER: Restoring Native Tracker for ${file?.name}. Removing visual markers.")
+            logger.debug("VISUAL_TRACKER: Restoring Native Tracker for ${file.name}. Removing visual markers.")
 
             // 1. Remove Visual Tracker
             val visualTracker = visualTrackers.remove(document)
@@ -159,7 +158,11 @@ class VisualTrackerManager(private val project: Project, private val coroutineSc
             // 3. Un-hide Native Tracker
             // Assuming standard trackers are visible by default. 
             // We set the mode back to a state where it shows gutters.
-            nativeTracker.mode = LocalLineStatusTracker.Mode(true, true, true)
+            nativeTracker.mode = LocalLineStatusTracker.Mode(
+                isVisible = true,
+                showErrorStripeMarkers = true,
+                detectWhitespaceChangedLines = true
+            )
         }
     }
 
@@ -209,10 +212,14 @@ class VisualTrackerManager(private val project: Project, private val coroutineSc
     }
 
     private fun performInterception(nativeTracker: LocalLineStatusTracker<*>, targetRevision: String) {
-        val file = nativeTracker.virtualFile ?: return
+        val file = nativeTracker.virtualFile
         
         // 1. Hide Native Tracker (Idempotent)
-        nativeTracker.mode = LocalLineStatusTracker.Mode(false, false, false)
+        nativeTracker.mode = LocalLineStatusTracker.Mode(
+            isVisible = false,
+            showErrorStripeMarkers = false,
+            detectWhitespaceChangedLines = false
+        )
 
         val document = nativeTracker.document
         
@@ -228,7 +235,7 @@ class VisualTrackerManager(private val project: Project, private val coroutineSc
         coroutineScope.launch {
             val content = loadTargetContent(file, targetRevision)
             withContext(Dispatchers.EDT) {
-                // Double check tracker is still valid/needed? 
+                // Double-check tracker is still valid/needed?
                 // We rely on the fact that if it became invalid, refreshAllTrackers would have been called again 
                 // and might conflict, but `visualTracker` is the same instance.
                 visualTracker.setBaseRevision(content)
@@ -244,42 +251,37 @@ class VisualTrackerManager(private val project: Project, private val coroutineSc
     }
 
     private suspend fun loadTargetContent(file: com.intellij.openapi.vfs.VirtualFile, revision: String?): CharSequence {
-         val fallbackContent by lazy {
-             runReadAction { FileDocumentManager.getInstance().getDocument(file)?.text ?: "" }
-         }
+        suspend fun fallbackContent(): CharSequence =
+            readActionBlocking { FileDocumentManager.getInstance().getDocument(file)?.text ?: "" }
 
-         if (revision == null) {
-             return fallbackContent
-         }
+        if (revision == null) {
+            return fallbackContent()
+        }
 
-         // Optimization: If file is explicitly new in our diff data, return empty immediately.
-         // This avoids an unnecessary Git lookup that would throw/fail anyway.
-         val isNewFile = project.service<ProjectActiveDiffDataService>().createdFiles.contains(file)
-         if (isNewFile) {
-             return ""
-         }
+        // Optimization: If a file is explicitly new in our diff data, return empty immediately.
+        // This avoids an unnecessary Git lookup that would throw/fail anyway.
+        val isNewFile = project.service<ProjectActiveDiffDataService>().createdFiles.contains(file)
+        if (isNewFile) {
+            return ""
+        }
 
-         val gitService = project.service<GitService>()
-         return withContext(Dispatchers.IO) {
-             try {
-                 val future = gitService.getFileContentForRevision(revision, file)
-                 val content = future.get()
-                 if (content == null) {
-                     return@withContext fallbackContent
-                 }
-                 StringUtil.convertLineSeparators(content)
-             } catch (e: Exception) {
-                 val cause = e.cause
-                 val rootCause = if (e is java.util.concurrent.ExecutionException) e.cause ?: e else e
-                 
-                 if (rootCause is VcsException && rootCause.message?.contains("does not exist in", ignoreCase = true) == true) {
-                     ""
-                 } else {
-                     logger.warn("VISUAL_TRACKER: Failed to load content for ${file.path}. Error: ${rootCause.message}")
-                     fallbackContent
-                 }
-             }
-         }
+        val gitService = project.service<GitService>()
+        return withContext(Dispatchers.IO) {
+            try {
+                val future = gitService.getFileContentForRevision(revision, file)
+                val content = future.get() ?: return@withContext fallbackContent()
+                StringUtil.convertLineSeparators(content)
+            } catch (e: Exception) {
+                val rootCause = if (e is java.util.concurrent.ExecutionException) e.cause ?: e else e
+
+                if (rootCause is VcsException && rootCause.message.contains("does not exist in", ignoreCase = true)) {
+                    ""
+                } else {
+                    logger.warn("VISUAL_TRACKER: Failed to load content for ${file.path}. Error: ${rootCause.message}")
+                    fallbackContent()
+                }
+            }
+        }
     }
 
     private fun installVisualRenderer(markupModel: MarkupModel, document: Document) {
