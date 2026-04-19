@@ -133,25 +133,8 @@ class LstCrcChangesBrowser(
                 val change = (path.lastPathComponent as? ChangesBrowserNode<*>)?.userObject as? Change ?: return
 
                 when {
-                    SwingUtilities.isLeftMouseButton(e) -> {
-                        middleClickState.clear()
-                        rightClickState.clear()
-                        handleGenericClick(e, change, path, ToolWindowSettingsProvider.getSingleClickAction(), ToolWindowSettingsProvider.getDoubleClickAction(), leftClickState)
-                    }
-                    SwingUtilities.isMiddleMouseButton(e) -> {
-                        leftClickState.clear()
-                        rightClickState.clear()
-                        handleGenericClick(e, change, path, ToolWindowSettingsProvider.getMiddleClickAction(), ToolWindowSettingsProvider.getDoubleMiddleClickAction(), middleClickState)
-                    }
-                    SwingUtilities.isRightMouseButton(e) -> {
-                        if (ToolWindowSettingsProvider.isContextMenuEnabled()) {
-                            showContextMenu(e)
-                        } else {
-                            leftClickState.clear()
-                            middleClickState.clear()
-                            handleGenericClick(e, change, path, ToolWindowSettingsProvider.getRightClickAction(), ToolWindowSettingsProvider.getDoubleRightClickAction(), rightClickState)
-                        }
-                    }
+                    SwingUtilities.isRightMouseButton(e) && ToolWindowSettingsProvider.isContextMenuEnabled() -> showContextMenu(e)
+                    else -> dispatchClickAction(e, change, path)
                 }
             }
         })
@@ -353,6 +336,30 @@ class LstCrcChangesBrowser(
             }
             performConfiguredAction(change, doubleClickAction)
             clickState.actionHasFiredForPath = null
+        }
+    }
+
+    /**
+     * Routes a click event to the correct [handleGenericClick] call based on the mouse button.
+     * Shared by the real [MouseAdapter] listener and the test-bridge [invokeConfiguredActionForFile].
+     */
+    private fun dispatchClickAction(e: MouseEvent, change: Change, path: javax.swing.tree.TreePath) {
+        when {
+            SwingUtilities.isLeftMouseButton(e) -> {
+                middleClickState.clear()
+                rightClickState.clear()
+                handleGenericClick(e, change, path, ToolWindowSettingsProvider.getSingleClickAction(), ToolWindowSettingsProvider.getDoubleClickAction(), leftClickState)
+            }
+            SwingUtilities.isMiddleMouseButton(e) -> {
+                leftClickState.clear()
+                rightClickState.clear()
+                handleGenericClick(e, change, path, ToolWindowSettingsProvider.getMiddleClickAction(), ToolWindowSettingsProvider.getDoubleMiddleClickAction(), middleClickState)
+            }
+            SwingUtilities.isRightMouseButton(e) -> {
+                leftClickState.clear()
+                middleClickState.clear()
+                handleGenericClick(e, change, path, ToolWindowSettingsProvider.getRightClickAction(), ToolWindowSettingsProvider.getDoubleRightClickAction(), rightClickState)
+            }
         }
     }
 
@@ -576,23 +583,7 @@ class LstCrcChangesBrowser(
             awtButton
         )
 
-        when {
-            button.equals("LEFT", ignoreCase = true) -> {
-                middleClickState.clear()
-                rightClickState.clear()
-                handleGenericClick(event, change, path, ToolWindowSettingsProvider.getSingleClickAction(), ToolWindowSettingsProvider.getDoubleClickAction(), leftClickState)
-            }
-            button.equals("MIDDLE", ignoreCase = true) -> {
-                leftClickState.clear()
-                rightClickState.clear()
-                handleGenericClick(event, change, path, ToolWindowSettingsProvider.getMiddleClickAction(), ToolWindowSettingsProvider.getDoubleMiddleClickAction(), middleClickState)
-            }
-            button.equals("RIGHT", ignoreCase = true) -> {
-                leftClickState.clear()
-                middleClickState.clear()
-                handleGenericClick(event, change, path, ToolWindowSettingsProvider.getRightClickAction(), ToolWindowSettingsProvider.getDoubleRightClickAction(), rightClickState)
-            }
-        }
+        dispatchClickAction(event, change, path)
     }
 
     @org.jetbrains.annotations.ApiStatus.Internal
