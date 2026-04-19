@@ -9,7 +9,6 @@ import com.github.uiopak.lstcrc.toolWindow.LstCrcChangesBrowser
 import com.github.uiopak.lstcrc.toolWindow.SingleRepoBranchSelectionDialog
 import com.github.uiopak.lstcrc.toolWindow.ToolWindowSettingsProvider
 import com.github.uiopak.lstcrc.utils.RevisionUtils
-import com.intellij.ide.util.PropertiesComponent
 import com.intellij.notification.NotificationGroupManager
 import com.intellij.notification.NotificationType
 import com.intellij.openapi.actionSystem.AnAction
@@ -132,11 +131,7 @@ class ToolWindowStateService(private val project: Project, val coroutineScope: C
         val diffDataService = project.service<ProjectActiveDiffDataService>()
         val resultFuture = CompletableFuture<Unit>()
 
-        val properties = PropertiesComponent.getInstance()
-        val includeHeadInScopes = properties.getBoolean(
-            ToolWindowSettingsProvider.APP_INCLUDE_HEAD_IN_SCOPES_KEY,
-            ToolWindowSettingsProvider.DEFAULT_INCLUDE_HEAD_IN_SCOPES
-        )
+        val includeHeadInScopes = ToolWindowSettingsProvider.isIncludeHeadInScopes()
 
         gitService.getChanges(tabInfo).whenCompleteAsync { getChangesResult, throwable ->
             ApplicationManager.getApplication().invokeLater {
@@ -412,12 +407,6 @@ class ToolWindowStateService(private val project: Project, val coroutineScope: C
             }
         } else {
             logger.warn("Could not find tab for branch '$branchName' to update its comparison map.")
-        }
-    }
-
-    companion object {
-        fun getInstance(project: Project): ToolWindowStateService {
-            return project.getService(ToolWindowStateService::class.java)
         }
     }
 }

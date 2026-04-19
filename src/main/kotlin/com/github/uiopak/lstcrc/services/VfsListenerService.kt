@@ -1,6 +1,5 @@
 package com.github.uiopak.lstcrc.services
 
-import com.github.uiopak.lstcrc.messaging.FILE_CHANGES_TOPIC
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.diagnostic.thisLogger
@@ -68,9 +67,6 @@ class VfsListenerService(private val project: Project) : BulkFileListener, Dispo
             // This is the standard way to tell the VCS subsystem that file statuses may need re-checking.
             // This will in turn trigger our VcsChangeListener to refresh the diff data.
             VcsDirtyScopeManager.getInstance(project).markEverythingDirty()
-
-            // This topic is for our own components that might need a more immediate/custom notification.
-            project.messageBus.syncPublisher(FILE_CHANGES_TOPIC).onFilesChanged()
         }
     }
 

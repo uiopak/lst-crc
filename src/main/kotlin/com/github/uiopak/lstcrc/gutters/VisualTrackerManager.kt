@@ -27,6 +27,7 @@ import com.intellij.openapi.vcs.ex.SimpleLocalLineStatusTracker
 import com.intellij.openapi.vcs.impl.LineStatusTrackerManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.future.await
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.concurrent.ConcurrentHashMap
@@ -245,12 +246,19 @@ class VisualTrackerManager(private val project: Project, private val coroutineSc
         val gitService = project.service<GitService>()
         return withContext(Dispatchers.IO) {
             try {
-                val future = gitService.getFileContentForRevision(revision, file)
-                val content = future.get() ?: return@withContext fallbackContent()
+                val content = gitService.getFileContentForRevision(revision, file).await()
+                    ?: return@withContext fallbackContent()
                 StringUtil.convertLineSeparators(content)
+            } catch (e: VcsException) {
+                if (e.message.contains("does not exist in", ignoreCase = true)) {
+                    ""
+                } else {
+                    logger.warn("VISUAL_TRACKER: Failed to load content for ${file.path}. Error: ${e.message}")
+                    fallbackContent()
+                }
             } catch (e: Exception) {
-                val rootCause = if (e is java.util.concurrent.ExecutionException) e.cause ?: e else e
-
+                // Unwrap cause chain for exceptions wrapped by CompletableFuture
+                val rootCause = generateSequence<Throwable>(e) { it.cause }.last()
                 if (rootCause is VcsException && rootCause.message.contains("does not exist in", ignoreCase = true)) {
                     ""
                 } else {

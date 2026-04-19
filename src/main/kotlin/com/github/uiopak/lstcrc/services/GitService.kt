@@ -1,5 +1,3 @@
-@file:Suppress("UsePropertyAccessSyntax")
-
 package com.github.uiopak.lstcrc.services
 
 import com.github.uiopak.lstcrc.resources.LstCrcBundle
@@ -220,7 +218,7 @@ class GitService(private val project: Project) {
                                 val handler = GitLineHandler(project, repo.root, GitCommand.DIFF)
                                 handler.setSilent(true)
                                 // Use --no-renames and then handle R-lines manually to avoid issues with move score thresholding
-                                handler.addParameters("--name-status", "--diff-filter=ACDMRTUXB", target)
+                                handler.addParameters("--name-status", "--diff-filter=ACDMRTUX", target)
                                 val result = Git.getInstance().runCommand(handler)
 
                                 if (result.exitCode == 0) {

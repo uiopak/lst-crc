@@ -45,7 +45,6 @@ import java.awt.event.MouseEvent
 import javax.swing.JComponent
 import javax.swing.JPanel
 import javax.swing.SwingUtilities
-import javax.swing.Timer
 
 /**
  * The main UI part for displaying the tree of file changes for a specific branch comparison.
@@ -68,23 +67,31 @@ class LstCrcChangesBrowser(
         get() = VcsTreeModelData.selected(viewer).userObjects(Change::class.java)
 
     /** Helper class to manage the state for detecting single vs. double clicks. */
-    private class ClickState {
-        var timer: Timer? = null
+    private class ClickState(parentDisposable: Disposable) {
+        private val alarm = Alarm(Alarm.ThreadToUse.SWING_THREAD, parentDisposable)
         var pendingChange: Change? = null
         var pendingPath: javax.swing.tree.TreePath? = null
         var actionHasFiredForPath: javax.swing.tree.TreePath? = null
 
+        fun schedule(delayMs: Int, action: () -> Unit) {
+            alarm.cancelAllRequests()
+            alarm.addRequest(action, delayMs)
+        }
+
+        fun cancelPending() {
+            alarm.cancelAllRequests()
+        }
+
         fun clear() {
-            timer?.stop()
-            timer = null
+            alarm.cancelAllRequests()
             pendingChange = null
             pendingPath = null
             actionHasFiredForPath = null
         }
     }
-    private val leftClickState = ClickState()
-    private val middleClickState = ClickState()
-    private val rightClickState = ClickState()
+    private val leftClickState = ClickState(this)
+    private val middleClickState = ClickState(this)
+    private val rightClickState = ClickState(this)
 
     init {
         // This is CRITICAL. Unlike SimpleAsyncChangesBrowser, AsyncChangesBrowserBase does not call
@@ -323,9 +330,9 @@ class LstCrcChangesBrowser(
             }
             clickState.pendingChange = change
             clickState.pendingPath = path
-            clickState.timer?.stop()
+            clickState.cancelPending()
             // If the timer expires, it was a single click.
-            clickState.timer = Timer(ToolWindowSettingsProvider.getUserDoubleClickDelayMs()) {
+            clickState.schedule(ToolWindowSettingsProvider.getUserDoubleClickDelayMs()) {
                 val sChange = clickState.pendingChange
                 val sPath = clickState.pendingPath
                 clickState.clear()
@@ -334,12 +341,12 @@ class LstCrcChangesBrowser(
                     performConfiguredAction(sChange, singleClickAction)
                     clickState.actionHasFiredForPath = sPath
                 }
-            }.apply { isRepeats = false; start() }
+            }
         } else if (e.clickCount >= 2) {
             // This is a double click. Cancel any pending single-click action and fire the double-click one.
             if (clickState.actionHasFiredForPath == path) {
                 clickState.actionHasFiredForPath = null
-                clickState.timer?.stop()
+                clickState.cancelPending()
                 return
             }
             if (clickState.pendingPath == path) {

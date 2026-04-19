@@ -39,6 +39,18 @@ class ProjectActiveDiffDataService(private val project: Project) : Disposable {
     var activeComparisonContext: Map<String, String> = emptyMap()
         private set
 
+    // Pre-computed sets for efficient scope membership checks (avoids per-call allocations)
+    var createdFilesSet: Set<VirtualFile> = emptySet()
+        private set
+    var modifiedFilesSet: Set<VirtualFile> = emptySet()
+        private set
+    var movedFilesSet: Set<VirtualFile> = emptySet()
+        private set
+    var deletedFilePaths: Set<String> = emptySet()
+        private set
+    var changedFilesSet: Set<VirtualFile> = emptySet()
+        private set
+
     fun updateActiveDiff(
         branchNameFromEvent: String,
         createdFilesFromEvent: List<VirtualFile>,
@@ -69,6 +81,7 @@ class ProjectActiveDiffDataService(private val project: Project) : Disposable {
                 this.deletedFiles = deletedFilesFromEvent
                 this.activeComparisonContext = comparisonContextFromEvent
                 this.diffSessionId = UUID.randomUUID()
+                rebuildCachedSets()
 
                 notifyAffectedFiles(previousFiles + collectAllFiles())
                 project.messageBus.syncPublisher(DIFF_DATA_CHANGED_TOPIC).onDiffDataChanged()
@@ -93,6 +106,7 @@ class ProjectActiveDiffDataService(private val project: Project) : Disposable {
             this.deletedFiles = emptyList()
             this.activeComparisonContext = emptyMap()
             this.diffSessionId = UUID.randomUUID()
+            rebuildCachedSets()
 
             notifyAffectedFiles(previousFiles)
             project.messageBus.syncPublisher(DIFF_DATA_CHANGED_TOPIC).onDiffDataChanged()
@@ -102,6 +116,14 @@ class ProjectActiveDiffDataService(private val project: Project) : Disposable {
 
     private fun collectAllFiles(): Set<VirtualFile> =
         (createdFiles + modifiedFiles + movedFiles + deletedFiles).toSet()
+
+    private fun rebuildCachedSets() {
+        createdFilesSet = createdFiles.toSet()
+        modifiedFilesSet = modifiedFiles.toSet()
+        movedFilesSet = movedFiles.toSet()
+        deletedFilePaths = deletedFiles.mapTo(HashSet()) { it.path }
+        changedFilesSet = createdFilesSet + modifiedFilesSet + movedFilesSet
+    }
 
     private fun notifyAffectedFiles(affectedFiles: Set<VirtualFile>) {
         if (affectedFiles.isEmpty()) return
@@ -115,26 +137,24 @@ class ProjectActiveDiffDataService(private val project: Project) : Disposable {
         }
     }
 
+    /** Must be called on EDT. */
     private fun triggerEditorTabColorRefresh() {
+        if (project.isDisposed) return
         logger.debug("triggerEditorTabColorRefresh() called.")
-        ApplicationManager.getApplication().invokeLater {
-            if (project.isDisposed) {
-                logger.info("Project is disposed, skipping editor tab color refresh.")
-                return@invokeLater
+        val fileEditorManager = FileEditorManager.getInstance(project)
+        fileEditorManager.openFiles.forEach { vf ->
+            if (vf.isValid) {
+                fileEditorManager.updateFilePresentation(vf)
             }
-            val fileEditorManager = FileEditorManager.getInstance(project)
-            fileEditorManager.openFiles.forEach { vf ->
-                if (vf.isValid) {
-                    fileEditorManager.updateFilePresentation(vf)
-                }
-            }
-            logger.debug("updateFilePresentation requests sent for all valid open files.")
         }
+        logger.debug("updateFilePresentation requests sent for all valid open files.")
     }
 
     fun refreshCurrentColorings() {
         logger.debug("refreshCurrentColorings() called. Active branch: $activeBranchName")
-        triggerEditorTabColorRefresh()
+        ApplicationManager.getApplication().invokeLater {
+            if (!project.isDisposed) triggerEditorTabColorRefresh()
+        }
     }
 
     override fun dispose() {
@@ -145,5 +165,6 @@ class ProjectActiveDiffDataService(private val project: Project) : Disposable {
         movedFiles = emptyList()
         deletedFiles = emptyList()
         activeComparisonContext = emptyMap()
+        rebuildCachedSets()
     }
 }

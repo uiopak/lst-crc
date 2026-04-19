@@ -10,11 +10,11 @@ import com.github.uiopak.lstcrc.services.ToolWindowStateService
 import com.github.uiopak.lstcrc.state.ToolWindowState
 import com.github.uiopak.lstcrc.utils.LstCrcKeys
 import com.intellij.ide.DataManager
-import com.intellij.ide.util.PropertiesComponent
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.DefaultActionGroup
 import com.intellij.openapi.actionSystem.Separator
+import com.intellij.openapi.components.service
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.popup.JBPopupFactory
@@ -89,13 +89,9 @@ class LstCrcStatusWidget(private val project: Project) : StatusBarWidget, Status
      */
     override fun getText(): String {
         if (project.isDisposed) return ""
-        val state = ToolWindowStateService.getInstance(project).state
+        val state = project.service<ToolWindowStateService>().state
 
-        val properties = PropertiesComponent.getInstance()
-        val showContext = properties.getBoolean(
-            ToolWindowSettingsProvider.APP_SHOW_WIDGET_CONTEXT_KEY,
-            ToolWindowSettingsProvider.DEFAULT_SHOW_WIDGET_CONTEXT
-        )
+        val showContext = ToolWindowSettingsProvider.isShowWidgetContext()
         val prefix = if (showContext) LstCrcBundle.message("widget.context.prefix") else ""
 
         val selectedIndex = state.selectedTabIndex
@@ -121,7 +117,7 @@ class LstCrcStatusWidget(private val project: Project) : StatusBarWidget, Status
 
     override fun getClickConsumer(): Consumer<MouseEvent> {
         return Consumer { mouseEvent ->
-            val service = ToolWindowStateService.getInstance(project)
+            val service = project.service<ToolWindowStateService>()
             val currentServiceState = service.state
             val openTabs = currentServiceState.openTabs
             val actions = mutableListOf<AnAction>()

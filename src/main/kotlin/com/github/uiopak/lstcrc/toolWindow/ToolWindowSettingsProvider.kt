@@ -90,6 +90,7 @@ object ToolWindowSettingsProvider {
     fun isGutterMarkersEnabled(): Boolean = PropertiesComponent.getInstance().getBoolean(APP_ENABLE_GUTTER_MARKERS_KEY, DEFAULT_ENABLE_GUTTER_MARKERS)
     fun isGutterForNewFilesEnabled(): Boolean = PropertiesComponent.getInstance().getBoolean(APP_ENABLE_GUTTER_FOR_NEW_FILES_KEY, DEFAULT_ENABLE_GUTTER_FOR_NEW_FILES)
     fun isIncludeHeadInScopes(): Boolean = PropertiesComponent.getInstance().getBoolean(APP_INCLUDE_HEAD_IN_SCOPES_KEY, DEFAULT_INCLUDE_HEAD_IN_SCOPES)
+    fun isShowWidgetContext(): Boolean = PropertiesComponent.getInstance().getBoolean(APP_SHOW_WIDGET_CONTEXT_KEY, DEFAULT_SHOW_WIDGET_CONTEXT)
 
 
     fun getUserDoubleClickDelayMs(): Int {
