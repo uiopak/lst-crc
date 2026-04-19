@@ -221,7 +221,7 @@ class PluginUiTestSteps(private val remoteRobot: RemoteRobot) {
                         vcsManager.scheduleMappedRootsUpdate();
                         vcsManagerEx
                             .getConfirmation(com.intellij.openapi.vcs.VcsConfiguration.StandardConfirmation.ADD)
-                            .setValue(com.intellij.openapi.vcs.VcsShowConfirmationOption.Value.DO_NOTHING_SILENTLY);
+                            .setValue(com.intellij.openapi.vcs.VcsShowConfirmationOption.Value.DO_ACTION_SILENTLY);
 
                         com.intellij.openapi.vcs.changes.VcsDirtyScopeManager.getInstance(project).markEverythingDirty();
                     }

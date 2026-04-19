@@ -82,6 +82,18 @@ class GitChangesViewFixture(remoteRobot: RemoteRobot, remoteComponent: RemoteCom
                     false;
                 } else {
                     contentManager.setSelectedContent(content, true);
+                    const browser = content.getComponent();
+                    const stateServiceClass = browser.getClass().getClassLoader()
+                        .loadClass("com.github.uiopak.lstcrc.services.ToolWindowStateService");
+                    const stateService = project.getService(stateServiceClass);
+                    if (stateService != null) {
+                        const selectedIndex = java.util.Arrays.stream(contentManager.getContents())
+                            .filter(item => item.isCloseable())
+                            .toList()
+                            .indexOf(content);
+                        stateService.setSelectedTab(selectedIndex);
+                        stateService.refreshDataForCurrentSelection();
+                    }
                     true;
                 }
             }
