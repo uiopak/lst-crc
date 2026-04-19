@@ -2,7 +2,6 @@ package com.github.uiopak.lstcrc.listeners
 
 import com.github.uiopak.lstcrc.services.ToolWindowStateService
 import com.intellij.openapi.Disposable
-import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.service
 import com.intellij.openapi.diagnostic.thisLogger
@@ -35,11 +34,9 @@ class VcsChangeListener(private val project: Project) : ChangeListListener, Disp
     private fun triggerDebouncedRefresh() {
         debounceAlarm.cancelAllRequests()
         debounceAlarm.addRequest({
-            ApplicationManager.getApplication().invokeLater {
-                if (!project.isDisposed) {
-                    logger.info("VCS_CHANGE_LISTENER: Debounced refresh executing.")
-                    project.service<ToolWindowStateService>().refreshDataForCurrentSelection()
-                }
+            if (!project.isDisposed) {
+                logger.info("VCS_CHANGE_LISTENER: Debounced refresh executing.")
+                project.service<ToolWindowStateService>().refreshDataForCurrentSelection()
             }
         }, 250)
     }

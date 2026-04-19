@@ -66,7 +66,7 @@ private val movedFilesPackageSet = LstCrcPackageSet(
 
 private val deletedFilesPackageSet = LstCrcPackageSet(
     "scope.deleted.description",
-    filesExtractor = { it.createdFilesSet }, // unused for path matching, but required by signature
+    filesExtractor = { emptySet() },
     pathsExtractor = { it.deletedFilePaths }
 )
 
