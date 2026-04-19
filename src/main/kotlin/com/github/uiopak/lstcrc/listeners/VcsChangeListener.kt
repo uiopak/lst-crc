@@ -19,7 +19,7 @@ import com.intellij.util.Alarm
 class VcsChangeListener(private val project: Project) : ChangeListListener, Disposable {
 
     private val logger = thisLogger()
-    private val debounceAlarm = Alarm(Alarm.ThreadToUse.SWING_THREAD, this)
+    private val debounceAlarm = Alarm(this)
 
     init {
         logger.info("VCS_CHANGE_LISTENER: Initializing for project ${project.name}")

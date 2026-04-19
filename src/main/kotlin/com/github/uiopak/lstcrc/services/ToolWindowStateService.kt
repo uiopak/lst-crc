@@ -26,12 +26,13 @@ import git4idea.repo.GitRepository
 import kotlinx.coroutines.CoroutineScope
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
 
 /**
  * Manages the tool window's UI state (open tabs, selected tab) and persists it.
  * This service orchestrates the primary data flow: UI events here trigger calls to [GitService]
  * to fetch data, which then updates the [ProjectActiveDiffDataService]. It broadcasts its own
- * state changes via the [TOPIC] for UI components to consume.
+ * state changes via the [TOOL_WINDOW_STATE_TOPIC] for UI components to consume.
  */
 @State(
     name = "com.github.uiopak.lstcrc.services.ToolWindowStateService",
@@ -42,10 +43,8 @@ class ToolWindowStateService(private val project: Project, val coroutineScope: C
 
     private var myState = ToolWindowState()
     private val logger = thisLogger()
-    private val isRefreshing = AtomicBoolean(false)
+    private val activeRefresh = AtomicReference<CompletableFuture<Unit>?>(null)
     private val refreshQueued = AtomicBoolean(false)
-    @Volatile
-    private var activeRefreshFuture: CompletableFuture<Unit>? = null
 
     override fun getState(): ToolWindowState {
         logger.debug("getState() called. Current state: $myState")
@@ -108,7 +107,7 @@ class ToolWindowStateService(private val project: Project, val coroutineScope: C
             refreshDataForCurrentSelection()
 
         } else {
-            if (validIndex == -1 && activeRefreshFuture == null) {
+            if (validIndex == -1 && activeRefresh.get() == null) {
                 logger.info("HEAD tab is already selected, but no refresh is active. Triggering initial HEAD refresh.")
                 refreshDataForCurrentSelection()
             } else {
@@ -289,14 +288,14 @@ class ToolWindowStateService(private val project: Project, val coroutineScope: C
      */
     fun refreshDataForCurrentSelection(): CompletableFuture<Unit> {
         if (project.isDisposed) return CompletableFuture.completedFuture(Unit)
-        if (!isRefreshing.compareAndSet(false, true)) {
-            logger.debug("ACTION: Refresh for current selection is already in progress. Queueing another refresh.")
-            refreshQueued.set(true)
-            return activeRefreshFuture ?: CompletableFuture.completedFuture(Unit)
-        }
 
         val refreshFuture = CompletableFuture<Unit>()
-        activeRefreshFuture = refreshFuture
+        if (!activeRefresh.compareAndSet(null, refreshFuture)) {
+            logger.debug("ACTION: Refresh for current selection is already in progress. Queueing another refresh.")
+            refreshQueued.set(true)
+            return activeRefresh.get() ?: CompletableFuture.completedFuture(Unit)
+        }
+
         runRefreshCycle(refreshFuture)
         return refreshFuture
     }
@@ -308,8 +307,7 @@ class ToolWindowStateService(private val project: Project, val coroutineScope: C
 
         loadDataForTab(tabInfoToRefresh).whenComplete { _, throwable ->
             if (throwable != null) {
-                isRefreshing.set(false)
-                activeRefreshFuture = null
+                activeRefresh.set(null)
                 logger.debug("ACTION: Refreshing lock released after failure.")
                 refreshFuture.completeExceptionally(throwable)
                 return@whenComplete
@@ -321,8 +319,7 @@ class ToolWindowStateService(private val project: Project, val coroutineScope: C
                 return@whenComplete
             }
 
-            isRefreshing.set(false)
-            activeRefreshFuture = null
+            activeRefresh.set(null)
             logger.debug("ACTION: Refreshing lock released.")
             refreshFuture.complete(Unit)
         }

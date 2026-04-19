@@ -8,7 +8,6 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.progress.ProgressIndicator
 import com.intellij.openapi.progress.Task
 import com.intellij.openapi.util.text.StringUtil
-import com.intellij.openapi.vcs.FilePath
 import com.intellij.openapi.vcs.FileStatus
 import com.intellij.openapi.vcs.VcsException
 import com.intellij.openapi.vcs.changes.Change
@@ -18,7 +17,6 @@ import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.openapi.vfs.VfsUtilCore
 import com.intellij.openapi.vfs.VirtualFile
 import git4idea.GitContentRevision
-import git4idea.GitRevisionNumber
 import git4idea.changes.GitChangeUtils
 import git4idea.commands.Git
 import git4idea.commands.GitCommand
@@ -26,7 +24,6 @@ import git4idea.commands.GitLineHandler
 import git4idea.repo.GitRepository
 import git4idea.repo.GitRepositoryManager
 import git4idea.util.GitFileUtils
-import git4idea.util.StringScanner
 import kotlinx.collections.immutable.toImmutableMap
 import java.util.concurrent.CompletableFuture
 
@@ -75,9 +72,6 @@ data class GetChangesResult(
 class GitService(private val project: Project) {
 
     private val logger = thisLogger()
-    // Git `--name-status` prefixes handled by this parser:
-    // C = copied, A = added, D = deleted, U = unmerged, M = modified, R = renamed, T = type changed.
-    private val validNameStatusCodes = setOf('C', 'A', 'D', 'U', 'M', 'R', 'T')
 
     internal fun getRepositoryForFile(file: VirtualFile): GitRepository? {
         val repositoryManager = GitRepositoryManager.getInstance(project)
@@ -214,22 +208,15 @@ class GitService(private val project: Project) {
 
                                 allChanges.addAll(loadLocalChanges(repo))
                             } else {
-                                // Use the low-level Git command to prevent fatal exceptions for bad revisions.
-                                val handler = GitLineHandler(project, repo.root, GitCommand.DIFF)
-                                handler.setSilent(true)
-                                // Use --no-renames and then handle R-lines manually to avoid issues with move score thresholding
-                                handler.addParameters("--name-status", "--diff-filter=ACDMRTUX", target)
-                                val result = Git.getInstance().runCommand(handler)
-
-                                if (result.exitCode == 0) {
-                                    val output = result.outputAsJoinedString
-                                    val parsedChanges = parseNameStatusOutput(repo, target, output)
-                                    allChanges.addAll(parsedChanges)
-                                } else {
-                                    // An exit code of 128 often means "bad revision".
+                                try {
+                                    val changes = GitChangeUtils.getDiffWithWorkingDir(
+                                        project, repo.root, target, null, false, false
+                                    )
+                                    allChanges.addAll(changes)
+                                } catch (e: VcsException) {
                                     logger.warn(
-                                        "git diff command failed for repo '${repo.root.name}' against target '$target' " +
-                                                "with exit code ${result.exitCode}. Assuming revision is invalid. Error: ${result.errorOutputAsJoinedString}"
+                                        "git diff failed for repo '${repo.root.name}' against target '$target'. " +
+                                                "Assuming revision is invalid. Error: ${e.message}"
                                     )
                                     failures[repo] = target
                                 }
@@ -307,20 +294,12 @@ class GitService(private val project: Project) {
             return emptyList()
         }
 
-        val handler = GitLineHandler(project, repo.root, GitCommand.DIFF)
-        handler.setSilent(true)
-        handler.addParameters("--name-status", "--find-renames", "HEAD")
-        val result = Git.getInstance().runCommand(handler)
-
-        if (result.exitCode != 0) {
-            logger.warn(
-                "Failed to load tracked local changes for repo '${repo.root.name}' against HEAD: " +
-                    result.errorOutputAsJoinedString
-            )
-            return emptyList()
+        return try {
+            GitChangeUtils.getDiffWithWorkingDir(project, repo.root, "HEAD", null, false, true).toList()
+        } catch (e: VcsException) {
+            logger.warn("Failed to load tracked local changes for repo '${repo.root.name}' against HEAD: ${e.message}")
+            emptyList()
         }
-
-        return parseNameStatusOutput(repo, "HEAD", result.outputAsJoinedString)
     }
 
     private fun loadUntrackedChanges(repo: GitRepository): List<Change> {
@@ -370,139 +349,40 @@ class GitService(private val project: Project) {
         }
     }
 
-    private fun parseNameStatusOutput(repo: GitRepository, targetRevision: String, output: String): List<Change> {
-        val changes = mutableListOf<Change>()
-
-        val targetRevisionNumber: GitRevisionNumber? = try {
-            GitChangeUtils.resolveReference(project, repo.root, targetRevision)
-        } catch (e: VcsException) {
-            logger.warn("Could not resolve reference '$targetRevision' for repo '${repo.root.name}' after successful diff. Using null revision.", e)
-            null
-        }
-
-        val scanner = StringScanner(output)
-        while (scanner.hasMoreData()) {
-            if (scanner.isEol) {
-                scanner.nextLine()
-                continue
-            }
-            if (scanner.peek() !in validNameStatusCodes) {
-                logger.warn("Exiting status line parse loop due to unexpected char: '${scanner.peek()}'")
-                break
-            }
-            val line = scanner.line()
-            val tokens = line.split('\t')
-
-            val status: FileStatus
-            val beforeFilePath: FilePath?
-            val afterFilePath: FilePath?
-
-            try {
-                when (tokens[0].first()) {
-                    'A' -> {
-                        status = FileStatus.ADDED
-                        afterFilePath = GitContentRevision.createPathFromEscaped(repo.root, tokens[1])
-                        beforeFilePath = null
-                    }
-                    'M', 'T' -> { // Modified, Type-Changed
-                        status = FileStatus.MODIFIED
-                        afterFilePath = GitContentRevision.createPathFromEscaped(repo.root, tokens[1])
-                        beforeFilePath = afterFilePath
-                    }
-                    'D' -> {
-                        status = FileStatus.DELETED
-                        beforeFilePath = GitContentRevision.createPathFromEscaped(repo.root, tokens[1])
-                        afterFilePath = null
-                    }
-                    'R' -> { // Renamed
-                        status = FileStatus.MODIFIED
-                        beforeFilePath = GitContentRevision.createPathFromEscaped(repo.root, tokens[1])
-                        afterFilePath = GitContentRevision.createPathFromEscaped(repo.root, tokens[2])
-                    }
-                    'C' -> { // Copied
-                        status = FileStatus.ADDED
-                        beforeFilePath = null
-                        afterFilePath = GitContentRevision.createPathFromEscaped(repo.root, tokens[2])
-                    }
-                    'U' -> {
-                        status = FileStatus.MERGED_WITH_CONFLICTS
-                        afterFilePath = GitContentRevision.createPathFromEscaped(repo.root, tokens[1])
-                        beforeFilePath = afterFilePath
-                    }
-                    else -> {
-                        logger.warn("Unknown git status char in line: $line")
-                        continue
-                    }
-                }
-
-                val beforeRevision: ContentRevision? = if (beforeFilePath != null)
-                    GitContentRevision.createRevision(beforeFilePath, targetRevisionNumber, project)
-                else null
-
-                val afterRevision: ContentRevision? = if (afterFilePath != null)
-                    GitContentRevision.createRevision(afterFilePath, null, project) // Working tree content
-                else null
-
-                changes.add(Change(beforeRevision, afterRevision, status))
-            } catch (e: Exception) {
-                logger.error("Failed to parse git diff line: '$line'", e)
-            }
-        }
-        return changes
-    }
 
 
-    fun getFileContentForRevision(revision: String, file: VirtualFile): CompletableFuture<String?> {
-        val future = CompletableFuture<String?>()
+    suspend fun getFileContentForRevision(revision: String, file: VirtualFile): String? {
         val repository = getRepositoryForFile(file)
 
         if (repository == null) {
             logger.warn("Cannot get file content for revision '$revision' for file '${file.path}', no repository found for this file.")
-            future.complete(null)
-            return future
+            return null
         }
 
-        com.intellij.openapi.application.ApplicationManager.getApplication().executeOnPooledThread {
-            try {
-                logger.debug("GUTTER_GIT_SERVICE: Preparing to fetch content for revision:'${revision}' file:'${file.path}'")
+        logger.debug("GUTTER_GIT_SERVICE: Preparing to fetch content for revision:'${revision}' file:'${file.path}'")
 
-                val relativePath = VfsUtilCore.getRelativePath(file, repository.root, '/')
-                if (relativePath == null) {
-                    val errorMessage = "Could not calculate relative path for file '${file.path}' against repo root '${repository.root.path}'.'"
-                    logger.error("GUTTER_GIT_SERVICE: $errorMessage")
-                    future.completeExceptionally(IllegalStateException(errorMessage))
-                    return@executeOnPooledThread
-                }
+        val relativePath = VfsUtilCore.getRelativePath(file, repository.root, '/')
+            ?: throw IllegalStateException("Could not calculate relative path for file '${file.path}' against repo root '${repository.root.path}'.")
 
-                val revisionContentBytes = GitFileUtils.getFileContent(project, repository.root, revision, relativePath)
-                val rawContent = org.apache.commons.io.input.BOMInputStream.builder()
-                    .setInputStream(java.io.ByteArrayInputStream(revisionContentBytes))
-                    .setByteOrderMarks(
-                        org.apache.commons.io.ByteOrderMark.UTF_8,
-                        org.apache.commons.io.ByteOrderMark.UTF_16LE,
-                        org.apache.commons.io.ByteOrderMark.UTF_16BE,
-                        org.apache.commons.io.ByteOrderMark.UTF_32LE,
-                        org.apache.commons.io.ByteOrderMark.UTF_32BE
-                    )
-                    .get()
-                    .use {
-                        it.reader(file.charset).readText()
-                    }
-
-                // The IntelliJ Document model requires LF ('\n') line endings, but Git on Windows might return CRLF ('\r\n').
-                // We must convert them to prevent "Wrong line separators" from the line status tracker.
-                val normalizedContent = StringUtil.convertLineSeparators(rawContent)
-
-                logger.info("GUTTER_GIT_SERVICE: Successfully fetched content for '${relativePath}' in revision '${revision}'.")
-                future.complete(normalizedContent)
-            } catch (e: VcsException) {
-                logger.warn("GUTTER_GIT_SERVICE: VcsException while getting content for '${file.path}' in revision '$revision'. Message: ${e.message}")
-                future.completeExceptionally(e)
-            } catch (e: Exception) {
-                logger.error("GUTTER_GIT_SERVICE: Unhandled exception while getting content for '${file.path}' in revision '$revision'.", e)
-                future.completeExceptionally(e)
+        val revisionContentBytes = GitFileUtils.getFileContent(project, repository.root, revision, relativePath)
+        val rawContent = org.apache.commons.io.input.BOMInputStream.builder()
+            .setInputStream(java.io.ByteArrayInputStream(revisionContentBytes))
+            .setByteOrderMarks(
+                org.apache.commons.io.ByteOrderMark.UTF_8,
+                org.apache.commons.io.ByteOrderMark.UTF_16LE,
+                org.apache.commons.io.ByteOrderMark.UTF_16BE,
+                org.apache.commons.io.ByteOrderMark.UTF_32LE,
+                org.apache.commons.io.ByteOrderMark.UTF_32BE
+            )
+            .get()
+            .use {
+                it.reader(file.charset).readText()
             }
-        }
-        return future
+
+        // The IntelliJ Document model requires LF ('\n') line endings, but Git on Windows might return CRLF ('\r\n').
+        val normalizedContent = StringUtil.convertLineSeparators(rawContent)
+
+        logger.info("GUTTER_GIT_SERVICE: Successfully fetched content for '${relativePath}' in revision '${revision}'.")
+        return normalizedContent
     }
 }

@@ -17,7 +17,7 @@ import com.intellij.openapi.editor.EditorFactory
 import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Disposer
-import com.intellij.openapi.util.text.StringUtil
+
 import com.intellij.openapi.vcs.FileStatusManager
 import com.intellij.openapi.vcs.VcsException
 import com.intellij.openapi.vcs.ex.LineStatusTracker
@@ -27,7 +27,6 @@ import com.intellij.openapi.vcs.ex.SimpleLocalLineStatusTracker
 import com.intellij.openapi.vcs.impl.LineStatusTrackerManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.future.await
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.concurrent.ConcurrentHashMap
@@ -246,9 +245,8 @@ class VisualTrackerManager(private val project: Project, private val coroutineSc
         val gitService = project.service<GitService>()
         return withContext(Dispatchers.IO) {
             try {
-                val content = gitService.getFileContentForRevision(revision, file).await()
+                gitService.getFileContentForRevision(revision, file)
                     ?: return@withContext fallbackContent()
-                StringUtil.convertLineSeparators(content)
             } catch (e: VcsException) {
                 if (e.message.contains("does not exist in", ignoreCase = true)) {
                     ""
@@ -257,12 +255,13 @@ class VisualTrackerManager(private val project: Project, private val coroutineSc
                     fallbackContent()
                 }
             } catch (e: Exception) {
-                // Unwrap cause chain for exceptions wrapped by CompletableFuture
-                val rootCause = generateSequence<Throwable>(e) { it.cause }.last()
-                if (rootCause is VcsException && rootCause.message.contains("does not exist in", ignoreCase = true)) {
+                // Defensive fallback for unexpected non-VcsException errors
+                val rootCause = generateSequence<Throwable>(e) { it.cause }
+                    .firstOrNull { it is VcsException } as? VcsException
+                if (rootCause != null && rootCause.message.contains("does not exist in", ignoreCase = true)) {
                     ""
                 } else {
-                    logger.warn("VISUAL_TRACKER: Failed to load content for ${file.path}. Error: ${rootCause.message}")
+                    logger.warn("VISUAL_TRACKER: Failed to load content for ${file.path}. Error: ${(rootCause ?: e).message}")
                     fallbackContent()
                 }
             }

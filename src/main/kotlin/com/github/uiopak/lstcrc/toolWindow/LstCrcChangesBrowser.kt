@@ -4,7 +4,6 @@ package com.github.uiopak.lstcrc.toolWindow
 
 import com.github.uiopak.lstcrc.resources.LstCrcBundle
 import com.github.uiopak.lstcrc.services.CategorizedChanges
-import com.github.uiopak.lstcrc.services.GitService
 import com.github.uiopak.lstcrc.services.ToolWindowStateService
 import com.github.uiopak.lstcrc.utils.getTreePathForMouseCoordinates
 import com.intellij.ide.projectView.ProjectView
@@ -58,7 +57,7 @@ class LstCrcChangesBrowser(
 ) : AsyncChangesBrowserBase(project, false, true), Disposable, GitRepositoryChangeListener {
 
     private val logger = thisLogger()
-    private val refreshDebounceAlarm = Alarm(Alarm.ThreadToUse.SWING_THREAD, this)
+    private val refreshDebounceAlarm = Alarm(this)
 
     // This field will hold the changes and context for the async tree model builder.
     private var currentChanges: CategorizedChanges? = null
@@ -68,7 +67,7 @@ class LstCrcChangesBrowser(
 
     /** Helper class to manage the state for detecting single vs. double clicks. */
     private class ClickState(parentDisposable: Disposable) {
-        private val alarm = Alarm(Alarm.ThreadToUse.SWING_THREAD, parentDisposable)
+        private val alarm = Alarm(parentDisposable)
         var pendingChange: Change? = null
         var pendingPath: javax.swing.tree.TreePath? = null
         var actionHasFiredForPath: javax.swing.tree.TreePath? = null
