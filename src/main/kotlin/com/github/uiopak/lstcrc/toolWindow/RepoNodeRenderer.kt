@@ -19,7 +19,7 @@ import javax.swing.JTree
  * to repository grouping nodes or changelist nodes in single-repo projects.
  */
 class RepoNodeRenderer(
-    private val project: Project,
+    project: Project,
     isShowFlatten: () -> Boolean,
     isHighlightProblems: Boolean
 ) : ChangesTreeCellRenderer(ChangesBrowserNodeRenderer(project, isShowFlatten, isHighlightProblems)) {

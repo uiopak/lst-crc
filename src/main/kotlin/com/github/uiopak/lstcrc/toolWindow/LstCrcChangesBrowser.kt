@@ -1,5 +1,3 @@
-@file:Suppress("DialogTitleCapitalization")
-
 package com.github.uiopak.lstcrc.toolWindow
 
 import com.github.uiopak.lstcrc.resources.LstCrcBundle
@@ -261,7 +259,7 @@ class LstCrcChangesBrowser(
             }
 
             // Fallback to default rose color if scope color is not configured
-            return JBColor.namedColor("FileColor.Rose", Color(255, 220, 220))
+            return JBColor.namedColor("FileColor.Rose", JBColor(Color(255, 235, 236), Color(71, 43, 43)))
         }
 
 

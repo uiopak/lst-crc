@@ -251,7 +251,7 @@ class VisualTrackerManager(private val project: Project, private val coroutineSc
                 if (e.message.contains("does not exist in", ignoreCase = true)) {
                     ""
                 } else {
-                    logger.warn("VISUAL_TRACKER: Failed to load content for ${file.path}. Error: ${e.message}")
+                    logger.warn("VISUAL_TRACKER: Failed to load content for ${file.path}. VcsException Error: ${e.message}")
                     fallbackContent()
                 }
             } catch (e: Exception) {
@@ -261,7 +261,7 @@ class VisualTrackerManager(private val project: Project, private val coroutineSc
                 if (rootCause != null && rootCause.message.contains("does not exist in", ignoreCase = true)) {
                     ""
                 } else {
-                    logger.warn("VISUAL_TRACKER: Failed to load content for ${file.path}. Error: ${(rootCause ?: e).message}")
+                    logger.warn("VISUAL_TRACKER: Failed to load content for ${file.path}. Unexpected Error: ${(rootCause ?: e).message}")
                     fallbackContent()
                 }
             }

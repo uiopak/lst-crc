@@ -1,5 +1,3 @@
-@file:Suppress("DialogTitleCapitalization")
-
 package com.github.uiopak.lstcrc.toolWindow
 
 import com.github.uiopak.lstcrc.messaging.PLUGIN_SETTINGS_CHANGED_TOPIC
@@ -110,7 +108,6 @@ object ToolWindowSettingsProvider {
     private fun setRightClickAction(action: String) = PropertiesComponent.getInstance().setValue(APP_RIGHT_CLICK_ACTION_KEY, action)
     private fun setDoubleRightClickAction(action: String) = PropertiesComponent.getInstance().setValue(APP_DOUBLE_RIGHT_CLICK_ACTION_KEY, action)
     private fun setUserDoubleClickDelayMs(delay: Int) = PropertiesComponent.getInstance().setValue(APP_USER_DOUBLE_CLICK_DELAY_KEY, delay, DELAY_OPTION_SYSTEM_DEFAULT)
-    private fun setIncludeHeadInScopes(include: Boolean) = PropertiesComponent.getInstance().setValue(APP_INCLUDE_HEAD_IN_SCOPES_KEY, include, DEFAULT_INCLUDE_HEAD_IN_SCOPES)
 
 
     fun createToolWindowSettingsGroup(): ActionGroup {

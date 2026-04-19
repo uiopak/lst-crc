@@ -77,7 +77,7 @@ object ToolWindowHelper {
             logger.info("HELPER: Creating new tab for '$branchName'")
             val newContent = createBranchContent(project, toolWindow, branchName, branchName, contentManager)
             contentManager.setSelectedContent(newContent, true)
-            addAndSelectTabInState(project, stateService, branchName, newContent.component as? LstCrcChangesBrowser)
+            addAndSelectTabInState(stateService, branchName, newContent.component as? LstCrcChangesBrowser)
         }
     }
 
@@ -87,7 +87,6 @@ object ToolWindowHelper {
      * triggering a data refresh. Falls back to direct refresh if state sync fails.
      */
     private fun addAndSelectTabInState(
-        project: Project,
         stateService: ToolWindowStateService,
         branchName: String,
         browser: LstCrcChangesBrowser?
@@ -164,7 +163,7 @@ object ToolWindowHelper {
                             selectionTabContent.putUserData(LstCrcKeys.BRANCH_NAME_KEY, selectedBranchName)
 
                             manager.setSelectedContent(selectionTabContent, true)
-                            addAndSelectTabInState(project, stateService, selectedBranchName, newBranchContentView)
+                            addAndSelectTabInState(stateService, selectedBranchName, newBranchContentView)
                         }
                     }
 

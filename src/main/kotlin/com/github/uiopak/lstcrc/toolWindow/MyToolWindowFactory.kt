@@ -1,5 +1,3 @@
-@file:Suppress("DialogTitleCapitalization")
-
 package com.github.uiopak.lstcrc.toolWindow
 
 import com.github.uiopak.lstcrc.messaging.TOOL_WINDOW_STATE_TOPIC
@@ -132,14 +130,13 @@ class MyToolWindowFactory : ToolWindowFactory {
                 }
             }
         } else {
-            val branchNameToCreate = currentActualBranchName
-            if (branchNameToCreate != null) {
+            if (currentActualBranchName != null) {
                 val initialBranchContent = ToolWindowHelper.createBranchContent(
-                    project, toolWindow, branchNameToCreate, branchNameToCreate, contentManager
+                    project, toolWindow, currentActualBranchName, currentActualBranchName, contentManager
                 )
                 contentManager.setSelectedContent(initialBranchContent, true)
-                stateService.addTab(branchNameToCreate)
-                val newTabIndexInState = stateService.state.openTabs.indexOfFirst { it.branchName == branchNameToCreate }
+                stateService.addTab(currentActualBranchName)
+                val newTabIndexInState = stateService.state.openTabs.indexOfFirst { it.branchName == currentActualBranchName }
                 if (newTabIndexInState != -1) {
                     stateService.setSelectedTab(newTabIndexInState)
                 }

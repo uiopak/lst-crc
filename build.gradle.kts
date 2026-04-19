@@ -67,7 +67,7 @@ configurations.all {
     resolutionStrategy {
         // Force a non-vulnerable version of commons-io, overriding the old version brought in by zt-exec.
         force(libs.commons.io)
-        // Force a non-vulnerable commons-lang3 version for transitive test dependencies (e.g. video-recorder-junit5).
+        // Force a non-vulnerable commons-lang3 version for transitive test dependencies (e.g., video-recorder-junit5).
         force(libs.commons.lang3)
 
         // Substitute the vulnerable log4j: log4j with a safe SLF4J bridge.
@@ -353,15 +353,15 @@ tasks {
             fun findMatchingProcesses(): List<Pair<String, String>> {
                 val osName = System.getProperty("os.name").lowercase()
                 return if (osName.contains("windows")) {
-                    val script = """
-                        ${'$'}regex = 'runIdeForUiTests|plugins_runIdeForUiTests|robot-server\.port=8082|shared-ui-ide'
+                    val script = $$"""
+                        $regex = 'runIdeForUiTests|plugins_runIdeForUiTests|robot-server\.port=8082|shared-ui-ide'
                         Get-CimInstance Win32_Process |
                             Where-Object {
-                                ${'$'}_.CommandLine -and
-                                ${'$'}_.Name -ne 'powershell.exe' -and
-                                ${'$'}_.CommandLine -match ${'$'}regex
+                                $_.CommandLine -and
+                                $_.Name -ne 'powershell.exe' -and
+                                $_.CommandLine -match $regex
                             } |
-                            ForEach-Object { ${'$'}_.ProcessId.ToString() + '|' + ${'$'}_.Name }
+                            ForEach-Object { $_.ProcessId.ToString() + '|' + $_.Name }
                     """.trimIndent()
 
                     runCommand("powershell", "-NoProfile", "-Command", script)

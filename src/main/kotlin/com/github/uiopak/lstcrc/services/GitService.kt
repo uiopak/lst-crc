@@ -24,6 +24,7 @@ import git4idea.commands.GitLineHandler
 import git4idea.repo.GitRepository
 import git4idea.repo.GitRepositoryManager
 import git4idea.util.GitFileUtils
+import kotlinx.collections.immutable.toImmutableList
 import kotlinx.collections.immutable.toImmutableMap
 import java.util.concurrent.CompletableFuture
 
@@ -211,7 +212,7 @@ class GitService(private val project: Project) {
                                 try {
                                     val changes = GitChangeUtils.getDiffWithWorkingDir(
                                         project, repo.root, target, null, false, false
-                                    )
+                                    ).toImmutableList()
                                     allChanges.addAll(changes)
                                 } catch (e: VcsException) {
                                     logger.warn(
@@ -259,6 +260,7 @@ class GitService(private val project: Project) {
 
     private fun runBranchList(root: VirtualFile, includeRemoteBranches: Boolean): List<String> {
         val handler = GitLineHandler(project, root, GitCommand.BRANCH)
+        @Suppress("UsePropertyAccessSyntax")
         handler.setSilent(true)
         handler.addParameters("--list")
         handler.addParameters("--format=%(refname:short)")
@@ -304,6 +306,7 @@ class GitService(private val project: Project) {
 
     private fun loadUntrackedChanges(repo: GitRepository): List<Change> {
         val handler = GitLineHandler(project, repo.root, GitCommand.LS_FILES)
+        @Suppress("UsePropertyAccessSyntax")
         handler.setSilent(true)
         handler.addParameters("--others", "--exclude-standard", "-z")
         val result = Git.getInstance().runCommand(handler)
@@ -351,7 +354,7 @@ class GitService(private val project: Project) {
 
 
 
-    suspend fun getFileContentForRevision(revision: String, file: VirtualFile): String? {
+    fun getFileContentForRevision(revision: String, file: VirtualFile): String? {
         val repository = getRepositoryForFile(file)
 
         if (repository == null) {
