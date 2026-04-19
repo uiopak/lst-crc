@@ -41,6 +41,15 @@ import java.util.concurrent.atomic.AtomicReference
 @Service(Service.Level.PROJECT)
 class ToolWindowStateService(private val project: Project, val coroutineScope: CoroutineScope) : PersistentStateComponent<ToolWindowState> {
 
+    private data class LoadDataContext(
+        val tabInfo: TabInfo?,
+        val profileName: String,
+        val isLoadingHead: Boolean,
+        val includeHeadInScopes: Boolean,
+        val diffDataService: ProjectActiveDiffDataService,
+        val resultFuture: CompletableFuture<Unit>
+    )
+
     private var myState = ToolWindowState()
     private val logger = thisLogger()
     private val activeRefresh = AtomicReference<CompletableFuture<Unit>?>(null)
@@ -130,58 +139,104 @@ class ToolWindowStateService(private val project: Project, val coroutineScope: C
         val diffDataService = project.service<ProjectActiveDiffDataService>()
         val resultFuture = CompletableFuture<Unit>()
 
-        val includeHeadInScopes = ToolWindowSettingsProvider.isIncludeHeadInScopes()
+        val context = LoadDataContext(
+            tabInfo = tabInfo,
+            profileName = profileName,
+            isLoadingHead = isLoadingHead,
+            includeHeadInScopes = ToolWindowSettingsProvider.isIncludeHeadInScopes(),
+            diffDataService = diffDataService,
+            resultFuture = resultFuture
+        )
 
         gitService.getChanges(tabInfo).whenCompleteAsync { getChangesResult, throwable ->
             ApplicationManager.getApplication().invokeLater {
-                if (project.isDisposed) {
-                    resultFuture.complete(Unit)
-                    return@invokeLater
-                }
-
-                val activeBrowser = getActiveChangesBrowser(project)
-
-                if (throwable != null) {
-                    logger.error("DATA_FLOW: Error loading changes for '$profileName': ${throwable.message}", throwable)
-                    diffDataService.clearActiveDiff()
-                    activeBrowser?.displayChanges(null, profileName)
-                    resultFuture.completeExceptionally(throwable)
-                    return@invokeLater
-                }
-
-                if (getChangesResult != null) {
-                    val categorizedChanges = getChangesResult.categorizedChanges
-                    logger.info("DATA_FLOW: Successfully loaded ${categorizedChanges.allChanges.size} changes for '$profileName'.")
-
-                    // Handle any branches that were not found during the fetch.
-                    if (getChangesResult.failures.isNotEmpty() && tabInfo != null) {
-                        handleBranchFailures(tabInfo, getChangesResult.failures)
-                    }
-
-                    if (!isLoadingHead || includeHeadInScopes) {
-                        logger.debug("DATA_FLOW: Updating ProjectActiveDiffDataService for '$profileName'.")
-                        diffDataService.updateActiveDiff(
-                            profileName,
-                            categorizedChanges.createdFiles,
-                            categorizedChanges.modifiedFiles,
-                            categorizedChanges.movedFiles,
-                            categorizedChanges.deletedFiles,
-                            categorizedChanges.comparisonContext
-                        )
-                    } else {
-                        logger.debug("DATA_FLOW: On HEAD tab with 'Include HEAD in Scopes' disabled. Clearing ProjectActiveDiffDataService.")
-                        diffDataService.clearActiveDiff()
-                    }
-                    activeBrowser?.displayChanges(categorizedChanges, profileName)
-                } else {
-                    logger.warn("DATA_FLOW: Changes for '$profileName' returned as null. Clearing data and UI.")
-                    diffDataService.clearActiveDiff()
-                    activeBrowser?.displayChanges(null, profileName)
-                }
-                resultFuture.complete(Unit)
+                handleLoadDataResult(context, getChangesResult, throwable)
             }
         }
         return resultFuture
+    }
+
+    private fun handleLoadDataResult(
+        context: LoadDataContext,
+        getChangesResult: GetChangesResult?,
+        throwable: Throwable?
+    ) {
+        if (project.isDisposed) {
+            context.resultFuture.complete(Unit)
+            return
+        }
+
+        val activeBrowser = getActiveChangesBrowser(project)
+        if (throwable != null) {
+            handleLoadDataFailure(context, throwable, activeBrowser)
+            return
+        }
+
+        if (getChangesResult == null) {
+            handleMissingChangesResult(context, activeBrowser)
+            return
+        }
+
+        applyLoadedChanges(context, activeBrowser, getChangesResult)
+        context.resultFuture.complete(Unit)
+    }
+
+    private fun handleLoadDataFailure(
+        context: LoadDataContext,
+        throwable: Throwable,
+        activeBrowser: LstCrcChangesBrowser?
+    ) {
+        logger.error("DATA_FLOW: Error loading changes for '${context.profileName}': ${throwable.message}", throwable)
+        context.diffDataService.clearActiveDiff()
+        activeBrowser?.displayChanges(null, context.profileName)
+        context.resultFuture.completeExceptionally(throwable)
+    }
+
+    private fun handleMissingChangesResult(
+        context: LoadDataContext,
+        activeBrowser: LstCrcChangesBrowser?
+    ) {
+        logger.warn("DATA_FLOW: Changes for '${context.profileName}' returned as null. Clearing data and UI.")
+        context.diffDataService.clearActiveDiff()
+        activeBrowser?.displayChanges(null, context.profileName)
+        context.resultFuture.complete(Unit)
+    }
+
+    private fun applyLoadedChanges(
+        context: LoadDataContext,
+        activeBrowser: LstCrcChangesBrowser?,
+        getChangesResult: GetChangesResult
+    ) {
+        val categorizedChanges = getChangesResult.categorizedChanges
+        logger.info("DATA_FLOW: Successfully loaded ${categorizedChanges.allChanges.size} changes for '${context.profileName}'.")
+
+        if (getChangesResult.failures.isNotEmpty() && context.tabInfo != null) {
+            handleBranchFailures(context.tabInfo, getChangesResult.failures)
+        }
+
+        updateActiveDiffData(context, categorizedChanges)
+        activeBrowser?.displayChanges(categorizedChanges, context.profileName)
+    }
+
+    private fun updateActiveDiffData(
+        context: LoadDataContext,
+        categorizedChanges: CategorizedChanges
+    ) {
+        if (!context.isLoadingHead || context.includeHeadInScopes) {
+            logger.debug("DATA_FLOW: Updating ProjectActiveDiffDataService for '${context.profileName}'.")
+            context.diffDataService.updateActiveDiff(
+                context.profileName,
+                categorizedChanges.createdFiles,
+                categorizedChanges.modifiedFiles,
+                categorizedChanges.movedFiles,
+                categorizedChanges.deletedFiles,
+                categorizedChanges.comparisonContext
+            )
+            return
+        }
+
+        logger.debug("DATA_FLOW: On HEAD tab with 'Include HEAD in Scopes' disabled. Clearing ProjectActiveDiffDataService.")
+        context.diffDataService.clearActiveDiff()
     }
 
     /**

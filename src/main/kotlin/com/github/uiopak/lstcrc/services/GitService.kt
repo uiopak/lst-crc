@@ -74,6 +74,24 @@ class GitService(private val project: Project) {
 
     private val logger = thisLogger()
 
+    private data class BranchSnapshotTarget(
+        val repository: GitRepository?,
+        val root: VirtualFile
+    )
+
+    private data class ChangeLoadContext(
+        val allChanges: MutableList<Change> = mutableListOf(),
+        val comparisonContext: MutableMap<String, String> = mutableMapOf(),
+        val failures: MutableMap<GitRepository, String> = mutableMapOf()
+    )
+
+    private data class ChangeBuckets(
+        val createdFiles: MutableList<VirtualFile> = mutableListOf(),
+        val modifiedFiles: MutableList<VirtualFile> = mutableListOf(),
+        val movedFiles: MutableList<VirtualFile> = mutableListOf(),
+        val deletedFiles: MutableList<VirtualFile> = mutableListOf()
+    )
+
     internal fun getRepositoryForFile(file: VirtualFile): GitRepository? {
         val repositoryManager = GitRepositoryManager.getInstance(project)
         return repositoryManager.getRepositoryForFile(file)
@@ -120,38 +138,17 @@ class GitService(private val project: Project) {
     }
 
     fun getBranchSnapshot(repository: GitRepository?): BranchSnapshot {
-        val targetRepository = repository ?: getPrimaryRepository()
-        val branchRoot = targetRepository?.root ?: project.basePath
-            ?.let { LocalFileSystem.getInstance().refreshAndFindFileByPath(it) }
-            ?.takeIf { it.findChild(".git") != null }
-
-        if (branchRoot == null) {
+        val target = resolveBranchSnapshotTarget(repository)
+        if (target == null) {
             logger.debug("getBranchSnapshot() called with no repository available.")
             return BranchSnapshot(emptyList(), emptyList())
         }
 
-        if (targetRepository == null) {
-            logger.info("getBranchSnapshot() is using the project base path fallback: ${branchRoot.path}")
-        } else {
-            targetRepository.update()
-        }
-
-        val localBranches = runBranchList(branchRoot, includeRemoteBranches = false)
-        val remoteBranches = runBranchList(branchRoot, includeRemoteBranches = true)
-
-        val snapshot = if (localBranches.isNotEmpty() || remoteBranches.isNotEmpty()) {
-            BranchSnapshot(localBranches, remoteBranches)
-        } else if (targetRepository != null) {
-            BranchSnapshot(
-                targetRepository.branches.localBranches.map { it.name },
-                targetRepository.branches.remoteBranches.map { it.name }
-            )
-        } else {
-            BranchSnapshot(emptyList(), emptyList())
-        }
+        updateBranchSnapshotRepository(target)
+        val snapshot = loadBranchSnapshot(target)
 
         logger.info(
-            "Loaded branch snapshot for repo '${branchRoot.name}': " +
+            "Loaded branch snapshot for repo '${target.root.name}': " +
                 "${snapshot.localBranches.size} local, ${snapshot.remoteBranches.size} remote branches."
         )
         return snapshot
@@ -174,78 +171,7 @@ class GitService(private val project: Project) {
         object : Task.Backgroundable(project, LstCrcBundle.message("git.task.loading.changes")) {
             override fun run(indicator: ProgressIndicator) {
                 try {
-                    val allChanges = mutableListOf<Change>()
-                    val allCreatedFiles = mutableListOf<VirtualFile>()
-                    val allModifiedFiles = mutableListOf<VirtualFile>()
-                    val allMovedFiles = mutableListOf<VirtualFile>()
-                    val allDeletedFiles = mutableListOf<VirtualFile>()
-                    val comparisonContext = mutableMapOf<String, String>()
-                    val failures = mutableMapOf<GitRepository, String>()
-
-                    if (isLoadingHead) {
-                        logger.debug("Using direct Git status for HEAD across all repositories.")
-                        repositories.forEach { repo ->
-                            allChanges.addAll(loadLocalChanges(repo))
-                            comparisonContext[repo.root.path] = "HEAD"
-                        }
-                    } else {
-                        val primaryRevision = tabInfo.branchName
-                        val overrides = tabInfo.comparisonMap.toImmutableMap()
-
-                        for (repo in repositories) {
-                            indicator.text = "Checking repository: ${repo.root.name}"
-                            // Use the override if it exists, otherwise use the tab's primary revision.
-                            val target: String = overrides[repo.root.path] ?: primaryRevision
-                            comparisonContext[repo.root.path] = target
-                            logger.debug("Repo '${repo.root.path}': using target '$target'")
-
-                            // If repo is fresh or target is HEAD, compare against local changes.
-                            if (repo.isFresh || target == "HEAD") {
-                                if (repo.isFresh) {
-                                    logger.info("Repo '${repo.root.name}' is fresh. Falling back to comparing against HEAD for target '$target'.")
-                                } else { // target == "HEAD"
-                                    logger.debug("Repo '${repo.root.name}' is targeting HEAD. Comparing against local changes.")
-                                }
-
-                                allChanges.addAll(loadLocalChanges(repo))
-                            } else {
-                                try {
-                                    val changes = GitChangeUtils.getDiffWithWorkingDir(
-                                        project, repo.root, target, null, false, false
-                                    ).toImmutableList()
-                                    allChanges.addAll(changes)
-                                } catch (e: VcsException) {
-                                    logger.warn(
-                                        "git diff failed for repo '${repo.root.name}' against target '$target'. " +
-                                                "Assuming revision is invalid. Error: ${e.message}"
-                                    )
-                                    failures[repo] = target
-                                }
-                            }
-                        }
-                    }
-
-                    for (change in allChanges) {
-                        when (change.type) {
-                            Change.Type.NEW -> change.afterRevision?.file?.virtualFile?.let { allCreatedFiles.add(it) }
-                            Change.Type.MODIFICATION -> change.afterRevision?.file?.virtualFile?.let { allModifiedFiles.add(it) }
-                            Change.Type.MOVED -> change.afterRevision?.file?.virtualFile?.let { allMovedFiles.add(it) }
-                            Change.Type.DELETED -> change.beforeRevision?.let { beforeRevision ->
-                                createDeletedVirtualFile(beforeRevision)?.let { allDeletedFiles.add(it) }
-                            }
-                            else -> { /* Other types are ignored */ }
-                        }
-                    }
-
-                    val categorizedChanges = CategorizedChanges(
-                        allChanges.distinct(),
-                        allCreatedFiles.distinct(),
-                        allModifiedFiles.distinct(),
-                        allMovedFiles.distinct(),
-                        allDeletedFiles.distinct(),
-                        comparisonContext
-                    )
-                    future.complete(GetChangesResult(categorizedChanges, failures))
+                    future.complete(loadChangesResult(repositories, tabInfo, indicator, isLoadingHead))
 
                 } catch (e: Exception) {
                     // This will now only catch truly unexpected errors.
@@ -256,6 +182,140 @@ class GitService(private val project: Project) {
         }.queue()
 
         return future
+    }
+
+    private fun resolveBranchSnapshotTarget(repository: GitRepository?): BranchSnapshotTarget? {
+        val targetRepository = repository ?: getPrimaryRepository()
+        val branchRoot = targetRepository?.root ?: project.basePath
+            ?.let { LocalFileSystem.getInstance().refreshAndFindFileByPath(it) }
+            ?.takeIf { it.findChild(".git") != null }
+
+        return branchRoot?.let { BranchSnapshotTarget(targetRepository, it) }
+    }
+
+    private fun updateBranchSnapshotRepository(target: BranchSnapshotTarget) {
+        val repository = target.repository
+        if (repository == null) {
+            logger.info("getBranchSnapshot() is using the project base path fallback: ${target.root.path}")
+            return
+        }
+
+        repository.update()
+    }
+
+    private fun loadBranchSnapshot(target: BranchSnapshotTarget): BranchSnapshot {
+        val localBranches = runBranchList(target.root, includeRemoteBranches = false)
+        val remoteBranches = runBranchList(target.root, includeRemoteBranches = true)
+        if (localBranches.isNotEmpty() || remoteBranches.isNotEmpty()) {
+            return BranchSnapshot(localBranches, remoteBranches)
+        }
+
+        val repository = target.repository ?: return BranchSnapshot(emptyList(), emptyList())
+        return BranchSnapshot(
+            repository.branches.localBranches.map { it.name },
+            repository.branches.remoteBranches.map { it.name }
+        )
+    }
+
+    private fun loadChangesResult(
+        repositories: List<GitRepository>,
+        tabInfo: TabInfo?,
+        indicator: ProgressIndicator,
+        isLoadingHead: Boolean
+    ): GetChangesResult {
+        val context = ChangeLoadContext()
+        if (isLoadingHead) {
+            loadHeadChanges(repositories, context)
+        } else {
+            loadTabChanges(repositories, tabInfo ?: error("tabInfo is required when loading non-HEAD changes"), indicator, context)
+        }
+
+        return GetChangesResult(buildCategorizedChanges(context.allChanges, context.comparisonContext), context.failures)
+    }
+
+    private fun loadHeadChanges(repositories: List<GitRepository>, context: ChangeLoadContext) {
+        logger.debug("Using direct Git status for HEAD across all repositories.")
+        repositories.forEach { repo ->
+            context.allChanges.addAll(loadLocalChanges(repo))
+            context.comparisonContext[repo.root.path] = "HEAD"
+        }
+    }
+
+    private fun loadTabChanges(
+        repositories: List<GitRepository>,
+        tabInfo: TabInfo,
+        indicator: ProgressIndicator,
+        context: ChangeLoadContext
+    ) {
+        val primaryRevision = tabInfo.branchName
+        val overrides = tabInfo.comparisonMap.toImmutableMap()
+
+        for (repo in repositories) {
+            indicator.text = "Checking repository: ${repo.root.name}"
+            val target = overrides[repo.root.path] ?: primaryRevision
+            context.comparisonContext[repo.root.path] = target
+            logger.debug("Repo '${repo.root.path}': using target '$target'")
+            context.allChanges.addAll(loadChangesForTarget(repo, target, context.failures))
+        }
+    }
+
+    private fun loadChangesForTarget(
+        repo: GitRepository,
+        target: String,
+        failures: MutableMap<GitRepository, String>
+    ): List<Change> {
+        if (repo.isFresh || target == "HEAD") {
+            logLocalComparisonFallback(repo, target)
+            return loadLocalChanges(repo)
+        }
+
+        return try {
+            GitChangeUtils.getDiffWithWorkingDir(project, repo.root, target, null, false, false).toImmutableList()
+        } catch (e: VcsException) {
+            logger.warn(
+                "git diff failed for repo '${repo.root.name}' against target '$target'. " +
+                    "Assuming revision is invalid. Error: ${e.message}"
+            )
+            failures[repo] = target
+            emptyList()
+        }
+    }
+
+    private fun logLocalComparisonFallback(repo: GitRepository, target: String) {
+        if (repo.isFresh) {
+            logger.info("Repo '${repo.root.name}' is fresh. Falling back to comparing against HEAD for target '$target'.")
+            return
+        }
+
+        logger.debug("Repo '${repo.root.name}' is targeting HEAD. Comparing against local changes.")
+    }
+
+    private fun buildCategorizedChanges(
+        allChanges: List<Change>,
+        comparisonContext: Map<String, String>
+    ): CategorizedChanges {
+        val buckets = ChangeBuckets()
+        allChanges.forEach { change -> categorizeChange(change, buckets) }
+
+        return CategorizedChanges(
+            allChanges.distinct(),
+            buckets.createdFiles.distinct(),
+            buckets.modifiedFiles.distinct(),
+            buckets.movedFiles.distinct(),
+            buckets.deletedFiles.distinct(),
+            comparisonContext
+        )
+    }
+
+    private fun categorizeChange(change: Change, buckets: ChangeBuckets) {
+        when (change.type) {
+            Change.Type.NEW -> change.afterRevision?.file?.virtualFile?.let { buckets.createdFiles.add(it) }
+            Change.Type.MODIFICATION -> change.afterRevision?.file?.virtualFile?.let { buckets.modifiedFiles.add(it) }
+            Change.Type.MOVED -> change.afterRevision?.file?.virtualFile?.let { buckets.movedFiles.add(it) }
+            Change.Type.DELETED -> change.beforeRevision?.let { beforeRevision ->
+                createDeletedVirtualFile(beforeRevision)?.let { buckets.deletedFiles.add(it) }
+            }
+        }
     }
 
     private fun runBranchList(root: VirtualFile, includeRemoteBranches: Boolean): List<String> {

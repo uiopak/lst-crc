@@ -49,65 +49,64 @@ class RepoNodeRenderer(
         // First, let the standard renderer do its job.
         super.getTreeCellRendererComponent(tree, value, selected, expanded, leaf, row, hasFocus)
 
-        val repositories = gitService.getRepositories()
-        val isMultiRepo = repositories.size > 1
+        val node = value as? ChangesBrowserNode<*> ?: return this
 
-        val shouldShowContext = if (isMultiRepo) {
+        val targetRevision = resolveTargetRevision(tree, node) ?: return this
+        appendContextText(targetRevision)
+
+        return this
+    }
+
+    private fun resolveTargetRevision(tree: JTree, node: ChangesBrowserNode<*>): String? {
+        val isMultiRepo = gitService.getRepositories().size > 1
+        if (!shouldShowContext(isMultiRepo)) {
+            return null
+        }
+
+        return if (isMultiRepo) {
+            resolveMultiRepoTargetRevision(node)
+        } else {
+            resolveSingleRepoTargetRevision(tree, node)
+        }
+    }
+
+    private fun shouldShowContext(isMultiRepo: Boolean): Boolean {
+        return if (isMultiRepo) {
             ToolWindowSettingsProvider.isShowContextForMultiRepoEnabled()
         } else {
             ToolWindowSettingsProvider.isShowContextForSingleRepoEnabled()
         }
+    }
 
-        if (!shouldShowContext) return this
+    private fun resolveMultiRepoTargetRevision(node: ChangesBrowserNode<*>): String? {
+        val repositoryNode = node as? RepositoryChangesBrowserNode ?: return null
+        val repository = repositoryNode.userObject as? GitRepository ?: return null
+        return diffDataService.activeComparisonContext[repository.root.path]
+    }
 
-        val node = value as? ChangesBrowserNode<*> ?: return this
-
-        if (isMultiRepo) {
-            // Case 1: Multi-repo view, append to the repository node if grouping is active.
-            if (node is RepositoryChangesBrowserNode) {
-                val repository = node.userObject as? GitRepository ?: return this
-                val comparisonContext = diffDataService.activeComparisonContext
-                val targetRevision = comparisonContext[repository.root.path]
-
-                if (targetRevision != null) {
-                    appendContextText(targetRevision)
-                }
-            }
-        } else {
-            // Case 2: Single-repo view. Annotate the top-level node if it's unique.
-            val groupingSupport = (tree as ChangesTree).groupingSupport
-            val parentNode = node.parent
-            val rootNode = tree.model.root
-
-            // Check if the node is a unique, top-level node under the invisible root.
-            if (parentNode != null && parentNode == rootNode && parentNode.childCount == 1) {
-                var shouldAnnotate = false
-                when (node) {
-                    is ChangesBrowserModuleNode if groupingSupport[ChangesGroupingSupport.MODULE_GROUPING] -> {
-                        shouldAnnotate = true
-                    }
-
-                    is ChangesBrowserFilePathNode if groupingSupport.isDirectory && !groupingSupport[ChangesGroupingSupport.MODULE_GROUPING] -> {
-                        shouldAnnotate = true
-                    }
-
-                    is ChangesBrowserChangeListNode if groupingSupport.isNone -> {
-                        shouldAnnotate = true
-                    }
-                }
-
-                if (shouldAnnotate) {
-                    val repository = gitService.getPrimaryRepository() ?: return this
-                    val comparisonContext = diffDataService.activeComparisonContext
-                    val targetRevision = comparisonContext[repository.root.path]
-
-                    if (targetRevision != null) {
-                        appendContextText(targetRevision)
-                    }
-                }
-            }
+    private fun resolveSingleRepoTargetRevision(tree: JTree, node: ChangesBrowserNode<*>): String? {
+        if (!shouldAnnotateSingleRepoNode(tree, node)) {
+            return null
         }
 
-        return this
+        val repository = gitService.getPrimaryRepository() ?: return null
+        return diffDataService.activeComparisonContext[repository.root.path]
+    }
+
+    private fun shouldAnnotateSingleRepoNode(tree: JTree, node: ChangesBrowserNode<*>): Boolean {
+        val changesTree = tree as? ChangesTree ?: return false
+        val groupingSupport = changesTree.groupingSupport
+        val parentNode = node.parent ?: return false
+        val rootNode = tree.model.root
+        if (parentNode != rootNode || parentNode.childCount != 1) {
+            return false
+        }
+
+        return when (node) {
+            is ChangesBrowserModuleNode -> groupingSupport[ChangesGroupingSupport.MODULE_GROUPING]
+            is ChangesBrowserFilePathNode -> groupingSupport.isDirectory && !groupingSupport[ChangesGroupingSupport.MODULE_GROUPING]
+            is ChangesBrowserChangeListNode -> groupingSupport.isNone
+            else -> false
+        }
     }
 }

@@ -465,6 +465,16 @@ class LstCrcUiTestBridge {
     fun visualGutterSummaryForSelectedEditor(): String = onEdtResult {
         val project = project()
         val editor = FileEditorManager.getInstance(project).selectedTextEditor ?: return@onEdtResult ""
+        val (highlighterSummary, gutterHighlighterCount) = collectGutterHighlighterSummary(editor)
+        val trackerSummary = buildTrackerSummary(project, editor.document)
+        "$highlighterSummary|highlighters=$gutterHighlighterCount|$trackerSummary"
+    }
+
+    private fun selectedBrowser(): LstCrcChangesBrowser? {
+        return contentManager().selectedContent?.component as? LstCrcChangesBrowser
+    }
+
+    private fun collectGutterHighlighterSummary(editor: com.intellij.openapi.editor.Editor): Pair<String, Int> {
         val document = editor.document
         val highlighterParts = mutableListOf<String>()
         var gutterHighlighterCount = 0
@@ -479,44 +489,54 @@ class LstCrcUiTestBridge {
             highlighterParts.add("$startLine-$endLine:${renderer.javaClass.simpleName}")
         }
 
-        val tracker = LineStatusTrackerManager.getInstance(project).getLineStatusTracker(document)
-        val trackerSummary = if (tracker == null) {
-            "tracker=none"
-        } else {
-            val rangeParts = runCatching {
-                val getRanges = tracker.javaClass.methods.firstOrNull { it.name == "getRanges" && it.parameterCount == 0 }
-                val ranges = (getRanges?.invoke(tracker) as? Collection<*>) ?: emptyList<Any?>()
-                ranges.mapNotNull { range ->
-                    val rangeObject = range ?: return@mapNotNull null
-                    val rangeClass = rangeObject::class.java
-                    val line1 = (rangeClass.methods.firstOrNull { it.name == "getLine1" }?.invoke(rangeObject) as? Number)?.toInt()
-                    val line2 = (rangeClass.methods.firstOrNull { it.name == "getLine2" }?.invoke(rangeObject) as? Number)?.toInt()
-                    val typeValue = (rangeClass.methods.firstOrNull { it.name == "getType" }?.invoke(rangeObject) as? Number)?.toInt()
-                    val typeName = when (typeValue) {
-                        com.intellij.openapi.vcs.ex.Range.MODIFIED.toInt() -> "MODIFIED"
-                        com.intellij.openapi.vcs.ex.Range.INSERTED.toInt() -> "INSERTED"
-                        com.intellij.openapi.vcs.ex.Range.DELETED.toInt() -> "DELETED"
-                        else -> "UNKNOWN"
-                    }
-                    if (line1 != null && line2 != null) "$line1-$line2:$typeName" else null
-                }
-            }.getOrDefault(emptyList())
-            val visible = runCatching {
-                val mode = tracker.javaClass.methods.firstOrNull { it.name == "getMode" && it.parameterCount == 0 }?.invoke(tracker)
-                if (mode == null) {
-                    null
-                } else {
-                    mode::class.java.methods.firstOrNull { it.name == "isVisible" && it.parameterCount == 0 }?.invoke(mode)
-                }
-            }.getOrNull() ?: "n/a"
-            "${tracker.javaClass.simpleName}|visible=$visible|ranges=${rangeParts.joinToString(",")}"
-        }
-
-        "${highlighterParts.joinToString(",")}|highlighters=$gutterHighlighterCount|$trackerSummary"
+        return highlighterParts.joinToString(",") to gutterHighlighterCount
     }
 
-    private fun selectedBrowser(): LstCrcChangesBrowser? {
-        return contentManager().selectedContent?.component as? LstCrcChangesBrowser
+    private fun buildTrackerSummary(project: Project, document: com.intellij.openapi.editor.Document): String {
+        val tracker = LineStatusTrackerManager.getInstance(project).getLineStatusTracker(document) ?: return "tracker=none"
+        val rangeParts = extractTrackerRangeParts(tracker)
+        val visible = extractTrackerVisibility(tracker)
+        return "${tracker.javaClass.simpleName}|visible=$visible|ranges=${rangeParts.joinToString(",")}"
+    }
+
+    private fun extractTrackerRangeParts(tracker: Any): List<String> {
+        return runCatching {
+            val getRanges = tracker.javaClass.methods.firstOrNull { it.name == "getRanges" && it.parameterCount == 0 }
+            val ranges = (getRanges?.invoke(tracker) as? Collection<*>) ?: emptyList<Any?>()
+            ranges.mapNotNull { range -> range?.let(::describeTrackerRange) }
+        }.getOrDefault(emptyList())
+    }
+
+    private fun describeTrackerRange(rangeObject: Any): String? {
+        val rangeClass = rangeObject::class.java
+        val line1 = (rangeClass.methods.firstOrNull { it.name == "getLine1" }?.invoke(rangeObject) as? Number)?.toInt()
+        val line2 = (rangeClass.methods.firstOrNull { it.name == "getLine2" }?.invoke(rangeObject) as? Number)?.toInt()
+        if (line1 == null || line2 == null) {
+            return null
+        }
+
+        val typeValue = (rangeClass.methods.firstOrNull { it.name == "getType" }?.invoke(rangeObject) as? Number)?.toInt()
+        return "$line1-$line2:${trackerRangeTypeName(typeValue)}"
+    }
+
+    private fun trackerRangeTypeName(typeValue: Int?): String {
+        return when (typeValue) {
+            com.intellij.openapi.vcs.ex.Range.MODIFIED.toInt() -> "MODIFIED"
+            com.intellij.openapi.vcs.ex.Range.INSERTED.toInt() -> "INSERTED"
+            com.intellij.openapi.vcs.ex.Range.DELETED.toInt() -> "DELETED"
+            else -> "UNKNOWN"
+        }
+    }
+
+    private fun extractTrackerVisibility(tracker: Any): String {
+        return runCatching {
+            val mode = tracker.javaClass.methods.firstOrNull { it.name == "getMode" && it.parameterCount == 0 }?.invoke(tracker)
+            if (mode == null) {
+                null
+            } else {
+                mode::class.java.methods.firstOrNull { it.name == "isVisible" && it.parameterCount == 0 }?.invoke(mode)
+            }
+        }.getOrNull()?.toString() ?: "n/a"
     }
 
     private fun projectDir(project: Project) = project.guessProjectDir()
