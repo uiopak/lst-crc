@@ -5,7 +5,6 @@ import com.github.uiopak.lstcrc.messaging.DIFF_DATA_CHANGED_TOPIC
 import com.github.uiopak.lstcrc.services.GitService
 import com.github.uiopak.lstcrc.services.ProjectActiveDiffDataService
 import com.github.uiopak.lstcrc.toolWindow.ToolWindowSettingsProvider
-import com.intellij.ide.util.PropertiesComponent
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.EDT
@@ -24,9 +23,11 @@ import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.util.text.StringUtil
+import com.intellij.openapi.vcs.FileStatusManager
 import com.intellij.openapi.vcs.VcsException
 import com.intellij.openapi.vcs.ex.LineStatusTracker
 import com.intellij.openapi.vcs.ex.LocalLineStatusTracker
+import com.intellij.openapi.vcs.ex.PartialLocalLineStatusTracker
 import com.intellij.openapi.vcs.ex.SimpleLocalLineStatusTracker
 import com.intellij.openapi.vcs.impl.LineStatusTrackerManager
 import kotlinx.coroutines.CoroutineScope
@@ -38,7 +39,6 @@ import java.util.concurrent.ConcurrentHashMap
 @Service(Service.Level.PROJECT)
 class VisualTrackerManager(private val project: Project, private val coroutineScope: CoroutineScope) : Disposable {
     private val logger = thisLogger()
-    private val properties = PropertiesComponent.getInstance()
     private val visualTrackers = ConcurrentHashMap<Document, SimpleLocalLineStatusTracker>()
     private val installedHighlighters = ConcurrentHashMap<Document, MutableList<RangeHighlighter>>()
 
@@ -72,15 +72,27 @@ class VisualTrackerManager(private val project: Project, private val coroutineSc
     }
 
     private fun isOurGutterMarkersEnabled(): Boolean =
-        properties.getBoolean(ToolWindowSettingsProvider.APP_ENABLE_GUTTER_MARKERS_KEY, ToolWindowSettingsProvider.DEFAULT_ENABLE_GUTTER_MARKERS)
+        ToolWindowSettingsProvider.isGutterMarkersEnabled()
 
     /**
-     * Re-evaluates all active native trackers to decide if we should Intercept or Yield.
-     * Handles transitions:
-     * - Native -> Visual (Create Visual, Hide Native)
-     * - Visual -> Visual (Update Content)
-     * - Visual -> Native (Dispose Visual, Restore Native)
+     * Called from settings when the user toggles any gutter marker feature.
+     * Re-evaluates all trackers (to install/remove visual overlays) and
+     * triggers a global file status refresh so the IDE updates its UI.
      */
+    fun settingsChanged() {
+        logger.info("VISUAL_TRACKER: Gutter marker setting changed. Refreshing trackers and file statuses.")
+        refreshAllTrackers()
+        refreshFileStatuses()
+    }
+
+    private fun refreshFileStatuses() {
+        if (project.isDisposed) return
+        ApplicationManager.getApplication().invokeLater {
+            if (project.isDisposed) return@invokeLater
+            FileStatusManager.getInstance(project).fileStatusesChanged()
+        }
+    }
+
     /**
      * Re-evaluates all active native trackers to decide if we should Intercept or Yield.
      * Handles transitions:
@@ -91,27 +103,25 @@ class VisualTrackerManager(private val project: Project, private val coroutineSc
     private fun refreshAllTrackers() {
         if (project.isDisposed) return
 
-        // Must access allEditors on EDT or read lock, but usually safe to access property.
-        // To be safe and because we launch coroutine anyway:
         ApplicationManager.getApplication().invokeLater {
             if (project.isDisposed) return@invokeLater
             
             val editors = EditorFactory.getInstance().allEditors
             val documents = editors.map { it.document }.distinct()
             val trackerManager = LineStatusTrackerManager.getInstance(project)
+            val gutterEnabled = isOurGutterMarkersEnabled()
 
-            // We need to process this on a background thread to avoid checking Git on EDT for every file
             coroutineScope.launch(Dispatchers.Default) {
                 for (doc in documents) {
                      val tracker = trackerManager.getLineStatusTracker(doc)
                      if (tracker is LocalLineStatusTracker<*>) {
-                         val file = tracker.virtualFile
-                         val targetRevision = resolveTargetRevision(file)
+                         // If gutters are globally disabled, always restore native trackers
+                         val targetRevision = if (gutterEnabled) resolveTargetRevision(tracker.virtualFile) else null
 
                          withContext(Dispatchers.EDT) {
                              if (project.isDisposed) return@withContext
                              if (targetRevision != null) {
-                                 performInterception(tracker, targetRevision) // Updates content with specific revision
+                                 performInterception(tracker, targetRevision)
                              } else {
                                  restoreNativeTracker(tracker)
                              }
@@ -126,8 +136,7 @@ class VisualTrackerManager(private val project: Project, private val coroutineSc
         if (!isOurGutterMarkersEnabled()) return
 
         val file = nativeTracker.virtualFile
-        val className = nativeTracker.javaClass.name
-        if (!className.contains("ChangelistsLocalLineStatusTracker")) return
+        if (nativeTracker !is PartialLocalLineStatusTracker) return
 
         coroutineScope.launch(Dispatchers.Default) {
              val targetRevision = resolveTargetRevision(file)
@@ -188,18 +197,12 @@ class VisualTrackerManager(private val project: Project, private val coroutineSc
                 (targetRevision == currentRevision) ||
                 (targetRevision == "HEAD")
 
-        val includeHeadInScopes = properties.getBoolean(
-            ToolWindowSettingsProvider.APP_INCLUDE_HEAD_IN_SCOPES_KEY,
-            ToolWindowSettingsProvider.DEFAULT_INCLUDE_HEAD_IN_SCOPES
-        )
+        val includeHeadInScopes = ToolWindowSettingsProvider.isIncludeHeadInScopes()
 
         if (isTargetSameAsCurrent && !includeHeadInScopes) return null
 
         // Check "Show Gutter for New Files" setting
-        val showForNewFiles = properties.getBoolean(
-            ToolWindowSettingsProvider.APP_ENABLE_GUTTER_FOR_NEW_FILES_KEY,
-            ToolWindowSettingsProvider.DEFAULT_ENABLE_GUTTER_FOR_NEW_FILES
-        )
+        val showForNewFiles = ToolWindowSettingsProvider.isGutterForNewFilesEnabled()
 
         if (!showForNewFiles) {
             val isNewFile = diffDataService.createdFiles.contains(file)

@@ -1,7 +1,10 @@
 package com.github.uiopak.lstcrc.toolWindow
 
+import com.github.uiopak.lstcrc.LstCrcConstants
 import com.github.uiopak.lstcrc.messaging.PLUGIN_SETTINGS_CHANGED_TOPIC
 import com.github.uiopak.lstcrc.messaging.PluginSettingsChangedListener
+import com.github.uiopak.lstcrc.messaging.TOOL_WINDOW_STATE_TOPIC
+import com.github.uiopak.lstcrc.messaging.ToolWindowStateListener
 import com.github.uiopak.lstcrc.resources.LstCrcBundle
 import com.github.uiopak.lstcrc.services.ToolWindowStateService
 import com.github.uiopak.lstcrc.state.ToolWindowState
@@ -55,7 +58,7 @@ class LstCrcStatusWidget(private val project: Project) : StatusBarWidget, Status
 
     companion object {
         const val ID = "LstCrcStatusWidget"
-        private const val GIT_CHANGES_TOOL_WINDOW_ID = "GitChangesView"
+        private const val GIT_CHANGES_TOOL_WINDOW_ID = LstCrcConstants.TOOL_WINDOW_ID
     }
 
     override fun ID(): String = ID
@@ -68,7 +71,7 @@ class LstCrcStatusWidget(private val project: Project) : StatusBarWidget, Status
 
         // The listener's only job is to tell the status bar to re-query our presentation.
         // It does not need to manage any internal state itself.
-        messageBusConnection?.subscribe(ToolWindowStateService.TOPIC, object : ToolWindowStateService.Companion.ToolWindowStateListener {
+        messageBusConnection?.subscribe(TOOL_WINDOW_STATE_TOPIC, object : ToolWindowStateListener {
             override fun stateChanged(newState: ToolWindowState) {
                 this@LstCrcStatusWidget.statusBar?.updateWidget(ID())
             }

@@ -1,5 +1,6 @@
 package com.github.uiopak.lstcrc.testing
 
+import com.github.uiopak.lstcrc.LstCrcConstants
 import com.github.uiopak.lstcrc.messaging.PLUGIN_SETTINGS_CHANGED_TOPIC
 import com.github.uiopak.lstcrc.services.ToolWindowStateService
 import com.github.uiopak.lstcrc.state.TabInfo
@@ -41,17 +42,6 @@ import java.util.concurrent.atomic.AtomicReference
 
 @Service(Service.Level.APP)
 class LstCrcUiTestBridge {
-
-    private companion object {
-        const val APP_SINGLE_CLICK_ACTION_KEY = "com.github.uiopak.lstcrc.app.singleClickAction"
-        const val APP_DOUBLE_CLICK_ACTION_KEY = "com.github.uiopak.lstcrc.app.doubleClickAction"
-        const val APP_MIDDLE_CLICK_ACTION_KEY = "com.github.uiopak.lstcrc.app.middleClickAction"
-        const val APP_DOUBLE_MIDDLE_CLICK_ACTION_KEY = "com.github.uiopak.lstcrc.app.doubleMiddleClickAction"
-        const val APP_RIGHT_CLICK_ACTION_KEY = "com.github.uiopak.lstcrc.app.rightClickAction"
-        const val APP_DOUBLE_RIGHT_CLICK_ACTION_KEY = "com.github.uiopak.lstcrc.app.doubleRightClickAction"
-        const val APP_SHOW_CONTEXT_MENU_KEY = "com.github.uiopak.lstcrc.app.showContextMenu"
-        const val APP_USER_DOUBLE_CLICK_DELAY_KEY = "com.github.uiopak.lstcrc.app.userDoubleClickDelay"
-    }
 
     fun isDumbMode(): Boolean = project().service<com.intellij.openapi.project.DumbService>().isDumb
 
@@ -98,21 +88,21 @@ class LstCrcUiTestBridge {
         val project = project()
         onEdt {
             val properties = PropertiesComponent.getInstance()
-            properties.setValue(APP_SINGLE_CLICK_ACTION_KEY, "OPEN_SOURCE")
-            properties.setValue(APP_DOUBLE_CLICK_ACTION_KEY, "NONE")
-            properties.setValue(APP_MIDDLE_CLICK_ACTION_KEY, "SHOW_IN_PROJECT_TREE")
-            properties.setValue(APP_DOUBLE_MIDDLE_CLICK_ACTION_KEY, "NONE")
-            properties.setValue(APP_RIGHT_CLICK_ACTION_KEY, "OPEN_DIFF")
-            properties.setValue(APP_DOUBLE_RIGHT_CLICK_ACTION_KEY, "NONE")
-            properties.setValue(APP_SHOW_CONTEXT_MENU_KEY, false, false)
-            properties.setValue(APP_USER_DOUBLE_CLICK_DELAY_KEY, "-1")
-            properties.setValue("com.github.uiopak.lstcrc.app.includeHeadInScopes", false, false)
-            properties.setValue("com.github.uiopak.lstcrc.app.enableGutterMarkers", true, true)
-            properties.setValue("com.github.uiopak.lstcrc.app.enableGutterForNewFiles", false, false)
-            properties.setValue("com.github.uiopak.lstcrc.app.showToolWindowTitle", false, false)
-            properties.setValue("com.github.uiopak.lstcrc.app.showWidgetContext", false, false)
-            properties.setValue("com.github.uiopak.lstcrc.app.showContextSingleRepo", true, true)
-            properties.setValue("com.github.uiopak.lstcrc.app.showContextForCommits", false, false)
+            properties.setValue(ToolWindowSettingsProvider.APP_SINGLE_CLICK_ACTION_KEY, ToolWindowSettingsProvider.ACTION_OPEN_SOURCE)
+            properties.setValue(ToolWindowSettingsProvider.APP_DOUBLE_CLICK_ACTION_KEY, ToolWindowSettingsProvider.ACTION_NONE)
+            properties.setValue(ToolWindowSettingsProvider.APP_MIDDLE_CLICK_ACTION_KEY, ToolWindowSettingsProvider.ACTION_SHOW_IN_PROJECT_TREE)
+            properties.setValue(ToolWindowSettingsProvider.APP_DOUBLE_MIDDLE_CLICK_ACTION_KEY, ToolWindowSettingsProvider.ACTION_NONE)
+            properties.setValue(ToolWindowSettingsProvider.APP_RIGHT_CLICK_ACTION_KEY, ToolWindowSettingsProvider.ACTION_OPEN_DIFF)
+            properties.setValue(ToolWindowSettingsProvider.APP_DOUBLE_RIGHT_CLICK_ACTION_KEY, ToolWindowSettingsProvider.ACTION_NONE)
+            properties.setValue(ToolWindowSettingsProvider.APP_SHOW_CONTEXT_MENU_KEY, ToolWindowSettingsProvider.DEFAULT_SHOW_CONTEXT_MENU, false)
+            properties.setValue(ToolWindowSettingsProvider.APP_USER_DOUBLE_CLICK_DELAY_KEY, ToolWindowSettingsProvider.DELAY_OPTION_SYSTEM_DEFAULT.toString())
+            properties.setValue(ToolWindowSettingsProvider.APP_INCLUDE_HEAD_IN_SCOPES_KEY, ToolWindowSettingsProvider.DEFAULT_INCLUDE_HEAD_IN_SCOPES, false)
+            properties.setValue(ToolWindowSettingsProvider.APP_ENABLE_GUTTER_MARKERS_KEY, ToolWindowSettingsProvider.DEFAULT_ENABLE_GUTTER_MARKERS, true)
+            properties.setValue(ToolWindowSettingsProvider.APP_ENABLE_GUTTER_FOR_NEW_FILES_KEY, ToolWindowSettingsProvider.DEFAULT_ENABLE_GUTTER_FOR_NEW_FILES, false)
+            properties.setValue(ToolWindowSettingsProvider.APP_SHOW_TOOL_WINDOW_TITLE_KEY, ToolWindowSettingsProvider.DEFAULT_SHOW_TOOL_WINDOW_TITLE, false)
+            properties.setValue(ToolWindowSettingsProvider.APP_SHOW_WIDGET_CONTEXT_KEY, ToolWindowSettingsProvider.DEFAULT_SHOW_WIDGET_CONTEXT, false)
+            properties.setValue(ToolWindowSettingsProvider.APP_SHOW_CONTEXT_SINGLE_REPO_KEY, ToolWindowSettingsProvider.DEFAULT_SHOW_CONTEXT_SINGLE_REPO, true)
+            properties.setValue(ToolWindowSettingsProvider.APP_SHOW_CONTEXT_FOR_COMMITS_KEY, ToolWindowSettingsProvider.DEFAULT_SHOW_CONTEXT_FOR_COMMITS, false)
 
             val toolWindow = toolWindowOrNull(project) ?: return@onEdt
             toolWindow.component.putClientProperty(ToolWindowContentUi.HIDE_ID_LABEL, "true")
@@ -234,33 +224,33 @@ class LstCrcUiTestBridge {
     ) {
         onEdt {
             val properties = PropertiesComponent.getInstance()
-            singleClickAction?.let { properties.setValue(APP_SINGLE_CLICK_ACTION_KEY, it) }
-            doubleClickAction?.let { properties.setValue(APP_DOUBLE_CLICK_ACTION_KEY, it) }
-            middleClickAction?.let { properties.setValue(APP_MIDDLE_CLICK_ACTION_KEY, it) }
-            doubleMiddleClickAction?.let { properties.setValue(APP_DOUBLE_MIDDLE_CLICK_ACTION_KEY, it) }
-            rightClickAction?.let { properties.setValue(APP_RIGHT_CLICK_ACTION_KEY, it) }
-            doubleRightClickAction?.let { properties.setValue(APP_DOUBLE_RIGHT_CLICK_ACTION_KEY, it) }
-            showContextMenu?.let { properties.setValue(APP_SHOW_CONTEXT_MENU_KEY, it, false) }
+            singleClickAction?.let { properties.setValue(ToolWindowSettingsProvider.APP_SINGLE_CLICK_ACTION_KEY, it) }
+            doubleClickAction?.let { properties.setValue(ToolWindowSettingsProvider.APP_DOUBLE_CLICK_ACTION_KEY, it) }
+            middleClickAction?.let { properties.setValue(ToolWindowSettingsProvider.APP_MIDDLE_CLICK_ACTION_KEY, it) }
+            doubleMiddleClickAction?.let { properties.setValue(ToolWindowSettingsProvider.APP_DOUBLE_MIDDLE_CLICK_ACTION_KEY, it) }
+            rightClickAction?.let { properties.setValue(ToolWindowSettingsProvider.APP_RIGHT_CLICK_ACTION_KEY, it) }
+            doubleRightClickAction?.let { properties.setValue(ToolWindowSettingsProvider.APP_DOUBLE_RIGHT_CLICK_ACTION_KEY, it) }
+            showContextMenu?.let { properties.setValue(ToolWindowSettingsProvider.APP_SHOW_CONTEXT_MENU_KEY, it, false) }
         }
     }
 
     fun clickSettingsSnapshot(): String = onEdtResult {
         val properties = PropertiesComponent.getInstance()
         listOf(
-            properties.getValue(APP_SINGLE_CLICK_ACTION_KEY, ""),
-            properties.getValue(APP_DOUBLE_CLICK_ACTION_KEY, ""),
-            properties.getValue(APP_MIDDLE_CLICK_ACTION_KEY, ""),
-            properties.getValue(APP_DOUBLE_MIDDLE_CLICK_ACTION_KEY, ""),
-            properties.getValue(APP_RIGHT_CLICK_ACTION_KEY, ""),
-            properties.getValue(APP_DOUBLE_RIGHT_CLICK_ACTION_KEY, ""),
-            PropertiesComponent.getInstance().getBoolean(APP_SHOW_CONTEXT_MENU_KEY, false).toString(),
-            properties.getValue(APP_USER_DOUBLE_CLICK_DELAY_KEY, "")
+            properties.getValue(ToolWindowSettingsProvider.APP_SINGLE_CLICK_ACTION_KEY, ""),
+            properties.getValue(ToolWindowSettingsProvider.APP_DOUBLE_CLICK_ACTION_KEY, ""),
+            properties.getValue(ToolWindowSettingsProvider.APP_MIDDLE_CLICK_ACTION_KEY, ""),
+            properties.getValue(ToolWindowSettingsProvider.APP_DOUBLE_MIDDLE_CLICK_ACTION_KEY, ""),
+            properties.getValue(ToolWindowSettingsProvider.APP_RIGHT_CLICK_ACTION_KEY, ""),
+            properties.getValue(ToolWindowSettingsProvider.APP_DOUBLE_RIGHT_CLICK_ACTION_KEY, ""),
+            PropertiesComponent.getInstance().getBoolean(ToolWindowSettingsProvider.APP_SHOW_CONTEXT_MENU_KEY, false).toString(),
+            properties.getValue(ToolWindowSettingsProvider.APP_USER_DOUBLE_CLICK_DELAY_KEY, "")
         ).joinToString("|")
     }
 
     fun setDoubleClickDelayMs(delay: Int) {
         onEdt {
-            PropertiesComponent.getInstance().setValue(APP_USER_DOUBLE_CLICK_DELAY_KEY, delay.toString())
+            PropertiesComponent.getInstance().setValue(ToolWindowSettingsProvider.APP_USER_DOUBLE_CLICK_DELAY_KEY, delay.toString())
         }
     }
 
@@ -591,7 +581,7 @@ class LstCrcUiTestBridge {
 
     private fun toolWindow(): ToolWindow = toolWindowOrNull(project()) ?: error("GitChangesView tool window is not available")
 
-    private fun toolWindowOrNull(project: Project): ToolWindow? = ToolWindowManager.getInstance(project).getToolWindow("GitChangesView")
+    private fun toolWindowOrNull(project: Project): ToolWindow? = ToolWindowManager.getInstance(project).getToolWindow(LstCrcConstants.TOOL_WINDOW_ID)
 
     private fun project(): Project = ProjectManager.getInstance().openProjects.firstOrNull()
         ?: error("No open project available for LST-CRC Starter UI test bridge")

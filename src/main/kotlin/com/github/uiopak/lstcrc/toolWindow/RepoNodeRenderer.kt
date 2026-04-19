@@ -24,6 +24,9 @@ class RepoNodeRenderer(
     isHighlightProblems: Boolean
 ) : ChangesTreeCellRenderer(ChangesBrowserNodeRenderer(project, isShowFlatten, isHighlightProblems)) {
 
+    private val gitService = project.service<GitService>()
+    private val diffDataService = project.service<ProjectActiveDiffDataService>()
+
     private fun appendContextText(targetRevision: String) {
         val showForCommits = ToolWindowSettingsProvider.isShowContextForCommitsEnabled()
         if (RevisionUtils.isCommitHash(targetRevision) && !showForCommits) {
@@ -46,7 +49,6 @@ class RepoNodeRenderer(
         // First, let the standard renderer do its job.
         super.getTreeCellRendererComponent(tree, value, selected, expanded, leaf, row, hasFocus)
 
-        val gitService = project.service<GitService>()
         val repositories = gitService.getRepositories()
         val isMultiRepo = repositories.size > 1
 
@@ -58,7 +60,6 @@ class RepoNodeRenderer(
 
         if (!shouldShowContext) return this
 
-        val diffDataService = project.service<ProjectActiveDiffDataService>()
         val node = value as? ChangesBrowserNode<*> ?: return this
 
         if (isMultiRepo) {

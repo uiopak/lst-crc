@@ -40,8 +40,7 @@ object ToolWindowHelper {
         displayName: String,
         contentManager: ContentManager
     ): Content {
-        val uiProvider = GitChangesToolWindow(project, toolWindow.disposable)
-        val newContentView = uiProvider.createBranchContentView(branchName)
+        val newContentView = LstCrcChangesBrowser(project, branchName, toolWindow.disposable)
 
         val contentFactory = ContentFactory.getInstance()
         val newContent = contentFactory.createContent(newContentView, displayName, false).apply {
@@ -151,7 +150,7 @@ object ToolWindowHelper {
                             manager.removeContent(selectionTabContent, true)
                         } else {
                             logger.info("HELPER (Callback): Repurposing '$selectionTabName' tab to '$selectedBranchName'.")
-                            val newBranchContentView = GitChangesToolWindow(project, toolWindow.disposable).createBranchContentView(selectedBranchName)
+                            val newBranchContentView = LstCrcChangesBrowser(project, selectedBranchName, toolWindow.disposable)
                             selectionTabContent.displayName = selectedBranchName
                             selectionTabContent.component = newBranchContentView
                             selectionTabContent.putUserData(LstCrcKeys.BRANCH_NAME_KEY, selectedBranchName)

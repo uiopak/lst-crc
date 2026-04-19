@@ -1,7 +1,6 @@
 package com.github.uiopak.lstcrc.listeners
 
 import com.github.uiopak.lstcrc.services.GitService
-import com.github.uiopak.lstcrc.services.LstCrcGutterTrackerService
 import com.github.uiopak.lstcrc.services.ProjectActiveDiffDataService
 import com.github.uiopak.lstcrc.services.ToolWindowStateService
 import com.github.uiopak.lstcrc.services.VfsListenerService
@@ -63,9 +62,8 @@ class PluginStartupActivity : ProjectActivity {
         // Eagerly initialize services that need to listen to events from the start to ensure
         // features like gutter markers and VFS-triggered refreshes work correctly.
         project.service<VfsListenerService>()
-        project.service<LstCrcGutterTrackerService>()
         project.service<VcsChangeListener>()
-        project.service<com.github.uiopak.lstcrc.gutters.VisualTrackerManager>().init() // Initialize Visual Tracker Interceptor
+        project.service<com.github.uiopak.lstcrc.gutters.VisualTrackerManager>().init()
         logger.info("STARTUP_LOGIC: Background services initialized.")
 
         // Perform a quick initial refresh for tab colors of already open files.

@@ -7,8 +7,6 @@ import com.github.uiopak.lstcrc.services.CategorizedChanges
 import com.github.uiopak.lstcrc.services.GitService
 import com.github.uiopak.lstcrc.services.ToolWindowStateService
 import com.github.uiopak.lstcrc.utils.getTreePathForMouseCoordinates
-import com.intellij.icons.AllIcons
-import com.intellij.ide.DataManager
 import com.intellij.ide.projectView.ProjectView
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.actionSystem.*
@@ -20,7 +18,6 @@ import com.intellij.openapi.fileEditor.OpenFileDescriptor
 import com.intellij.openapi.project.DumbAwareAction
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.Messages
-import com.intellij.openapi.ui.popup.JBPopupFactory
 import com.intellij.openapi.vcs.changes.Change
 import com.intellij.openapi.vcs.changes.ContentRevision
 import com.intellij.openapi.vcs.changes.ChangesUtil
@@ -37,6 +34,7 @@ import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.psi.PsiManager
 import com.intellij.ui.PopupHandler
 import com.intellij.util.ui.JBUI
+import com.intellij.util.Alarm
 import git4idea.repo.GitRepository
 import git4idea.repo.GitRepositoryChangeListener
 import java.awt.BorderLayout
@@ -61,7 +59,7 @@ class LstCrcChangesBrowser(
 ) : AsyncChangesBrowserBase(project, false, true), Disposable, GitRepositoryChangeListener {
 
     private val logger = thisLogger()
-    private var refreshDebounceTimer: Timer? = null
+    private val refreshDebounceAlarm = Alarm(Alarm.ThreadToUse.SWING_THREAD, this)
 
     // This field will hold the changes and context for the async tree model builder.
     private var currentChanges: CategorizedChanges? = null
@@ -615,23 +613,16 @@ class LstCrcChangesBrowser(
     }
 
     private fun triggerDebouncedDataRefresh() {
-        refreshDebounceTimer?.stop()
-        refreshDebounceTimer = Timer(100, null).apply {
-            addActionListener {
-                ApplicationManager.getApplication().invokeLater {
-                    if (!project.isDisposed) {
-                        requestRefreshData()
-                    }
-                }
+        refreshDebounceAlarm.cancelAllRequests()
+        refreshDebounceAlarm.addRequest({
+            if (!project.isDisposed) {
+                requestRefreshData()
             }
-            isRepeats = false
-        }
-        refreshDebounceTimer?.start()
+        }, 100)
     }
 
     override fun dispose() {
         shutdown()
-        refreshDebounceTimer?.stop()
         leftClickState.clear()
         middleClickState.clear()
         rightClickState.clear()
@@ -697,71 +688,5 @@ class LstCrcChangesBrowser(
             }
         }
         return null
-    }
-}
-
-/**
- * Action to open a popup showing the current comparison context for each repository
- * and allowing the user to change it.
- */
-private class ShowRepoComparisonInfoAction : DumbAwareAction(
-    LstCrcBundle.message("action.configure.repos.text"),
-    LstCrcBundle.message("action.configure.repos.description"),
-    AllIcons.General.GearPlain
-) {
-    override fun update(e: AnActionEvent) {
-        val project = e.project
-        if (project == null) {
-            e.presentation.isEnabledAndVisible = false
-            return
-        }
-        // Action is enabled for any closable tab (i.e., not HEAD).
-        val stateService = project.service<ToolWindowStateService>()
-        e.presentation.isEnabledAndVisible = stateService.getSelectedTabInfo() != null
-    }
-
-    override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
-
-    override fun actionPerformed(e: AnActionEvent) {
-        val project = e.project ?: return
-        val stateService = project.service<ToolWindowStateService>()
-        val gitService = project.service<GitService>()
-        val tabInfo = stateService.getSelectedTabInfo() ?: return
-
-        val repositories = gitService.getRepositories()
-
-        // For single-repo projects, show the dialog directly for a better UX.
-        if (repositories.size == 1) {
-            SingleRepoBranchSelectionDialog(project, repositories.first(), tabInfo).show()
-            return
-        }
-
-        // For multi-repo projects, show the popup to choose a repository.
-        val actionGroup = DefaultActionGroup()
-
-        for (repo in repositories.sortedBy { it.root.name }) {
-            // Correctly determine the target. Use the override if it exists, otherwise the primary tab revision.
-            // This now correctly handles commit hashes by not attempting to resolve them as branches.
-            val currentTarget = tabInfo.comparisonMap[repo.root.path] ?: tabInfo.branchName
-
-            val actionText = LstCrcBundle.message("changes.browser.repo.node.full.comparison.text", repo.root.name, currentTarget)
-
-            actionGroup.add(object : AnAction(actionText) {
-                override fun actionPerformed(e: AnActionEvent) {
-                    val dialog = SingleRepoBranchSelectionDialog(project, repo, tabInfo)
-                    dialog.show()
-                }
-            })
-        }
-
-        val dataContext = DataManager.getInstance().getDataContext(e.inputEvent?.component)
-        val popup = JBPopupFactory.getInstance().createActionGroupPopup(
-            LstCrcBundle.message("action.configure.repos.popup.title"),
-            actionGroup,
-            dataContext,
-            JBPopupFactory.ActionSelectionAid.MNEMONICS,
-            true
-        )
-        popup.showInBestPositionFor(dataContext)
     }
 }

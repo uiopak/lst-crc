@@ -1,5 +1,6 @@
 package com.github.uiopak.lstcrc.toolWindow
 
+import com.github.uiopak.lstcrc.LstCrcConstants
 import com.github.uiopak.lstcrc.resources.LstCrcBundle
 import com.github.uiopak.lstcrc.services.ToolWindowStateService
 import com.github.uiopak.lstcrc.utils.LstCrcKeys
@@ -9,93 +10,54 @@ import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.PlatformDataKeys
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.service
-import com.intellij.openapi.diagnostic.debug
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.popup.Balloon
 import com.intellij.openapi.ui.popup.JBPopupFactory
+import com.intellij.openapi.wm.impl.content.BaseLabel
+import com.intellij.ui.ComponentUtil
 import com.intellij.ui.awt.RelativePoint
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBTextField
 import com.intellij.ui.components.panels.VerticalLayout
 import com.intellij.ui.content.Content
-import com.intellij.ui.content.ContentManager
-import com.intellij.util.ReflectionUtil
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
 import java.awt.Component
 import java.awt.Point
 import java.awt.event.KeyAdapter
 import java.awt.event.KeyEvent
-import java.lang.reflect.InvocationTargetException
 import javax.swing.JPanel
-import javax.swing.JPopupMenu
 
 /**
  * A context menu action (right-click on a tab) for renaming a closable comparison tab.
- * It uses a robust, multi-strategy reflective search to find the content, making it
- * work for normal, grouped, and combo-box style tabs.
+ * Resolves the [Content] for the right-clicked tab using [BaseLabel.getContent],
+ * matching how the platform itself resolves Content from tab components.
  */
 class RenameTabAction : AnAction() {
 
     private val logger = thisLogger()
 
     /**
-     * Finds the associated Content by walking up the component hierarchy from the source component
-     * and trying multiple reflection strategies using the platform's [ReflectionUtil]. This is necessary
-     * to support different UI structures. The reflection attempts are logged to aid debugging
-     * in case of future IDE UI changes.
+     * Finds the [Content] associated with the right-clicked tab label by walking up
+     * the component hierarchy to find a [BaseLabel], then calling its public
+     * [BaseLabel.getContent] method. This mirrors the platform's own approach
+     * in `ToolWindowContentUi`.
      */
     private fun findContent(source: Component?): Content? {
-        var component = source
-        while (component != null) {
-            // Strategy 1: Look for a direct 'myContent' field. Common in simple tab labels.
-            ReflectionUtil.getField(component.javaClass, component, Content::class.java, "myContent")?.let {
-                logger.debug { "RenameTabAction: Found content via Strategy 1 (myContent field) on ${component.javaClass.name}" }
-                return it
-            }
-
-            // Strategy 2: Look for 'myInfo' (an internal TabInfo object which holds the content).
-            ReflectionUtil.getField(component.javaClass, component, Any::class.java, "myInfo")?.let { tabInfo ->
-                ReflectionUtil.getField(tabInfo.javaClass, tabInfo, Content::class.java, "myObject")?.let {
-                    logger.debug { "RenameTabAction: Found content via Strategy 2 (myInfo.myObject field) on ${component.javaClass.name}" }
-                    return it
-                }
-            }
-
-            // Strategy 3: For combo-box style tabs, navigate through 'myLayout' -> 'ui' -> getContentManager().
-            ReflectionUtil.getField(component.javaClass, component, Any::class.java, "myLayout")?.let { layout ->
-                val uiTargetClass = if (layout.javaClass.superclass.name.endsWith("ContentLayout")) layout.javaClass.superclass else layout.javaClass
-                ReflectionUtil.getField(uiTargetClass, layout, Any::class.java, "ui")?.let { contentUi ->
-                    ReflectionUtil.getMethod(contentUi.javaClass, "getContentManager")?.let { method ->
-                        try {
-                            (method.invoke(contentUi) as? ContentManager)?.let { contentManager ->
-                                // For a combo box, the selected content is the correct one.
-                                logger.debug { "RenameTabAction: Found content via Strategy 3 (getContentManager) on ${component.javaClass.name}" }
-                                return contentManager.selectedContent
-                            }
-                        } catch (e: Exception) {
-                            when (e) {
-                                is IllegalAccessException, is InvocationTargetException -> {
-                                    logger.debug(e) { "RenameTabAction: Strategy 3 failed to invoke getContentManager on ${contentUi.javaClass.name}" }
-                                }
-                                else -> throw e
-                            }
-                        }
-                    }
-                }
-            }
-
-            if (component is JPopupMenu || component is java.awt.Window) break
-            component = component.parent
+        if (source == null) return null
+        val label = (source as? BaseLabel)
+            ?: ComponentUtil.getParentOfType(BaseLabel::class.java, source)
+        if (label == null) {
+            logger.warn("RenameTabAction: No BaseLabel found in component hierarchy for ${source.javaClass.name}")
+            return null
         }
-        logger.warn("RenameTabAction: Could not find Content for component: ${source?.javaClass?.name}. All strategies failed.")
-        return null
+        return label.content
     }
 
     override fun update(e: AnActionEvent) {
         val toolWindow = e.getData(PlatformDataKeys.TOOL_WINDOW)
-        if (e.project == null || toolWindow == null || toolWindow.id != "GitChangesView") {
+        if (e.project == null || toolWindow == null || toolWindow.id != LstCrcConstants.TOOL_WINDOW_ID) {
             e.presentation.isEnabledAndVisible = false
             return
         }
@@ -128,7 +90,7 @@ class RenameTabAction : AnAction() {
         invokeRenamePopup(project, component, branchName)
     }
 
-    override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
+    override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.EDT
 }
 
 /**

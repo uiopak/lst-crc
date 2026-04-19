@@ -2,6 +2,9 @@
 
 package com.github.uiopak.lstcrc.services
 
+import com.github.uiopak.lstcrc.LstCrcConstants
+import com.github.uiopak.lstcrc.messaging.TOOL_WINDOW_STATE_TOPIC
+import com.github.uiopak.lstcrc.messaging.ToolWindowStateListener
 import com.github.uiopak.lstcrc.resources.LstCrcBundle
 import com.github.uiopak.lstcrc.state.TabInfo
 import com.github.uiopak.lstcrc.state.ToolWindowState
@@ -23,10 +26,8 @@ import com.intellij.openapi.components.service
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.wm.ToolWindowManager
-import com.intellij.util.messages.Topic
 import com.intellij.util.xmlb.XmlSerializerUtil
 import git4idea.repo.GitRepository
-import java.util.EventListener
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -58,13 +59,13 @@ class ToolWindowStateService(private val project: Project) : PersistentStateComp
     override fun loadState(state: ToolWindowState) {
         logger.info("loadState() called. Loading state: $state")
         XmlSerializerUtil.copyBean(state, myState)
-        project.messageBus.syncPublisher(TOPIC).stateChanged(myState.copy())
+        project.messageBus.syncPublisher(TOOL_WINDOW_STATE_TOPIC).stateChanged(myState.copy())
     }
 
     override fun noStateLoaded() {
         logger.info("noStateLoaded() called. Initializing with default state.")
         myState = ToolWindowState()
-        project.messageBus.syncPublisher(TOPIC).stateChanged(myState.copy())
+        project.messageBus.syncPublisher(TOOL_WINDOW_STATE_TOPIC).stateChanged(myState.copy())
     }
 
     fun addTab(branchName: String) {
@@ -72,11 +73,9 @@ class ToolWindowStateService(private val project: Project) : PersistentStateComp
         val currentTabs = myState.openTabs.toMutableList()
         if (currentTabs.none { it.branchName == branchName }) {
             currentTabs.add(TabInfo(branchName = branchName, alias = null, comparisonMap = mutableMapOf()))
-            // Create a new list instance to ensure the state component detects the change.
             myState.openTabs = ArrayList(currentTabs)
-            myState = myState.copy()
             logger.info("Tab '$branchName' added. New state: $myState")
-            project.messageBus.syncPublisher(TOPIC).stateChanged(myState.copy())
+            commitStateAndBroadcast()
         } else {
             logger.info("Tab $branchName already exists.")
         }
@@ -87,9 +86,8 @@ class ToolWindowStateService(private val project: Project) : PersistentStateComp
         val currentTabs = myState.openTabs.toMutableList()
         currentTabs.removeAll { it.branchName == branchName }
         myState.openTabs = ArrayList(currentTabs)
-        myState = myState.copy()
         logger.info("Tab $branchName removed from state. New state: $myState")
-        project.messageBus.syncPublisher(TOPIC).stateChanged(myState.copy())
+        commitStateAndBroadcast()
     }
 
     fun setSelectedTab(index: Int) {
@@ -336,11 +334,20 @@ class ToolWindowStateService(private val project: Project) : PersistentStateComp
     }
 
     /**
+     * Ensures the state copy is fresh and broadcasts it to all listeners.
+     * This is the single place where state mutations are finalized.
+     */
+    private fun commitStateAndBroadcast() {
+        myState = myState.copy()
+        project.messageBus.syncPublisher(TOOL_WINDOW_STATE_TOPIC).stateChanged(myState.copy())
+    }
+
+    /**
      * Explicitly broadcasts the current state to all listeners on the message bus.
      */
     fun broadcastCurrentState() {
         logger.info("Broadcasting current state explicitly to all listeners.")
-        project.messageBus.syncPublisher(TOPIC).stateChanged(myState.copy())
+        project.messageBus.syncPublisher(TOOL_WINDOW_STATE_TOPIC).stateChanged(myState.copy())
     }
 
     fun getSelectedTabInfo(): TabInfo? {
@@ -355,8 +362,7 @@ class ToolWindowStateService(private val project: Project) : PersistentStateComp
     }
 
     private fun getActiveChangesBrowser(project: Project): LstCrcChangesBrowser? {
-        val toolWindowId = "GitChangesView"
-        val toolWindow = ToolWindowManager.getInstance(project).getToolWindow(toolWindowId)
+        val toolWindow = ToolWindowManager.getInstance(project).getToolWindow(LstCrcConstants.TOOL_WINDOW_ID)
         val selectedContent = toolWindow?.contentManager?.selectedContent
         return selectedContent?.component as? LstCrcChangesBrowser
     }
@@ -372,9 +378,8 @@ class ToolWindowStateService(private val project: Project) : PersistentStateComp
             if (oldTabInfo.alias != newAlias) {
                 updatedTabs[tabIndex] = oldTabInfo.copy(alias = newAlias)
                 myState.openTabs = ArrayList(updatedTabs)
-                myState = myState.copy()
                 logger.info("Tab alias for '$branchName' updated. New state: $myState")
-                project.messageBus.syncPublisher(TOPIC).stateChanged(myState.copy())
+                commitStateAndBroadcast()
             } else {
                 logger.debug("Alias for '$branchName' is already '$newAlias'. No state change needed.")
             }
@@ -394,9 +399,8 @@ class ToolWindowStateService(private val project: Project) : PersistentStateComp
             if (oldTabInfo.comparisonMap != newMap) {
                 updatedTabs[tabIndex] = oldTabInfo.copy(comparisonMap = newMap.toMutableMap())
                 myState.openTabs = ArrayList(updatedTabs)
-                myState = myState.copy()
                 logger.info("Comparison map for '$branchName' updated. New state: $myState")
-                project.messageBus.syncPublisher(TOPIC).stateChanged(myState.copy())
+                commitStateAndBroadcast()
 
                 // If this tab is currently selected, trigger a refresh to show the new diff.
                 if (myState.selectedTabIndex == tabIndex && triggerRefresh) {
@@ -412,11 +416,14 @@ class ToolWindowStateService(private val project: Project) : PersistentStateComp
     }
 
     companion object {
-        interface ToolWindowStateListener : EventListener {
-            fun stateChanged(newState: ToolWindowState)
-        }
+        // Kept for backward compatibility — prefer TOOL_WINDOW_STATE_TOPIC from LstCrcTopics.kt directly.
+        @Suppress("unused")
+        @Deprecated("Use TOOL_WINDOW_STATE_TOPIC from LstCrcTopics.kt", ReplaceWith("TOOL_WINDOW_STATE_TOPIC", "com.github.uiopak.lstcrc.messaging.TOOL_WINDOW_STATE_TOPIC"))
+        val TOPIC = TOOL_WINDOW_STATE_TOPIC
 
-        val TOPIC = Topic.create("LST-CRC ToolWindow State Changed", ToolWindowStateListener::class.java)
+        @Suppress("unused")
+        @Deprecated("Use ToolWindowStateListener from LstCrcTopics.kt", ReplaceWith("ToolWindowStateListener", "com.github.uiopak.lstcrc.messaging.ToolWindowStateListener"))
+        typealias ToolWindowStateListener = com.github.uiopak.lstcrc.messaging.ToolWindowStateListener
 
         fun getInstance(project: Project): ToolWindowStateService {
             return project.getService(ToolWindowStateService::class.java)
