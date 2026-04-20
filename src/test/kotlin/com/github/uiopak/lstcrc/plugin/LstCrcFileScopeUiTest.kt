@@ -56,83 +56,85 @@ class LstCrcFileScopeUiTest : LstCrcUiTestSupport() {
             gitChangesView {
                 selectTab("HEAD")
                 waitFor(Duration.ofSeconds(10)) {
+                    changesTree.findAllText("Main.txt").isNotEmpty() &&
                     changesTree.findAllText("Moved.txt").isNotEmpty() &&
                         changesTree.findAllText("ToDelete.txt").isNotEmpty() &&
                         changesTree.findAllText("NewFile.txt").isNotEmpty()
                 }
             }
 
-            var scopesVerified = false
             var scopesDebug = ""
-            repeat(10) {
+            waitFor(Duration.ofSeconds(20), interval = Duration.ofMillis(500)) {
                 scopesDebug = callJs<String>(
                     """
-                    const project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
-                    const holders = com.intellij.psi.search.scope.packageSet.NamedScopesHolder.getAllNamedScopeHolders(project);
-                    let scopesVerified = false;
-                    let movedContains = false;
-                    let createdContains = false;
-                    let movedFile = null;
-                    let createdFile = null;
-                    let movedScopeFound = false;
-                    let createdScopeFound = false;
-                    let holderFound = false;
+                    (function() {
+                        const project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
+                        if (!project) return "projectMissing=true";
 
-                    let movedScope = null;
-                    let createdScope = null;
-                    let movedHolder = null;
-                    let createdHolder = null;
+                        const holders = com.intellij.psi.search.scope.packageSet.NamedScopesHolder.getAllNamedScopeHolders(project);
+                        const scopeIds = ["LSTCRC.Created", "LSTCRC.Modified", "LSTCRC.Moved", "LSTCRC.Deleted"];
+                        const resolved = {};
+                        const holderMap = {};
 
-                    for (let i = 0; i < holders.length; i++) {
-                        const holder = holders[i];
-                        const scopes = holder.getEditableScopes();
-                        for (let j = 0; j < scopes.length; j++) {
-                            const scope = scopes[j];
-                            if (scope.getScopeId() === "LSTCRC.Moved") {
-                                movedScope = scope;
-                                movedHolder = holder;
-                                holderFound = true;
-                            }
-                            if (scope.getScopeId() === "LSTCRC.Created") {
-                                createdScope = scope;
-                                createdHolder = holder;
-                                holderFound = true;
+                        for (let i = 0; i < holders.length; i++) {
+                            const holder = holders[i];
+                            const scopes = holder.getEditableScopes();
+                            for (let j = 0; j < scopes.length; j++) {
+                                const scope = scopes[j];
+                                const id = String(scope.getScopeId());
+                                if (scopeIds.indexOf(id) >= 0) {
+                                    resolved[id] = scope;
+                                    holderMap[id] = holder;
+                                }
                             }
                         }
-                    }
 
-                    movedScopeFound = movedScope != null;
-                    createdScopeFound = createdScope != null;
+                        const vfs = com.intellij.openapi.vfs.LocalFileSystem.getInstance();
+                        const createdFile = vfs.refreshAndFindFileByPath(project.getBasePath() + "/NewFile.txt");
+                        const modifiedFile = vfs.refreshAndFindFileByPath(project.getBasePath() + "/Main.txt");
+                        const movedFile = vfs.refreshAndFindFileByPath(project.getBasePath() + "/Moved.txt");
+                        const diffDataService = project.getService(com.github.uiopak.lstcrc.services.ProjectActiveDiffDataService);
+                        const deletedFiles = diffDataService ? diffDataService.getDeletedFiles() : java.util.Collections.emptyList();
+                        let deletedFile = null;
+                        for (let i = 0; i < deletedFiles.size(); i++) {
+                            const candidate = deletedFiles.get(i);
+                            if (String(candidate.getPath()).endsWith("/ToDelete.txt") || String(candidate.getPath()).endsWith("\\ToDelete.txt")) {
+                                deletedFile = candidate;
+                                break;
+                            }
+                        }
 
-                    const vfs = com.intellij.openapi.vfs.LocalFileSystem.getInstance();
-                    movedFile = vfs.refreshAndFindFileByPath(project.getBasePath() + "/Moved.txt");
-                    createdFile = vfs.refreshAndFindFileByPath(project.getBasePath() + "/NewFile.txt");
+                        function contains(scopeId, file) {
+                            const scope = resolved[scopeId];
+                            const holder = holderMap[scopeId];
+                            return !!(scope && holder && file && scope.getValue() && scope.getValue().contains(file, project, holder));
+                        }
 
-                    movedContains = movedScope != null && movedFile != null && movedScope.getValue() != null && movedScope.getValue().contains(movedFile, project, movedHolder);
-                    createdContains = createdScope != null && createdFile != null && createdScope.getValue() != null && createdScope.getValue().contains(createdFile, project, createdHolder);
-                    scopesVerified = movedContains && createdContains;
-
-                    "result=" + scopesVerified +
-                    ";holderFound=" + holderFound +
-                    ";movedScopeFound=" + movedScopeFound +
-                    ";createdScopeFound=" + createdScopeFound +
-                    ";movedFileNull=" + (movedFile == null) +
-                    ";createdFileNull=" + (createdFile == null) +
-                    ";movedContains=" + movedContains +
-                    ";createdContains=" + createdContains;
+                        return [
+                            "created=" + contains("LSTCRC.Created", createdFile),
+                            "modified=" + contains("LSTCRC.Modified", modifiedFile),
+                            "moved=" + contains("LSTCRC.Moved", movedFile),
+                            "deleted=" + contains("LSTCRC.Deleted", deletedFile),
+                            "deletedFilePresent=" + (deletedFile != null)
+                        ].join(";");
+                    })();
                     """.trimIndent(),
                     true
                 )
-                scopesVerified = scopesDebug.contains("result=true")
-                if (!scopesVerified && it < 9) {
-                    Thread.sleep(1000)
-                }
+
+                scopesDebug.contains("created=true") &&
+                    scopesDebug.contains("modified=true") &&
+                    scopesDebug.contains("moved=true") &&
+                    scopesDebug.contains("deleted=true")
             }
 
-            val scopesAvailable = scopesDebug.contains("movedScopeFound=true") || scopesDebug.contains("createdScopeFound=true")
-            if (scopesAvailable) {
-                Assertions.assertTrue(scopesVerified, "Scopes for moved and created files should be correct: $scopesDebug")
-            }
+            Assertions.assertTrue(
+                scopesDebug.contains("created=true") &&
+                    scopesDebug.contains("modified=true") &&
+                    scopesDebug.contains("moved=true") &&
+                    scopesDebug.contains("deleted=true"),
+                "HEAD scopes should classify created/modified/moved/deleted files correctly: $scopesDebug"
+            )
         }
     }
 }

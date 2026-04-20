@@ -270,7 +270,7 @@ class GitService(private val project: Project) {
         }
 
         return try {
-            GitChangeUtils.getDiffWithWorkingDir(project, repo.root, target, null, false, false).toImmutableList()
+            GitChangeUtils.getDiffWithWorkingDir(project, repo.root, target, null, false, true).toImmutableList()
         } catch (e: VcsException) {
             logger.warn(
                 "git diff failed for repo '${repo.root.name}' against target '$target'. " +

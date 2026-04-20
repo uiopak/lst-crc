@@ -51,17 +51,20 @@ private class LstCrcPackageSet(
 // Instantiate the generic PackageSet for each change type, using pre-computed sets from the service.
 private val createdFilesPackageSet = LstCrcPackageSet(
     "scope.created.description",
-    filesExtractor = { it.createdFilesSet }
+    filesExtractor = { it.createdFilesSet },
+    pathsExtractor = { it.createdFilePaths }
 )
 
 private val modifiedFilesPackageSet = LstCrcPackageSet(
     "scope.modified.description",
-    filesExtractor = { it.modifiedFilesSet }
+    filesExtractor = { it.modifiedFilesSet },
+    pathsExtractor = { it.modifiedFilePaths }
 )
 
 private val movedFilesPackageSet = LstCrcPackageSet(
     "scope.moved.description",
-    filesExtractor = { it.movedFilesSet }
+    filesExtractor = { it.movedFilesSet },
+    pathsExtractor = { it.movedFilePaths }
 )
 
 private val deletedFilesPackageSet = LstCrcPackageSet(
@@ -72,7 +75,8 @@ private val deletedFilesPackageSet = LstCrcPackageSet(
 
 private val changedFilesPackageSet = LstCrcPackageSet(
     "scope.changed.description",
-    filesExtractor = { it.changedFilesSet }
+    filesExtractor = { it.changedFilesSet },
+    pathsExtractor = { it.changedFilePaths }
 )
 
 

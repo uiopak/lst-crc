@@ -35,12 +35,37 @@ class MyToolWindowFactory : ToolWindowFactory {
 
         val stateService = project.service<ToolWindowStateService>()
         val persistedState = stateService.state
-        var currentActualBranchName: String? = null
 
-        if (persistedState.openTabs.isEmpty()) {
-            currentActualBranchName = project.service<GitService>().getPrimaryRepository()?.currentBranchName
+        ApplicationManager.getApplication().executeOnPooledThread {
+            val currentActualBranchName = if (persistedState.openTabs.isEmpty()) {
+                project.service<GitService>().getPrimaryRepository()?.currentBranchName
+            } else {
+                null
+            }
+
+            ApplicationManager.getApplication().invokeLater {
+                if (project.isDisposed || toolWindow.isDisposed) {
+                    return@invokeLater
+                }
+
+                initializeToolWindowContent(
+                    project,
+                    toolWindow,
+                    stateService,
+                    persistedState,
+                    currentActualBranchName
+                )
+            }
         }
+    }
 
+    private fun initializeToolWindowContent(
+        project: Project,
+        toolWindow: ToolWindow,
+        stateService: ToolWindowStateService,
+        persistedState: ToolWindowState,
+        currentActualBranchName: String?
+    ) {
         val contentManager = toolWindow.contentManager
 
         applyToolWindowTitleSetting(toolWindow)

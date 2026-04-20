@@ -9,11 +9,134 @@ import com.intellij.remoterobot.RemoteRobot
 import com.intellij.remoterobot.stepsProcessing.step
 import com.intellij.remoterobot.utils.waitFor
 import org.junit.jupiter.api.Assertions
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import java.time.Duration
 
 @LstCrcUiTest
 class LstCrcBranchComparisonUiTest : LstCrcUiTestSupport() {
+
+    @Test
+    @Video
+    fun testBranchComparisonCategorizesAllChangeTypes(remoteRobot: RemoteRobot) = with(remoteRobot) {
+        val uiSteps = PluginUiTestSteps(remoteRobot)
+
+        prepareFreshProject()
+
+        idea {
+            step("Wait for smart mode") {
+                dumbAware(Duration.ofMinutes(5)) {}
+            }
+
+            uiSteps.initializeGitRepository()
+            resetGitChangesViewState()
+
+            uiSteps.createNewFile("Modified.txt", "base line\n")
+            uiSteps.createNewFile("RenameMe.txt", "rename source\n")
+            uiSteps.createNewFile("DeleteMe.txt", "delete source\n")
+            uiSteps.commitChanges("Initial comparison fixture")
+            val defaultBranch = uiSteps.defaultBranchName()
+
+            uiSteps.createBranch("feature-all-statuses")
+            uiSteps.modifyFile("Modified.txt", "feature line\n")
+            uiSteps.renameFile("RenameMe.txt", "Renamed.txt")
+            uiSteps.deleteFile("DeleteMe.txt")
+            uiSteps.createNewFile("Created.txt", "created on branch\n")
+            uiSteps.commitChanges("Branch status changes")
+            uiSteps.checkoutBranch(defaultBranch)
+
+            openGitChangesView()
+            gitChangesView {
+                addTab()
+            }
+            branchSelection {
+                searchAndSelect("feature-all-statuses")
+            }
+
+            gitChangesView {
+                selectTab("feature-all-statuses")
+                waitFor(Duration.ofSeconds(10)) {
+                    changesTree.findAllText("Created.txt").isNotEmpty() &&
+                        changesTree.findAllText("Modified.txt").isNotEmpty() &&
+                        changesTree.findAllText("Renamed.txt").isNotEmpty() &&
+                        changesTree.findAllText("DeleteMe.txt").isNotEmpty()
+                }
+            }
+
+            var scopeDebug = ""
+            waitFor(Duration.ofSeconds(20), interval = Duration.ofMillis(500)) {
+                scopeDebug = callJs<String>(
+                    """
+                    (function() {
+                        const project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
+                        if (!project) return "projectMissing=true";
+
+                        const holders = com.intellij.psi.search.scope.packageSet.NamedScopesHolder.getAllNamedScopeHolders(project);
+                        const scopeIds = ["LSTCRC.Created", "LSTCRC.Modified", "LSTCRC.Moved", "LSTCRC.Deleted"];
+                        const resolved = {};
+                        const holderMap = {};
+
+                        for (let i = 0; i < holders.length; i++) {
+                            const holder = holders[i];
+                            const scopes = holder.getEditableScopes();
+                            for (let j = 0; j < scopes.length; j++) {
+                                const scope = scopes[j];
+                                const id = String(scope.getScopeId());
+                                if (scopeIds.indexOf(id) >= 0) {
+                                    resolved[id] = scope;
+                                    holderMap[id] = holder;
+                                }
+                            }
+                        }
+
+                        const vfs = com.intellij.openapi.vfs.LocalFileSystem.getInstance();
+                        const modifiedFile = vfs.refreshAndFindFileByPath(project.getBasePath() + "/Modified.txt");
+                        const createdFile = vfs.refreshAndFindFileByPath(project.getBasePath() + "/Created.txt");
+                        const movedFile = vfs.refreshAndFindFileByPath(project.getBasePath() + "/Renamed.txt");
+                        const diffDataService = project.getService(com.github.uiopak.lstcrc.services.ProjectActiveDiffDataService);
+                        const deletedFiles = diffDataService ? diffDataService.getDeletedFiles() : java.util.Collections.emptyList();
+                        let deletedFile = null;
+                        for (let i = 0; i < deletedFiles.size(); i++) {
+                            const candidate = deletedFiles.get(i);
+                            if (String(candidate.getPath()).endsWith("/DeleteMe.txt") || String(candidate.getPath()).endsWith("\\DeleteMe.txt")) {
+                                deletedFile = candidate;
+                                break;
+                            }
+                        }
+
+                        function contains(scopeId, file) {
+                            const scope = resolved[scopeId];
+                            const holder = holderMap[scopeId];
+                            return !!(scope && holder && file && scope.getValue() && scope.getValue().contains(file, project, holder));
+                        }
+
+                        return [
+                            "created=" + contains("LSTCRC.Created", createdFile),
+                            "modified=" + contains("LSTCRC.Modified", modifiedFile),
+                            "moved=" + contains("LSTCRC.Moved", movedFile),
+                            "deleted=" + contains("LSTCRC.Deleted", deletedFile),
+                            "deletedFilePresent=" + (deletedFile != null)
+                        ].join(";");
+                    })();
+                    """.trimIndent(),
+                    true
+                )
+
+                scopeDebug.contains("created=true") &&
+                    scopeDebug.contains("modified=true") &&
+                    scopeDebug.contains("moved=true") &&
+                    scopeDebug.contains("deleted=true")
+            }
+
+            assertTrue(
+                scopeDebug.contains("created=true") &&
+                    scopeDebug.contains("modified=true") &&
+                    scopeDebug.contains("moved=true") &&
+                    scopeDebug.contains("deleted=true"),
+                "Branch comparison scopes should classify created/modified/moved/deleted changes correctly: $scopeDebug"
+            )
+        }
+    }
 
     @Test
     @Video

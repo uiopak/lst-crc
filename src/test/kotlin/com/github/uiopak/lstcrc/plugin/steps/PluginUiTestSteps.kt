@@ -6,6 +6,11 @@ import com.intellij.remoterobot.search.locators.byXpath
 import com.intellij.remoterobot.stepsProcessing.step
 import com.intellij.remoterobot.utils.component
 import com.intellij.remoterobot.utils.waitFor
+import java.nio.charset.StandardCharsets
+import java.nio.file.Files
+import java.nio.file.Path
+import java.nio.file.StandardCopyOption
+import java.nio.file.StandardOpenOption
 import java.time.Duration
 
 /**
@@ -31,6 +36,7 @@ class PluginUiTestSteps(private val remoteRobot: RemoteRobot) {
      */
     fun modifyFile(fileName: String, content: String) = step("Modify file: $fileName") {
         writeProjectFile(fileName, content)
+        waitForGitIdle()
     }
 
     /**
@@ -80,52 +86,12 @@ class PluginUiTestSteps(private val remoteRobot: RemoteRobot) {
 
             repeat(3) { attempt ->
                 val initialized = runCatching {
-                    runJs(
-                        """
-                        const project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
-                        if (project) {
-                            com.intellij.openapi.application.WriteIntentReadAction.run(new java.lang.Runnable({
-                                run: function() {
-                                    com.intellij.openapi.fileEditor.FileDocumentManager.getInstance().saveAllDocuments();
-                                    com.intellij.openapi.fileEditor.FileEditorManager.getInstance(project).closeAllFiles();
-                                }
-                            }));
-
-                            function deleteRecursively(file) {
-                                if (file.isDirectory()) {
-                                    const children = file.listFiles();
-                                    if (children) {
-                                        for (let i = 0; i < children.length; i++) {
-                                            deleteRecursively(children[i]);
-                                        }
-                                    }
-                                }
-
-                                if (!file.delete() && file.exists()) {
-                                    throw new java.io.IOException("Could not delete " + file.getAbsolutePath());
-                                }
-                            }
-
-                            const basePathFile = new java.io.File(project.getBasePath());
-                            const projectFileName = project.getName() + ".iml";
-                            const children = basePathFile.listFiles();
-                            if (children) {
-                                for (let i = 0; i < children.length; i++) {
-                                    const child = children[i];
-                                    const childName = child.getName();
-                                    if (childName !== ".idea" && childName !== projectFileName) {
-                                        deleteRecursively(child);
-                                    }
-                                }
-                            }
-                        }
-                        """.trimIndent(),
-                        true
-                    )
+                    closeAllEditors()
+                    resetProjectFiles()
                     runGitCommand("init")
                     configureGitIdentity()
                     enableGitVcsIntegration()
-                    refreshProjectAfterGitCommand()
+                    refreshProjectAfterExternalChange()
                     waitForGitRepository()
                     waitForGitIdle()
                 }
@@ -167,14 +133,9 @@ class PluginUiTestSteps(private val remoteRobot: RemoteRobot) {
      */
     fun deleteFile(fileName: String) = with(remoteRobot) {
         step("Delete file: $fileName") {
-            runProjectWriteOperation(
-                """
-                const file = baseDir.findChild(${toJsStringLiteral(fileName)});
-                if (file) {
-                    file.delete(null);
-                }
-                """.trimIndent()
-            )
+            val path = resolveProjectPath(fileName)
+            Files.deleteIfExists(path)
+            refreshProjectAfterExternalChange()
         }
     }
 
@@ -183,18 +144,14 @@ class PluginUiTestSteps(private val remoteRobot: RemoteRobot) {
      */
     fun renameFile(oldName: String, newName: String) = with(remoteRobot) {
         step("Rename file from $oldName to $newName") {
-            runProjectWriteOperation(
-                """
-                const file = baseDir.findChild(${toJsStringLiteral(oldName)});
-                const existingTarget = baseDir.findChild(${toJsStringLiteral(newName)});
-                if (existingTarget) {
-                    existingTarget.delete(null);
-                }
-                if (file) {
-                    file.rename(null, ${toJsStringLiteral(newName)});
-                }
-                """.trimIndent()
-            )
+            val source = resolveProjectPath(oldName)
+            val target = resolveProjectPath(newName)
+            Files.createDirectories(target.parent ?: projectBasePath())
+            Files.deleteIfExists(target)
+            if (Files.exists(source)) {
+                Files.move(source, target, StandardCopyOption.REPLACE_EXISTING)
+            }
+            refreshProjectAfterExternalChange()
         }
     }
 
@@ -284,23 +241,17 @@ class PluginUiTestSteps(private val remoteRobot: RemoteRobot) {
     }
 
     private fun writeProjectFile(fileName: String, content: String) = with(remoteRobot) {
-        runProjectWriteOperation(
-            """
-            let file = baseDir.findChild(${toJsStringLiteral(fileName)});
-            if (!file) {
-                file = baseDir.createChildData(null, ${toJsStringLiteral(fileName)});
-            }
-            const fileDocumentManager = com.intellij.openapi.fileEditor.FileDocumentManager.getInstance();
-            const document = fileDocumentManager.getDocument(file);
-            if (document) {
-                document.setText(${toJsStringLiteral(content)});
-                fileDocumentManager.saveDocument(document);
-            }
-            else {
-                com.intellij.openapi.vfs.VfsUtil.saveText(file, ${toJsStringLiteral(content)});
-            }
-            """.trimIndent()
+        val path = resolveProjectPath(fileName)
+        Files.createDirectories(path.parent ?: projectBasePath())
+        Files.writeString(
+            path,
+            content,
+            StandardCharsets.UTF_8,
+            StandardOpenOption.CREATE,
+            StandardOpenOption.TRUNCATE_EXISTING,
+            StandardOpenOption.WRITE
         )
+        refreshProjectAfterExternalChange()
     }
 
     private fun handleAddFileToGitDialogIfPresent() = with(remoteRobot) {
@@ -324,37 +275,6 @@ class PluginUiTestSteps(private val remoteRobot: RemoteRobot) {
                 findAll<ComponentFixture>(byXpath(addButtonXpath)).isEmpty()
             }
         }
-    }
-
-    private fun runProjectWriteOperation(operationScript: String) = with(remoteRobot) {
-        runJs(
-            """
-            const project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
-            if (project) {
-                const application = com.intellij.openapi.application.ApplicationManager.getApplication();
-                const modalityState = com.intellij.openapi.application.ModalityState.defaultModalityState();
-                application.invokeAndWait(new java.lang.Runnable({
-                    run: function() {
-                        com.intellij.openapi.application.WriteIntentReadAction.run(new java.lang.Runnable({
-                            run: function() {
-                                com.intellij.openapi.command.WriteCommandAction.runWriteCommandAction(project, new java.lang.Runnable({
-                                    run: function() {
-                                        const baseDir = project.getBaseDir();
-                                        if (!baseDir) {
-                                            return;
-                                        }
-                                        $operationScript
-                                        com.intellij.openapi.vcs.changes.VcsDirtyScopeManager.getInstance(project).markEverythingDirty();
-                                    }
-                                }));
-                            }
-                        }));
-                    }
-                }), modalityState);
-            }
-            """,
-            true
-        )
     }
 
     private fun toJsStringLiteral(value: String): String {
@@ -390,6 +310,103 @@ class PluginUiTestSteps(private val remoteRobot: RemoteRobot) {
             """,
             true
         )
+    }
+
+    private fun refreshProjectAfterExternalChange() = with(remoteRobot) {
+        runJs(
+            """
+            const project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
+            if (project) {
+                com.intellij.openapi.application.ApplicationManager.getApplication().invokeAndWait(new java.lang.Runnable({
+                    run: function() {
+                        const basePath = project.getBasePath();
+                        if (basePath != null) {
+                            const fileSystem = com.intellij.openapi.vfs.LocalFileSystem.getInstance();
+                            const normalizedBasePath = String(basePath).split('\\\\').join('/');
+                            const projectDir = fileSystem.refreshAndFindFileByPath(normalizedBasePath);
+                            if (projectDir != null) {
+                                projectDir.refresh(false, true);
+                                const gitDir = projectDir.findChild('.git');
+                                if (gitDir != null) {
+                                    gitDir.refresh(false, true);
+                                }
+                            }
+                        }
+
+                        const vcsManager = com.intellij.openapi.vcs.ProjectLevelVcsManager.getInstance(project);
+                        vcsManager.scheduleMappedRootsUpdate();
+                        com.intellij.openapi.vcs.changes.VcsDirtyScopeManager.getInstance(project).markEverythingDirty();
+                    }
+                }));
+            }
+            """.trimIndent(),
+            true
+        )
+    }
+
+    private fun closeAllEditors() = with(remoteRobot) {
+        runJs(
+            """
+            const project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
+            if (project) {
+                com.intellij.openapi.fileEditor.FileEditorManager.getInstance(project).closeAllFiles();
+            }
+            """.trimIndent(),
+            true
+        )
+    }
+
+    private fun projectBasePath(): Path {
+        val basePath = with(remoteRobot) {
+            callJs<String>(
+                """
+                (function() {
+                    const project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
+                    return project ? String(project.getBasePath()) : "";
+                })();
+                """.trimIndent(),
+                true
+            )
+        }.trim()
+
+        check(basePath.isNotEmpty()) { "Could not resolve project base path" }
+        return Path.of(basePath)
+    }
+
+    private fun resolveProjectPath(relativePath: String): Path {
+        val normalizedPath = relativePath.replace('\\', '/').split('/').filter { it.isNotBlank() }
+        var path = projectBasePath()
+        normalizedPath.forEach { segment ->
+            path = path.resolve(segment)
+        }
+        return path
+    }
+
+    private fun resetProjectFiles() {
+        val basePath = projectBasePath()
+        val projectFileName = "$${'$'}{basePath.fileName}.iml"
+        Files.list(basePath).use { children ->
+            children.forEach { child ->
+                val childName = child.fileName.toString()
+                if (childName != ".idea" && childName != projectFileName) {
+                    deleteRecursively(child)
+                }
+            }
+        }
+    }
+
+    private fun deleteRecursively(path: Path) {
+        if (!Files.exists(path)) {
+            return
+        }
+
+        if (Files.isDirectory(path)) {
+            Files.list(path).use { children ->
+                children.forEach { child -> deleteRecursively(child) }
+            }
+        }
+
+        Files.deleteIfExists(path)
     }
 
     private fun waitForGitRepository() = with(remoteRobot) {

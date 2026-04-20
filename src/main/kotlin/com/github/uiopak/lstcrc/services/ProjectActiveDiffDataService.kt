@@ -42,13 +42,21 @@ class ProjectActiveDiffDataService(private val project: Project) : Disposable {
     // Pre-computed sets for efficient scope membership checks (avoids per-call allocations)
     var createdFilesSet: Set<VirtualFile> = emptySet()
         private set
+    var createdFilePaths: Set<String> = emptySet()
+        private set
     var modifiedFilesSet: Set<VirtualFile> = emptySet()
         private set
+    var modifiedFilePaths: Set<String> = emptySet()
+        private set
     var movedFilesSet: Set<VirtualFile> = emptySet()
+        private set
+    var movedFilePaths: Set<String> = emptySet()
         private set
     var deletedFilePaths: Set<String> = emptySet()
         private set
     var changedFilesSet: Set<VirtualFile> = emptySet()
+        private set
+    var changedFilePaths: Set<String> = emptySet()
         private set
 
     fun updateActiveDiff(
@@ -119,10 +127,14 @@ class ProjectActiveDiffDataService(private val project: Project) : Disposable {
 
     private fun rebuildCachedSets() {
         createdFilesSet = createdFiles.toSet()
+        createdFilePaths = createdFiles.mapTo(HashSet()) { it.path }
         modifiedFilesSet = modifiedFiles.toSet()
+        modifiedFilePaths = modifiedFiles.mapTo(HashSet()) { it.path }
         movedFilesSet = movedFiles.toSet()
+        movedFilePaths = movedFiles.mapTo(HashSet()) { it.path }
         deletedFilePaths = deletedFiles.mapTo(HashSet()) { it.path }
         changedFilesSet = createdFilesSet + modifiedFilesSet + movedFilesSet
+        changedFilePaths = createdFilePaths + modifiedFilePaths + movedFilePaths
     }
 
     private fun notifyAffectedFiles(affectedFiles: Set<VirtualFile>) {
