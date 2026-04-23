@@ -9,15 +9,15 @@ remoteRobot = "0.11.23"
 okhttpLogging = "5.3.2"
 videoRecorderJunit5 = "2.0"
 # Forced/Substituted versions for security
-commonsIo = "2.21.0"
-commonsLang3 = "3.18.0"
+commonsIo = "2.22.0"
+commonsLang3 = "3.20.0"
 slf4j = "2.0.17"
 
 
 # plugins
 changelog = "2.5.0"
 intelliJPlatform = "2.14.0"
-kotlin = "2.3.20"
+kotlin = "2.3.21"
 kover = "0.9.8"
 qodana = "2025.3.2"
 
