@@ -515,9 +515,14 @@ class PluginUiTestSteps(private val remoteRobot: RemoteRobot) {
     private fun saveAllDocuments() = with(remoteRobot) {
         runJs(
             """
+            const project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
             com.intellij.openapi.application.ApplicationManager.getApplication().invokeAndWait(new java.lang.Runnable({
                 run: function() {
-                    com.intellij.openapi.fileEditor.FileDocumentManager.getInstance().saveAllDocuments();
+                    com.intellij.openapi.command.WriteCommandAction.runWriteCommandAction(project, new java.lang.Runnable({
+                        run: function() {
+                            com.intellij.openapi.fileEditor.FileDocumentManager.getInstance().saveAllDocuments();
+                        }
+                    }));
                 }
             }));
             """.trimIndent(),

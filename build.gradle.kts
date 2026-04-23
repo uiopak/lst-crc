@@ -275,6 +275,7 @@ tasks {
         systemProperty("runUiTests", "true")
         systemProperty("robot-server.auto.run", "false")
         systemProperty("robot.server.url", robotServerUrlProvider.get())
+        systemProperty("ui.test.server.wait.timeout", robotServerWaitTimeoutProvider.get())
         systemProperty("ui.test.connection.timeout", robotConnectionTimeoutProvider.get())
         systemProperty("ui.test.timeout", uiTestTimeoutProvider.get())
 
@@ -300,16 +301,30 @@ tasks {
             while (System.nanoTime() < deadline) {
                 attempt += 1
                 try {
-                    val request = HttpRequest.newBuilder(URI.create("$serverUrl/"))
+                    val rootRequest = HttpRequest.newBuilder(URI.create("$serverUrl/"))
                         .timeout(Duration.ofSeconds(5))
                         .GET()
                         .build()
-                    val response = client.send(request, HttpResponse.BodyHandlers.discarding())
-                    if (response.statusCode() in 200..299) {
-                        logger.lifecycle("Remote Robot server is ready at $serverUrl after $attempt check(s).")
+                    val rootResponse = client.send(rootRequest, HttpResponse.BodyHandlers.discarding())
+                    if (rootResponse.statusCode() !in 200..299) {
+                        lastFailure = "unexpected HTTP ${rootResponse.statusCode()}"
+                        Thread.sleep(3000)
+                        continue
+                    }
+
+                    val jsProbeRequest = HttpRequest.newBuilder(URI.create("$serverUrl/js/execute"))
+                        .timeout(Duration.ofSeconds(5))
+                        .header("Content-Type", "application/json")
+                        .header("Accept", "application/json")
+                        .POST(HttpRequest.BodyPublishers.ofString("""{"script":"true","runInEdt":false}"""))
+                        .build()
+                    val jsProbeResponse = client.send(jsProbeRequest, HttpResponse.BodyHandlers.ofString())
+                    if (jsProbeResponse.statusCode() in 200..299) {
+                        logger.lifecycle("Remote Robot server is ready for JS execution at $serverUrl after $attempt check(s).")
                         return@doLast
                     }
-                    lastFailure = "unexpected HTTP ${response.statusCode()}"
+
+                    lastFailure = "JS probe returned HTTP ${jsProbeResponse.statusCode()}"
                 } catch (exception: Exception) {
                     lastFailure = exception.message ?: exception.javaClass.simpleName
                 }
