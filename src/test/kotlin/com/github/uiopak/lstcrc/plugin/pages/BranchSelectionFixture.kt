@@ -10,7 +10,7 @@ import com.intellij.remoterobot.utils.waitFor
 import java.time.Duration
 
 fun IdeaFrame.branchSelection(function: BranchSelectionFixture.() -> Unit) {
-    val timeout = if (System.getenv("GITHUB_ACTIONS") == "true") Duration.ofSeconds(60) else Duration.ofSeconds(30)
+    val timeout = Duration.ofSeconds(60)
     waitFor(timeout, interval = Duration.ofMillis(500)) {
         remoteRobot.findAll<ComponentFixture>(byXpath("//div[@class='BranchSelectionPanel']")).isNotEmpty()
     }
@@ -55,27 +55,23 @@ class BranchSelectionFixture(remoteRobot: RemoteRobot, remoteComponent: RemoteCo
                 """
                 const project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
                 if (project) {
-                    com.intellij.openapi.application.ApplicationManager.getApplication().invokeAndWait(new java.lang.Runnable({
-                        run: function() {
-                            const basePath = project.getBasePath();
-                            if (basePath != null) {
-                                const fileSystem = com.intellij.openapi.vfs.LocalFileSystem.getInstance();
-                                const normalizedBasePath = String(basePath).split("\\").join("/");
-                                const projectDir = fileSystem.refreshAndFindFileByPath(normalizedBasePath);
-                                if (projectDir != null) {
-                                    projectDir.refresh(false, true);
-                                    const gitDir = projectDir.findChild(".git");
-                                    if (gitDir != null) {
-                                        gitDir.refresh(false, true);
-                                    }
-                                }
+                    const basePath = project.getBasePath();
+                    if (basePath != null) {
+                        const fileSystem = com.intellij.openapi.vfs.LocalFileSystem.getInstance();
+                        const normalizedBasePath = String(basePath).split("\\").join("/");
+                        const projectDir = fileSystem.refreshAndFindFileByPath(normalizedBasePath);
+                        if (projectDir != null) {
+                            projectDir.refresh(false, true);
+                            const gitDir = projectDir.findChild(".git");
+                            if (gitDir != null) {
+                                gitDir.refresh(false, true);
                             }
-                            com.intellij.openapi.vcs.changes.VcsDirtyScopeManager.getInstance(project).markEverythingDirty();
                         }
-                    }));
+                    }
+                    com.intellij.openapi.vcs.changes.VcsDirtyScopeManager.getInstance(project).markEverythingDirty();
                 }
                 """.trimIndent(),
-                true
+                false
             )
 
             val searchTimeout = if (System.getenv("GITHUB_ACTIONS") == "true") Duration.ofSeconds(30) else Duration.ofSeconds(10)
@@ -112,6 +108,29 @@ class BranchSelectionFixture(remoteRobot: RemoteRobot, remoteComponent: RemoteCo
                 tree.findAllText(branchName).isNotEmpty()
             }
             tree.findText(branchName).doubleClick()
+
+            waitFor(Duration.ofSeconds(10), interval = Duration.ofMillis(250)) {
+                remoteRobot.findAll<ComponentFixture>(byXpath("//div[@class='BranchSelectionPanel']")).isEmpty()
+            }
+
+            remoteRobot.runJs(
+                """
+                const project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
+                if (project) {
+                    const pluginId = com.intellij.openapi.extensions.PluginId.getId("com.github.uiopak.lstcrc");
+                    const plugin = com.intellij.ide.plugins.PluginManagerCore.getPlugin(pluginId);
+                    if (plugin != null) {
+                        const stateServiceClass = plugin.getPluginClassLoader()
+                            .loadClass("com.github.uiopak.lstcrc.services.ToolWindowStateService");
+                        const stateService = project.getService(stateServiceClass);
+                        if (stateService != null) {
+                            stateService.refreshDataForCurrentSelection().join();
+                        }
+                    }
+                }
+                """.trimIndent(),
+                false
+            )
         }
     }
 }

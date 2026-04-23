@@ -139,6 +139,25 @@ class GitChangesViewFixture(remoteRobot: RemoteRobot, remoteComponent: RemoteCom
             waitFor(Duration.ofSeconds(10), interval = Duration.ofMillis(250)) {
                 selectedContentTabName() == tabName
             }
+
+            runJs(
+                """
+                const project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
+                if (project) {
+                    const pluginId = com.intellij.openapi.extensions.PluginId.getId("com.github.uiopak.lstcrc");
+                    const plugin = com.intellij.ide.plugins.PluginManagerCore.getPlugin(pluginId);
+                    if (plugin != null) {
+                        const stateServiceClass = plugin.getPluginClassLoader()
+                            .loadClass("com.github.uiopak.lstcrc.services.ToolWindowStateService");
+                        const stateService = project.getService(stateServiceClass);
+                        if (stateService != null) {
+                            stateService.refreshDataForCurrentSelection().join();
+                        }
+                    }
+                }
+                """.trimIndent(),
+                false
+            )
         }
     }
 
@@ -169,10 +188,46 @@ class GitChangesViewFixture(remoteRobot: RemoteRobot, remoteComponent: RemoteCom
 
     fun addTab() {
         step("Click 'Add Tab' button") {
+            val addTabLocator = byXpath("//div[@accessiblename='Add Tab']")
             waitFor(Duration.ofSeconds(10), interval = Duration.ofMillis(250)) {
-                remoteRobot.findAll<ComponentFixture>(byXpath("//div[@accessiblename='Add Tab']")).isNotEmpty()
+                remoteRobot.findAll<ComponentFixture>(addTabLocator).isNotEmpty()
             }
-            remoteRobot.find<ComponentFixture>(byXpath("//div[@accessiblename='Add Tab']")).click()
+
+            remoteRobot.find<ComponentFixture>(addTabLocator).click()
+
+            val branchPanelLocator = byXpath("//div[@class='BranchSelectionPanel']")
+            val openedFromClick = runCatching {
+                waitFor(Duration.ofSeconds(5), interval = Duration.ofMillis(250)) {
+                    remoteRobot.findAll<ComponentFixture>(branchPanelLocator).isNotEmpty()
+                }
+                true
+            }.getOrDefault(false)
+
+            if (!openedFromClick) {
+                remoteRobot.runJs(
+                    """
+                    const project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
+                    if (project) {
+                        const toolWindow = com.intellij.openapi.wm.ToolWindowManager.getInstance(project).getToolWindow("GitChangesView");
+                        const pluginId = com.intellij.openapi.extensions.PluginId.getId("com.github.uiopak.lstcrc");
+                        const plugin = com.intellij.ide.plugins.PluginManagerCore.getPlugin(pluginId);
+                        if (toolWindow != null && plugin != null) {
+                            const helperClass = plugin.getPluginClassLoader()
+                                .loadClass("com.github.uiopak.lstcrc.toolWindow.ToolWindowHelper");
+                            const helper = helperClass.getField("INSTANCE").get(null);
+                            helperClass
+                                .getMethod(
+                                    "openBranchSelectionTab",
+                                    com.intellij.openapi.project.Project,
+                                    com.intellij.openapi.wm.ToolWindow
+                                )
+                                .invoke(helper, project, toolWindow);
+                        }
+                    }
+                    """.trimIndent(),
+                    true
+                )
+            }
         }
     }
 }

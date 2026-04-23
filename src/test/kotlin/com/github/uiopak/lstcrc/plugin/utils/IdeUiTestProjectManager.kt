@@ -59,6 +59,9 @@ fun RemoteRobot.createFreshProjectFromWelcomeScreen() {
             importPackage(java.nio.file)
             importPackage(com.intellij.ide.impl)
             importPackage(com.intellij.openapi.application)
+            importPackage(com.intellij.openapi.module)
+            importPackage(com.intellij.openapi.roots)
+            importPackage(com.intellij.openapi.vfs)
             importPackage(com.intellij.openapi.project.ex)
 
             ApplicationManager.getApplication().invokeLater(new java.lang.Runnable({
@@ -77,6 +80,47 @@ fun RemoteRobot.createFreshProjectFromWelcomeScreen() {
                     if (openedProject == null) {
                         throw new java.lang.IllegalStateException("Failed to open project at " + projectDir);
                     }
+
+                    ApplicationManager.getApplication().runWriteAction(new java.lang.Runnable({
+                        run: function() {
+                            const moduleManager = ModuleManager.getInstance(openedProject);
+                            const modulesDir = projectDir.resolve(".idea").resolve("modules");
+                            Files.createDirectories(modulesDir);
+
+                            let module = moduleManager.getModules().length > 0 ? moduleManager.getModules()[0] : null;
+                            if (module == null) {
+                                const moduleFile = modulesDir.resolve($projectNameJs + ".iml");
+                                module = moduleManager.newModule(moduleFile, EmptyModuleType.getInstance().getId());
+                            }
+
+                            const rootModel = ModuleRootManager.getInstance(module).getModifiableModel();
+                            try {
+                                const normalizedPath = String(projectDir).split('\\\\').join('/');
+                                const projectRoot = LocalFileSystem.getInstance().refreshAndFindFileByPath(normalizedPath);
+                                if (projectRoot == null) {
+                                    throw new java.lang.IllegalStateException("Failed to resolve project root at " + normalizedPath);
+                                }
+
+                                const existingEntries = rootModel.getContentEntries();
+                                let hasProjectRoot = false;
+                                for (let i = 0; i < existingEntries.length; i++) {
+                                    const entryFile = existingEntries[i].getFile();
+                                    if (entryFile != null && entryFile.equals(projectRoot)) {
+                                        hasProjectRoot = true;
+                                        break;
+                                    }
+                                }
+
+                                if (!hasProjectRoot) {
+                                    rootModel.addContentEntry(projectRoot);
+                                }
+                                rootModel.inheritSdk();
+                            }
+                            finally {
+                                rootModel.commit();
+                            }
+                        }
+                    }));
                 }
             }));
             """.trimIndent(),

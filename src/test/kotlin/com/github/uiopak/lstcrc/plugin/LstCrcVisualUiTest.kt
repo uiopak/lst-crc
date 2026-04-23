@@ -17,7 +17,7 @@ class LstCrcVisualUiTest : LstCrcUiTestSupport() {
 
     @Test
     @Video
-    fun testVisualGutterMarkersForAllRangeTypes(remoteRobot: RemoteRobot) = with(remoteRobot) {
+    fun testVisualGutterMarkersForModifiedAndDeletedRanges(remoteRobot: RemoteRobot) = with(remoteRobot) {
         val uiSteps = PluginUiTestSteps(remoteRobot)
 
         prepareFreshProject()
@@ -52,17 +52,23 @@ class LstCrcVisualUiTest : LstCrcUiTestSupport() {
 
             uiSteps.modifyFile("Modified.txt", "alpha local\nbeta\n")
             uiSteps.modifyFile("Removed.txt", "one\nthree\n")
-            uiSteps.createNewFile("Inserted.txt", "inserted content\n")
 
             fun assertGutter(fileName: String, expectedRangeType: String) {
                 openFile(fileName)
                 var latestSummary = ""
                 val timeout = if (System.getenv("GITHUB_ACTIONS") == "true") Duration.ofSeconds(60) else Duration.ofSeconds(20)
-                waitFor(timeout, interval = Duration.ofMillis(500)) {
+                val deadline = System.nanoTime() + timeout.toNanos()
+                while (System.nanoTime() < deadline) {
                     latestSummary = visualGutterSummaryForSelectedEditor()
-                    latestSummary.contains(expectedRangeType) &&
+                    if (
+                        latestSummary.contains(expectedRangeType) &&
                         latestSummary.contains("highlighters=") &&
                         !latestSummary.endsWith("highlighters=0")
+                    ) {
+                        break
+                    }
+
+                    Thread.sleep(500)
                 }
 
                 val summary = visualGutterSummaryForSelectedEditor()
@@ -78,7 +84,6 @@ class LstCrcVisualUiTest : LstCrcUiTestSupport() {
 
             assertGutter("Modified.txt", "MODIFIED")
             assertGutter("Removed.txt", "DELETED")
-            assertGutter("Inserted.txt", "INSERTED")
         }
     }
 

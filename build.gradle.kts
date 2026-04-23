@@ -485,6 +485,9 @@ tasks {
 
         configureCommonTestTask()
         configureUiRobotTestTask()
+        filter {
+            includeTestsMatching("com.github.uiopak.lstcrc.plugin.*")
+        }
         dependsOn("uiTestReady")
         shouldRunAfter(test)
     }

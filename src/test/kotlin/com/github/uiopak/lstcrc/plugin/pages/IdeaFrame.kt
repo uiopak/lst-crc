@@ -86,32 +86,72 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
     }
 
     fun openFile(path: String) {
+        val normalizedPath = path.replace('\\', '/')
         runJs(
             """
             importPackage(com.intellij.openapi.fileEditor)
             importPackage(com.intellij.openapi.vfs)
             importPackage(com.intellij.openapi.wm.impl)
             importClass(com.intellij.openapi.application.ApplicationManager)
-            
-            const path = '$path'
+
+            const relativePath = '$normalizedPath'
             const frameHelper = ProjectFrameHelper.getFrameHelper(component)
             if (frameHelper) {
                 const project = frameHelper.getProject()
                 const projectPath = project.getBasePath()
-                const file = LocalFileSystem.getInstance().findFileByPath(projectPath + '/' + path)
-                const openFileFunction = new Runnable({
-                    run: function() {
-                        FileEditorManager.getInstance(project).openTextEditor(
-                            new OpenFileDescriptor(
-                                project,
-                                file
-                            ), true
-                        )
-                    }
-                })
-                ApplicationManager.getApplication().invokeLater(openFileFunction)
+                const normalizedProjectPath = String(projectPath).split('\\').join('/')
+                const absolutePath = normalizedProjectPath + '/' + relativePath
+                const file = LocalFileSystem.getInstance().refreshAndFindFileByPath(absolutePath)
+                if (file) {
+                    const openFileFunction = new Runnable({
+                        run: function() {
+                            FileEditorManager.getInstance(project).openTextEditor(
+                                new OpenFileDescriptor(project, file),
+                                true
+                            )
+                        }
+                    })
+                    ApplicationManager.getApplication().invokeAndWait(openFileFunction)
+                }
             }
         """, true
+        )
+
+        waitFor(Duration.ofSeconds(10), interval = Duration.ofMillis(250)) {
+            runCatching {
+                callJs<Boolean>(
+                    """
+                    (function() {
+                        const project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
+                        if (!project) return false;
+
+                        const editor = com.intellij.openapi.fileEditor.FileEditorManager.getInstance(project).getSelectedTextEditor();
+                        const file = editor ? editor.getVirtualFile() : null;
+                        return file != null && String(file.getPath()).endsWith('/$normalizedPath');
+                    })();
+                    """.trimIndent(),
+                    true
+                )
+            }.getOrDefault(false)
+        }
+
+        runJs(
+            """
+            const project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
+            if (project) {
+                const pluginId = com.intellij.openapi.extensions.PluginId.getId("com.github.uiopak.lstcrc");
+                const plugin = com.intellij.ide.plugins.PluginManagerCore.getPlugin(pluginId);
+                if (plugin != null) {
+                    const managerClass = plugin.getPluginClassLoader()
+                        .loadClass("com.github.uiopak.lstcrc.gutters.VisualTrackerManager");
+                    const manager = project.getService(managerClass);
+                    if (manager != null) {
+                        manager.settingsChanged();
+                    }
+                }
+            }
+            """.trimIndent(),
+            true
         )
     }
 
@@ -122,8 +162,7 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
 
             runJs(
                 """
-                const frameHelper = com.intellij.openapi.wm.impl.ProjectFrameHelper.getFrameHelper(component);
-                const project = frameHelper ? frameHelper.getProject() : null;
+                const project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
                 if (project) {
                     const toolWindow = com.intellij.openapi.wm.ToolWindowManager.getInstance(project).getToolWindow("GitChangesView");
                     if (toolWindow) {
@@ -431,9 +470,56 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
 
     fun clickStatusWidget() {
         step("Click LST-CRC status widget") {
-            remoteRobot.find<ComponentFixture>(
-                byXpath("//div[@class='TextPresentationComponent' and contains(@tooltiptext, 'LST-CRC')]")
-            ).click()
+            val clicked = callJs<Boolean>(
+                """
+                (function() {
+                    const project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
+                    if (!project) return false;
+
+                    const result = new java.util.concurrent.atomic.AtomicBoolean(false);
+                    com.intellij.openapi.application.ApplicationManager.getApplication().invokeAndWait(new java.lang.Runnable({
+                        run: function() {
+                            const statusBar = com.intellij.openapi.wm.WindowManager.getInstance().getStatusBar(project);
+                            if (!statusBar) {
+                                return;
+                            }
+
+                            const widget = statusBar.getWidget("LstCrcStatusWidget");
+                            if (!widget) {
+                                return;
+                            }
+
+                            const presentation = widget.getPresentation ? widget.getPresentation() : widget;
+                            const clickConsumer = presentation && presentation.getClickConsumer
+                                ? presentation.getClickConsumer()
+                                : (widget.getClickConsumer ? widget.getClickConsumer() : null);
+                            const component = statusBar.getComponent ? statusBar.getComponent() : null;
+                            if (!clickConsumer || !component) {
+                                return;
+                            }
+
+                            const event = new java.awt.event.MouseEvent(
+                                component,
+                                java.awt.event.MouseEvent.MOUSE_CLICKED,
+                                java.lang.System.currentTimeMillis(),
+                                0,
+                                Math.max(1, Math.floor(component.getWidth() / 2)),
+                                Math.max(1, Math.floor(component.getHeight() / 2)),
+                                1,
+                                false,
+                                java.awt.event.MouseEvent.BUTTON1
+                            );
+                            clickConsumer.consume(event);
+                            result.set(true);
+                        }
+                    }));
+                    return result.get();
+                })();
+                """.trimIndent(),
+                true
+            )
+
+            check(clicked) { "Could not trigger the LST-CRC status widget click consumer." }
         }
     }
 

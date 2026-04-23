@@ -6,8 +6,10 @@ import com.intellij.remoterobot.search.locators.byXpath
 import com.intellij.remoterobot.stepsProcessing.step
 import com.intellij.remoterobot.utils.component
 import com.intellij.remoterobot.utils.waitFor
+import java.nio.file.AccessDeniedException
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
+import java.nio.file.FileSystemException
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
 import java.nio.file.StandardOpenOption
@@ -26,7 +28,14 @@ class PluginUiTestSteps(private val remoteRobot: RemoteRobot) {
      * Creates a new file with the given name and content
      */
     fun createNewFile(fileName: String, content: String) = step("Create new file: $fileName") {
+        createNewFile(fileName, content, stage = true)
+    }
+
+    fun createNewFile(fileName: String, content: String, stage: Boolean) = step("Create new file: $fileName") {
         writeProjectFile(fileName, content)
+        if (stage) {
+            stageAllGitChanges()
+        }
         handleAddFileToGitDialogIfPresent()
         waitForGitIdle()
     }
@@ -36,6 +45,7 @@ class PluginUiTestSteps(private val remoteRobot: RemoteRobot) {
      */
     fun modifyFile(fileName: String, content: String) = step("Modify file: $fileName") {
         writeProjectFile(fileName, content)
+        stageAllGitChanges()
         waitForGitIdle()
     }
 
@@ -86,7 +96,9 @@ class PluginUiTestSteps(private val remoteRobot: RemoteRobot) {
 
             repeat(3) { attempt ->
                 val initialized = runCatching {
+                    saveAllDocuments()
                     closeAllEditors()
+                    waitForGitIdle()
                     resetProjectFiles()
                     runGitCommand("init")
                     configureGitIdentity()
@@ -136,6 +148,8 @@ class PluginUiTestSteps(private val remoteRobot: RemoteRobot) {
             val path = resolveProjectPath(fileName)
             Files.deleteIfExists(path)
             refreshProjectAfterExternalChange()
+            stageAllGitChanges()
+            waitForGitIdle()
         }
     }
 
@@ -144,14 +158,63 @@ class PluginUiTestSteps(private val remoteRobot: RemoteRobot) {
      */
     fun renameFile(oldName: String, newName: String) = with(remoteRobot) {
         step("Rename file from $oldName to $newName") {
-            val source = resolveProjectPath(oldName)
-            val target = resolveProjectPath(newName)
-            Files.createDirectories(target.parent ?: projectBasePath())
-            Files.deleteIfExists(target)
-            if (Files.exists(source)) {
-                Files.move(source, target, StandardCopyOption.REPLACE_EXISTING)
-            }
-            refreshProjectAfterExternalChange()
+            val oldPathLiteral = toJsStringLiteral(oldName.replace('\\', '/'))
+            val newPathLiteral = toJsStringLiteral(newName.replace('\\', '/'))
+            runJs(
+                """
+                const project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
+                if (project) {
+                    const oldPath = $oldPathLiteral;
+                    const newPath = $newPathLiteral;
+                    com.intellij.openapi.application.ApplicationManager.getApplication().invokeAndWait(new java.lang.Runnable({
+                        run: function() {
+                            com.intellij.openapi.command.WriteCommandAction.runWriteCommandAction(project, new java.lang.Runnable({
+                                run: function() {
+                                    const baseDir = project.getBaseDir();
+                                    if (!baseDir) {
+                                        return;
+                                    }
+
+                                    const source = baseDir.findFileByRelativePath(oldPath);
+                                    if (!source) {
+                                        return;
+                                    }
+
+                                    const targetParentPath = newPath.lastIndexOf('/') >= 0 ? newPath.substring(0, newPath.lastIndexOf('/')) : "";
+                                    const targetFileName = newPath.lastIndexOf('/') >= 0 ? newPath.substring(newPath.lastIndexOf('/') + 1) : newPath;
+                                    const targetParent = targetParentPath
+                                        ? com.intellij.openapi.vfs.VfsUtil.createDirectoryIfMissing(baseDir, targetParentPath)
+                                        : baseDir;
+
+                                    if (!targetParent) {
+                                        return;
+                                    }
+
+                                    const existingTarget = targetParent.findChild(targetFileName);
+                                    if (existingTarget) {
+                                        existingTarget.delete(this);
+                                    }
+                                    if (source.getParent() !== targetParent) {
+                                        source.move(this, targetParent);
+                                    }
+                                    if (String(source.getName()) !== targetFileName) {
+                                        source.rename(this, targetFileName);
+                                    }
+
+                                    com.intellij.openapi.vcs.changes.VcsDirtyScopeManager.getInstance(project).markEverythingDirty();
+                                }
+                            }));
+                        }
+                    }));
+
+                    const changeListManagerEx = com.intellij.openapi.vcs.changes.ChangeListManagerEx.getInstanceEx(project);
+                    changeListManagerEx.waitForUpdate();
+                }
+                """.trimIndent(),
+                false
+            )
+            stageAllGitChanges()
+            waitForGitIdle()
         }
     }
 
@@ -178,7 +241,7 @@ class PluginUiTestSteps(private val remoteRobot: RemoteRobot) {
                         vcsManager.scheduleMappedRootsUpdate();
                         vcsManagerEx
                             .getConfirmation(com.intellij.openapi.vcs.VcsConfiguration.StandardConfirmation.ADD)
-                            .setValue(com.intellij.openapi.vcs.VcsShowConfirmationOption.Value.DO_ACTION_SILENTLY);
+                            .setValue(com.intellij.openapi.vcs.VcsShowConfirmationOption.Value.DO_NOTHING_SILENTLY);
 
                         com.intellij.openapi.vcs.changes.VcsDirtyScopeManager.getInstance(project).markEverythingDirty();
                     }
@@ -241,17 +304,85 @@ class PluginUiTestSteps(private val remoteRobot: RemoteRobot) {
     }
 
     private fun writeProjectFile(fileName: String, content: String) = with(remoteRobot) {
-        val path = resolveProjectPath(fileName)
-        Files.createDirectories(path.parent ?: projectBasePath())
-        Files.writeString(
-            path,
-            content,
-            StandardCharsets.UTF_8,
-            StandardOpenOption.CREATE,
-            StandardOpenOption.TRUNCATE_EXISTING,
-            StandardOpenOption.WRITE
+        val normalizedPath = fileName.replace('\\', '/')
+        val pathLiteral = toJsStringLiteral(normalizedPath)
+        val contentLiteral = toJsStringLiteral(content)
+
+        runJs(
+            """
+            const project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
+            if (project) {
+                const relativePath = $pathLiteral;
+                const fileContent = $contentLiteral;
+                com.intellij.openapi.application.ApplicationManager.getApplication().invokeAndWait(new java.lang.Runnable({
+                    run: function() {
+                        com.intellij.openapi.command.WriteCommandAction.runWriteCommandAction(project, new java.lang.Runnable({
+                            run: function() {
+                                const baseDir = project.getBaseDir();
+                                if (!baseDir) {
+                                    return;
+                                }
+
+                                const parentPath = relativePath.lastIndexOf('/') >= 0
+                                    ? relativePath.substring(0, relativePath.lastIndexOf('/'))
+                                    : "";
+                                const fileNameOnly = relativePath.lastIndexOf('/') >= 0
+                                    ? relativePath.substring(relativePath.lastIndexOf('/') + 1)
+                                    : relativePath;
+                                const parentDir = parentPath
+                                    ? com.intellij.openapi.vfs.VfsUtil.createDirectoryIfMissing(baseDir, parentPath)
+                                    : baseDir;
+                                if (!parentDir) {
+                                    return;
+                                }
+
+                                const file = parentDir.findChild(fileNameOnly) || parentDir.createChildData(this, fileNameOnly);
+                                com.intellij.openapi.vfs.VfsUtil.saveText(file, fileContent);
+                                com.intellij.openapi.vcs.changes.VcsDirtyScopeManager.getInstance(project).markEverythingDirty();
+                            }
+                        }));
+                    }
+                }));
+
+                const changeListManagerEx = com.intellij.openapi.vcs.changes.ChangeListManagerEx.getInstanceEx(project);
+                changeListManagerEx.waitForUpdate();
+
+                const pluginId = com.intellij.openapi.extensions.PluginId.getId("com.github.uiopak.lstcrc");
+                const plugin = com.intellij.ide.plugins.PluginManagerCore.getPlugin(pluginId);
+                if (plugin != null) {
+                    const stateServiceClass = plugin.getPluginClassLoader()
+                        .loadClass("com.github.uiopak.lstcrc.services.ToolWindowStateService");
+                    const stateService = project.getService(stateServiceClass);
+                    if (stateService != null) {
+                        stateService.refreshDataForCurrentSelection().join();
+                    }
+                }
+            }
+            """.trimIndent(),
+            false
         )
-        refreshProjectAfterExternalChange()
+    }
+
+    private fun gitPath(relativePath: String): String = relativePath.replace('\\', '/')
+
+    private fun waitForGitChange(vararg relativePaths: String) {
+        val normalizedPaths = relativePaths
+            .map(::gitPath)
+            .distinct()
+
+        waitFor(Duration.ofSeconds(30), interval = Duration.ofMillis(500)) {
+            runCatching {
+                val statusOutput = runGitCommand("status", "--porcelain")
+                normalizedPaths.any { path ->
+                    statusOutput.lineSequence().any { line ->
+                        val trimmedLine = line.trim()
+                        trimmedLine.endsWith(path) ||
+                            trimmedLine.contains(" -> $path") ||
+                            trimmedLine.contains("$path -> ")
+                    }
+                }
+            }.getOrDefault(false)
+        }
     }
 
     private fun handleAddFileToGitDialogIfPresent() = with(remoteRobot) {
@@ -299,17 +430,32 @@ class PluginUiTestSteps(private val remoteRobot: RemoteRobot) {
             """
             const project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
             if (project) {
-                com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater(new java.lang.Runnable({
-                    run: function() {
-                        const vcsManager = com.intellij.openapi.vcs.ProjectLevelVcsManager.getInstance(project);
-                        vcsManager.scheduleMappedRootsUpdate();
-                        com.intellij.openapi.vcs.changes.VcsDirtyScopeManager.getInstance(project).markEverythingDirty();
+                const vcsManager = com.intellij.openapi.vcs.ProjectLevelVcsManager.getInstance(project);
+                vcsManager.scheduleMappedRootsUpdate();
+                com.intellij.openapi.vcs.changes.VcsDirtyScopeManager.getInstance(project).markEverythingDirty();
+
+                const changeListManagerEx = com.intellij.openapi.vcs.changes.ChangeListManagerEx.getInstanceEx(project);
+                changeListManagerEx.waitForUpdate();
+
+                const pluginId = com.intellij.openapi.extensions.PluginId.getId("com.github.uiopak.lstcrc");
+                const plugin = com.intellij.ide.plugins.PluginManagerCore.getPlugin(pluginId);
+                if (plugin != null) {
+                    const stateServiceClass = plugin.getPluginClassLoader()
+                        .loadClass("com.github.uiopak.lstcrc.services.ToolWindowStateService");
+                    const stateService = project.getService(stateServiceClass);
+                    if (stateService != null) {
+                        stateService.refreshDataForCurrentSelection().join();
                     }
-                }));
+                }
             }
             """,
-            true
+            false
         )
+    }
+
+    private fun stageAllGitChanges() {
+        runGitCommand("add", "-A")
+        refreshProjectAfterGitCommand()
     }
 
     private fun refreshProjectAfterExternalChange() = with(remoteRobot) {
@@ -317,30 +463,40 @@ class PluginUiTestSteps(private val remoteRobot: RemoteRobot) {
             """
             const project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
             if (project) {
-                com.intellij.openapi.application.ApplicationManager.getApplication().invokeAndWait(new java.lang.Runnable({
-                    run: function() {
-                        const basePath = project.getBasePath();
-                        if (basePath != null) {
-                            const fileSystem = com.intellij.openapi.vfs.LocalFileSystem.getInstance();
-                            const normalizedBasePath = String(basePath).split('\\\\').join('/');
-                            const projectDir = fileSystem.refreshAndFindFileByPath(normalizedBasePath);
-                            if (projectDir != null) {
-                                projectDir.refresh(false, true);
-                                const gitDir = projectDir.findChild('.git');
-                                if (gitDir != null) {
-                                    gitDir.refresh(false, true);
-                                }
-                            }
+                const basePath = project.getBasePath();
+                if (basePath != null) {
+                    const fileSystem = com.intellij.openapi.vfs.LocalFileSystem.getInstance();
+                    const normalizedBasePath = String(basePath).split('\\\\').join('/');
+                    const projectDir = fileSystem.refreshAndFindFileByPath(normalizedBasePath);
+                    if (projectDir != null) {
+                        projectDir.refresh(false, true);
+                        const gitDir = projectDir.findChild('.git');
+                        if (gitDir != null) {
+                            gitDir.refresh(false, true);
                         }
-
-                        const vcsManager = com.intellij.openapi.vcs.ProjectLevelVcsManager.getInstance(project);
-                        vcsManager.scheduleMappedRootsUpdate();
-                        com.intellij.openapi.vcs.changes.VcsDirtyScopeManager.getInstance(project).markEverythingDirty();
                     }
-                }));
+                }
+
+                const vcsManager = com.intellij.openapi.vcs.ProjectLevelVcsManager.getInstance(project);
+                vcsManager.scheduleMappedRootsUpdate();
+                com.intellij.openapi.vcs.changes.VcsDirtyScopeManager.getInstance(project).markEverythingDirty();
+
+                const changeListManagerEx = com.intellij.openapi.vcs.changes.ChangeListManagerEx.getInstanceEx(project);
+                changeListManagerEx.waitForUpdate();
+
+                const pluginId = com.intellij.openapi.extensions.PluginId.getId("com.github.uiopak.lstcrc");
+                const plugin = com.intellij.ide.plugins.PluginManagerCore.getPlugin(pluginId);
+                if (plugin != null) {
+                    const stateServiceClass = plugin.getPluginClassLoader()
+                        .loadClass("com.github.uiopak.lstcrc.services.ToolWindowStateService");
+                    const stateService = project.getService(stateServiceClass);
+                    if (stateService != null) {
+                        stateService.refreshDataForCurrentSelection().join();
+                    }
+                }
             }
             """.trimIndent(),
-            true
+            false
         )
     }
 
@@ -351,6 +507,19 @@ class PluginUiTestSteps(private val remoteRobot: RemoteRobot) {
             if (project) {
                 com.intellij.openapi.fileEditor.FileEditorManager.getInstance(project).closeAllFiles();
             }
+            """.trimIndent(),
+            true
+        )
+    }
+
+    private fun saveAllDocuments() = with(remoteRobot) {
+        runJs(
+            """
+            com.intellij.openapi.application.ApplicationManager.getApplication().invokeAndWait(new java.lang.Runnable({
+                run: function() {
+                    com.intellij.openapi.fileEditor.FileDocumentManager.getInstance().saveAllDocuments();
+                }
+            }));
             """.trimIndent(),
             true
         )
@@ -406,7 +575,28 @@ class PluginUiTestSteps(private val remoteRobot: RemoteRobot) {
             }
         }
 
-        Files.deleteIfExists(path)
+        deleteWithRetries(path)
+    }
+
+    private fun deleteWithRetries(path: Path) {
+        var lastFailure: Exception? = null
+
+        repeat(20) { attempt ->
+            try {
+                Files.deleteIfExists(path)
+                return
+            } catch (exception: AccessDeniedException) {
+                lastFailure = exception
+            } catch (exception: FileSystemException) {
+                lastFailure = exception
+            }
+
+            if (attempt < 19) {
+                Thread.sleep(250)
+            }
+        }
+
+        throw lastFailure ?: IllegalStateException("Failed to delete $path")
     }
 
     private fun waitForGitRepository() = with(remoteRobot) {
@@ -496,8 +686,21 @@ class PluginUiTestSteps(private val remoteRobot: RemoteRobot) {
             .map { it.trim() }
             .filter { it.isNotBlank() }
             .none { line ->
-                val path = line.substringAfter(' ').substringAfter(' ').trim()
-                !path.startsWith(".idea/") && !path.endsWith(".iml")
+                val path = normalizedStatusPath(line)
+                !isIgnoredUiTestPath(path)
             }
+    }
+
+    private fun normalizedStatusPath(statusLine: String): String {
+        val pathPortion = statusLine.drop(3).trim()
+        return pathPortion.substringAfter("->", pathPortion).trim().replace('\\', '/')
+    }
+
+    private fun isIgnoredUiTestPath(path: String): Boolean {
+        return path.startsWith(".idea/") ||
+            path.startsWith(".kotlin/") ||
+            path.startsWith(".fleet/") ||
+            path == ".name" ||
+            path.endsWith(".iml")
     }
 }

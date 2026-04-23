@@ -15,6 +15,8 @@ import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.editor.Document
 import com.intellij.openapi.editor.EditorFactory
 import com.intellij.openapi.fileEditor.FileDocumentManager
+import com.intellij.openapi.fileEditor.FileEditorManagerEvent
+import com.intellij.openapi.fileEditor.FileEditorManagerListener
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Disposer
 
@@ -78,6 +80,12 @@ class VisualTrackerManager(
         // Listen for Diff Data changes (Tab switching)
         busConnection.subscribe(DIFF_DATA_CHANGED_TOPIC, object : ActiveDiffDataChangedListener {
             override fun onDiffDataChanged() {
+                refreshAllTrackers()
+            }
+        })
+
+        busConnection.subscribe(FileEditorManagerListener.FILE_EDITOR_MANAGER, object : FileEditorManagerListener {
+            override fun selectionChanged(event: FileEditorManagerEvent) {
                 refreshAllTrackers()
             }
         })
@@ -149,9 +157,27 @@ class VisualTrackerManager(
         document: Document,
         gutterEnabled: Boolean
     ) {
-        val tracker = LineStatusTrackerManager.getInstance(project).getLineStatusTracker(document) as? LocalLineStatusTracker<*> ?: return
-        val targetRevision = if (gutterEnabled) resolveTargetRevision(tracker.virtualFile) else null
-        applyTrackerState(tracker, targetRevision)
+        val nativeTracker = LineStatusTrackerManager.getInstance(project).getLineStatusTracker(document) as? LocalLineStatusTracker<*>
+        val file = nativeTracker?.virtualFile ?: FileDocumentManager.getInstance().getFile(document) ?: return
+        val targetRevision = if (gutterEnabled) resolveTargetRevision(file) else null
+
+        withContext(dispatchers.ui) {
+            if (project.isDisposed) return@withContext
+
+            if (targetRevision != null) {
+                if (nativeTracker != null) {
+                    performInterception(nativeTracker, targetRevision)
+                } else {
+                    performStandaloneInterception(document, file, targetRevision)
+                }
+            } else {
+                if (nativeTracker != null) {
+                    restoreNativeTracker(nativeTracker)
+                } else {
+                    restoreStandaloneTracker(document, file)
+                }
+            }
+        }
     }
 
     private suspend fun applyTrackerState(tracker: LocalLineStatusTracker<*>, targetRevision: String?) {
@@ -249,6 +275,11 @@ class VisualTrackerManager(
         val visualTracker = visualTrackers.computeIfAbsent(document) {
             logger.debug("VISUAL_TRACKER: Creating Visual Tracker for ${file.name}")
             val tracker = SimpleLocalLineStatusTracker.createTracker(project, document, file)
+            tracker.mode = LocalLineStatusTracker.Mode(
+                isVisible = true,
+                showErrorStripeMarkers = true,
+                detectWhitespaceChangedLines = true
+            )
             Disposer.register(this) { tracker.release() }
             tracker
         }
@@ -262,6 +293,34 @@ class VisualTrackerManager(
                 // and might conflict, but `visualTracker` is the same instance.
                 visualTracker.setBaseRevision(content)
             }
+        }
+    }
+
+    private fun performStandaloneInterception(document: Document, file: VirtualFile, targetRevision: String) {
+        val visualTracker = visualTrackers.computeIfAbsent(document) {
+            logger.debug("VISUAL_TRACKER: Creating standalone visual tracker for ${file.name}")
+            val tracker = SimpleLocalLineStatusTracker.createTracker(project, document, file)
+            tracker.mode = LocalLineStatusTracker.Mode(
+                isVisible = true,
+                showErrorStripeMarkers = true,
+                detectWhitespaceChangedLines = true
+            )
+            Disposer.register(this) { tracker.release() }
+            tracker
+        }
+
+        coroutineScope.launch {
+            val content = loadTargetContent(file, targetRevision)
+            withContext(dispatchers.ui) {
+                visualTracker.setBaseRevision(content)
+            }
+        }
+    }
+
+    private fun restoreStandaloneTracker(document: Document, file: VirtualFile) {
+        if (visualTrackers.containsKey(document)) {
+            logger.debug("VISUAL_TRACKER: Releasing standalone visual tracker for ${file.name}.")
+            visualTrackers.remove(document)?.release()
         }
     }
 

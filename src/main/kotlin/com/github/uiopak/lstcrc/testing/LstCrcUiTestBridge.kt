@@ -1,7 +1,9 @@
 package com.github.uiopak.lstcrc.testing
 
 import com.github.uiopak.lstcrc.LstCrcConstants
+import com.github.uiopak.lstcrc.gutters.VisualTrackerManager
 import com.github.uiopak.lstcrc.messaging.PLUGIN_SETTINGS_CHANGED_TOPIC
+import com.github.uiopak.lstcrc.scopes.LstCrcProvidedScopes
 import com.github.uiopak.lstcrc.services.ToolWindowStateService
 import com.github.uiopak.lstcrc.state.TabInfo
 import com.github.uiopak.lstcrc.toolWindow.LstCrcChangesBrowser
@@ -31,6 +33,8 @@ import com.intellij.openapi.wm.ToolWindowManager
 import com.intellij.openapi.wm.WindowManager
 import com.intellij.openapi.wm.impl.content.ToolWindowContentUi
 import com.intellij.psi.PsiManager
+import com.intellij.psi.search.scope.packageSet.CustomScopesProvider
+import com.intellij.psi.search.scope.packageSet.NamedScopeManager
 import com.intellij.psi.search.scope.packageSet.NamedScopesHolder
 import com.intellij.ui.content.Content
 import com.intellij.ui.content.impl.ContentManagerImpl
@@ -299,6 +303,7 @@ class LstCrcUiTestBridge {
             val file = LocalFileSystem.getInstance().refreshAndFindFileByPath(File(basePath, relativePath).path.replace('\\', '/'))
                 ?: error("Could not find file '$relativePath' under project base path '$basePath'.")
             FileEditorManager.getInstance(project).openTextEditor(OpenFileDescriptor(project, file), true)
+            project.service<VisualTrackerManager>().settingsChanged()
         }
     }
 
@@ -443,7 +448,13 @@ class LstCrcUiTestBridge {
         val project = project()
         val holders = NamedScopesHolder.getAllNamedScopeHolders(project)
         val scopeAndHolder = holders.asSequence()
-            .flatMap { holder -> holder.editableScopes.asSequence().map { scope -> scope to holder } }
+            .flatMap { holder -> holder.scopes.asSequence().map { scope -> scope to holder } }
+            .plus(
+                CustomScopesProvider.CUSTOM_SCOPES_PROVIDER.getExtensions(project)
+                    .asSequence()
+                    .flatMap { provider -> provider.customScopes.asSequence().map { scope -> scope to NamedScopeManager.getInstance(project) } }
+            )
+            .plus(lstCrcScopes().map { scope -> scope to NamedScopeManager.getInstance(project) })
             .firstOrNull { (scope, _) -> scope.scopeId == scopeId }
             ?: return@onEdtResult false
 
@@ -456,11 +467,26 @@ class LstCrcUiTestBridge {
     }
 
     fun scopeExists(scopeId: String): Boolean = onEdtResult {
-        NamedScopesHolder.getAllNamedScopeHolders(project())
+        val project = project()
+        NamedScopesHolder.getAllNamedScopeHolders(project)
             .asSequence()
-            .flatMap { holder -> holder.editableScopes.asSequence() }
+            .flatMap { holder -> holder.scopes.asSequence() }
+            .plus(
+                CustomScopesProvider.CUSTOM_SCOPES_PROVIDER.getExtensions(project)
+                    .asSequence()
+                    .flatMap { provider -> provider.customScopes.asSequence() }
+            )
+            .plus(lstCrcScopes())
             .any { scope -> scope.scopeId == scopeId }
     }
+
+    private fun lstCrcScopes() = sequenceOf(
+        LstCrcProvidedScopes.CREATED_FILES_SCOPE,
+        LstCrcProvidedScopes.MODIFIED_FILES_SCOPE,
+        LstCrcProvidedScopes.MOVED_FILES_SCOPE,
+        LstCrcProvidedScopes.DELETED_FILES_SCOPE,
+        LstCrcProvidedScopes.CHANGED_FILES_SCOPE
+    )
 
     fun visualGutterSummaryForSelectedEditor(): String = onEdtResult {
         val project = project()

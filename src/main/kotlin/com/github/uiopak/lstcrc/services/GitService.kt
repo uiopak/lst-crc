@@ -7,16 +7,20 @@ import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.progress.ProgressIndicator
 import com.intellij.openapi.progress.Task
+import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.util.text.StringUtil
 import com.intellij.openapi.vcs.FileStatus
 import com.intellij.openapi.vcs.VcsException
 import com.intellij.openapi.vcs.changes.Change
 import com.intellij.openapi.vcs.changes.ContentRevision
+import com.intellij.openapi.vcs.changes.CurrentContentRevision
 import com.intellij.openapi.vcs.vfs.ContentRevisionVirtualFile
 import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.openapi.vfs.VfsUtilCore
 import com.intellij.openapi.vfs.VirtualFile
+import com.intellij.vcsUtil.VcsUtil
 import git4idea.GitContentRevision
+import git4idea.GitRevisionNumber
 import git4idea.changes.GitChangeUtils
 import git4idea.commands.Git
 import git4idea.commands.GitCommand
@@ -270,7 +274,9 @@ class GitService(private val project: Project) {
         }
 
         return try {
-            GitChangeUtils.getDiffWithWorkingDir(project, repo.root, target, null, false, true).toImmutableList()
+            val trackedChanges = GitChangeUtils.getDiffWithWorkingDir(project, repo.root, target, null, false, true).toList()
+            val untrackedChanges = loadUntrackedChanges(repo)
+            overlayUnsavedDocumentChanges(repo, target, trackedChanges + untrackedChanges)
         } catch (e: VcsException) {
             logger.warn(
                 "git diff failed for repo '${repo.root.name}' against target '$target'. " +
@@ -309,9 +315,15 @@ class GitService(private val project: Project) {
 
     private fun categorizeChange(change: Change, buckets: ChangeBuckets) {
         when (change.type) {
-            Change.Type.NEW -> change.afterRevision?.file?.virtualFile?.let { buckets.createdFiles.add(it) }
-            Change.Type.MODIFICATION -> change.afterRevision?.file?.virtualFile?.let { buckets.modifiedFiles.add(it) }
-            Change.Type.MOVED -> change.afterRevision?.file?.virtualFile?.let { buckets.movedFiles.add(it) }
+            Change.Type.NEW -> change.afterRevision?.let { afterRevision ->
+                createComparisonVirtualFile(afterRevision)?.let { buckets.createdFiles.add(it) }
+            }
+            Change.Type.MODIFICATION -> change.afterRevision?.let { afterRevision ->
+                createComparisonVirtualFile(afterRevision)?.let { buckets.modifiedFiles.add(it) }
+            }
+            Change.Type.MOVED -> change.afterRevision?.let { afterRevision ->
+                createComparisonVirtualFile(afterRevision)?.let { buckets.movedFiles.add(it) }
+            }
             Change.Type.DELETED -> change.beforeRevision?.let { beforeRevision ->
                 createDeletedVirtualFile(beforeRevision)?.let { buckets.deletedFiles.add(it) }
             }
@@ -348,7 +360,7 @@ class GitService(private val project: Project) {
     private fun loadLocalChanges(repo: GitRepository): List<Change> {
         val trackedChanges = loadTrackedChangesAgainstHead(repo)
         val untrackedChanges = loadUntrackedChanges(repo)
-        return (trackedChanges + untrackedChanges).distinctBy { changeKey(it) }
+        return overlayUnsavedDocumentChanges(repo, "HEAD", trackedChanges + untrackedChanges)
     }
 
     private fun loadTrackedChangesAgainstHead(repo: GitRepository): List<Change> {
@@ -402,6 +414,58 @@ class GitService(private val project: Project) {
         return "${change.type}:$beforePath->$afterPath"
     }
 
+    private fun overlayUnsavedDocumentChanges(
+        repo: GitRepository,
+        targetRevision: String,
+        baseChanges: List<Change>
+    ): List<Change> {
+        val mergedChanges = LinkedHashMap<String, Change>()
+        baseChanges.forEach { change ->
+            mergedChanges[unsavedOverlayKey(change.afterRevision?.file?.path ?: change.beforeRevision?.file?.path.orEmpty())] = change
+        }
+
+        collectUnsavedDocumentChanges(repo, targetRevision).forEach { change ->
+            val path = change.afterRevision?.file?.path ?: change.beforeRevision?.file?.path.orEmpty()
+            val key = unsavedOverlayKey(path)
+            mergedChanges[key] = mergeUnsavedOverlayChange(mergedChanges[key], change)
+        }
+
+        return mergedChanges.values.toList()
+    }
+
+    private fun collectUnsavedDocumentChanges(repo: GitRepository, targetRevision: String): List<Change> {
+        val fileDocumentManager = FileDocumentManager.getInstance()
+
+        return fileDocumentManager.unsavedDocuments.asSequence()
+            .mapNotNull { document -> fileDocumentManager.getFile(document) }
+            .filter { file ->
+                file.isValid &&
+                    VfsUtilCore.isAncestor(repo.root, file, false) &&
+                    fileDocumentManager.isFileModified(file)
+            }
+            .mapNotNull { file -> createUnsavedDocumentChange(file, targetRevision) }
+            .toList()
+    }
+
+    private fun createUnsavedDocumentChange(file: VirtualFile, targetRevision: String): Change? {
+        return try {
+            val filePath = VcsUtil.getFilePath(file)
+            val beforeRevision = GitContentRevision.createRevision(filePath, GitRevisionNumber(targetRevision), project)
+            val afterRevision = CurrentContentRevision.create(filePath)
+            Change(beforeRevision, afterRevision, FileStatus.MODIFIED)
+        } catch (e: Exception) {
+            logger.warn("Failed to create unsaved document change for '${file.path}' against '$targetRevision'", e)
+            null
+        }
+    }
+
+    private fun unsavedOverlayKey(path: String): String = path.lowercase()
+
+    private fun createComparisonVirtualFile(afterRevision: ContentRevision): VirtualFile? {
+        return afterRevision.file.virtualFile
+            ?: LocalFileSystem.getInstance().refreshAndFindFileByPath(afterRevision.file.path)
+    }
+
     private fun createDeletedVirtualFile(beforeRevision: ContentRevision): VirtualFile? {
         return try {
             logger.debug("Prepared lazy deleted-file virtual file for '${beforeRevision.file.path}'.")
@@ -448,4 +512,12 @@ class GitService(private val project: Project) {
         logger.info("GUTTER_GIT_SERVICE: Successfully fetched content for '${relativePath}' in revision '${revision}'.")
         return normalizedContent
     }
+}
+
+internal fun mergeUnsavedOverlayChange(existingChange: Change?, unsavedChange: Change): Change {
+    if (existingChange?.type == Change.Type.NEW && unsavedChange.afterRevision != null) {
+        return Change(null, unsavedChange.afterRevision, FileStatus.ADDED)
+    }
+
+    return unsavedChange
 }
