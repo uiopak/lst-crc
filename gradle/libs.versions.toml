@@ -9,7 +9,7 @@ remoteRobot = "0.11.23"
 okhttpLogging = "5.3.2"
 videoRecorderJunit5 = "2.0"
 # Forced/Substituted versions for security
-commonsIo = "2.21.0"
+commonsIo = "2.22.0"
 commonsLang3 = "3.18.0"
 slf4j = "2.0.17"
 
