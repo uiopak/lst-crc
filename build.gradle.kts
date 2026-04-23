@@ -106,7 +106,7 @@ dependencies {
     add("uiTestRuntimeOnly", libs.junit.jupiter.engine)
     add("uiTestRuntimeOnly", libs.junit.platform.launcher)
     add("uiTestRuntimeOnly", libs.slf4j.simple)
-    add("uiTestImplementation", "org.kodein.di:kodein-di-jvm:7.26.1")
+    add("uiTestImplementation", "org.kodein.di:kodein-di-jvm:7.31.0")
     add("uiTestImplementation", "org.jetbrains.kotlinx:kotlinx-coroutines-core-jvm:1.10.2")
 
     // IntelliJ Platform Gradle Plugin Dependencies Extension - read more: https://plugins.jetbrains.com/docs/intellij/tools-intellij-platform-gradle-plugin-dependencies-extension.html
