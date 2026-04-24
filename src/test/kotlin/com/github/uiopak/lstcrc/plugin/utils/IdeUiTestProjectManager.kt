@@ -177,7 +177,7 @@ private fun RemoteRobot.suppressNewUsersOnboarding() {
 private fun RemoteRobot.dismissNewUsersOnboardingIfPresent() {
     step("Dismiss new users onboarding if present") {
         val watchWindow = if (System.getenv("GITHUB_ACTIONS") == "true") {
-            Duration.ofSeconds(15)
+            Duration.ofSeconds(25)
         } else {
             Duration.ofSeconds(3)
         }
@@ -189,8 +189,9 @@ private fun RemoteRobot.dismissNewUsersOnboardingIfPresent() {
             val dialogVisible = findAll<ComponentFixture>(newUsersOnboardingDialogLocator).isNotEmpty()
             if (dialogVisible) {
                 lastSeenAtNanos = System.nanoTime()
-                runCatching {
-                    find<ComponentFixture>(newUsersOnboardingSkipLocator, Duration.ofSeconds(2)).click()
+                val skipButtons = findAll<ComponentFixture>(newUsersOnboardingSkipLocator)
+                if (skipButtons.isNotEmpty()) {
+                    runCatching { skipButtons.first().click() }
                 }
                 return@waitFor false
             }

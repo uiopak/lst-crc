@@ -250,32 +250,34 @@ class LstCrcSettingsUiTest : LstCrcUiTestSupport() {
                 searchAndSelect("feature-tree-labels")
             }
 
-            waitFor(Duration.ofSeconds(10)) {
+            val treeSnapshotTimeout = if (System.getenv("GITHUB_ACTIONS") == "true") Duration.ofSeconds(30) else Duration.ofSeconds(10)
+
+            waitFor(treeSnapshotTimeout) {
                 selectedChangesTreeSnapshot().contains("(vs feature-tree-labels)")
             }
 
             setTreeContextSettings(showSingleRepo = false)
-            waitFor(Duration.ofSeconds(10)) {
+            waitFor(treeSnapshotTimeout) {
                 !selectedChangesTreeSnapshot().contains("(vs feature-tree-labels)")
             }
 
             setTreeContextSettings(showSingleRepo = true)
-            waitFor(Duration.ofSeconds(10)) {
+            waitFor(treeSnapshotTimeout) {
                 selectedChangesTreeSnapshot().contains("(vs feature-tree-labels)")
             }
 
             invokeCreateTabFromRevisionAction(featureRevision, "feature-tree-revision")
-            waitFor(Duration.ofSeconds(10)) {
+            waitFor(treeSnapshotTimeout) {
                 selectedLstCrcTabName() == "feature-tree-revision"
             }
 
             setTreeContextSettings(showCommits = false)
-            waitFor(Duration.ofSeconds(10)) {
+            waitFor(treeSnapshotTimeout) {
                 !selectedChangesTreeSnapshot().contains("(vs $featureRevision)")
             }
 
             setTreeContextSettings(showCommits = true)
-            waitFor(Duration.ofSeconds(10)) {
+            waitFor(treeSnapshotTimeout) {
                 selectedChangesTreeSnapshot().contains("(vs $featureRevision)")
             }
         }
