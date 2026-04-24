@@ -756,6 +756,12 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
         }
     }
 
+    fun selectedChangesTreeContains(text: String): Boolean {
+        return findAll<ComponentFixture>(
+            byXpath("LstCrcAsyncChangesTree with '$text'", "//div[@class='LstCrcAsyncChangesTree' and contains(@visible_text,'$text')]")
+        ).isNotEmpty()
+    }
+
     fun selectedLstCrcTabName(): String {
         return step("Read selected LST-CRC tab") {
             callJs<String>(
