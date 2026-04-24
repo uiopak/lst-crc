@@ -137,4 +137,42 @@ class LstCrcSettingsStarterUiTest : LstCrcStarterUiTestBase() {
         assertFalse(ui.selectedEditorDescriptor().contains("Main.txt"))
         waitUntil(5.seconds) { ui.selectedEditorDescriptor().contains("Main.txt") }
     }
+
+    @Test
+    fun testRenderedTreeContextLabelsRespectSingleRepoAndCommitSettings() = runStarterUiTest {
+        prepareLstCrc()
+        initializeGitRepository()
+
+        createNewFile("Main.txt", "Base line\n")
+        commitChanges("Initial commit")
+        val defaultBranch = defaultBranchName()
+
+        createBranch("feature-tree-labels")
+        modifyFile("Main.txt", "Feature tree line\n")
+        commitChanges("Feature tree label commit")
+        val featureRevision = gitRevision("HEAD")
+        checkoutBranch(defaultBranch)
+
+        openGitChangesView()
+        ui.createAndSelectTab("feature-tree-labels")
+        waitForSelectedTab("feature-tree-labels")
+        waitForTreeContains("Main.txt")
+
+        waitUntil { ui.selectedRenderedRowsSnapshot().contains("(vs feature-tree-labels)") }
+
+        ui.setTreeContextSettings(showSingleRepo = false, showCommits = null)
+        waitUntil { !ui.selectedRenderedRowsSnapshot().contains("(vs feature-tree-labels)") }
+
+        ui.setTreeContextSettings(showSingleRepo = true, showCommits = null)
+        waitUntil { ui.selectedRenderedRowsSnapshot().contains("(vs feature-tree-labels)") }
+
+        ui.createRevisionTab(featureRevision, "feature-tree-revision")
+        waitUntil { ui.selectedTabName() == "feature-tree-revision" }
+
+        ui.setTreeContextSettings(showSingleRepo = null, showCommits = false)
+        waitUntil { !ui.selectedRenderedRowsSnapshot().contains("(vs $featureRevision)") }
+
+        ui.setTreeContextSettings(showSingleRepo = null, showCommits = true)
+        waitUntil { ui.selectedRenderedRowsSnapshot().contains("(vs $featureRevision)") }
+    }
 }

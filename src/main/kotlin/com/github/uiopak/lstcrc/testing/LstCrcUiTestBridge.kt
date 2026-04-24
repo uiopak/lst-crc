@@ -10,6 +10,8 @@ import com.github.uiopak.lstcrc.toolWindow.LstCrcChangesBrowser
 import com.github.uiopak.lstcrc.toolWindow.ToolWindowHelper
 import com.github.uiopak.lstcrc.toolWindow.ToolWindowSettingsProvider
 import com.intellij.ide.util.PropertiesComponent
+import com.intellij.notification.Notification
+import com.intellij.notification.NotificationsManager
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.service
@@ -149,6 +151,10 @@ class LstCrcUiTestBridge {
         contentManager().selectedContent?.displayName.orEmpty()
     }
 
+    fun selectedRenderedRowsSnapshot(): String = onEdtResult {
+        selectedBrowser()?.debugRenderedRowsSnapshot().orEmpty()
+    }
+
     fun selectedChangesTreeSnapshot(): String = onEdtResult {
         val browser = selectedBrowser() ?: return@onEdtResult ""
         sequenceOf(
@@ -176,7 +182,15 @@ class LstCrcUiTestBridge {
         }
     }
 
+    fun setBranchAsRepoComparison(branchName: String) {
+        updateSelectedRepoComparison(branchName)
+    }
+
     fun setRevisionAsRepoComparison(revision: String) {
+        updateSelectedRepoComparison(revision)
+    }
+
+    private fun updateSelectedRepoComparison(targetRevision: String) {
         val project = project()
         onEdt {
             val stateService = project.service<ToolWindowStateService>()
@@ -184,9 +198,27 @@ class LstCrcUiTestBridge {
                 ?: error("No selected LST-CRC tab available for repo comparison update")
             val repoRootPath = project.basePath ?: error("Project base path is not available")
             val newMap = selectedTabInfo.comparisonMap.toMutableMap()
-            newMap[repoRootPath] = revision
+            newMap[repoRootPath] = targetRevision
             stateService.updateTabComparisonMap(selectedTabInfo.branchName, newMap, true)
         }
+    }
+
+    fun branchErrorNotificationsSnapshot(): String = onEdtResult {
+        NotificationsManager.getNotificationsManager()
+            .getNotificationsOfType(Notification::class.java, project())
+            .asSequence()
+            .filter { notification ->
+                notification.displayId?.startsWith("LST-CRC.BranchError.") == true
+            }
+            .joinToString("\n") { notification ->
+                val actionTexts = notification.actions.joinToString(",") { action -> action.templateText.orEmpty() }
+                listOf(
+                    notification.displayId.orEmpty(),
+                    notification.title,
+                    notification.content,
+                    actionTexts
+                ).joinToString("|")
+            }
     }
 
     fun selectStatusWidgetEntry(displayName: String) {

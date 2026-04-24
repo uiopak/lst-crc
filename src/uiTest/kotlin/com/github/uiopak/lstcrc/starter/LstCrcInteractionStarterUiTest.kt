@@ -165,4 +165,51 @@ class LstCrcInteractionStarterUiTest : LstCrcStarterUiTestBase() {
                 ui.statusWidgetText().contains("feature-rename")
         }
     }
+
+    @Test
+    fun testMissingBranchComparisonTargetRecoversToHeadAndShowsWarning() = runStarterUiTest {
+        prepareLstCrc()
+        initializeGitRepository()
+
+        createNewFile("Main.txt", "Base line\n")
+        commitChanges("Initial commit")
+        val defaultBranch = defaultBranchName()
+
+        createBranch("feature-recovery")
+        createNewFile("Feature.txt", "Feature branch file\n")
+        commitChanges("Feature commit")
+        checkoutBranch(defaultBranch)
+
+        createBranch("missing-target")
+        modifyFile("Main.txt", "Missing target line\n")
+        commitChanges("Missing target commit")
+        checkoutBranch(defaultBranch)
+
+        modifyFile("Main.txt", "Missing target line\n")
+
+        openGitChangesView()
+        ui.createAndSelectTab("feature-recovery")
+        waitForSelectedTab("feature-recovery")
+
+        ui.setBranchAsRepoComparison("missing-target")
+        waitUntil(15.seconds) { ui.selectedTabComparisonMap().contains("=missing-target") }
+
+        deleteBranch("missing-target")
+
+        waitUntil(20.seconds) {
+            ui.selectedTabComparisonMap().contains("=HEAD") &&
+                !ui.selectedTabComparisonMap().contains("missing-target") &&
+                ui.selectedRenderedRowsSnapshot().contains("(vs HEAD)") &&
+                ui.branchErrorNotificationsSnapshot().contains("Branch not found")
+        }
+
+        assertTrue(ui.selectedTabName() == "feature-recovery")
+        assertTrue(ui.selectedChangesTreeSnapshot().contains("Main.txt"))
+
+        val notifications = ui.branchErrorNotificationsSnapshot()
+        assertTrue(notifications.contains("Branch not found"))
+        assertTrue(notifications.contains("'missing-target'"))
+        assertTrue(notifications.contains("feature-recovery"))
+        assertTrue(notifications.contains("Change Comparison for '${project.path.fileName}'"))
+    }
 }

@@ -1,5 +1,6 @@
 package com.github.uiopak.lstcrc.starter
 
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Test
 
@@ -34,6 +35,54 @@ class LstCrcFileScopeStarterUiTest : LstCrcStarterUiTestBase() {
         }
         if (ui.scopeExists("LSTCRC.Created")) {
             waitUntil { ui.scopeContains("LSTCRC.Created", "NewFile.txt") }
+        }
+    }
+
+    @Test
+    fun testPermanentHeadTabScopesStayEmptyUntilIncludeHeadIsEnabled() = runStarterUiTest {
+        prepareLstCrc()
+        initializeGitRepository()
+
+        createNewFile("Base.txt", "base\n")
+        commitChanges("Initial commit")
+        val defaultBranch = defaultBranchName()
+
+        createBranch("feature-head-semantics")
+        createNewFile("BranchOnly.txt", "branch only\n")
+        commitChanges("Feature commit")
+        checkoutBranch(defaultBranch)
+
+        createNewFile("HeadOnly.txt", "local head file\n")
+
+        openGitChangesView()
+        ui.createAndSelectTab("feature-head-semantics")
+        waitForSelectedTab("feature-head-semantics")
+        assertTrue(ui.hasTab("HEAD"))
+
+        ui.selectTab("HEAD")
+        waitForSelectedTab("HEAD")
+
+        if (ui.scopeExists("LSTCRC.Created")) {
+            waitUntil { !ui.scopeContains("LSTCRC.Created", "HeadOnly.txt") }
+        }
+        if (ui.scopeExists("LSTCRC.Changed")) {
+            waitUntil { !ui.scopeContains("LSTCRC.Changed", "HeadOnly.txt") }
+        }
+
+        ui.setIncludeHeadInScopes(true)
+        if (ui.scopeExists("LSTCRC.Created")) {
+            waitUntil { ui.scopeContains("LSTCRC.Created", "HeadOnly.txt") }
+        }
+        if (ui.scopeExists("LSTCRC.Changed")) {
+            waitUntil { ui.scopeContains("LSTCRC.Changed", "HeadOnly.txt") }
+        }
+
+        ui.setIncludeHeadInScopes(false)
+        if (ui.scopeExists("LSTCRC.Created")) {
+            waitUntil { !ui.scopeContains("LSTCRC.Created", "HeadOnly.txt") }
+        }
+        if (ui.scopeExists("LSTCRC.Changed")) {
+            waitUntil { !ui.scopeContains("LSTCRC.Changed", "HeadOnly.txt") }
         }
     }
 }

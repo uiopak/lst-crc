@@ -216,4 +216,68 @@ class LstCrcSettingsUiTest : LstCrcUiTestSupport() {
             }
         }
     }
+
+    @Test
+    @Video
+    fun testRenderedTreeContextLabelsRespectSingleRepoAndCommitSettings(remoteRobot: RemoteRobot) = with(remoteRobot) {
+        val uiSteps = PluginUiTestSteps(remoteRobot)
+
+        prepareFreshProject()
+
+        idea {
+            step("Wait for smart mode") {
+                dumbAware(Duration.ofMinutes(5)) {}
+            }
+
+            uiSteps.initializeGitRepository()
+            resetGitChangesViewState()
+
+            uiSteps.createNewFile("Main.txt", "Base line\n")
+            uiSteps.commitChanges("Initial commit")
+            val defaultBranch = uiSteps.defaultBranchName()
+
+            uiSteps.createBranch("feature-tree-labels")
+            uiSteps.modifyFile("Main.txt", "Feature tree line\n")
+            uiSteps.commitChanges("Feature tree label commit")
+            val featureRevision = uiSteps.gitRevision("HEAD")
+            uiSteps.checkoutBranch(defaultBranch)
+
+            openGitChangesView()
+            gitChangesView {
+                addTab()
+            }
+            branchSelection {
+                searchAndSelect("feature-tree-labels")
+            }
+
+            waitFor(Duration.ofSeconds(10)) {
+                selectedChangesTreeSnapshot().contains("(vs feature-tree-labels)")
+            }
+
+            setTreeContextSettings(showSingleRepo = false)
+            waitFor(Duration.ofSeconds(10)) {
+                !selectedChangesTreeSnapshot().contains("(vs feature-tree-labels)")
+            }
+
+            setTreeContextSettings(showSingleRepo = true)
+            waitFor(Duration.ofSeconds(10)) {
+                selectedChangesTreeSnapshot().contains("(vs feature-tree-labels)")
+            }
+
+            invokeCreateTabFromRevisionAction(featureRevision, "feature-tree-revision")
+            waitFor(Duration.ofSeconds(10)) {
+                selectedLstCrcTabName() == "feature-tree-revision"
+            }
+
+            setTreeContextSettings(showCommits = false)
+            waitFor(Duration.ofSeconds(10)) {
+                !selectedChangesTreeSnapshot().contains("(vs $featureRevision)")
+            }
+
+            setTreeContextSettings(showCommits = true)
+            waitFor(Duration.ofSeconds(10)) {
+                selectedChangesTreeSnapshot().contains("(vs $featureRevision)")
+            }
+        }
+    }
 }

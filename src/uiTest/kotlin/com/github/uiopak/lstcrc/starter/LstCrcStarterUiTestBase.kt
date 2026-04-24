@@ -240,6 +240,11 @@ class LstCrcStarterContext(
         ui.refreshProjectAfterExternalChange()
     }
 
+    fun deleteBranch(branchName: String) {
+        project.deleteBranch(branchName)
+        ui.refreshProjectAfterExternalChange()
+    }
+
     fun defaultBranchName(): String = project.defaultBranchName()
 
     fun gitRevision(reference: String): String = project.gitRevision(reference)

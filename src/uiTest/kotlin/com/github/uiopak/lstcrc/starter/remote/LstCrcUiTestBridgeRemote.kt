@@ -14,10 +14,13 @@ interface LstCrcUiTestBridgeRemote {
     fun selectTab(tabName: String)
     fun hasTab(tabName: String): Boolean
     fun selectedTabName(): String
+    fun selectedRenderedRowsSnapshot(): String
     fun selectedChangesTreeSnapshot(): String
     fun createRevisionTab(revision: String, alias: String?)
     fun updateTabAlias(branchName: String, newAlias: String?)
+    fun setBranchAsRepoComparison(branchName: String)
     fun setRevisionAsRepoComparison(revision: String)
+    fun branchErrorNotificationsSnapshot(): String
     fun selectStatusWidgetEntry(displayName: String)
     fun statusWidgetText(): String
     fun configureClickActions(

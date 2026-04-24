@@ -67,6 +67,10 @@ class LstCrcStarterProject private constructor(val path: Path) {
         git("checkout", branchName)
     }
 
+    fun deleteBranch(branchName: String) {
+        git("branch", "-D", branchName)
+    }
+
     fun defaultBranchName(): String = git("rev-parse", "--abbrev-ref", "HEAD")
 
     fun gitRevision(reference: String): String = git("rev-parse", reference)
