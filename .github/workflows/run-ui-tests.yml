@@ -49,12 +49,12 @@ jobs:
             url: http://127.0.0.1:8082
             reportName: ui-test-fails-report-mac
           - os: windows-latest
-            prepareIdeRuntime: cmd.exe /c "gradlew.bat runIdeForUiTests --dry-run --stacktrace"
-            runIde: cmd.exe /c "start /b gradlew.bat runIdeForUiTests --info --stacktrace --scan > build/reports/idea.log 2>&1"
-            runTests: cmd.exe /c "gradlew.bat uiTest --info --stacktrace -Dui.test.connection.timeout=%UI_TEST_CONNECTION_TIMEOUT% -Dui.test.timeout=%UI_TEST_TIMEOUT%"
+            prepareIdeRuntime: ./gradlew.bat runIdeForUiTests --dry-run --stacktrace
+            runIde: ./gradlew.bat runIdeForUiTests --info --stacktrace --scan &> build/reports/idea.log &
+            runTests: ./gradlew.bat uiTest --info --stacktrace -Dui.test.connection.timeout=${UI_TEST_CONNECTION_TIMEOUT} -Dui.test.timeout=${UI_TEST_TIMEOUT}
             cleanup: |
-              cmd.exe /c "gradlew.bat stopUiTestProcesses --stacktrace" || true
-              cmd.exe /c "gradlew.bat --stop" || true
+              ./gradlew.bat stopUiTestProcesses --stacktrace || true
+              ./gradlew.bat --stop || true
             url: http://localhost:8082
             reportName: ui-test-fails-report-windows
 
@@ -101,6 +101,8 @@ jobs:
       - name: Prepare UI test IDE runtime
         timeout-minutes: 25
         shell: bash
+        env:
+          GRADLE_ACTIONS_SKIP_BUILD_RESULT_CAPTURE: true
         run: |
           deadline=$(( $(date +%s) + UI_TEST_IDE_RUNTIME_WARMUP_TIMEOUT ))
           attempt=1
@@ -145,6 +147,9 @@ jobs:
 
       # Run IDEA prepared for UI testing
       - name: Run IDE
+        shell: bash
+        env:
+          GRADLE_ACTIONS_SKIP_BUILD_RESULT_CAPTURE: true
         run: ${{ matrix.runIde }}
 
       # Wait for IDEA to be started and the Remote Robot server to respond through Gradle's readiness task.
@@ -154,6 +159,7 @@ jobs:
 
       # Run tests
       - name: Run tests
+        shell: bash
         run: ${{ matrix.runTests }}
 
       - name: Move video
@@ -182,5 +188,18 @@ jobs:
 
       - name: Stop UI test IDE and daemons
         if: ${{ always() }}
-        run: ${{ matrix.cleanup }}
         shell: bash
+        env:
+          GRADLE_ACTIONS_SKIP_BUILD_RESULT_CAPTURE: true
+        run: ${{ matrix.cleanup }}
+
+      - name: Test result summary
+        if: always()
+        shell: bash
+        run: |
+          echo "## UI Test Results for ${{ matrix.os }}" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ job.status }}" = "success" ]; then
+            echo "✅ All tests passed" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ Tests failed — see job logs for details" >> $GITHUB_STEP_SUMMARY
+          fi
