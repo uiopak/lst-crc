@@ -60,8 +60,7 @@ class LstCrcFileScopeUiTest : LstCrcUiTestSupport() {
             }
 
             var scopesDebug = ""
-            val scopesDeadline = System.nanoTime() + Duration.ofSeconds(20).toNanos()
-            while (System.nanoTime() < scopesDeadline) {
+            waitFor(Duration.ofSeconds(20), interval = Duration.ofMillis(500)) {
                 scopesDebug = callJs<String>(
                     """
                     (function() {
@@ -133,17 +132,13 @@ class LstCrcFileScopeUiTest : LstCrcUiTestSupport() {
                     """.trimIndent(),
                     true
                 )
-
-                if (
+                
+                (
                     scopesDebug.contains("created=true") &&
                     scopesDebug.contains("modified=true") &&
                     scopesDebug.contains("moved=true") &&
                     scopesDebug.contains("deleted=true")
-                ) {
-                    break
-                }
-
-                Thread.sleep(500)
+                )
             }
 
             Assertions.assertTrue(

@@ -34,6 +34,7 @@ class ProjectActiveDiffDataServiceTest : BasePlatformTestCase() {
 
     fun testRejectsStaleUpdateWhenSelectedBranchDoesNotMatch() {
         val diffDataService = project.service<ProjectActiveDiffDataService>()
+        val selectedFile = myFixture.addFileToProject("diff/Selected.txt", "selected\n").virtualFile
         val staleFile = myFixture.addFileToProject("diff/Stale.txt", "stale\n").virtualFile
 
         project.service<ToolWindowStateService>().loadState(
@@ -42,6 +43,16 @@ class ProjectActiveDiffDataServiceTest : BasePlatformTestCase() {
                 selectedTabIndex = 0
             )
         )
+
+        diffDataService.updateActiveDiff(
+            "selected-branch",
+            listOf(selectedFile),
+            emptyList<VirtualFile>(),
+            emptyList<VirtualFile>(),
+            emptyList<VirtualFile>(),
+            emptyMap<String, String>()
+        )
+        flushEdt()
 
         diffDataService.updateActiveDiff(
             "other-branch",
@@ -53,9 +64,13 @@ class ProjectActiveDiffDataServiceTest : BasePlatformTestCase() {
         )
         flushEdt()
 
-        assertNull(diffDataService.activeBranchName)
-        assertTrue(diffDataService.createdFiles.isEmpty())
-        assertTrue(diffDataService.changedFilesSet.isEmpty())
+        assertEquals("selected-branch", diffDataService.activeBranchName)
+        assertEquals(listOf(selectedFile), diffDataService.createdFiles)
+        assertTrue(diffDataService.createdFilesSet.contains(selectedFile))
+        assertFalse(diffDataService.createdFilesSet.contains(staleFile))
+        assertTrue(diffDataService.changedFilesSet.contains(selectedFile))
+        assertFalse(diffDataService.changedFilesSet.contains(staleFile))
+        assertTrue(diffDataService.createdFilePaths.contains(selectedFile.path))
         assertFalse(diffDataService.createdFilePaths.contains(staleFile.path))
     }
 

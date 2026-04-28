@@ -60,8 +60,7 @@ class LstCrcBranchComparisonUiTest : LstCrcUiTestSupport() {
             }
 
             var scopeDebug = ""
-            val scopeDeadline = System.nanoTime() + Duration.ofSeconds(20).toNanos()
-            while (System.nanoTime() < scopeDeadline) {
+            waitFor(Duration.ofSeconds(10), interval = Duration.ofMillis(500)) {
                 scopeDebug = callJs<String>(
                     """
                     (function() {
@@ -137,12 +136,7 @@ class LstCrcBranchComparisonUiTest : LstCrcUiTestSupport() {
                     """.trimIndent(),
                     true
                 )
-
-                if (scopeDebug.contains("activeBranch=feature-all-statuses") && scopeDebug.contains("modified=true")) {
-                    break
-                }
-
-                Thread.sleep(500)
+                scopeDebug.contains("activeBranch=feature-all-statuses") && scopeDebug.contains("modified=true")
             }
 
             assertTrue(
@@ -351,15 +345,9 @@ class LstCrcBranchComparisonUiTest : LstCrcUiTestSupport() {
 
             step("Verify new local file starts with added file status") {
                 var initialStatus = ""
-                val deadline = System.nanoTime() + Duration.ofSeconds(10).toNanos()
-                var addedVisible = false
-                while (System.nanoTime() < deadline) {
+                waitFor(Duration.ofSeconds(10), interval = Duration.ofMillis(250)) {
                     initialStatus = fileStatusDebug("Local.txt")
-                    addedVisible = initialStatus.contains("status=ADDED")
-                    if (addedVisible) {
-                        break
-                    }
-                    Thread.sleep(250)
+                    initialStatus.contains("status=ADDED")
                 }
                 assertTrue(initialStatus.contains("status=ADDED"), "Expected ADDED file status for a new file, got: $initialStatus")
             }
@@ -368,15 +356,11 @@ class LstCrcBranchComparisonUiTest : LstCrcUiTestSupport() {
 
             step("Verify unsaved edit keeps added file status") {
                 var statusAfterEdit = ""
-                val deadline = System.nanoTime() + Duration.ofSeconds(10).toNanos()
                 var addedVisible = false
-                while (System.nanoTime() < deadline) {
+                waitFor(Duration.ofSeconds(10), interval = Duration.ofMillis(250)) {
                     statusAfterEdit = fileStatusDebug("Local.txt")
                     addedVisible = statusAfterEdit.contains("status=ADDED")
-                    if (addedVisible) {
-                        break
-                    }
-                    Thread.sleep(250)
+                    addedVisible
                 }
                 assertTrue(
                     addedVisible,
