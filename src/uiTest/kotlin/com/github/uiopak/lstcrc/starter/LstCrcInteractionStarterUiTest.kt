@@ -1,5 +1,9 @@
 package com.github.uiopak.lstcrc.starter
 
+import com.intellij.driver.sdk.ui.components.common.ideFrame
+import com.intellij.driver.sdk.ui.components.elements.actionButton
+import com.intellij.driver.sdk.ui.components.elements.dialog
+import com.intellij.driver.sdk.ui.components.elements.tree
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Tag
@@ -120,6 +124,12 @@ class LstCrcInteractionStarterUiTest : LstCrcStarterUiTestBase() {
         ui.createRevisionTab(featureRevision, "feature-revision")
         waitUntil { ui.selectedTabName() == "feature-revision" || ui.selectedTabName() == featureRevision }
 
+        ui.selectStatusWidgetEntry("feature-revision")
+        waitUntil {
+            (ui.selectedTabName() == "feature-revision" || ui.selectedTabName() == featureRevision) &&
+                ui.statusWidgetText().contains("feature-revision")
+        }
+
         ui.selectStatusWidgetEntry("feature-widget")
         waitUntil { ui.selectedTabName() == "feature-widget" }
 
@@ -211,5 +221,129 @@ class LstCrcInteractionStarterUiTest : LstCrcStarterUiTestBase() {
         assertTrue(notifications.contains("'missing-target'"))
         assertTrue(notifications.contains("feature-recovery"))
         assertTrue(notifications.contains("Change Comparison for '${project.path.fileName}'"))
+
+        ui.triggerBranchErrorNotificationAction("Change Comparison for '${project.path.fileName}'")
+        waitUntil {
+            ui.visibleRepoComparisonDialogTitle() == "Select Branch for ${project.path.fileName}"
+        }
+        waitUntil {
+            val branches = ui.visibleRepoComparisonDialogBranchesSnapshot()
+            branches.contains("feature-recovery") && !branches.contains("missing-target")
+        }
+
+        ui.selectBranchInVisibleRepoComparisonDialog("feature-recovery")
+        waitUntil(15.seconds) { ui.selectedTabComparisonMap().isBlank() }
+    }
+
+    @Test
+    fun testMissingCommitComparisonTargetDoesNotRecoverToHeadOrWarn() = runStarterUiTest {
+        prepareLstCrc()
+        initializeGitRepository()
+
+        createNewFile("Main.txt", "Base line\n")
+        commitChanges("Initial commit")
+        val defaultBranch = defaultBranchName()
+
+        createBranch("feature-missing-commit")
+        createNewFile("Feature.txt", "Feature branch file\n")
+        commitChanges("Feature commit")
+        checkoutBranch(defaultBranch)
+
+        openGitChangesView()
+        ui.createAndSelectTab("feature-missing-commit")
+        waitForSelectedTab("feature-missing-commit")
+        waitForTreeContains("Feature.txt")
+
+        val missingCommitHash = "0123456789abcdef0123456789abcdef01234567"
+        ui.setRevisionAsRepoComparison(missingCommitHash)
+
+        waitUntil(15.seconds) {
+            ui.selectedTabComparisonMap().contains(missingCommitHash) &&
+                !ui.selectedChangesTreeSnapshot().contains("Feature.txt")
+        }
+
+        val comparisonMap = ui.selectedTabComparisonMap()
+        assertTrue(comparisonMap.contains(missingCommitHash))
+        assertFalse(comparisonMap.contains("=HEAD"))
+        assertFalse(ui.selectedRenderedRowsSnapshot().contains("(vs HEAD)"))
+        assertFalse(ui.branchErrorNotificationsSnapshot().contains("Branch not found"))
+    }
+
+    @Test
+    fun testRepositoryComparisonToolbarDialogAllowsChangingComparison() = runStarterUiTest {
+        prepareLstCrc()
+        initializeGitRepository()
+
+        createNewFile("Main.txt", "Base line\n")
+        commitChanges("Initial commit")
+        val defaultBranch = defaultBranchName()
+
+        createBranch("feature-repo-dialog")
+        modifyFile("Main.txt", "Feature line\n")
+        commitChanges("Feature commit")
+        checkoutBranch(defaultBranch)
+
+        createBranch("override-target")
+        createNewFile("Override.txt", "Override branch file\n")
+        commitChanges("Override commit")
+        checkoutBranch(defaultBranch)
+
+        openGitChangesView()
+        ui.createAndSelectTab("feature-repo-dialog")
+        waitForSelectedTab("feature-repo-dialog")
+
+        val dialogTitle = "Select Branch for ${project.path.fileName}"
+
+        driver.ideFrame {
+            actionButton { byAccessibleName("Comparison Context") }.click()
+        }
+        waitUntil {
+            runCatching {
+                var branches = emptyList<String>()
+                driver.ideFrame {
+                    dialog(title = dialogTitle) {
+                        val branchesTree = tree()
+                        branchesTree.expandAll()
+                        branches = branchesTree.collectExpandedPathsAsStrings()
+                    }
+                }
+                branches.any { it.contains("override-target") }
+            }.getOrDefault(false)
+        }
+
+        driver.ideFrame {
+            dialog(title = dialogTitle) {
+                val branchesTree = tree()
+                branchesTree.expandAll()
+                branchesTree.clickPath("Local", "override-target")
+            }
+        }
+        waitUntil(15.seconds) {
+            ui.selectedTabComparisonMap().contains("=override-target") &&
+                ui.selectedRenderedRowsSnapshot().contains("(vs override-target)")
+        }
+
+        driver.ideFrame {
+            actionButton { byAccessibleName("Comparison Context") }.click()
+        }
+        waitUntil {
+            runCatching {
+                var dialogOpened = false
+                driver.ideFrame {
+                    dialog(title = dialogTitle) {
+                        dialogOpened = true
+                    }
+                }
+                dialogOpened
+            }.getOrDefault(false)
+        }
+        driver.ideFrame {
+            dialog(title = dialogTitle) {
+                val branchesTree = tree()
+                branchesTree.expandAll()
+                branchesTree.clickPath("Local", "feature-repo-dialog")
+            }
+        }
+        waitUntil(15.seconds) { ui.selectedTabComparisonMap().isBlank() }
     }
 }

@@ -7,8 +7,11 @@ interface LstCrcUiTestBridgeRemote {
     fun isDumbMode(): Boolean
     fun isGitVcsActive(): Boolean
     fun activateGitVcsIntegration()
+    fun activateGitVcsIntegrationFor(relativePath: String)
+    fun knownGitRepositoriesSnapshot(): String
     fun refreshProjectAfterExternalChange()
     fun openGitChangesView()
+    fun openBranchSelectionTab()
     fun resetGitChangesViewState()
     fun createAndSelectTab(branchName: String)
     fun selectTab(tabName: String)
@@ -21,6 +24,7 @@ interface LstCrcUiTestBridgeRemote {
     fun setBranchAsRepoComparison(branchName: String)
     fun setRevisionAsRepoComparison(revision: String)
     fun branchErrorNotificationsSnapshot(): String
+    fun triggerBranchErrorNotificationAction(actionText: String)
     fun selectStatusWidgetEntry(displayName: String)
     fun statusWidgetText(): String
     fun configureClickActions(
@@ -49,10 +53,25 @@ interface LstCrcUiTestBridgeRemote {
     fun setIncludeHeadInScopes(include: Boolean)
     fun setGutterSettings(enableMarkers: Boolean?, enableForNewFiles: Boolean?)
     fun setTreeContextSettings(showSingleRepo: Boolean?, showCommits: Boolean?)
+        fun setMultiRepoTreeContextSetting(show: Boolean)
+        fun isMultiRepoTreeContextEnabled(): Boolean
     fun treeContextSettingsSnapshot(): String
     fun gutterSettingsSnapshot(): String
     fun selectedTabComparisonMap(): String
     fun scopeContains(scopeId: String, relativePath: String): Boolean
     fun scopeExists(scopeId: String): Boolean
+    fun searchScopesSnapshot(): String
+    fun searchScopeContains(displayName: String, relativePath: String): Boolean
+    fun branchSelectionTabBranchesSnapshot(): String
+    fun openFindInFilesDialog()
+    fun findDialogScopeOptionsSnapshot(): String
+    fun dismissTransientUi()
+    fun openRepoComparisonDialog()
+    fun visibleRepoComparisonDialogTitle(): String
+    fun visibleRepoComparisonDialogBranchesSnapshot(): String
+    fun selectBranchInVisibleRepoComparisonDialog(branchName: String)
+    fun setRepoComparisonForRoot(relativePath: String, targetRevision: String)
+    fun selectedTreeFileColor(fileName: String): String
+    fun deletedScopeColorSnapshot(): String
     fun visualGutterSummaryForSelectedEditor(): String
 }

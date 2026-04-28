@@ -72,7 +72,7 @@ abstract class LstCrcStarterUiTestBase {
         context.runLstCrcIdeWithDriver().useDriverAndCloseIde {
             waitForIndicators(5.minutes)
             val bridge = service<LstCrcUiTestBridgeRemote>()
-            val starterContext = LstCrcStarterContext(project, bridge)
+            val starterContext = LstCrcStarterContext(project, bridge, this)
             starterContext.waitForSmartMode()
             block(starterContext)
         }
@@ -194,7 +194,8 @@ abstract class LstCrcStarterUiTestBase {
 
 class LstCrcStarterContext(
     val project: LstCrcStarterProject,
-    val ui: LstCrcUiTestBridgeRemote
+    val ui: LstCrcUiTestBridgeRemote,
+    val driver: Driver
 ) {
 
     fun prepareLstCrc() {
@@ -209,12 +210,42 @@ class LstCrcStarterContext(
         ui.refreshProjectAfterExternalChange()
     }
 
+    fun initializeGitRepositoryAt(relativeRepoPath: String) {
+        project.initializeGitRepositoryAt(relativeRepoPath)
+        ui.activateGitVcsIntegrationFor(relativeRepoPath)
+        ui.refreshProjectAfterExternalChange()
+        val expectedRepoPath = project.path.resolve(relativeRepoPath).toString().replace('\\', '/')
+        waitUntil(30.seconds) {
+            ui.knownGitRepositoriesSnapshot().contains(expectedRepoPath)
+        }
+    }
+
+    fun createLinkedWorktree(sourceRepoRelativePath: String, worktreeRelativePath: String, branchName: String, startPoint: String = "HEAD") {
+        project.addLinkedWorktree(sourceRepoRelativePath, worktreeRelativePath, branchName, startPoint)
+        ui.activateGitVcsIntegrationFor(worktreeRelativePath)
+        ui.refreshProjectAfterExternalChange()
+        val expectedRepoPath = project.path.resolve(worktreeRelativePath).toString().replace('\\', '/')
+        waitUntil(30.seconds) {
+            ui.knownGitRepositoriesSnapshot().contains(expectedRepoPath)
+        }
+    }
+
     fun createNewFile(relativePath: String, content: String) {
         ui.writeProjectFile(relativePath, content)
     }
 
+    fun createNewFileInRepo(repoRelativePath: String, relativePath: String, content: String) {
+        project.writeFileInRepo(repoRelativePath, relativePath, content)
+        ui.refreshProjectAfterExternalChange()
+    }
+
     fun modifyFile(relativePath: String, content: String) {
         ui.writeProjectFile(relativePath, content)
+    }
+
+    fun modifyFileInRepo(repoRelativePath: String, relativePath: String, content: String) {
+        project.writeFileInRepo(repoRelativePath, relativePath, content)
+        ui.refreshProjectAfterExternalChange()
     }
 
     fun renameFile(oldPath: String, newPath: String) {
@@ -225,8 +256,18 @@ class LstCrcStarterContext(
         ui.deleteProjectFile(relativePath)
     }
 
+    fun deleteFileInRepo(repoRelativePath: String, relativePath: String) {
+        project.deleteFileInRepo(repoRelativePath, relativePath)
+        ui.refreshProjectAfterExternalChange()
+    }
+
     fun commitChanges(message: String) {
         project.commitAll(message)
+        ui.refreshProjectAfterExternalChange()
+    }
+
+    fun commitChangesInRepo(repoRelativePath: String, message: String) {
+        project.commitAllInRepo(repoRelativePath, message)
         ui.refreshProjectAfterExternalChange()
     }
 
@@ -235,8 +276,18 @@ class LstCrcStarterContext(
         ui.refreshProjectAfterExternalChange()
     }
 
+    fun createBranchInRepo(repoRelativePath: String, branchName: String) {
+        project.createBranchInRepo(repoRelativePath, branchName)
+        ui.refreshProjectAfterExternalChange()
+    }
+
     fun checkoutBranch(branchName: String) {
         project.checkout(branchName)
+        ui.refreshProjectAfterExternalChange()
+    }
+
+    fun checkoutBranchInRepo(repoRelativePath: String, branchName: String) {
+        project.checkoutInRepo(repoRelativePath, branchName)
         ui.refreshProjectAfterExternalChange()
     }
 
@@ -245,9 +296,18 @@ class LstCrcStarterContext(
         ui.refreshProjectAfterExternalChange()
     }
 
+    fun deleteBranchInRepo(repoRelativePath: String, branchName: String) {
+        project.deleteBranchInRepo(repoRelativePath, branchName)
+        ui.refreshProjectAfterExternalChange()
+    }
+
     fun defaultBranchName(): String = project.defaultBranchName()
 
+    fun defaultBranchNameInRepo(repoRelativePath: String): String = project.defaultBranchNameInRepo(repoRelativePath)
+
     fun gitRevision(reference: String): String = project.gitRevision(reference)
+
+    fun gitRevisionInRepo(repoRelativePath: String, reference: String): String = project.gitRevisionInRepo(repoRelativePath, reference)
 
     fun waitForSmartMode(timeout: Duration = 5.minutes) {
         waitUntil(timeout) { !ui.isDumbMode() }
@@ -255,6 +315,14 @@ class LstCrcStarterContext(
 
     fun openGitChangesView() {
         ui.openGitChangesView()
+    }
+
+    fun openBranchSelectionTab() {
+        ui.openBranchSelectionTab()
+    }
+
+    fun setRepoComparisonForRoot(repoRelativePath: String, targetRevision: String) {
+        ui.setRepoComparisonForRoot(repoRelativePath, targetRevision)
     }
 
     fun waitForSelectedTab(tabName: String, timeout: Duration = 20.seconds) {

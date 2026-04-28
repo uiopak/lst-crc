@@ -85,6 +85,20 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
         )
     }
 
+    fun waitForFocusedTextInput(timeout: Duration = Duration.ofSeconds(10)) {
+        waitFor(timeout, interval = Duration.ofMillis(250)) {
+            callJs<Boolean>(
+                """
+                (function() {
+                    const focusOwner = java.awt.KeyboardFocusManager.getCurrentKeyboardFocusManager().getFocusOwner();
+                    return focusOwner instanceof javax.swing.text.JTextComponent;
+                })();
+                """.trimIndent(),
+                true
+            )
+        }
+    }
+
     fun openFile(path: String) {
         val normalizedPath = path.replace('\\', '/')
         runJs(
@@ -231,6 +245,7 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
                     properties.setValue("com.github.uiopak.lstcrc.app.showToolWindowTitle", false, false);
                     properties.setValue("com.github.uiopak.lstcrc.app.showWidgetContext", false, false);
                     properties.setValue("com.github.uiopak.lstcrc.app.showContextSingleRepo", true, true);
+                    properties.setValue("com.github.uiopak.lstcrc.app.showContextMultiRepo", true, true);
                     properties.setValue("com.github.uiopak.lstcrc.app.showContextForCommits", false, false);
 
                     const toolWindow = com.intellij.openapi.wm.ToolWindowManager.getInstance(project).getToolWindow("GitChangesView");

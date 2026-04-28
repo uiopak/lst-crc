@@ -1,5 +1,10 @@
 package com.github.uiopak.lstcrc.starter
 
+import com.intellij.driver.sdk.invokeAction
+import com.intellij.driver.sdk.ui.components.common.ideFrame
+import com.intellij.driver.sdk.ui.components.common.popups.findInPathPopup
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Test
@@ -36,6 +41,25 @@ class LstCrcFileScopeStarterUiTest : LstCrcStarterUiTestBase() {
         if (ui.scopeExists("LSTCRC.Created")) {
             waitUntil { ui.scopeContains("LSTCRC.Created", "NewFile.txt") }
         }
+        if (ui.scopeExists("LSTCRC.Changed")) {
+            waitUntil {
+                ui.scopeContains("LSTCRC.Changed", "Moved.txt") &&
+                    ui.scopeContains("LSTCRC.Changed", "NewFile.txt")
+            }
+        }
+
+        val searchScopes = ui.searchScopesSnapshot()
+        assertTrue(searchScopes.contains("LSTCRC: Created Files"))
+        assertTrue(searchScopes.contains("LSTCRC: Moved Files"))
+        assertTrue(searchScopes.contains("LSTCRC: Changed Files"))
+        assertFalse(searchScopes.contains("LSTCRC: Deleted Files"))
+
+        waitUntil { ui.searchScopeContains("LSTCRC: Created Files", "NewFile.txt") }
+        waitUntil { ui.searchScopeContains("LSTCRC: Moved Files", "Moved.txt") }
+        waitUntil {
+            ui.searchScopeContains("LSTCRC: Changed Files", "Moved.txt") &&
+                ui.searchScopeContains("LSTCRC: Changed Files", "NewFile.txt")
+        }
     }
 
     @Test
@@ -68,6 +92,8 @@ class LstCrcFileScopeStarterUiTest : LstCrcStarterUiTestBase() {
         if (ui.scopeExists("LSTCRC.Changed")) {
             waitUntil { !ui.scopeContains("LSTCRC.Changed", "HeadOnly.txt") }
         }
+        waitUntil { !ui.searchScopeContains("LSTCRC: Created Files", "HeadOnly.txt") }
+        waitUntil { !ui.searchScopeContains("LSTCRC: Changed Files", "HeadOnly.txt") }
 
         ui.setIncludeHeadInScopes(true)
         if (ui.scopeExists("LSTCRC.Created")) {
@@ -76,6 +102,8 @@ class LstCrcFileScopeStarterUiTest : LstCrcStarterUiTestBase() {
         if (ui.scopeExists("LSTCRC.Changed")) {
             waitUntil { ui.scopeContains("LSTCRC.Changed", "HeadOnly.txt") }
         }
+        waitUntil { ui.searchScopeContains("LSTCRC: Created Files", "HeadOnly.txt") }
+        waitUntil { ui.searchScopeContains("LSTCRC: Changed Files", "HeadOnly.txt") }
 
         ui.setIncludeHeadInScopes(false)
         if (ui.scopeExists("LSTCRC.Created")) {
@@ -84,5 +112,80 @@ class LstCrcFileScopeStarterUiTest : LstCrcStarterUiTestBase() {
         if (ui.scopeExists("LSTCRC.Changed")) {
             waitUntil { !ui.scopeContains("LSTCRC.Changed", "HeadOnly.txt") }
         }
+        waitUntil { !ui.searchScopeContains("LSTCRC: Created Files", "HeadOnly.txt") }
+        waitUntil { !ui.searchScopeContains("LSTCRC: Changed Files", "HeadOnly.txt") }
+    }
+
+    @Test
+    fun testFindDialogShowsLstCrcSearchScopes() = runStarterUiTest {
+        prepareLstCrc()
+        initializeGitRepository()
+
+        createNewFile("Base.txt", "base\n")
+        commitChanges("Initial commit")
+        val defaultBranch = defaultBranchName()
+
+        createBranch("feature-find-scopes")
+        createNewFile("BranchOnly.txt", "branch only\n")
+        commitChanges("Feature commit")
+        checkoutBranch(defaultBranch)
+
+        createNewFile("HeadOnly.txt", "head only\n")
+
+        openGitChangesView()
+        ui.createAndSelectTab("feature-find-scopes")
+        waitForSelectedTab("feature-find-scopes")
+
+        driver.invokeAction("FindInPath", now = false)
+
+        var scopes = emptyList<String>()
+        waitUntil {
+            runCatching {
+                driver.ideFrame {
+                    findInPathPopup {
+                        focus()
+                        scopeActionButton.click()
+                        scopes = scopeChooserComboBox.listValues()
+                    }
+                }
+                true
+            }.getOrDefault(false) &&
+                scopes.contains("LSTCRC: Created Files") &&
+                scopes.contains("LSTCRC: Modified Files") &&
+                scopes.contains("LSTCRC: Moved Files") &&
+                scopes.contains("LSTCRC: Changed Files") &&
+                !scopes.contains("LSTCRC: Deleted Files")
+        }
+
+        driver.ideFrame {
+            findInPathPopup {
+                close()
+            }
+        }
+    }
+
+    @Test
+    fun testDeletedFilesUseDeletedScopeTreeColor() = runStarterUiTest {
+        prepareLstCrc()
+        initializeGitRepository()
+
+        createNewFile("ToDelete.txt", "delete me\n")
+        commitChanges("Initial commit")
+        val defaultBranch = defaultBranchName()
+
+        createBranch("feature-delete-color")
+        createNewFile("BranchMarker.txt", "branch marker\n")
+        commitChanges("Feature commit")
+        checkoutBranch(defaultBranch)
+
+        deleteFile("ToDelete.txt")
+
+        openGitChangesView()
+        ui.createAndSelectTab("feature-delete-color")
+        waitForSelectedTab("feature-delete-color")
+        waitForTreeContains("ToDelete.txt")
+        waitUntil { ui.selectedTreeFileColor("ToDelete.txt").isNotBlank() }
+
+        assertEquals(ui.deletedScopeColorSnapshot(), ui.selectedTreeFileColor("ToDelete.txt"))
     }
 }

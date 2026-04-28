@@ -10,11 +10,12 @@ import com.intellij.remoterobot.utils.waitFor
 import java.time.Duration
 
 fun IdeaFrame.branchSelection(function: BranchSelectionFixture.() -> Unit) {
-    val timeout = Duration.ofSeconds(60)
+    val timeout = if (System.getenv("GITHUB_ACTIONS") == "true") Duration.ofSeconds(90) else Duration.ofSeconds(20)
+    val locator = byXpath("//div[@class='BranchSelectionPanel']")
     waitFor(timeout, interval = Duration.ofMillis(500)) {
-        remoteRobot.findAll<ComponentFixture>(byXpath("//div[@class='BranchSelectionPanel']")).isNotEmpty()
+        remoteRobot.findAll<BranchSelectionFixture>(locator).isNotEmpty()
     }
-    remoteRobot.find<BranchSelectionFixture>(byXpath("//div[@class='BranchSelectionPanel']"), Duration.ofSeconds(5)).apply(function)
+    remoteRobot.findAll<BranchSelectionFixture>(locator).first().apply(function)
 }
 
 @FixtureName("BranchSelection")
@@ -49,6 +50,29 @@ class BranchSelectionFixture(remoteRobot: RemoteRobot, remoteComponent: RemoteCo
         )
     }
 
+    private fun waitForSearchField(): ComponentFixture {
+        val timeout = if (System.getenv("GITHUB_ACTIONS") == "true") Duration.ofSeconds(30) else Duration.ofSeconds(10)
+        waitFor(timeout, interval = Duration.ofMillis(250)) {
+            remoteRobot.findAll<ComponentFixture>(searchFieldLocator).isNotEmpty()
+        }
+        return remoteRobot.findAll<ComponentFixture>(searchFieldLocator).first()
+    }
+
+    private fun waitForBranchTree(): ContainerFixture {
+        val timeout = if (System.getenv("GITHUB_ACTIONS") == "true") Duration.ofSeconds(30) else Duration.ofSeconds(10)
+        waitFor(timeout, interval = Duration.ofMillis(250)) {
+            remoteRobot.findAll<ContainerFixture>(treeLocator).isNotEmpty()
+        }
+        return remoteRobot.findAll<ContainerFixture>(treeLocator).first()
+    }
+
+    private fun waitForPanelToClose() {
+        val timeout = if (System.getenv("GITHUB_ACTIONS") == "true") Duration.ofSeconds(30) else Duration.ofSeconds(10)
+        waitFor(timeout, interval = Duration.ofMillis(250)) {
+            remoteRobot.findAll<ComponentFixture>(byXpath("//div[@class='BranchSelectionPanel']")).isEmpty()
+        }
+    }
+
     fun searchAndSelect(branchName: String) {
         step("Search and select branch '$branchName'") {
             remoteRobot.runJs(
@@ -74,12 +98,7 @@ class BranchSelectionFixture(remoteRobot: RemoteRobot, remoteComponent: RemoteCo
                 false
             )
 
-            val searchTimeout = if (System.getenv("GITHUB_ACTIONS") == "true") Duration.ofSeconds(30) else Duration.ofSeconds(10)
-            waitFor(searchTimeout, interval = Duration.ofMillis(250)) {
-                remoteRobot.findAll<ComponentFixture>(searchFieldLocator).isNotEmpty()
-            }
-
-            val searchField = remoteRobot.find<ComponentFixture>(searchFieldLocator, Duration.ofSeconds(5))
+            val searchField = waitForSearchField()
             searchField.click()
 
             remoteRobot.runJs(
@@ -102,16 +121,14 @@ class BranchSelectionFixture(remoteRobot: RemoteRobot, remoteComponent: RemoteCo
             }
 
             // The tree should now show the branch. We double click it.
-            val tree = remoteRobot.find<ContainerFixture>(treeLocator, Duration.ofSeconds(5))
+            val tree = waitForBranchTree()
             val timeout = if (System.getenv("GITHUB_ACTIONS") == "true") Duration.ofSeconds(60) else Duration.ofSeconds(20)
             waitFor(timeout, interval = Duration.ofMillis(500)) {
                 tree.findAllText(branchName).isNotEmpty()
             }
             tree.findText(branchName).doubleClick()
 
-            waitFor(Duration.ofSeconds(10), interval = Duration.ofMillis(250)) {
-                remoteRobot.findAll<ComponentFixture>(byXpath("//div[@class='BranchSelectionPanel']")).isEmpty()
-            }
+            waitForPanelToClose()
 
             remoteRobot.runJs(
                 """

@@ -7,6 +7,22 @@ import com.intellij.testFramework.fixtures.BasePlatformTestCase
 
 class ToolWindowStateServicePersistenceTest : BasePlatformTestCase() {
 
+    fun testAddTabDeduplicatesAndRemoveTabKeepsOtherTabs() {
+        val service = project.service<ToolWindowStateService>()
+
+        service.noStateLoaded()
+        service.addTab("feature-a")
+        service.addTab("feature-a")
+        service.addTab("feature-b")
+
+        assertEquals(listOf("feature-a", "feature-b"), service.state.openTabs.map { it.branchName })
+
+        service.removeTab("feature-a")
+
+        val state = service.state
+        assertEquals(listOf("feature-b"), state.openTabs.map { it.branchName })
+    }
+
     fun testLoadStateAndGetStateDefensivelyCopyNestedTabState() {
         val service = project.service<ToolWindowStateService>()
         val inputState = ToolWindowState(
@@ -97,5 +113,69 @@ class ToolWindowStateServicePersistenceTest : BasePlatformTestCase() {
             state.openTabs.first().comparisonMap
         )
         assertEquals("feature-a", service.getSelectedTabInfo()?.branchName)
+    }
+
+    fun testUpdateTabAliasUpdatesMatchingTabAndLeavesOtherTabsUntouched() {
+        val service = project.service<ToolWindowStateService>()
+        service.loadState(
+            ToolWindowState(
+                openTabs = listOf(
+                    TabInfo(branchName = "feature-a", alias = "Feature A"),
+                    TabInfo(branchName = "feature-b", alias = "Feature B")
+                ),
+                selectedTabIndex = 0
+            )
+        )
+
+        service.updateTabAlias("feature-a", "Renamed A")
+
+        val state = service.state
+        assertEquals(listOf("Renamed A", "Feature B"), state.openTabs.map { it.alias })
+
+        service.updateTabAlias("feature-a", null)
+
+        assertEquals(listOf(null, "Feature B"), service.state.openTabs.map { it.alias })
+    }
+
+    fun testUpdateTabAliasIgnoresMissingTabAndUnchangedAlias() {
+        val service = project.service<ToolWindowStateService>()
+        service.loadState(
+            ToolWindowState(
+                openTabs = listOf(TabInfo(branchName = "feature-a", alias = "Feature A")),
+                selectedTabIndex = 0
+            )
+        )
+
+        val before = service.state
+        service.updateTabAlias("missing-branch", "Nope")
+        service.updateTabAlias("feature-a", "Feature A")
+
+        val after = service.state
+        assertEquals(before.openTabs.map { it.branchName to it.alias }, after.openTabs.map { it.branchName to it.alias })
+        assertEquals(before.selectedTabIndex, after.selectedTabIndex)
+    }
+
+    fun testUpdateTabComparisonMapIgnoresMissingTabAndUnchangedMap() {
+        val service = project.service<ToolWindowStateService>()
+        service.loadState(
+            ToolWindowState(
+                openTabs = listOf(
+                    TabInfo(
+                        branchName = "feature-a",
+                        alias = "Feature A",
+                        comparisonMap = mutableMapOf("C:/repo-a" to "origin/main")
+                    )
+                ),
+                selectedTabIndex = 0
+            )
+        )
+
+        val before = service.state
+        service.updateTabComparisonMap("missing-branch", mapOf("C:/repo-a" to "release/1.0"), triggerRefresh = false)
+        service.updateTabComparisonMap("feature-a", mapOf("C:/repo-a" to "origin/main"), triggerRefresh = false)
+
+        val after = service.state
+        assertEquals(before.openTabs.map { it.branchName to it.comparisonMap.toMap() }, after.openTabs.map { it.branchName to it.comparisonMap.toMap() })
+        assertEquals(before.selectedTabIndex, after.selectedTabIndex)
     }
 }

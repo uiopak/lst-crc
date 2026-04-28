@@ -10,15 +10,19 @@ import org.assertj.swing.core.MouseButton
 import java.time.Duration
 
 fun IdeaFrame.gitChangesView(function: GitChangesViewFixture.() -> Unit) {
-    waitFor(Duration.ofSeconds(10), interval = Duration.ofMillis(250)) {
-        findAll<GitChangesViewFixture>(byXpath("//div[@class='LstCrcChangesBrowser' and @visible='true']")).isNotEmpty()
+    val timeout = if (System.getenv("GITHUB_ACTIONS") == "true") Duration.ofSeconds(30) else Duration.ofSeconds(10)
+    val locator = byXpath("//div[@class='LstCrcChangesBrowser' and @visible='true']")
+    waitFor(timeout, interval = Duration.ofMillis(250)) {
+        findAll<GitChangesViewFixture>(locator).isNotEmpty()
     }
-    find<GitChangesViewFixture>(byXpath("//div[@class='LstCrcChangesBrowser' and @visible='true']"), Duration.ofSeconds(10)).apply(function)
+    findAll<GitChangesViewFixture>(locator).first().apply(function)
 }
 
 @FixtureName("GitChangesView")
 class GitChangesViewFixture(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
     CommonContainerFixture(remoteRobot, remoteComponent) {
+
+    private val branchSelectionPanelLocator = byXpath("//div[@class='BranchSelectionPanel']")
 
     private fun toJsStringLiteral(value: String): String {
         return buildString {
@@ -195,10 +199,10 @@ class GitChangesViewFixture(remoteRobot: RemoteRobot, remoteComponent: RemoteCom
 
             remoteRobot.find<ComponentFixture>(addTabLocator).click()
 
-            val branchPanelLocator = byXpath("//div[@class='BranchSelectionPanel']")
+            val branchSelectionOpenTimeout = if (System.getenv("GITHUB_ACTIONS") == "true") Duration.ofSeconds(30) else Duration.ofSeconds(10)
             val openedFromClick = runCatching {
-                waitFor(Duration.ofSeconds(5), interval = Duration.ofMillis(250)) {
-                    remoteRobot.findAll<ComponentFixture>(branchPanelLocator).isNotEmpty()
+                waitFor(branchSelectionOpenTimeout, interval = Duration.ofMillis(250)) {
+                    remoteRobot.findAll<ComponentFixture>(branchSelectionPanelLocator).isNotEmpty()
                 }
                 true
             }.getOrDefault(false)
@@ -224,6 +228,65 @@ class GitChangesViewFixture(remoteRobot: RemoteRobot, remoteComponent: RemoteCom
                                 .invoke(helper, project, toolWindow);
                         }
                     }
+                    """.trimIndent(),
+                    true
+                )
+
+                waitFor(branchSelectionOpenTimeout, interval = Duration.ofMillis(250)) {
+                    remoteRobot.findAll<ComponentFixture>(branchSelectionPanelLocator).isNotEmpty()
+                }
+            }
+        }
+    }
+
+    fun invokeRenameTabAction(tabName: String) {
+        step("Invoke rename action for tab '$tabName'") {
+            waitFor(Duration.ofSeconds(10), interval = Duration.ofMillis(250)) {
+                remoteRobot.findAll<ComponentFixture>(tabLocator(tabName)).isNotEmpty()
+            }
+            val tab = remoteRobot.findAll<ComponentFixture>(tabLocator(tabName)).first()
+            tab.click()
+            tab.runJs(
+                """
+                const project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
+                if (!project) {
+                    throw new java.lang.IllegalStateException("No open project available for RenameTabAction");
+                }
+
+                const toolWindow = com.intellij.openapi.wm.ToolWindowManager.getInstance(project).getToolWindow("GitChangesView");
+                if (!toolWindow) {
+                    throw new java.lang.IllegalStateException("GitChangesView tool window is not available");
+                }
+
+                const action = com.intellij.openapi.actionSystem.ActionManager.getInstance()
+                    .getAction("com.github.uiopak.lstcrc.RenameTabAction");
+                if (!action) {
+                    throw new java.lang.IllegalStateException("RenameTabAction is not registered");
+                }
+
+                const dataContext = com.intellij.openapi.actionSystem.impl.SimpleDataContext.builder()
+                    .add(com.intellij.openapi.actionSystem.CommonDataKeys.PROJECT, project)
+                    .add(com.intellij.openapi.actionSystem.PlatformDataKeys.TOOL_WINDOW, toolWindow)
+                    .add(com.intellij.openapi.actionSystem.PlatformCoreDataKeys.CONTEXT_COMPONENT, component)
+                    .build();
+                const event = com.intellij.openapi.actionSystem.AnActionEvent.createFromAnAction(action, null, "test", dataContext);
+
+                com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater(new java.lang.Runnable({
+                    run: function() {
+                        action.actionPerformed(event);
+                    }
+                }));
+                """.trimIndent(),
+                true
+            )
+
+            waitFor(Duration.ofSeconds(10), interval = Duration.ofMillis(250)) {
+                remoteRobot.callJs<Boolean>(
+                    """
+                    (function() {
+                        const focusOwner = java.awt.KeyboardFocusManager.getCurrentKeyboardFocusManager().getFocusOwner();
+                        return focusOwner instanceof javax.swing.text.JTextComponent;
+                    })();
                     """.trimIndent(),
                     true
                 )
