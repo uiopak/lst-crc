@@ -28,7 +28,6 @@ import git4idea.commands.GitLineHandler
 import git4idea.repo.GitRepository
 import git4idea.repo.GitRepositoryManager
 import git4idea.util.GitFileUtils
-import kotlinx.collections.immutable.toImmutableList
 import kotlinx.collections.immutable.toImmutableMap
 import java.util.concurrent.CompletableFuture
 
@@ -406,12 +405,6 @@ class GitService(private val project: Project) {
                 }
             }
             .toList()
-    }
-
-    private fun changeKey(change: Change): String {
-        val beforePath = change.beforeRevision?.file?.path.orEmpty()
-        val afterPath = change.afterRevision?.file?.path.orEmpty()
-        return "${change.type}:$beforePath->$afterPath"
     }
 
     private fun overlayUnsavedDocumentChanges(

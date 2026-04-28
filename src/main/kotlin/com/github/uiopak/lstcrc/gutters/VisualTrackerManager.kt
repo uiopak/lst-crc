@@ -180,17 +180,6 @@ class VisualTrackerManager(
         }
     }
 
-    private suspend fun applyTrackerState(tracker: LocalLineStatusTracker<*>, targetRevision: String?) {
-        withContext(dispatchers.ui) {
-            if (project.isDisposed) return@withContext
-            if (targetRevision != null) {
-                performInterception(tracker, targetRevision)
-            } else {
-                restoreNativeTracker(tracker)
-            }
-        }
-    }
-
     private fun restoreNativeTracker(nativeTracker: LocalLineStatusTracker<*>) {
         val document = nativeTracker.document
         
@@ -259,6 +248,18 @@ class VisualTrackerManager(
         return diffDataService.createdFiles.contains(file)
     }
 
+    private fun createVisualTracker(document: Document, file: VirtualFile): SimpleLocalLineStatusTracker {
+        val tracker = SimpleLocalLineStatusTracker.createTracker(project, document, file)
+        val stableTracker: LocalLineStatusTracker<*> = tracker
+        stableTracker.mode = LocalLineStatusTracker.Mode(
+            isVisible = true,
+            showErrorStripeMarkers = true,
+            detectWhitespaceChangedLines = true
+        )
+        Disposer.register(this) { tracker.release() }
+        return tracker
+    }
+
     private fun performInterception(nativeTracker: LocalLineStatusTracker<*>, targetRevision: String) {
         val file = nativeTracker.virtualFile
         
@@ -274,14 +275,7 @@ class VisualTrackerManager(
         // 2. Ensure Visual Tracker Exists
         val visualTracker = visualTrackers.computeIfAbsent(document) {
             logger.debug("VISUAL_TRACKER: Creating Visual Tracker for ${file.name}")
-            val tracker = SimpleLocalLineStatusTracker.createTracker(project, document, file)
-            tracker.mode = LocalLineStatusTracker.Mode(
-                isVisible = true,
-                showErrorStripeMarkers = true,
-                detectWhitespaceChangedLines = true
-            )
-            Disposer.register(this) { tracker.release() }
-            tracker
+            createVisualTracker(document, file)
         }
 
         // 3. Update Content using the PRE-RESOLVED targetRevision
@@ -299,14 +293,7 @@ class VisualTrackerManager(
     private fun performStandaloneInterception(document: Document, file: VirtualFile, targetRevision: String) {
         val visualTracker = visualTrackers.computeIfAbsent(document) {
             logger.debug("VISUAL_TRACKER: Creating standalone visual tracker for ${file.name}")
-            val tracker = SimpleLocalLineStatusTracker.createTracker(project, document, file)
-            tracker.mode = LocalLineStatusTracker.Mode(
-                isVisible = true,
-                showErrorStripeMarkers = true,
-                detectWhitespaceChangedLines = true
-            )
-            Disposer.register(this) { tracker.release() }
-            tracker
+            createVisualTracker(document, file)
         }
 
         coroutineScope.launch {

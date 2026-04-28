@@ -14,15 +14,17 @@ import com.github.uiopak.lstcrc.toolWindow.BranchSelectionPanel
 import com.github.uiopak.lstcrc.toolWindow.ShowRepoComparisonInfoAction
 import com.github.uiopak.lstcrc.toolWindow.ToolWindowHelper
 import com.github.uiopak.lstcrc.toolWindow.ToolWindowSettingsProvider
+import com.intellij.openapi.actionSystem.ActionUiKind
 import com.intellij.openapi.actionSystem.ActionManager
 import com.intellij.openapi.actionSystem.ActionPlaces
 import com.intellij.openapi.actionSystem.AnAction
-import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.CommonDataKeys
+import com.intellij.openapi.actionSystem.DataContext
 import com.intellij.ide.util.PropertiesComponent
 import com.intellij.notification.Notification
 import com.intellij.notification.NotificationsManager
 import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.actionSystem.ex.ActionUtil
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.service
 import com.intellij.openapi.command.WriteCommandAction
@@ -31,7 +33,6 @@ import com.intellij.openapi.fileEditor.OpenFileDescriptor
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.project.ProjectManager
 import com.intellij.openapi.project.guessProjectDir
-import com.intellij.openapi.actionSystem.DataContext
 import com.intellij.openapi.actionSystem.PlatformDataKeys
 import com.intellij.openapi.actionSystem.impl.SimpleDataContext
 import com.intellij.openapi.vcs.ProjectLevelVcsManager
@@ -629,12 +630,12 @@ class LstCrcUiTestBridge {
         }
 
         val psiFile = PsiManager.getInstance(project).findFile(file) ?: return@onEdtResult false
-        packageSet.contains(psiFile, holder) == true
+        packageSet.contains(psiFile, holder)
     }
 
     fun searchScopesSnapshot(): String = onEdtResult {
         LstCrcSearchScopeProvider()
-            .getSearchScopes(project(), DataContext { null })
+            .getSearchScopes(project(), DataContext.EMPTY_CONTEXT)
             .joinToString(";") { scope -> scope.displayName }
     }
 
@@ -645,7 +646,7 @@ class LstCrcUiTestBridge {
     fun searchScopeContains(displayName: String, relativePath: String): Boolean = onEdtResult {
         val project = project()
         val scope = LstCrcSearchScopeProvider()
-            .getSearchScopes(project, DataContext { null })
+            .getSearchScopes(project, DataContext.EMPTY_CONTEXT)
             .firstOrNull { candidate -> candidate.displayName == displayName }
             ?: return@onEdtResult false
 
@@ -660,7 +661,9 @@ class LstCrcUiTestBridge {
 
     fun openFindInFilesDialog() {
         onEdt {
-            performRegisteredAction("FindInPath")
+            val action = ActionManager.getInstance().getAction("FindInPath")
+                ?: error("Action 'FindInPath' is not registered")
+            performAction(action)
         }
     }
 
@@ -914,12 +917,6 @@ class LstCrcUiTestBridge {
         }.getOrNull()?.toString() ?: "n/a"
     }
 
-    private fun performRegisteredAction(actionId: String) {
-        val action = ActionManager.getInstance().getAction(actionId)
-            ?: error("Action '$actionId' is not registered")
-        performAction(action)
-    }
-
     private fun performAction(action: AnAction) {
         val project = project()
         val toolWindow = toolWindowOrNull(project)
@@ -928,8 +925,15 @@ class LstCrcUiTestBridge {
             .add(PlatformDataKeys.TOOL_WINDOW, toolWindow)
             .add(PlatformDataKeys.CONTEXT_COMPONENT, toolWindow?.component)
             .build()
-        val event = AnActionEvent.createFromAnAction(action, null, ActionPlaces.UNKNOWN, dataContext)
-        action.actionPerformed(event)
+        val event = com.intellij.openapi.actionSystem.AnActionEvent.createEvent(
+            action,
+            dataContext,
+            action.templatePresentation.clone(),
+            ActionPlaces.UNKNOWN,
+            ActionUiKind.NONE,
+            null
+        )
+        ActionUtil.performAction(action, event)
     }
 
     private fun visibleWindows(): Sequence<Window> = Window.getWindows().asSequence().filter(Window::isShowing)
@@ -969,18 +973,6 @@ class LstCrcUiTestBridge {
                 yieldAll(descendantComponents(child))
             }
         }
-    }
-
-    private fun findComboBoxItems(root: Component): List<List<String>> {
-        return descendantComponents(root)
-            .filterIsInstance<JComboBox<*>>()
-            .map { combo ->
-                (0 until combo.itemCount)
-                    .mapNotNull { index -> comboItemText(combo.getItemAt(index)) }
-                    .filter(String::isNotBlank)
-            }
-            .filter(List<String>::isNotEmpty)
-            .toList()
     }
 
     private fun findScopeSelectionComboItems(root: Component): List<String>? {
@@ -1079,13 +1071,6 @@ class LstCrcUiTestBridge {
         return null
     }
 
-    private fun dispatchTreeClick(tree: JTree, path: TreePath) {
-        val bounds = tree.getPathBounds(path) ?: return
-        val x = bounds.x + maxOf(1, bounds.width / 2)
-        val y = bounds.y + maxOf(1, bounds.height / 2)
-        dispatchMouseClick(tree, x, y)
-    }
-
     private fun dispatchComponentClick(component: Component) {
         val centerX = maxOf(1, component.width / 2)
         val centerY = maxOf(1, component.height / 2)
@@ -1124,7 +1109,7 @@ class LstCrcUiTestBridge {
     private fun projectDir(project: Project) = project.guessProjectDir()
         ?: error("Project directory is not available")
 
-    private fun ensureRelativeDirectory(root: com.intellij.openapi.vfs.VirtualFile, relativePath: String): com.intellij.openapi.vfs.VirtualFile {
+    private fun ensureRelativeDirectory(root: VirtualFile, relativePath: String): VirtualFile {
         var current = root
         if (relativePath.isBlank()) {
             return current
@@ -1138,17 +1123,17 @@ class LstCrcUiTestBridge {
         return current
     }
 
-        private fun configureGitConfirmationDialogs(project: Project) {
-            val vcsManager = ProjectLevelVcsManager.getInstance(project)
-            vcsManager.getAllSupportedVcss()
-                .filter { it.name == "Git" }
-                .forEach { vcs ->
-                    listOf(VcsConfiguration.StandardConfirmation.ADD, VcsConfiguration.StandardConfirmation.REMOVE)
-                        .forEach { confirmationType ->
-                            vcsManager.getStandardConfirmation(confirmationType, vcs).value = VcsShowConfirmationOption.Value.DO_ACTION_SILENTLY
-                        }
-                }
-        }
+    private fun configureGitConfirmationDialogs(project: Project) {
+        val vcsManager = ProjectLevelVcsManager.getInstance(project)
+        vcsManager.getAllSupportedVcss()
+            .filter { it.name == "Git" }
+            .forEach { vcs ->
+                listOf(VcsConfiguration.StandardConfirmation.ADD, VcsConfiguration.StandardConfirmation.REMOVE)
+                    .forEach { confirmationType ->
+                        vcsManager.getStandardConfirmation(confirmationType, vcs).value = VcsShowConfirmationOption.Value.DO_ACTION_SILENTLY
+                    }
+            }
+    }
 
     private fun refreshBaseDir(project: Project) {
         val basePath = project.basePath ?: return
