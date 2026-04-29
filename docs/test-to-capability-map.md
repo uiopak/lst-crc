@@ -45,11 +45,13 @@ This file maps each active test method to the capability IDs defined in [plugin-
 | `LstCrcInteractionUiTest.testStatusWidgetAndRevisionActions` | `C1.3`, `C2.1`, `C2.4` | Widget flow and revision actions. |
 | `LstCrcInteractionUiTest.testTabRenameUpdatesWidgetContext` | `C1.5`, `C4.5` | Alias propagation into the widget. |
 | `LstCrcInteractionUiTest.testRenameTabPopupRenamesSelectedTab` | `C1.5` | Invokes `RenameTabAction` against a real tab label and commits the alias through the popup text field. |
+| `LstCrcInteractionUiTest.testRenameTabContextMenuRenamesSelectedTab` | `C1.5` | Opens the real tool-window tab context menu, chooses `Rename Tab...`, and commits the alias through the popup text field. |
 | `LstCrcSettingsUiTest.testTreePresentationAndTitleSettings` | `C4.4`, `C4.6` | Tool-window title and context-label settings. |
 | `LstCrcSettingsUiTest.testGutterSettingsAndIncludeHead` | `C4.7`, `C4.8` | Include-`HEAD` and gutter settings. |
 | `LstCrcSettingsUiTest.testAdditionalClickSettings` | `C4.1`, `C4.2`, `C4.3` | Extra click settings and delay behavior. |
 | `LstCrcSettingsUiTest.testRenderedTreeContextLabelsRespectSingleRepoAndCommitSettings` | `C3.5`, `C4.6` | Single-repo and commit context-label rendering. |
 | `LstCrcVisualUiTest.testVisualGutterMarkersForModifiedAndDeletedRanges` | `C3.6`, `C3.7` | Modified/deleted gutter rendering. |
+| `LstCrcVisualUiTest.testVisualGutterMarkersForInsertedRanges` | `C3.7` | Verifies end-to-end `INSERTED` gutter rendering for a local-only file when new-file gutter handling is enabled. |
 | `LstCrcVisualUiTest.testVisualGutterMarkers` | `C3.7` | Modified-range gutter rendering. |
 
 ## Starter UI Tests

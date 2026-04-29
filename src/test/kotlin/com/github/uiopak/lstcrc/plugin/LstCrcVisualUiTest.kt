@@ -15,6 +15,10 @@ import java.time.Duration
 @LstCrcUiTest
 class LstCrcVisualUiTest : LstCrcUiTestSupport() {
 
+    private fun gutterTimeout(): Duration {
+        return if (System.getenv("GITHUB_ACTIONS") == "true") Duration.ofSeconds(60) else Duration.ofSeconds(20)
+    }
+
     @Test
     @Video
     fun testVisualGutterMarkersForModifiedAndDeletedRanges(remoteRobot: RemoteRobot) = with(remoteRobot) {
@@ -56,19 +60,13 @@ class LstCrcVisualUiTest : LstCrcUiTestSupport() {
             fun assertGutter(fileName: String, expectedRangeType: String) {
                 openFile(fileName)
                 var latestSummary = ""
-                val timeout = if (System.getenv("GITHUB_ACTIONS") == "true") Duration.ofSeconds(60) else Duration.ofSeconds(20)
-                val deadline = System.nanoTime() + timeout.toNanos()
-                while (System.nanoTime() < deadline) {
+                waitFor(gutterTimeout(), interval = Duration.ofMillis(500)) {
                     latestSummary = visualGutterSummaryForSelectedEditor()
-                    if (
+                    (
                         latestSummary.contains(expectedRangeType) &&
                         latestSummary.contains("highlighters=") &&
                         !latestSummary.endsWith("highlighters=0")
-                    ) {
-                        break
-                    }
-
-                    Thread.sleep(500)
+                    )
                 }
 
                 val summary = visualGutterSummaryForSelectedEditor()
@@ -84,6 +82,79 @@ class LstCrcVisualUiTest : LstCrcUiTestSupport() {
 
             assertGutter("Modified.txt", "MODIFIED")
             assertGutter("Removed.txt", "DELETED")
+        }
+    }
+
+    @Test
+    @Video
+    fun testVisualGutterMarkersForInsertedRanges(remoteRobot: RemoteRobot) = with(remoteRobot) {
+        val uiSteps = PluginUiTestSteps(remoteRobot)
+
+        prepareFreshProject()
+
+        idea {
+            step("Wait for smart mode") {
+                dumbAware(Duration.ofMinutes(5)) {}
+            }
+
+            uiSteps.initializeGitRepository()
+            resetGitChangesViewState()
+
+            uiSteps.createNewFile("Main.txt", "alpha\n")
+            uiSteps.commitChanges("Initial commit")
+            val defaultBranch = uiSteps.defaultBranchName()
+
+            uiSteps.createBranch("feature-gutter-inserted")
+            uiSteps.checkoutBranch(defaultBranch)
+
+            openGitChangesView()
+            gitChangesView {
+                addTab()
+            }
+            branchSelection {
+                searchAndSelect("feature-gutter-inserted")
+            }
+
+            setGutterSettings(enableMarkers = true, enableForNewFiles = true)
+
+            uiSteps.switchToProjectView()
+            uiSteps.createNewFile("LocalNew.txt", "local new file\n")
+
+            gitChangesView {
+                selectTab("feature-gutter-inserted")
+                waitFor(Duration.ofSeconds(10)) {
+                    changesTree.findAllText("LocalNew.txt").isNotEmpty()
+                }
+            }
+
+            var latestActiveDiff = ""
+            waitFor(Duration.ofSeconds(10), interval = Duration.ofMillis(500)) {
+                latestActiveDiff = activeDiffSnapshot()
+                latestActiveDiff.contains("created=LocalNew.txt") || latestActiveDiff.contains("created=LocalNew.txt,")
+            }
+
+            openFile("LocalNew.txt")
+            waitFor(Duration.ofSeconds(10)) {
+                selectedEditorDescriptor().contains("LocalNew.txt")
+            }
+
+            var latestSummary = ""
+            waitFor(gutterTimeout(), interval = Duration.ofMillis(500)) {
+                latestSummary = visualGutterSummaryForSelectedEditor()
+                latestSummary.contains("INSERTED") &&
+                    latestSummary.contains("highlighters=") &&
+                    !latestSummary.endsWith("highlighters=0")
+            }
+
+            val summary = visualGutterSummaryForSelectedEditor()
+            assertTrue(
+                summary.contains("INSERTED"),
+                "Expected inserted gutter range, got: $summary (last observed: $latestSummary, active diff: $latestActiveDiff)"
+            )
+            assertTrue(
+                summary.contains("highlighters="),
+                "Expected installed gutter highlighters, got: $summary (last observed: $latestSummary, active diff: $latestActiveDiff)"
+            )
         }
     }
 
@@ -122,8 +193,7 @@ class LstCrcVisualUiTest : LstCrcUiTestSupport() {
             uiSteps.modifyFile("Main.txt", "alpha local change\nbeta\n")
             openFile("Main.txt")
             var latestSummary = ""
-            val gutterTimeout = if (System.getenv("GITHUB_ACTIONS") == "true") Duration.ofSeconds(60) else Duration.ofSeconds(20)
-            waitFor(gutterTimeout, interval = Duration.ofMillis(500)) {
+            waitFor(gutterTimeout(), interval = Duration.ofMillis(500)) {
                 latestSummary = visualGutterSummaryForSelectedEditor()
                 latestSummary.contains("MODIFIED") && latestSummary.contains("highlighters=") && !latestSummary.endsWith("highlighters=0")
             }

@@ -20,6 +20,7 @@
 | `C1.4` | Multiple comparison tabs can coexist and switch independently | `LstCrcBranchComparisonUiTest.testMultipleComparisonTabs`, `LstCrcBranchComparisonStarterUiTest.testMultipleComparisonTabs` |
 | `C1.5` | Alias changes update visible identity | `LstCrcInteractionUiTest.testTabRenameUpdatesWidgetContext`, `LstCrcInteractionUiTest.testRenameTabPopupRenamesSelectedTab`, `LstCrcInteractionStarterUiTest.testTabRenameUpdatesWidgetContext` |
 | `C1.5` | Rename popup accepts inline alias entry for the selected tab | `LstCrcInteractionUiTest.testRenameTabPopupRenamesSelectedTab` |
+| `C1.5` | Tool-window tab context menu exposes rename and applies the alias to the clicked tab | `LstCrcInteractionUiTest.testRenameTabContextMenuRenamesSelectedTab` |
 | `C1.5` | Rename-tab action visibility follows closable tab and branch-identity context | `LstCrcActionVisibilityTest.testRenameTabActionVisibleForClosableBranchTabWhenContextIsNestedUnderBaseLabel`, `LstCrcActionVisibilityTest.testRenameTabActionHiddenWithoutRenamableTabContext` |
 | `C1.5` | Alias state persists across restart | `LstCrcMultiRootStarterUiTest.testTabsAliasesAndRepoOverridesRestoreAfterRestart` |
 | `C2.1` | Branch picker can create a comparison tab from UI entry points | `LstCrcBranchComparisonUiTest.testGitBranchComparison`, `LstCrcBranchComparisonStarterUiTest.testGitBranchComparison`, `LstCrcInteractionUiTest.testStatusWidgetAndRevisionActions`, `LstCrcInteractionStarterUiTest.testStatusWidgetAndRevisionActions` |
@@ -59,6 +60,7 @@
 | `C3.6` | Deleted rows use deleted-file color | `LstCrcFileScopeStarterUiTest.testDeletedFilesUseDeletedScopeTreeColor` |
 | `C3.7` | Modified gutter markers follow the active comparison | `LstCrcVisualUiTest.testVisualGutterMarkers`, `LstCrcVisualStarterUiTest.testVisualGutterMarkers` |
 | `C3.7` | Deleted gutter markers follow the active comparison | `LstCrcVisualUiTest.testVisualGutterMarkersForModifiedAndDeletedRanges` |
+| `C3.7` | Inserted gutter markers render for local-only files when new-file gutter handling is enabled | `LstCrcVisualUiTest.testVisualGutterMarkersForInsertedRanges` |
 | `C3.8` | Unsaved edits appear before save | `LstCrcBranchComparisonUiTest.testUnsavedLocalEditAppearsWithoutSave` |
 | `C3.8` | Unsaved edits of new files preserve `NEW`/`ADDED` semantics | `LstCrcBranchComparisonUiTest.testNewFileStaysCreatedDuringUnsavedEdits`, `GitServiceOverlayMergeTest.testPreservesNewChangeTypeWhenUnsavedOverlayIsApplied` |
 | `C3.8` | Unsaved overlays for non-new files remain modifications | `GitServiceOverlayMergeTest.testKeepsModificationOverlayForNonNewFiles` |
@@ -102,5 +104,5 @@
 
 - The matrix now treats file-state decisions, scope publication, and search-scope publication as separate cases rather than one broad “scope support” bucket.
 - Linked worktree behavior now has dedicated starter coverage instead of being assumed to behave like ordinary multi-root repositories.
-- New-file gutter behavior is still only claimed at the settings path level. Existing validated tests cover modified/deleted visual ranges plus the separate new-file toggle, but not a stable end-to-end `INSERTED` gutter rendering assertion.
-- Alias behavior is covered at the state, visible-label, and rename-popup UI levels. The remaining uncovered tab-alias slice is the actual tool-window context-menu wiring itself.
+- New-file gutter behavior now has end-to-end `INSERTED` gutter coverage in addition to the separate settings-toggle coverage.
+- Alias behavior now includes the actual tool-window tab context-menu rename path in addition to direct popup and state-level coverage.

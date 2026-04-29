@@ -12,10 +12,12 @@ import java.time.Duration
 fun IdeaFrame.branchSelection(function: BranchSelectionFixture.() -> Unit) {
     val timeout = if (System.getenv("GITHUB_ACTIONS") == "true") Duration.ofSeconds(90) else Duration.ofSeconds(20)
     val locator = byXpath("//div[@class='BranchSelectionPanel']")
+    var branchSelectionFixture: BranchSelectionFixture? = null
     waitFor(timeout, interval = Duration.ofMillis(500)) {
-        remoteRobot.findAll<BranchSelectionFixture>(locator).isNotEmpty()
+        branchSelectionFixture = remoteRobot.findAll<BranchSelectionFixture>(locator).firstOrNull()
+        branchSelectionFixture != null
     }
-    remoteRobot.findAll<BranchSelectionFixture>(locator).first().apply(function)
+    branchSelectionFixture!!.apply(function)
 }
 
 @FixtureName("BranchSelection")
@@ -52,18 +54,22 @@ class BranchSelectionFixture(remoteRobot: RemoteRobot, remoteComponent: RemoteCo
 
     private fun waitForSearchField(): ComponentFixture {
         val timeout = if (System.getenv("GITHUB_ACTIONS") == "true") Duration.ofSeconds(30) else Duration.ofSeconds(10)
+        var searchField: ComponentFixture? = null
         waitFor(timeout, interval = Duration.ofMillis(250)) {
-            remoteRobot.findAll<ComponentFixture>(searchFieldLocator).isNotEmpty()
+            searchField = remoteRobot.findAll<ComponentFixture>(searchFieldLocator).firstOrNull()
+            searchField != null
         }
-        return remoteRobot.findAll<ComponentFixture>(searchFieldLocator).first()
+        return searchField!!
     }
 
     private fun waitForBranchTree(): ContainerFixture {
         val timeout = if (System.getenv("GITHUB_ACTIONS") == "true") Duration.ofSeconds(30) else Duration.ofSeconds(10)
+        var branchTree: ContainerFixture? = null
         waitFor(timeout, interval = Duration.ofMillis(250)) {
-            remoteRobot.findAll<ContainerFixture>(treeLocator).isNotEmpty()
+            branchTree = remoteRobot.findAll<ContainerFixture>(treeLocator).firstOrNull()
+            branchTree != null
         }
-        return remoteRobot.findAll<ContainerFixture>(treeLocator).first()
+        return branchTree!!
     }
 
     private fun waitForPanelToClose() {

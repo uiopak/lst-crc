@@ -213,9 +213,8 @@ class LstCrcBranchComparisonUiTest : LstCrcUiTestSupport() {
                 }
             }
 
-            var scopesUpdated = false
             var scopesDebug = ""
-            repeat(10) {
+            waitFor(Duration.ofSeconds(10), interval = Duration.ofSeconds(1)) {
                 scopesDebug = callJs<String>(
                     """
                     const project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
@@ -235,14 +234,11 @@ class LstCrcBranchComparisonUiTest : LstCrcUiTestSupport() {
                     """.trimIndent(),
                     true
                 )
-                scopesUpdated = scopesDebug.contains("result=true")
-                if (!scopesUpdated && it < 9) {
-                    Thread.sleep(1000)
-                }
+                scopesDebug.contains("result=true")
             }
 
             if (scopesDebug.contains("scopeFound=true")) {
-                Assertions.assertTrue(scopesUpdated, "Custom scopes should be updated with modified files: $scopesDebug")
+                Assertions.assertTrue(scopesDebug.contains("result=true"), "Custom scopes should be updated with modified files: $scopesDebug")
             }
         }
     }

@@ -190,6 +190,52 @@ class GitChangesViewFixture(remoteRobot: RemoteRobot, remoteComponent: RemoteCom
         clickChange(fileName, MouseButton.RIGHT_BUTTON)
     }
 
+    fun rightClickTab(tabName: String) {
+        step("Right click tab '$tabName'") {
+            waitFor(Duration.ofSeconds(10), interval = Duration.ofMillis(250)) {
+                remoteRobot.findAll<ComponentFixture>(tabLocator(tabName)).isNotEmpty()
+            }
+            remoteRobot.findAll<ComponentFixture>(tabLocator(tabName)).first().runJs(
+                """
+                const x = Math.max(1, Math.floor(component.getWidth() / 2));
+                const y = Math.max(1, Math.floor(component.getHeight() / 2));
+                const now = java.lang.System.currentTimeMillis();
+
+                const pressed = new java.awt.event.MouseEvent(
+                    component,
+                    java.awt.event.MouseEvent.MOUSE_PRESSED,
+                    now,
+                    java.awt.event.InputEvent.BUTTON3_DOWN_MASK,
+                    x,
+                    y,
+                    1,
+                    true,
+                    java.awt.event.MouseEvent.BUTTON3
+                );
+                const released = new java.awt.event.MouseEvent(
+                    component,
+                    java.awt.event.MouseEvent.MOUSE_RELEASED,
+                    now + 1,
+                    0,
+                    x,
+                    y,
+                    1,
+                    true,
+                    java.awt.event.MouseEvent.BUTTON3
+                );
+
+                com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater(new java.lang.Runnable({
+                    run: function() {
+                        component.dispatchEvent(pressed);
+                        component.dispatchEvent(released);
+                    }
+                }));
+                """.trimIndent(),
+                true
+            )
+        }
+    }
+
     fun addTab() {
         step("Click 'Add Tab' button") {
             val addTabLocator = byXpath("//div[@accessiblename='Add Tab']")

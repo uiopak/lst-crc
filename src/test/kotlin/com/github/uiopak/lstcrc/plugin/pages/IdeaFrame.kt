@@ -771,6 +771,48 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
         }
     }
 
+    fun activeDiffSnapshot(): String {
+        return step("Read active diff snapshot") {
+            callJs<String>(
+                """
+                (function() {
+                    const project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
+                    if (!project) return "";
+
+                    const pluginId = com.intellij.openapi.extensions.PluginId.getId("com.github.uiopak.lstcrc");
+                    const plugin = com.intellij.ide.plugins.PluginManagerCore.getPlugin(pluginId);
+                    if (!plugin) return "plugin=missing";
+
+                    const classLoader = plugin.getPluginClassLoader();
+                    const serviceClass = classLoader.loadClass("com.github.uiopak.lstcrc.services.ProjectActiveDiffDataService");
+                    const diffDataService = project.getService(serviceClass);
+                    if (!diffDataService) return "diff=missing";
+
+                    function namesOf(files) {
+                        if (!files) return "";
+                        const items = [];
+                        const iterator = files.iterator();
+                        while (iterator.hasNext()) {
+                            const file = iterator.next();
+                            items.push(String(file.getPath()).split('/').pop());
+                        }
+                        items.sort();
+                        return items.join(",");
+                    }
+
+                    return [
+                        "created=" + namesOf(diffDataService.getCreatedFiles()),
+                        "modified=" + namesOf(diffDataService.getModifiedFiles()),
+                        "moved=" + namesOf(diffDataService.getMovedFiles()),
+                        "deleted=" + namesOf(diffDataService.getDeletedFiles())
+                    ].join("|");
+                })();
+                """.trimIndent(),
+                true
+            )
+        }
+    }
+
     fun selectedChangesTreeContains(text: String): Boolean {
         return findAll<ComponentFixture>(
             byXpath("LstCrcAsyncChangesTree with '$text'", "//div[@class='LstCrcAsyncChangesTree' and contains(@visible_text,'$text')]")

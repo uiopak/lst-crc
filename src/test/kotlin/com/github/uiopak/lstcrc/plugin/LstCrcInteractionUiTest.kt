@@ -378,4 +378,63 @@ class LstCrcInteractionUiTest : LstCrcUiTestSupport() {
             }
         }
     }
+
+    @Test
+    @Video
+    fun testRenameTabContextMenuRenamesSelectedTab(remoteRobot: RemoteRobot) = with(remoteRobot) {
+        val uiSteps = PluginUiTestSteps(remoteRobot)
+
+        prepareFreshProject()
+
+        idea {
+            step("Wait for smart mode") {
+                dumbAware(Duration.ofMinutes(5)) {}
+            }
+
+            uiSteps.initializeGitRepository()
+            resetGitChangesViewState()
+
+            uiSteps.createNewFile("Main.txt", "Base line\n")
+            uiSteps.commitChanges("Initial commit")
+            val defaultBranch = uiSteps.defaultBranchName()
+
+            uiSteps.createBranch("feature-rename-menu")
+            uiSteps.modifyFile("Main.txt", "Renamed from menu\n")
+            uiSteps.commitChanges("Rename alias menu commit")
+            uiSteps.checkoutBranch(defaultBranch)
+
+            openGitChangesView()
+            gitChangesView {
+                addTab()
+            }
+            branchSelection {
+                searchAndSelect("feature-rename-menu")
+            }
+
+            waitFor(Duration.ofSeconds(10)) {
+                statusWidgetText().contains("feature-rename-menu")
+            }
+
+            gitChangesView {
+                rightClickTab("feature-rename-menu")
+            }
+
+            waitFor(Duration.ofSeconds(10)) {
+                actionMenuItem("Rename Tab...").isShowing
+            }
+            actionMenuItem("Rename Tab...").click()
+
+            waitForFocusedTextInput()
+            keyboard {
+                enterText("renamed-feature-menu")
+                enter()
+            }
+
+            waitFor(Duration.ofSeconds(10)) {
+                hasLstCrcTab("renamed-feature-menu") &&
+                    selectedLstCrcTabName() == "renamed-feature-menu" &&
+                    statusWidgetText().contains("renamed-feature-menu")
+            }
+        }
+    }
 }
