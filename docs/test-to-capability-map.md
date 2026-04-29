@@ -55,6 +55,7 @@ This file maps each active test method to the capability IDs defined in [plugin-
 | `LstCrcSettingsUiTest.testAdditionalClickSettings` | `C4.1`, `C4.2`, `C4.3` | Extra click settings and delay behavior. |
 | `LstCrcSettingsUiTest.testRenderedTreeContextLabelsRespectSingleRepoAndCommitSettings` | `C3.5`, `C4.6` | Single-repo and commit context-label rendering. |
 | `LstCrcVisualUiTest.testVisualGutterMarkersForModifiedAndDeletedRanges` | `C3.6`, `C3.7` | Modified/deleted gutter rendering. |
+| `LstCrcVisualUiTest.testVisualGutterMarkersForInsertedNewFile` | `C3.7` | Inserted new-file gutter rendering through the standalone visual tracker path. |
 | `LstCrcVisualUiTest.testVisualGutterMarkers` | `C3.7` | Modified-range gutter rendering. |
 
 ## Starter UI Tests
@@ -81,6 +82,7 @@ This file maps each active test method to the capability IDs defined in [plugin-
 | `LstCrcSettingsStarterUiTest.testAdditionalClickSettings` | `C4.1`, `C4.2`, `C4.3` | Starter click settings and delay behavior. |
 | `LstCrcSettingsStarterUiTest.testRenderedTreeContextLabelsRespectSingleRepoAndCommitSettings` | `C3.5`, `C4.6` | Starter single-repo and commit context labels. |
 | `LstCrcVisualStarterUiTest.testVisualGutterMarkers` | `C3.7` | Starter modified-range gutter rendering. |
+| `LstCrcVisualStarterUiTest.testVisualGutterMarkersForInsertedAndDeletedRanges` | `C3.7` | Starter inserted new-file and deleted-range gutter rendering. |
 | `LstCrcMultiRootStarterUiTest.testBranchSelectionUsesPrimaryRepositoryBranchesInMultiRootProject` | `C2.2` | Branch picker sources primary repo branches. |
 | `LstCrcMultiRootStarterUiTest.testLinkedWorktreeBranchSwitchRefreshesActiveComparison` | `C5.5` | Linked worktree roots participate independently and refresh on branch switch. |
 | `LstCrcMultiRootStarterUiTest.testMultiRootComparisonOverrideAppliesOnlyToSelectedRepository` | `C2.3`, `C3.5`, `C4.6` | Per-repo override plus multi-repo context-label toggle. |

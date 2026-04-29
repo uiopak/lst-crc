@@ -305,3 +305,31 @@ class LstCrcMultiRootStarterUiTest : LstCrcStarterUiTestBase() {
 
     private fun runStarterSession(
         project: LstCrcStarterProject,
+        testName: String,
+        block: LstCrcStarterContext.() -> Unit
+    ) {
+        val context = createTestContext(project, testName)
+        context.runLstCrcIdeWithDriver().useDriverAndCloseIde {
+            waitForIndicators(5.minutes)
+            val bridge = service<LstCrcUiTestBridgeRemote>()
+            val starterContext = LstCrcStarterContext(project, bridge, this)
+            starterContext.waitForSmartMode()
+            block(starterContext)
+        }
+    }
+
+    private fun LstCrcStarterContext.primaryWorktreeRepoPath(project: LstCrcStarterProject = this.project): String =
+        project.path.resolve(PRIMARY_WORKTREE_REPO).toString().replace('\\', '/')
+
+    private fun LstCrcStarterContext.linkedWorktreeRepoPath(project: LstCrcStarterProject = this.project): String =
+        project.path.resolve(LINKED_WORKTREE_REPO).toString().replace('\\', '/')
+
+    private fun LstCrcStarterContext.secondaryRepoPath(project: LstCrcStarterProject = this.project): String =
+        project.path.resolve(SECONDARY_REPO).toString().replace('\\', '/')
+
+    private companion object {
+        const val PRIMARY_WORKTREE_REPO = "primary-repo"
+        const val LINKED_WORKTREE_REPO = "linked-worktree"
+        const val SECONDARY_REPO = "nested-repo"
+    }
+}

@@ -87,6 +87,58 @@ class LstCrcVisualUiTest : LstCrcUiTestSupport() {
 
     @Test
     @Video
+    fun testVisualGutterMarkersForInsertedNewFile(remoteRobot: RemoteRobot) = with(remoteRobot) {
+        val uiSteps = PluginUiTestSteps(remoteRobot)
+
+        prepareFreshProject()
+
+        idea {
+            step("Wait for smart mode") {
+                dumbAware(Duration.ofMinutes(5)) {}
+            }
+
+            uiSteps.initializeGitRepository()
+            resetGitChangesViewState()
+
+            uiSteps.createNewFile("Main.txt", "Initial content\n")
+            uiSteps.commitChanges("Initial commit")
+            val defaultBranch = uiSteps.defaultBranchName()
+
+            uiSteps.createBranch("feature-gutter-inserted")
+            uiSteps.createNewFile("Feature.txt", "Feature content\n")
+            uiSteps.commitChanges("Feature commit")
+            uiSteps.checkoutBranch(defaultBranch)
+
+            uiSteps.createNewFile("Local.txt", "Local content\n")
+
+            openGitChangesView()
+            gitChangesView {
+                addTab()
+            }
+            branchSelection {
+                searchAndSelect("feature-gutter-inserted")
+            }
+
+            setGutterSettings(enableMarkers = true, enableForNewFiles = true)
+
+            openFile("Local.txt")
+            var latestSummary = ""
+            waitFor(gutterTimeout(), interval = Duration.ofMillis(500)) {
+                latestSummary = visualGutterSummaryForSelectedEditor()
+                latestSummary.contains("INSERTED") && latestSummary.contains("highlighters=") && !latestSummary.endsWith("highlighters=0")
+            }
+
+            val summary = visualGutterSummaryForSelectedEditor()
+            assertTrue(summary.contains("INSERTED"), "Expected inserted gutter range for Local.txt, got: $summary (last observed: $latestSummary)")
+            assertTrue(
+                summary.contains("highlighters=") && !summary.endsWith("highlighters=0"),
+                "Expected gutter highlighters for Local.txt, got: $summary (last observed: $latestSummary)"
+            )
+        }
+    }
+
+    @Test
+    @Video
     fun testVisualGutterMarkers(remoteRobot: RemoteRobot) = with(remoteRobot) {
         val uiSteps = PluginUiTestSteps(remoteRobot)
 

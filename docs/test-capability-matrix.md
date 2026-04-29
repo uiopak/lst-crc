@@ -59,8 +59,9 @@
 | `C3.5` | Revision/commit context labels render when enabled | `LstCrcSettingsUiTest.testRenderedTreeContextLabelsRespectSingleRepoAndCommitSettings`, `LstCrcSettingsStarterUiTest.testRenderedTreeContextLabelsRespectSingleRepoAndCommitSettings` |
 | `C3.6` | Deleted rows use deleted-file color | `LstCrcFileScopeStarterUiTest.testDeletedFilesUseDeletedScopeTreeColor` |
 | `C3.6` | Deleted-file color does not leak onto non-deleted rows | `LstCrcFileScopeStarterUiTest.testDeletedFileColorDoesNotLeakToModifiedRows` |
+| `C3.7` | Inserted new-file gutter markers follow the active comparison | `LstCrcVisualUiTest.testVisualGutterMarkersForInsertedNewFile`, `LstCrcVisualStarterUiTest.testVisualGutterMarkersForInsertedAndDeletedRanges` |
 | `C3.7` | Modified gutter markers follow the active comparison | `LstCrcVisualUiTest.testVisualGutterMarkers`, `LstCrcVisualStarterUiTest.testVisualGutterMarkers` |
-| `C3.7` | Deleted gutter markers follow the active comparison | `LstCrcVisualUiTest.testVisualGutterMarkersForModifiedAndDeletedRanges` |
+| `C3.7` | Deleted gutter markers follow the active comparison | `LstCrcVisualUiTest.testVisualGutterMarkersForModifiedAndDeletedRanges`, `LstCrcVisualStarterUiTest.testVisualGutterMarkersForInsertedAndDeletedRanges` |
 | `C3.8` | Unsaved edits appear before save | `LstCrcBranchComparisonUiTest.testUnsavedLocalEditAppearsWithoutSave` |
 | `C3.8` | Unsaved edits of new files preserve `NEW`/`ADDED` semantics | `LstCrcBranchComparisonUiTest.testNewFileStaysCreatedDuringUnsavedEdits`, `GitServiceOverlayMergeTest.testPreservesNewChangeTypeWhenUnsavedOverlayIsApplied` |
 | `C3.8` | Unsaved overlays for non-new files remain modifications | `GitServiceOverlayMergeTest.testKeepsModificationOverlayForNonNewFiles` |
@@ -107,4 +108,5 @@
 - The matrix now treats file-state decisions, scope publication, and search-scope publication as separate cases rather than one broad “scope support” bucket.
 - Linked worktree behavior now has dedicated starter coverage instead of being assumed to behave like ordinary multi-root repositories.
 - New-file gutter behavior currently has settings-toggle coverage, but end-to-end `INSERTED` rendering is not claimed until the product behavior is validated.
+- New-file gutter coverage depends on reading document-level line markers and the plugin's standalone visual tracker path, not just manager-owned trackers.
 - Alias behavior now includes the actual tool-window tab context-menu rename path in addition to direct popup and state-level coverage.

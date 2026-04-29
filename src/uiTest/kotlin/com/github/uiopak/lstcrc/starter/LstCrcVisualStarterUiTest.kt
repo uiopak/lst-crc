@@ -9,6 +9,23 @@ import kotlin.time.Duration.Companion.seconds
 @Tag("starter")
 class LstCrcVisualStarterUiTest : LstCrcStarterUiTestBase() {
 
+    private fun LstCrcStarterContext.assertGutterContains(fileName: String, expectedRangeType: String) {
+        ui.openFile(fileName)
+
+        var latestSummary = ""
+        waitUntil(60.seconds, 500.milliseconds) {
+            latestSummary = ui.visualGutterSummaryForSelectedEditor()
+            latestSummary.contains(expectedRangeType) && latestSummary.contains("highlighters=") && !latestSummary.endsWith("highlighters=0")
+        }
+
+        val summary = ui.visualGutterSummaryForSelectedEditor()
+        assertTrue(summary.contains(expectedRangeType), "Expected $expectedRangeType gutter range for $fileName, got: $summary (last observed: $latestSummary)")
+        assertTrue(
+            summary.contains("highlighters=") && !summary.endsWith("highlighters=0"),
+            "Expected installed gutter highlighters for $fileName, got: $summary (last observed: $latestSummary)"
+        )
+    }
+
     @Test
     fun testVisualGutterMarkers() = runStarterUiTest {
         prepareLstCrc()
@@ -28,16 +45,34 @@ class LstCrcVisualStarterUiTest : LstCrcStarterUiTestBase() {
         waitForSelectedTab("feature-gutter")
 
         modifyFile("Main.txt", "alpha local change\nbeta\n")
-        ui.openFile("Main.txt")
+        assertGutterContains("Main.txt", "MODIFIED")
+    }
 
-        var latestSummary = ""
-        waitUntil(60.seconds, 500.milliseconds) {
-            latestSummary = ui.visualGutterSummaryForSelectedEditor()
-            latestSummary.contains("MODIFIED") && latestSummary.contains("highlighters=") && !latestSummary.endsWith("highlighters=0")
-        }
+    @Test
+    fun testVisualGutterMarkersForInsertedAndDeletedRanges() = runStarterUiTest {
+        prepareLstCrc()
+        initializeGitRepository()
 
-        val summary = ui.visualGutterSummaryForSelectedEditor()
-        assertTrue(summary.contains("MODIFIED"), "Expected modified gutter range, got: $summary (last observed: $latestSummary)")
-        assertTrue(summary.contains("highlighters="), "Expected installed gutter highlighters, got: $summary (last observed: $latestSummary)")
+        createNewFile("Base.txt", "alpha\nbeta\n")
+        createNewFile("Removed.txt", "one\ntwo\nthree\n")
+        commitChanges("Initial gutter fixtures")
+        val defaultBranch = defaultBranchName()
+
+        createBranch("feature-gutter-all")
+        createNewFile("BranchOnly.txt", "branch marker\n")
+        commitChanges("Branch marker commit")
+        checkoutBranch(defaultBranch)
+
+        openGitChangesView()
+        ui.createAndSelectTab("feature-gutter-all")
+        waitForSelectedTab("feature-gutter-all")
+
+        ui.setGutterSettings(enableMarkers = true, enableForNewFiles = true)
+
+        modifyFile("Removed.txt", "one\nthree\n")
+        createNewFile("Local.txt", "Local content\n")
+
+        assertGutterContains("Removed.txt", "DELETED")
+        assertGutterContains("Local.txt", "INSERTED")
     }
 }

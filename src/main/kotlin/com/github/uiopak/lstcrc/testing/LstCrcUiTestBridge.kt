@@ -35,11 +35,14 @@ import com.intellij.openapi.project.ProjectManager
 import com.intellij.openapi.project.guessProjectDir
 import com.intellij.openapi.actionSystem.PlatformDataKeys
 import com.intellij.openapi.actionSystem.impl.SimpleDataContext
+import com.intellij.openapi.editor.ex.MarkupModelEx
+import com.intellij.openapi.editor.impl.DocumentMarkupModel
 import com.intellij.openapi.vcs.ProjectLevelVcsManager
 import com.intellij.openapi.vcs.VcsConfiguration
 import com.intellij.openapi.vcs.VcsShowConfirmationOption
 import com.intellij.openapi.vcs.changes.ChangeListManagerEx
 import com.intellij.openapi.vcs.ex.ProjectLevelVcsManagerEx
+import com.intellij.openapi.vcs.ex.LocalLineStatusTracker
 import com.intellij.openapi.vcs.changes.VcsDirtyScopeManager
 import com.intellij.openapi.vcs.impl.LineStatusTrackerManager
 import com.intellij.openapi.vfs.LocalFileSystem
@@ -832,8 +835,9 @@ class LstCrcUiTestBridge {
     fun visualGutterSummaryForSelectedEditor(): String = onEdtResult {
         val project = project()
         val editor = FileEditorManager.getInstance(project).selectedTextEditor ?: return@onEdtResult ""
-        val (highlighterSummary, gutterHighlighterCount) = collectGutterHighlighterSummary(editor)
-        val trackerSummary = buildTrackerSummary(project, editor.document)
+        val document = editor.document
+        val (highlighterSummary, gutterHighlighterCount) = collectGutterHighlighterSummary(project, document)
+        val trackerSummary = buildTrackerSummary(project, document)
         "$highlighterSummary|highlighters=$gutterHighlighterCount|$trackerSummary"
     }
 
@@ -852,29 +856,47 @@ class LstCrcUiTestBridge {
         return getViewer?.invoke(browser) as? Tree
     }
 
-    private fun collectGutterHighlighterSummary(editor: com.intellij.openapi.editor.Editor): Pair<String, Int> {
-        val document = editor.document
+    private fun collectGutterHighlighterSummary(
+        project: Project,
+        document: com.intellij.openapi.editor.Document
+    ): Pair<String, Int> {
+        val markupModel = DocumentMarkupModel.forDocument(document, project, true) as MarkupModelEx
         val highlighterParts = mutableListOf<String>()
         var gutterHighlighterCount = 0
 
-        editor.markupModel.allHighlighters.forEach { highlighter ->
-            val renderer = highlighter.gutterIconRenderer ?: return@forEach
+        markupModel.allHighlighters.forEach { highlighter ->
+            val renderer = highlighter.gutterIconRenderer ?: highlighter.lineMarkerRenderer ?: return@forEach
             gutterHighlighterCount += 1
             val startOffset = highlighter.startOffset
             val endOffsetExclusive = maxOf(highlighter.endOffset, startOffset + 1)
             val startLine = document.getLineNumber(startOffset)
             val endLine = document.getLineNumber(endOffsetExclusive - 1) + 1
-            highlighterParts.add("$startLine-$endLine:${renderer.javaClass.simpleName}")
+            val rendererName = renderer.javaClass.simpleName.ifEmpty { renderer.javaClass.name }
+            highlighterParts.add("$startLine-$endLine:$rendererName")
         }
 
         return highlighterParts.joinToString(",") to gutterHighlighterCount
     }
 
     private fun buildTrackerSummary(project: Project, document: com.intellij.openapi.editor.Document): String {
-        val tracker = LineStatusTrackerManager.getInstance(project).getLineStatusTracker(document) ?: return "tracker=none"
+        val tracker = LineStatusTrackerManager.getInstance(project).getLineStatusTracker(document)
+            ?: standaloneVisualTracker(project, document)
+            ?: return "tracker=none"
         val rangeParts = extractTrackerRangeParts(tracker)
         val visible = extractTrackerVisibility(tracker)
         return "${tracker.javaClass.simpleName}|visible=$visible|ranges=${rangeParts.joinToString(",")}"
+    }
+
+    private fun standaloneVisualTracker(
+        project: Project,
+        document: com.intellij.openapi.editor.Document
+    ): LocalLineStatusTracker<*>? {
+        val manager = project.service<VisualTrackerManager>()
+        val field = VisualTrackerManager::class.java.getDeclaredField("visualTrackers")
+        field.isAccessible = true
+        @Suppress("UNCHECKED_CAST")
+        val trackers = field.get(manager) as? Map<com.intellij.openapi.editor.Document, *>
+        return trackers?.get(document) as? LocalLineStatusTracker<*>
     }
 
     private fun extractTrackerRangeParts(tracker: Any): List<String> {

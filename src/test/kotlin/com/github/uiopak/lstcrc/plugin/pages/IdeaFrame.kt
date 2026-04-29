@@ -1068,13 +1068,16 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
                     if (!editor) return "";
 
                     const document = editor.getDocument();
-                    const highlighters = editor.getMarkupModel().getAllHighlighters();
+                    const markupModel = com.intellij.openapi.editor.impl.DocumentMarkupModel.forDocument(document, project, true);
+                    const highlighters = markupModel.getAllHighlighters();
                     const highlighterParts = [];
                     let gutterHighlighterCount = 0;
 
                     for (let i = 0; i < highlighters.length; i++) {
                         const highlighter = highlighters[i];
-                        const renderer = highlighter.getGutterIconRenderer();
+                        const iconRenderer = highlighter.getGutterIconRenderer();
+                        const lineRenderer = highlighter.getLineMarkerRenderer();
+                        const renderer = iconRenderer || lineRenderer;
                         if (!renderer) continue;
 
                         gutterHighlighterCount++;
@@ -1082,10 +1085,30 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
                         const endOffsetExclusive = Math.max(highlighter.getEndOffset(), startOffset + 1);
                         const startLine = document.getLineNumber(startOffset);
                         const endLine = document.getLineNumber(endOffsetExclusive - 1) + 1;
-                        highlighterParts.push(startLine + "-" + endLine + ":" + renderer.getClass().getSimpleName());
+                        const rendererClass = renderer.getClass();
+                        const rendererName = String(rendererClass.getSimpleName() || rendererClass.getName());
+                        highlighterParts.push(startLine + "-" + endLine + ":" + rendererName);
                     }
 
-                    const tracker = com.intellij.openapi.vcs.impl.LineStatusTrackerManager.getInstance(project).getLineStatusTracker(document);
+                    let tracker = com.intellij.openapi.vcs.impl.LineStatusTrackerManager.getInstance(project).getLineStatusTracker(document);
+                    if (!tracker) {
+                        const pluginId = com.intellij.openapi.extensions.PluginId.getId("com.github.uiopak.lstcrc");
+                        const plugin = com.intellij.ide.plugins.PluginManagerCore.getPlugin(pluginId);
+                        if (plugin != null) {
+                            const managerClass = plugin.getPluginClassLoader()
+                                .loadClass("com.github.uiopak.lstcrc.gutters.VisualTrackerManager");
+                            const manager = project.getService(managerClass);
+                            if (manager != null) {
+                                const trackersField = managerClass.getDeclaredField("visualTrackers");
+                                trackersField.setAccessible(true);
+                                const trackers = trackersField.get(manager);
+                                if (trackers != null) {
+                                    tracker = trackers.get(document);
+                                }
+                            }
+                        }
+                    }
+
                     let trackerSummary = "tracker=none";
                     if (tracker) {
                         const ranges = tracker.getRanges();
