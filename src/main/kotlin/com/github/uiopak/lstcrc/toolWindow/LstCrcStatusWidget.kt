@@ -1,17 +1,20 @@
 package com.github.uiopak.lstcrc.toolWindow
 
+import com.github.uiopak.lstcrc.LstCrcConstants
 import com.github.uiopak.lstcrc.messaging.PLUGIN_SETTINGS_CHANGED_TOPIC
 import com.github.uiopak.lstcrc.messaging.PluginSettingsChangedListener
+import com.github.uiopak.lstcrc.messaging.TOOL_WINDOW_STATE_TOPIC
+import com.github.uiopak.lstcrc.messaging.ToolWindowStateListener
 import com.github.uiopak.lstcrc.resources.LstCrcBundle
 import com.github.uiopak.lstcrc.services.ToolWindowStateService
 import com.github.uiopak.lstcrc.state.ToolWindowState
 import com.github.uiopak.lstcrc.utils.LstCrcKeys
 import com.intellij.ide.DataManager
-import com.intellij.ide.util.PropertiesComponent
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.DefaultActionGroup
 import com.intellij.openapi.actionSystem.Separator
+import com.intellij.openapi.components.service
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.popup.JBPopupFactory
@@ -32,12 +35,7 @@ class LstCrcStatusWidgetFactory : StatusBarWidgetFactory {
     override fun getDisplayName(): String = LstCrcBundle.message("widget.display.name")
     override fun isAvailable(project: Project): Boolean = true
     override fun createWidget(project: Project): StatusBarWidget = LstCrcStatusWidget(project)
-    override fun disposeWidget(widget: StatusBarWidget) {
-        if (widget is LstCrcStatusWidget) {
-            widget.dispose()
-        }
-    }
-    override fun canBeEnabledOn(statusBar: StatusBar): Boolean = true
+    // disposeWidget and canBeEnabledOn use default implementations from StatusBarWidgetFactory
 }
 
 /**
@@ -55,7 +53,6 @@ class LstCrcStatusWidget(private val project: Project) : StatusBarWidget, Status
 
     companion object {
         const val ID = "LstCrcStatusWidget"
-        private const val GIT_CHANGES_TOOL_WINDOW_ID = "GitChangesView"
     }
 
     override fun ID(): String = ID
@@ -68,7 +65,7 @@ class LstCrcStatusWidget(private val project: Project) : StatusBarWidget, Status
 
         // The listener's only job is to tell the status bar to re-query our presentation.
         // It does not need to manage any internal state itself.
-        messageBusConnection?.subscribe(ToolWindowStateService.TOPIC, object : ToolWindowStateService.Companion.ToolWindowStateListener {
+        messageBusConnection?.subscribe(TOOL_WINDOW_STATE_TOPIC, object : ToolWindowStateListener {
             override fun stateChanged(newState: ToolWindowState) {
                 this@LstCrcStatusWidget.statusBar?.updateWidget(ID())
             }
@@ -92,13 +89,9 @@ class LstCrcStatusWidget(private val project: Project) : StatusBarWidget, Status
      */
     override fun getText(): String {
         if (project.isDisposed) return ""
-        val state = ToolWindowStateService.getInstance(project).state
+        val state = project.service<ToolWindowStateService>().state
 
-        val properties = PropertiesComponent.getInstance()
-        val showContext = properties.getBoolean(
-            ToolWindowSettingsProvider.APP_SHOW_WIDGET_CONTEXT_KEY,
-            ToolWindowSettingsProvider.DEFAULT_SHOW_WIDGET_CONTEXT
-        )
+        val showContext = ToolWindowSettingsProvider.isShowWidgetContext()
         val prefix = if (showContext) LstCrcBundle.message("widget.context.prefix") else ""
 
         val selectedIndex = state.selectedTabIndex
@@ -124,7 +117,7 @@ class LstCrcStatusWidget(private val project: Project) : StatusBarWidget, Status
 
     override fun getClickConsumer(): Consumer<MouseEvent> {
         return Consumer { mouseEvent ->
-            val service = ToolWindowStateService.getInstance(project)
+            val service = project.service<ToolWindowStateService>()
             val currentServiceState = service.state
             val openTabs = currentServiceState.openTabs
             val actions = mutableListOf<AnAction>()
@@ -132,11 +125,10 @@ class LstCrcStatusWidget(private val project: Project) : StatusBarWidget, Status
             actions.add(object : AnAction(LstCrcBundle.message("tab.name.head")) {
                 override fun actionPerformed(e: AnActionEvent) {
                     val toolWindowManager = ToolWindowManager.getInstance(project)
-                    val toolWindow = toolWindowManager.getToolWindow(GIT_CHANGES_TOOL_WINDOW_ID) ?: return
+                    val toolWindow = toolWindowManager.getToolWindow(LstCrcConstants.TOOL_WINDOW_ID) ?: return
 
                     toolWindow.activate({
                         val contentManager = toolWindow.contentManager
-                        // The HEAD tab is identified by being the non-closable tab.
                         val headContent = contentManager.contents.find { !it.isCloseable }
 
                         if (headContent != null) {
@@ -155,7 +147,7 @@ class LstCrcStatusWidget(private val project: Project) : StatusBarWidget, Status
                     override fun actionPerformed(e: AnActionEvent) {
                         val branchNameToSelect = tabInfo.branchName
                         val toolWindowManager = ToolWindowManager.getInstance(project)
-                        val toolWindow = toolWindowManager.getToolWindow(GIT_CHANGES_TOOL_WINDOW_ID) ?: return
+                        val toolWindow = toolWindowManager.getToolWindow(LstCrcConstants.TOOL_WINDOW_ID) ?: return
 
                         toolWindow.activate({
                             val contentManager = toolWindow.contentManager
@@ -177,7 +169,7 @@ class LstCrcStatusWidget(private val project: Project) : StatusBarWidget, Status
             actions.add(object : AnAction(LstCrcBundle.message("widget.action.add.tab")) {
                 override fun actionPerformed(e: AnActionEvent) {
                     val toolWindowManager = ToolWindowManager.getInstance(project)
-                    val toolWindow = toolWindowManager.getToolWindow(GIT_CHANGES_TOOL_WINDOW_ID) ?: return
+                    val toolWindow = toolWindowManager.getToolWindow(LstCrcConstants.TOOL_WINDOW_ID) ?: return
                     ToolWindowHelper.openBranchSelectionTab(project, toolWindow)
                 }
             })

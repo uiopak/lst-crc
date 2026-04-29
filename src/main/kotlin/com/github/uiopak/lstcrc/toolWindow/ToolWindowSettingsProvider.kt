@@ -1,11 +1,9 @@
-@file:Suppress("DialogTitleCapitalization")
-
 package com.github.uiopak.lstcrc.toolWindow
 
 import com.github.uiopak.lstcrc.messaging.PLUGIN_SETTINGS_CHANGED_TOPIC
 import com.github.uiopak.lstcrc.resources.LstCrcBundle
 import com.github.uiopak.lstcrc.services.GitService
-import com.github.uiopak.lstcrc.services.LstCrcGutterTrackerService
+import com.github.uiopak.lstcrc.gutters.VisualTrackerManager
 import com.github.uiopak.lstcrc.services.ToolWindowStateService
 import com.intellij.ide.util.PropertiesComponent
 import com.intellij.openapi.actionSystem.ActionGroup
@@ -26,32 +24,32 @@ import javax.swing.UIManager
 object ToolWindowSettingsProvider {
 
     // --- Keys for Click Actions ---
-    private const val ACTION_NONE = "NONE"
+    internal const val ACTION_NONE = "NONE"
     internal const val ACTION_OPEN_DIFF = "OPEN_DIFF"
     internal const val ACTION_OPEN_SOURCE = "OPEN_SOURCE"
     internal const val ACTION_SHOW_IN_PROJECT_TREE = "SHOW_IN_PROJECT_TREE"
 
-    private const val APP_SINGLE_CLICK_ACTION_KEY: String = "com.github.uiopak.lstcrc.app.singleClickAction"
-    private const val APP_DOUBLE_CLICK_ACTION_KEY = "com.github.uiopak.lstcrc.app.doubleClickAction"
-    private const val DEFAULT_SINGLE_CLICK_ACTION = ACTION_OPEN_SOURCE
-    private const val DEFAULT_DOUBLE_CLICK_ACTION = ACTION_NONE
+    internal const val APP_SINGLE_CLICK_ACTION_KEY: String = "com.github.uiopak.lstcrc.app.singleClickAction"
+    internal const val APP_DOUBLE_CLICK_ACTION_KEY = "com.github.uiopak.lstcrc.app.doubleClickAction"
+    internal const val DEFAULT_SINGLE_CLICK_ACTION = ACTION_OPEN_SOURCE
+    internal const val DEFAULT_DOUBLE_CLICK_ACTION = ACTION_NONE
 
-    private const val APP_MIDDLE_CLICK_ACTION_KEY = "com.github.uiopak.lstcrc.app.middleClickAction"
-    private const val APP_DOUBLE_MIDDLE_CLICK_ACTION_KEY = "com.github.uiopak.lstcrc.app.doubleMiddleClickAction"
-    private const val DEFAULT_MIDDLE_CLICK_ACTION = ACTION_SHOW_IN_PROJECT_TREE
-    private const val DEFAULT_DOUBLE_MIDDLE_CLICK_ACTION = ACTION_NONE
+    internal const val APP_MIDDLE_CLICK_ACTION_KEY = "com.github.uiopak.lstcrc.app.middleClickAction"
+    internal const val APP_DOUBLE_MIDDLE_CLICK_ACTION_KEY = "com.github.uiopak.lstcrc.app.doubleMiddleClickAction"
+    internal const val DEFAULT_MIDDLE_CLICK_ACTION = ACTION_SHOW_IN_PROJECT_TREE
+    internal const val DEFAULT_DOUBLE_MIDDLE_CLICK_ACTION = ACTION_NONE
 
-    private const val APP_RIGHT_CLICK_ACTION_KEY = "com.github.uiopak.lstcrc.app.rightClickAction"
-    private const val APP_DOUBLE_RIGHT_CLICK_ACTION_KEY = "com.github.uiopak.lstcrc.app.doubleRightClickAction"
-    private const val DEFAULT_RIGHT_CLICK_ACTION = ACTION_OPEN_DIFF
-    private const val DEFAULT_DOUBLE_RIGHT_CLICK_ACTION = ACTION_NONE
+    internal const val APP_RIGHT_CLICK_ACTION_KEY = "com.github.uiopak.lstcrc.app.rightClickAction"
+    internal const val APP_DOUBLE_RIGHT_CLICK_ACTION_KEY = "com.github.uiopak.lstcrc.app.doubleRightClickAction"
+    internal const val DEFAULT_RIGHT_CLICK_ACTION = ACTION_OPEN_DIFF
+    internal const val DEFAULT_DOUBLE_RIGHT_CLICK_ACTION = ACTION_NONE
 
     // --- Keys for General Settings ---
-    private const val APP_SHOW_CONTEXT_MENU_KEY = "com.github.uiopak.lstcrc.app.showContextMenu"
-    private const val DEFAULT_SHOW_CONTEXT_MENU = false
+    internal const val APP_SHOW_CONTEXT_MENU_KEY = "com.github.uiopak.lstcrc.app.showContextMenu"
+    internal const val DEFAULT_SHOW_CONTEXT_MENU = false
 
-    private const val APP_USER_DOUBLE_CLICK_DELAY_KEY = "com.github.uiopak.lstcrc.app.userDoubleClickDelay"
-    private const val DELAY_OPTION_SYSTEM_DEFAULT = -1
+    internal const val APP_USER_DOUBLE_CLICK_DELAY_KEY = "com.github.uiopak.lstcrc.app.userDoubleClickDelay"
+    internal const val DELAY_OPTION_SYSTEM_DEFAULT = -1
 
     internal const val APP_INCLUDE_HEAD_IN_SCOPES_KEY = "com.github.uiopak.lstcrc.app.includeHeadInScopes"
     internal const val DEFAULT_INCLUDE_HEAD_IN_SCOPES = false
@@ -87,6 +85,10 @@ object ToolWindowSettingsProvider {
     fun isShowContextForSingleRepoEnabled(): Boolean = PropertiesComponent.getInstance().getBoolean(APP_SHOW_CONTEXT_SINGLE_REPO_KEY, DEFAULT_SHOW_CONTEXT_SINGLE_REPO)
     fun isShowContextForMultiRepoEnabled(): Boolean = PropertiesComponent.getInstance().getBoolean(APP_SHOW_CONTEXT_MULTI_REPO_KEY, DEFAULT_SHOW_CONTEXT_MULTI_REPO)
     fun isShowContextForCommitsEnabled(): Boolean = PropertiesComponent.getInstance().getBoolean(APP_SHOW_CONTEXT_FOR_COMMITS_KEY, DEFAULT_SHOW_CONTEXT_FOR_COMMITS)
+    fun isGutterMarkersEnabled(): Boolean = PropertiesComponent.getInstance().getBoolean(APP_ENABLE_GUTTER_MARKERS_KEY, DEFAULT_ENABLE_GUTTER_MARKERS)
+    fun isGutterForNewFilesEnabled(): Boolean = PropertiesComponent.getInstance().getBoolean(APP_ENABLE_GUTTER_FOR_NEW_FILES_KEY, DEFAULT_ENABLE_GUTTER_FOR_NEW_FILES)
+    fun isIncludeHeadInScopes(): Boolean = PropertiesComponent.getInstance().getBoolean(APP_INCLUDE_HEAD_IN_SCOPES_KEY, DEFAULT_INCLUDE_HEAD_IN_SCOPES)
+    fun isShowWidgetContext(): Boolean = PropertiesComponent.getInstance().getBoolean(APP_SHOW_WIDGET_CONTEXT_KEY, DEFAULT_SHOW_WIDGET_CONTEXT)
 
 
     fun getUserDoubleClickDelayMs(): Int {
@@ -106,8 +108,6 @@ object ToolWindowSettingsProvider {
     private fun setRightClickAction(action: String) = PropertiesComponent.getInstance().setValue(APP_RIGHT_CLICK_ACTION_KEY, action)
     private fun setDoubleRightClickAction(action: String) = PropertiesComponent.getInstance().setValue(APP_DOUBLE_RIGHT_CLICK_ACTION_KEY, action)
     private fun setUserDoubleClickDelayMs(delay: Int) = PropertiesComponent.getInstance().setValue(APP_USER_DOUBLE_CLICK_DELAY_KEY, delay, DELAY_OPTION_SYSTEM_DEFAULT)
-    private fun getIncludeHeadInScopes(): Boolean = PropertiesComponent.getInstance().getBoolean(APP_INCLUDE_HEAD_IN_SCOPES_KEY, DEFAULT_INCLUDE_HEAD_IN_SCOPES)
-    private fun setIncludeHeadInScopes(include: Boolean) = PropertiesComponent.getInstance().setValue(APP_INCLUDE_HEAD_IN_SCOPES_KEY, include, DEFAULT_INCLUDE_HEAD_IN_SCOPES)
 
 
     fun createToolWindowSettingsGroup(): ActionGroup {
@@ -117,126 +117,80 @@ object ToolWindowSettingsProvider {
         val gutterSettingsGroup = DefaultActionGroup({ LstCrcBundle.message("settings.gutter.group.title") }, true)
         rootSettingsGroup.add(gutterSettingsGroup)
 
-        gutterSettingsGroup.add(object : ToggleAction(LstCrcBundle.message("settings.gutter.enable")) {
-            override fun isSelected(e: AnActionEvent): Boolean =
-                PropertiesComponent.getInstance().getBoolean(APP_ENABLE_GUTTER_MARKERS_KEY, DEFAULT_ENABLE_GUTTER_MARKERS)
+        gutterSettingsGroup.add(createBooleanSettingToggle(
+            LstCrcBundle.message("settings.gutter.enable"),
+            APP_ENABLE_GUTTER_MARKERS_KEY, DEFAULT_ENABLE_GUTTER_MARKERS,
+            onChanged = { e, _ -> e.project?.service<VisualTrackerManager>()?.settingsChanged() }
+        ))
 
-            override fun setSelected(e: AnActionEvent, state: Boolean) {
-                PropertiesComponent.getInstance().setValue(APP_ENABLE_GUTTER_MARKERS_KEY, state, DEFAULT_ENABLE_GUTTER_MARKERS)
-                e.project?.service<LstCrcGutterTrackerService>()?.settingsChanged()
+        gutterSettingsGroup.add(createBooleanSettingToggle(
+            LstCrcBundle.message("settings.gutter.for.new.files"),
+            APP_ENABLE_GUTTER_FOR_NEW_FILES_KEY, DEFAULT_ENABLE_GUTTER_FOR_NEW_FILES,
+            onChanged = { e, _ -> e.project?.service<VisualTrackerManager>()?.settingsChanged() },
+            updateCheck = { e ->
+                e.presentation.isEnabled = PropertiesComponent.getInstance()
+                    .getBoolean(APP_ENABLE_GUTTER_MARKERS_KEY, DEFAULT_ENABLE_GUTTER_MARKERS)
             }
-            override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
-        })
-
-        gutterSettingsGroup.add(object : ToggleAction(LstCrcBundle.message("settings.gutter.for.new.files")) {
-            override fun update(e: AnActionEvent) {
-                super.update(e)
-                // Only enable this sub-setting if the main gutter setting is enabled.
-                e.presentation.isEnabled = PropertiesComponent.getInstance().getBoolean(APP_ENABLE_GUTTER_MARKERS_KEY, DEFAULT_ENABLE_GUTTER_MARKERS)
-            }
-            override fun isSelected(e: AnActionEvent): Boolean =
-                PropertiesComponent.getInstance().getBoolean(APP_ENABLE_GUTTER_FOR_NEW_FILES_KEY, DEFAULT_ENABLE_GUTTER_FOR_NEW_FILES)
-
-            override fun setSelected(e: AnActionEvent, state: Boolean) {
-                PropertiesComponent.getInstance().setValue(APP_ENABLE_GUTTER_FOR_NEW_FILES_KEY, state, DEFAULT_ENABLE_GUTTER_FOR_NEW_FILES)
-                e.project?.service<LstCrcGutterTrackerService>()?.settingsChanged()
-            }
-            override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
-        })
+        ))
         rootSettingsGroup.addSeparator()
 
         // --- Tree View Submenu ---
         val treeViewSettingsGroup = DefaultActionGroup({ LstCrcBundle.message("settings.tree.view.group.title") }, true).apply {
-            // This action is only visible if there are multiple git repos in the project.
-            add(object : ToggleAction(LstCrcBundle.message("settings.tree.view.show.context.multi.repo")) {
-                override fun update(e: AnActionEvent) {
-                    super.update(e)
+            add(createBooleanSettingToggle(
+                LstCrcBundle.message("settings.tree.view.show.context.multi.repo"),
+                APP_SHOW_CONTEXT_MULTI_REPO_KEY, DEFAULT_SHOW_CONTEXT_MULTI_REPO,
+                onChanged = { e, _ -> rebuildActiveView(e) },
+                updateCheck = { e ->
                     e.presentation.isEnabledAndVisible =
                         (e.project?.service<GitService>()?.getRepositories()?.size ?: 0) > 1
                 }
-                override fun isSelected(e: AnActionEvent): Boolean = isShowContextForMultiRepoEnabled()
-                override fun setSelected(e: AnActionEvent, state: Boolean) {
-                    PropertiesComponent.getInstance().setValue(APP_SHOW_CONTEXT_MULTI_REPO_KEY, state, DEFAULT_SHOW_CONTEXT_MULTI_REPO)
-                    val toolWindow = e.getData(PlatformDataKeys.TOOL_WINDOW) ?: return
-                    val browser = toolWindow.contentManager.selectedContent?.component as? LstCrcChangesBrowser
-                    browser?.rebuildView()
-                }
-                override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
-            })
+            ))
 
-            add(object : ToggleAction(LstCrcBundle.message("settings.tree.view.show.context.single.repo")) {
-                override fun update(e: AnActionEvent) {
-                    super.update(e)
+            add(createBooleanSettingToggle(
+                LstCrcBundle.message("settings.tree.view.show.context.single.repo"),
+                APP_SHOW_CONTEXT_SINGLE_REPO_KEY, DEFAULT_SHOW_CONTEXT_SINGLE_REPO,
+                onChanged = { e, _ -> rebuildActiveView(e) },
+                updateCheck = { e ->
                     e.presentation.isEnabledAndVisible =
                         (e.project?.service<GitService>()?.getRepositories()?.size ?: 0) <= 1
                 }
-                override fun isSelected(e: AnActionEvent): Boolean = isShowContextForSingleRepoEnabled()
-                override fun setSelected(e: AnActionEvent, state: Boolean) {
-                    PropertiesComponent.getInstance().setValue(APP_SHOW_CONTEXT_SINGLE_REPO_KEY, state, DEFAULT_SHOW_CONTEXT_SINGLE_REPO)
-                    val toolWindow = e.getData(PlatformDataKeys.TOOL_WINDOW) ?: return
-                    val browser = toolWindow.contentManager.selectedContent?.component as? LstCrcChangesBrowser
-                    browser?.rebuildView()
-                }
-                override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
-            })
+            ))
 
-            add(object : ToggleAction(LstCrcBundle.message("settings.tree.view.show.context.for.commits")) {
-                override fun update(e: AnActionEvent) {
-                    super.update(e)
+            add(createBooleanSettingToggle(
+                LstCrcBundle.message("settings.tree.view.show.context.for.commits"),
+                APP_SHOW_CONTEXT_FOR_COMMITS_KEY, DEFAULT_SHOW_CONTEXT_FOR_COMMITS,
+                onChanged = { e, _ -> rebuildActiveView(e) },
+                updateCheck = { e ->
                     e.presentation.isEnabled = isShowContextForSingleRepoEnabled() || isShowContextForMultiRepoEnabled()
                 }
-                override fun isSelected(e: AnActionEvent): Boolean = isShowContextForCommitsEnabled()
-                override fun setSelected(e: AnActionEvent, state: Boolean) {
-                    PropertiesComponent.getInstance().setValue(APP_SHOW_CONTEXT_FOR_COMMITS_KEY, state, DEFAULT_SHOW_CONTEXT_FOR_COMMITS)
-                    val toolWindow = e.getData(PlatformDataKeys.TOOL_WINDOW) ?: return
-                    val browser = toolWindow.contentManager.selectedContent?.component as? LstCrcChangesBrowser
-                    browser?.rebuildView()
-                }
-                override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
-            })
+            ))
         }
         rootSettingsGroup.add(treeViewSettingsGroup)
         rootSettingsGroup.addSeparator()
 
         // --- Other General Settings ---
-        rootSettingsGroup.add(object : ToggleAction(LstCrcBundle.message("settings.show.tool.window.title")) {
-            override fun isSelected(e: AnActionEvent): Boolean =
-                PropertiesComponent.getInstance().getBoolean(APP_SHOW_TOOL_WINDOW_TITLE_KEY, DEFAULT_SHOW_TOOL_WINDOW_TITLE)
+        rootSettingsGroup.add(createBooleanSettingToggle(
+            LstCrcBundle.message("settings.show.tool.window.title"),
+            APP_SHOW_TOOL_WINDOW_TITLE_KEY, DEFAULT_SHOW_TOOL_WINDOW_TITLE,
+            onChanged = { e, state -> updateToolWindowTitleVisibility(e, state) }
+        ))
 
-            override fun setSelected(e: AnActionEvent, state: Boolean) {
-                PropertiesComponent.getInstance().setValue(APP_SHOW_TOOL_WINDOW_TITLE_KEY, state, DEFAULT_SHOW_TOOL_WINDOW_TITLE)
-                val toolWindow = e.getData(PlatformDataKeys.TOOL_WINDOW) ?: return
-                toolWindow.component.putClientProperty(ToolWindowContentUi.HIDE_ID_LABEL, if (state) null else "true")
-                (toolWindow.contentManager as? ContentManagerImpl)?.let {
-                    (it.ui as? ToolWindowContentUi)?.update()
-                }
-            }
-            override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
-        })
+        rootSettingsGroup.add(createBooleanSettingToggle(
+            LstCrcBundle.message("settings.show.widget.context"),
+            APP_SHOW_WIDGET_CONTEXT_KEY, DEFAULT_SHOW_WIDGET_CONTEXT,
+            onChanged = { e, _ -> e.project?.messageBus?.syncPublisher(PLUGIN_SETTINGS_CHANGED_TOPIC)?.onSettingsChanged() }
+        ))
 
-        rootSettingsGroup.add(object : ToggleAction(LstCrcBundle.message("settings.show.widget.context")) {
-            override fun isSelected(e: AnActionEvent): Boolean =
-                PropertiesComponent.getInstance().getBoolean(APP_SHOW_WIDGET_CONTEXT_KEY, DEFAULT_SHOW_WIDGET_CONTEXT)
-
-            override fun setSelected(e: AnActionEvent, state: Boolean) {
-                PropertiesComponent.getInstance().setValue(APP_SHOW_WIDGET_CONTEXT_KEY, state, DEFAULT_SHOW_WIDGET_CONTEXT)
-                e.project?.messageBus?.syncPublisher(PLUGIN_SETTINGS_CHANGED_TOPIC)?.onSettingsChanged()
-            }
-            override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
-        })
-
-        rootSettingsGroup.add(object : ToggleAction(LstCrcBundle.message("settings.include.head.in.scopes")) {
-            override fun isSelected(e: AnActionEvent): Boolean = getIncludeHeadInScopes()
-            override fun setSelected(e: AnActionEvent, state: Boolean) {
-                setIncludeHeadInScopes(state)
-                val project = e.project ?: return
-                // Refresh data if the currently selected tab is HEAD, to apply the setting change immediately.
+        rootSettingsGroup.add(createBooleanSettingToggle(
+            LstCrcBundle.message("settings.include.head.in.scopes"),
+            APP_INCLUDE_HEAD_IN_SCOPES_KEY, DEFAULT_INCLUDE_HEAD_IN_SCOPES,
+            onChanged = { e, _ ->
+                val project = e.project ?: return@createBooleanSettingToggle
                 if (project.service<ToolWindowStateService>().getSelectedTabBranchName() == null) {
                     project.service<ToolWindowStateService>().refreshDataForCurrentSelection()
                 }
             }
-            override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
-        })
+        ))
         rootSettingsGroup.addSeparator()
 
         // Mouse Click Action Settings
@@ -315,7 +269,63 @@ object ToolWindowSettingsProvider {
     }
 
     /**
-     * Helper to create a [ToggleAction] for the settings menu.
+     * Helper to create a [ToggleAction] for a boolean setting stored in [PropertiesComponent].
+     *
+     * @param text The display text for the action.
+     * @param key The property key.
+     * @param default The default value.
+     * @param onChanged Optional callback invoked after the value changes. Receives the event and new state.
+     * @param updateCheck Optional predicate to control enabled/visible state in [ToggleAction.update].
+     */
+    private fun createBooleanSettingToggle(
+        text: String,
+        key: String,
+        default: Boolean,
+        onChanged: ((AnActionEvent, Boolean) -> Unit)? = null,
+        updateCheck: ((AnActionEvent) -> Unit)? = null
+    ): ToggleAction {
+        return object : ToggleAction(text) {
+            override fun update(e: AnActionEvent) {
+                super.update(e)
+                updateCheck?.invoke(e)
+            }
+
+            override fun isSelected(e: AnActionEvent): Boolean =
+                PropertiesComponent.getInstance().getBoolean(key, default)
+
+            override fun setSelected(e: AnActionEvent, state: Boolean) {
+                PropertiesComponent.getInstance().setValue(key, state, default)
+                onChanged?.invoke(e, state)
+            }
+
+            override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
+        }
+    }
+
+    /**
+     * Rebuilds the tree view of the currently active [LstCrcChangesBrowser] in the tool window.
+     */
+    private fun rebuildActiveView(e: AnActionEvent) {
+        val toolWindow = e.getData(PlatformDataKeys.TOOL_WINDOW) ?: return
+        val browser = toolWindow.contentManager.selectedContent?.component as? LstCrcChangesBrowser
+        browser?.rebuildView()
+    }
+
+    /**
+     * Updates the tool window's ID label visibility and refreshes the header UI.
+     * Wraps usage of impl-package APIs ([ToolWindowContentUi], [ContentManagerImpl])
+     * in one place for easier maintenance if public alternatives become available.
+     */
+    private fun updateToolWindowTitleVisibility(e: AnActionEvent, showTitle: Boolean) {
+        val toolWindow = e.getData(PlatformDataKeys.TOOL_WINDOW) ?: return
+        toolWindow.component.putClientProperty(ToolWindowContentUi.HIDE_ID_LABEL, if (showTitle) null else "true")
+        (toolWindow.contentManager as? ContentManagerImpl)?.let {
+            (it.ui as? ToolWindowContentUi)?.update()
+        }
+    }
+
+    /**
+     * Helper to create a radio-style [ToggleAction] for the settings menu.
      */
     private fun createToggleAction(text: String, isSelected: (AnActionEvent) -> Boolean, onSelected: () -> Unit): ToggleAction {
         return object : ToggleAction(text) {

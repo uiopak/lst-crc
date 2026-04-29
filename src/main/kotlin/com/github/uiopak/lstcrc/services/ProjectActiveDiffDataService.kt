@@ -39,6 +39,26 @@ class ProjectActiveDiffDataService(private val project: Project) : Disposable {
     var activeComparisonContext: Map<String, String> = emptyMap()
         private set
 
+    // Pre-computed sets for efficient scope membership checks (avoids per-call allocations)
+    var createdFilesSet: Set<VirtualFile> = emptySet()
+        private set
+    var createdFilePaths: Set<String> = emptySet()
+        private set
+    var modifiedFilesSet: Set<VirtualFile> = emptySet()
+        private set
+    var modifiedFilePaths: Set<String> = emptySet()
+        private set
+    var movedFilesSet: Set<VirtualFile> = emptySet()
+        private set
+    var movedFilePaths: Set<String> = emptySet()
+        private set
+    var deletedFilePaths: Set<String> = emptySet()
+        private set
+    var changedFilesSet: Set<VirtualFile> = emptySet()
+        private set
+    var changedFilePaths: Set<String> = emptySet()
+        private set
+
     fun updateActiveDiff(
         branchNameFromEvent: String,
         createdFilesFromEvent: List<VirtualFile>,
@@ -50,7 +70,6 @@ class ProjectActiveDiffDataService(private val project: Project) : Disposable {
         val currentToolWindowBranch = project.service<ToolWindowStateService>().getSelectedTabBranchName()
         logger.debug("updateActiveDiff called. Event branch: '$branchNameFromEvent'. Current tool window branch: '$currentToolWindowBranch'.")
 
-        // The event is valid only if it matches the currently selected tab to prevent stale updates.
         val isHeadSelectedInToolWindow = currentToolWindowBranch == null
         val isEventForHead = branchNameFromEvent == "HEAD"
         val isDirectBranchMatch = branchNameFromEvent == currentToolWindowBranch
@@ -58,16 +77,10 @@ class ProjectActiveDiffDataService(private val project: Project) : Disposable {
         if (isDirectBranchMatch || (isEventForHead && isHeadSelectedInToolWindow)) {
             logger.debug("updateActiveDiff - Update ACCEPTED. Proceeding to update service state.")
             ApplicationManager.getApplication().invokeLater {
-                if (project.isDisposed) {
-                    logger.info("Project ${project.name} is disposed (in updateActiveDiff invokeLater), skipping update.")
-                    return@invokeLater
-                }
+                if (project.isDisposed) return@invokeLater
                 logger.debug("EDT: Updating active data for '$branchNameFromEvent'.")
 
-                val oldCreatedFiles = this.createdFiles.toSet()
-                val oldModifiedFiles = this.modifiedFiles.toSet()
-                val oldMovedFiles = this.movedFiles.toSet()
-                val oldDeletedFiles = this.deletedFiles.toSet()
+                val previousFiles = collectAllFiles()
 
                 this.activeBranchName = branchNameFromEvent
                 this.createdFiles = createdFilesFromEvent
@@ -75,30 +88,10 @@ class ProjectActiveDiffDataService(private val project: Project) : Disposable {
                 this.movedFiles = movedFilesFromEvent
                 this.deletedFiles = deletedFilesFromEvent
                 this.activeComparisonContext = comparisonContextFromEvent
-                this.diffSessionId = UUID.randomUUID() // Generate a new session ID to force tracker updates
+                this.diffSessionId = UUID.randomUUID()
+                rebuildCachedSets()
 
-                val newCreatedFiles = createdFilesFromEvent.toSet()
-                val newModifiedFiles = modifiedFilesFromEvent.toSet()
-                val newMovedFiles = movedFilesFromEvent.toSet()
-                val newDeletedFiles = deletedFilesFromEvent.toSet()
-
-                // Combine all files whose status might have changed to notify the IDE.
-                val affectedFiles = oldCreatedFiles + oldModifiedFiles + oldMovedFiles + oldDeletedFiles +
-                        newCreatedFiles + newModifiedFiles + newMovedFiles + newDeletedFiles
-
-                if (affectedFiles.isNotEmpty()) {
-                    val fileStatusManager = FileStatusManager.getInstance(project)
-                    logger.debug("EDT: Notifying FileStatusManager for ${affectedFiles.size} affected files after updateActiveDiff.")
-
-                    fileStatusManager.fileStatusesChanged()
-                    affectedFiles.forEach { file ->
-                        if (file.isValid) {
-                            fileStatusManager.fileStatusChanged(file)
-                        }
-                    }
-                }
-
-                // Announce that the data is ready for consumers (scopes, gutters, etc.).
+                notifyAffectedFiles(previousFiles + collectAllFiles())
                 project.messageBus.syncPublisher(DIFF_DATA_CHANGED_TOPIC).onDiffDataChanged()
                 triggerEditorTabColorRefresh()
             }
@@ -109,12 +102,10 @@ class ProjectActiveDiffDataService(private val project: Project) : Disposable {
 
     fun clearActiveDiff() {
         ApplicationManager.getApplication().invokeLater {
-            if (project.isDisposed) {
-                logger.info("Project ${project.name} is disposed (in clearActiveDiff invokeLater), skipping clear.")
-                return@invokeLater
-            }
+            if (project.isDisposed) return@invokeLater
             logger.debug("EDT: clearActiveDiff called. Clearing activeBranchName and file lists.")
-            val affectedFiles = (this.createdFiles + this.modifiedFiles + this.movedFiles + this.deletedFiles).toSet()
+
+            val previousFiles = collectAllFiles()
 
             this.activeBranchName = null
             this.createdFiles = emptyList()
@@ -122,43 +113,60 @@ class ProjectActiveDiffDataService(private val project: Project) : Disposable {
             this.movedFiles = emptyList()
             this.deletedFiles = emptyList()
             this.activeComparisonContext = emptyMap()
-            this.diffSessionId = UUID.randomUUID() // Generate a new session ID to force tracker updates
+            this.diffSessionId = UUID.randomUUID()
+            rebuildCachedSets()
 
-            if (affectedFiles.isNotEmpty()) {
-                val fileStatusManager = FileStatusManager.getInstance(project)
-                logger.debug("EDT: Notifying FileStatusManager for ${affectedFiles.size} affected files after clearActiveDiff.")
-                fileStatusManager.fileStatusesChanged()
-                affectedFiles.forEach { file ->
-                    if (file.isValid) {
-                        fileStatusManager.fileStatusChanged(file)
-                    }
-                }
-            }
+            notifyAffectedFiles(previousFiles)
             project.messageBus.syncPublisher(DIFF_DATA_CHANGED_TOPIC).onDiffDataChanged()
             triggerEditorTabColorRefresh()
         }
     }
 
-    private fun triggerEditorTabColorRefresh() {
-        logger.debug("triggerEditorTabColorRefresh() called.")
-        ApplicationManager.getApplication().invokeLater {
-            if (project.isDisposed) {
-                logger.info("Project is disposed, skipping editor tab color refresh.")
-                return@invokeLater
+    private fun collectAllFiles(): Set<VirtualFile> =
+        (createdFiles + modifiedFiles + movedFiles + deletedFiles).toSet()
+
+    private fun rebuildCachedSets() {
+        createdFilesSet = createdFiles.toSet()
+        createdFilePaths = createdFiles.mapTo(HashSet()) { it.path }
+        modifiedFilesSet = modifiedFiles.toSet()
+        modifiedFilePaths = modifiedFiles.mapTo(HashSet()) { it.path }
+        movedFilesSet = movedFiles.toSet()
+        movedFilePaths = movedFiles.mapTo(HashSet()) { it.path }
+        deletedFilePaths = deletedFiles.mapTo(HashSet()) { it.path }
+        changedFilesSet = createdFilesSet + modifiedFilesSet + movedFilesSet
+        changedFilePaths = createdFilePaths + modifiedFilePaths + movedFilePaths
+    }
+
+    private fun notifyAffectedFiles(affectedFiles: Set<VirtualFile>) {
+        if (affectedFiles.isEmpty()) return
+        val fileStatusManager = FileStatusManager.getInstance(project)
+        logger.debug("EDT: Notifying FileStatusManager for ${affectedFiles.size} affected files.")
+        fileStatusManager.fileStatusesChanged()
+        affectedFiles.forEach { file ->
+            if (file.isValid) {
+                fileStatusManager.fileStatusChanged(file)
             }
-            val fileEditorManager = FileEditorManager.getInstance(project)
-            fileEditorManager.openFiles.forEach { vf ->
-                if (vf.isValid) {
-                    fileEditorManager.updateFilePresentation(vf)
-                }
-            }
-            logger.debug("updateFilePresentation requests sent for all valid open files.")
         }
+    }
+
+    /** Must be called on EDT. */
+    private fun triggerEditorTabColorRefresh() {
+        if (project.isDisposed) return
+        logger.debug("triggerEditorTabColorRefresh() called.")
+        val fileEditorManager = FileEditorManager.getInstance(project)
+        fileEditorManager.openFiles.forEach { vf ->
+            if (vf.isValid) {
+                fileEditorManager.updateFilePresentation(vf)
+            }
+        }
+        logger.debug("updateFilePresentation requests sent for all valid open files.")
     }
 
     fun refreshCurrentColorings() {
         logger.debug("refreshCurrentColorings() called. Active branch: $activeBranchName")
-        triggerEditorTabColorRefresh()
+        ApplicationManager.getApplication().invokeLater {
+            if (!project.isDisposed) triggerEditorTabColorRefresh()
+        }
     }
 
     override fun dispose() {
@@ -169,5 +177,6 @@ class ProjectActiveDiffDataService(private val project: Project) : Disposable {
         movedFiles = emptyList()
         deletedFiles = emptyList()
         activeComparisonContext = emptyMap()
+        rebuildCachedSets()
     }
 }

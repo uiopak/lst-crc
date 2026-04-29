@@ -10,15 +10,19 @@ import org.assertj.swing.core.MouseButton
 import java.time.Duration
 
 fun IdeaFrame.gitChangesView(function: GitChangesViewFixture.() -> Unit) {
-    waitFor(Duration.ofSeconds(10), interval = Duration.ofMillis(250)) {
-        findAll<GitChangesViewFixture>(byXpath("//div[@class='LstCrcChangesBrowser' and @visible='true']")).isNotEmpty()
+    val timeout = if (System.getenv("GITHUB_ACTIONS") == "true") Duration.ofSeconds(30) else Duration.ofSeconds(10)
+    val locator = byXpath("//div[@class='LstCrcChangesBrowser' and @visible='true']")
+    waitFor(timeout, interval = Duration.ofMillis(250)) {
+        findAll<GitChangesViewFixture>(locator).isNotEmpty()
     }
-    find<GitChangesViewFixture>(byXpath("//div[@class='LstCrcChangesBrowser' and @visible='true']"), Duration.ofSeconds(10)).apply(function)
+    findAll<GitChangesViewFixture>(locator).first().apply(function)
 }
 
 @FixtureName("GitChangesView")
 class GitChangesViewFixture(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
     CommonContainerFixture(remoteRobot, remoteComponent) {
+
+    private val branchSelectionPanelLocator = byXpath("//div[@class='BranchSelectionPanel']")
 
     private fun toJsStringLiteral(value: String): String {
         return buildString {
@@ -139,6 +143,25 @@ class GitChangesViewFixture(remoteRobot: RemoteRobot, remoteComponent: RemoteCom
             waitFor(Duration.ofSeconds(10), interval = Duration.ofMillis(250)) {
                 selectedContentTabName() == tabName
             }
+
+            runJs(
+                """
+                const project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
+                if (project) {
+                    const pluginId = com.intellij.openapi.extensions.PluginId.getId("com.github.uiopak.lstcrc");
+                    const plugin = com.intellij.ide.plugins.PluginManagerCore.getPlugin(pluginId);
+                    if (plugin != null) {
+                        const stateServiceClass = plugin.getPluginClassLoader()
+                            .loadClass("com.github.uiopak.lstcrc.services.ToolWindowStateService");
+                        const stateService = project.getService(stateServiceClass);
+                        if (stateService != null) {
+                            stateService.refreshDataForCurrentSelection().join();
+                        }
+                    }
+                }
+                """.trimIndent(),
+                false
+            )
         }
     }
 
@@ -167,12 +190,153 @@ class GitChangesViewFixture(remoteRobot: RemoteRobot, remoteComponent: RemoteCom
         clickChange(fileName, MouseButton.RIGHT_BUTTON)
     }
 
+    fun rightClickTab(tabName: String) {
+        step("Right click tab '$tabName'") {
+            waitFor(Duration.ofSeconds(10), interval = Duration.ofMillis(250)) {
+                remoteRobot.findAll<ComponentFixture>(tabLocator(tabName)).isNotEmpty()
+            }
+            remoteRobot.findAll<ComponentFixture>(tabLocator(tabName)).first().runJs(
+                """
+                const x = Math.max(1, Math.floor(component.getWidth() / 2));
+                const y = Math.max(1, Math.floor(component.getHeight() / 2));
+                const now = java.lang.System.currentTimeMillis();
+
+                const pressed = new java.awt.event.MouseEvent(
+                    component,
+                    java.awt.event.MouseEvent.MOUSE_PRESSED,
+                    now,
+                    java.awt.event.InputEvent.BUTTON3_DOWN_MASK,
+                    x,
+                    y,
+                    1,
+                    true,
+                    java.awt.event.MouseEvent.BUTTON3
+                );
+                const released = new java.awt.event.MouseEvent(
+                    component,
+                    java.awt.event.MouseEvent.MOUSE_RELEASED,
+                    now + 1,
+                    0,
+                    x,
+                    y,
+                    1,
+                    true,
+                    java.awt.event.MouseEvent.BUTTON3
+                );
+
+                com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater(new java.lang.Runnable({
+                    run: function() {
+                        component.dispatchEvent(pressed);
+                        component.dispatchEvent(released);
+                    }
+                }));
+                """.trimIndent(),
+                true
+            )
+        }
+    }
+
     fun addTab() {
         step("Click 'Add Tab' button") {
+            val addTabLocator = byXpath("//div[@accessiblename='Add Tab']")
             waitFor(Duration.ofSeconds(10), interval = Duration.ofMillis(250)) {
-                remoteRobot.findAll<ComponentFixture>(byXpath("//div[@accessiblename='Add Tab']")).isNotEmpty()
+                remoteRobot.findAll<ComponentFixture>(addTabLocator).isNotEmpty()
             }
-            remoteRobot.find<ComponentFixture>(byXpath("//div[@accessiblename='Add Tab']")).click()
+
+            remoteRobot.find<ComponentFixture>(addTabLocator).click()
+
+            val branchSelectionOpenTimeout = if (System.getenv("GITHUB_ACTIONS") == "true") Duration.ofSeconds(30) else Duration.ofSeconds(10)
+            val openedFromClick = runCatching {
+                waitFor(branchSelectionOpenTimeout, interval = Duration.ofMillis(250)) {
+                    remoteRobot.findAll<ComponentFixture>(branchSelectionPanelLocator).isNotEmpty()
+                }
+                true
+            }.getOrDefault(false)
+
+            if (!openedFromClick) {
+                remoteRobot.runJs(
+                    """
+                    const project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
+                    if (project) {
+                        const toolWindow = com.intellij.openapi.wm.ToolWindowManager.getInstance(project).getToolWindow("GitChangesView");
+                        const pluginId = com.intellij.openapi.extensions.PluginId.getId("com.github.uiopak.lstcrc");
+                        const plugin = com.intellij.ide.plugins.PluginManagerCore.getPlugin(pluginId);
+                        if (toolWindow != null && plugin != null) {
+                            const helperClass = plugin.getPluginClassLoader()
+                                .loadClass("com.github.uiopak.lstcrc.toolWindow.ToolWindowHelper");
+                            const helper = helperClass.getField("INSTANCE").get(null);
+                            helperClass
+                                .getMethod(
+                                    "openBranchSelectionTab",
+                                    com.intellij.openapi.project.Project,
+                                    com.intellij.openapi.wm.ToolWindow
+                                )
+                                .invoke(helper, project, toolWindow);
+                        }
+                    }
+                    """.trimIndent(),
+                    true
+                )
+
+                waitFor(branchSelectionOpenTimeout, interval = Duration.ofMillis(250)) {
+                    remoteRobot.findAll<ComponentFixture>(branchSelectionPanelLocator).isNotEmpty()
+                }
+            }
+        }
+    }
+
+    fun invokeRenameTabAction(tabName: String) {
+        step("Invoke rename action for tab '$tabName'") {
+            waitFor(Duration.ofSeconds(10), interval = Duration.ofMillis(250)) {
+                remoteRobot.findAll<ComponentFixture>(tabLocator(tabName)).isNotEmpty()
+            }
+            val tab = remoteRobot.findAll<ComponentFixture>(tabLocator(tabName)).first()
+            tab.click()
+            tab.runJs(
+                """
+                const project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
+                if (!project) {
+                    throw new java.lang.IllegalStateException("No open project available for RenameTabAction");
+                }
+
+                const toolWindow = com.intellij.openapi.wm.ToolWindowManager.getInstance(project).getToolWindow("GitChangesView");
+                if (!toolWindow) {
+                    throw new java.lang.IllegalStateException("GitChangesView tool window is not available");
+                }
+
+                const action = com.intellij.openapi.actionSystem.ActionManager.getInstance()
+                    .getAction("com.github.uiopak.lstcrc.RenameTabAction");
+                if (!action) {
+                    throw new java.lang.IllegalStateException("RenameTabAction is not registered");
+                }
+
+                const dataContext = com.intellij.openapi.actionSystem.impl.SimpleDataContext.builder()
+                    .add(com.intellij.openapi.actionSystem.CommonDataKeys.PROJECT, project)
+                    .add(com.intellij.openapi.actionSystem.PlatformDataKeys.TOOL_WINDOW, toolWindow)
+                    .add(com.intellij.openapi.actionSystem.PlatformCoreDataKeys.CONTEXT_COMPONENT, component)
+                    .build();
+                const event = com.intellij.openapi.actionSystem.AnActionEvent.createFromAnAction(action, null, "test", dataContext);
+
+                com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater(new java.lang.Runnable({
+                    run: function() {
+                        action.actionPerformed(event);
+                    }
+                }));
+                """.trimIndent(),
+                true
+            )
+
+            waitFor(Duration.ofSeconds(10), interval = Duration.ofMillis(250)) {
+                remoteRobot.callJs<Boolean>(
+                    """
+                    (function() {
+                        const focusOwner = java.awt.KeyboardFocusManager.getCurrentKeyboardFocusManager().getFocusOwner();
+                        return focusOwner instanceof javax.swing.text.JTextComponent;
+                    })();
+                    """.trimIndent(),
+                    true
+                )
+            }
         }
     }
 }

@@ -20,6 +20,15 @@ plugins {
 group = providers.gradleProperty("pluginGroup").get()
 version = providers.gradleProperty("pluginVersion").get()
 
+val isCiEnvironment = providers.environmentVariable("GITHUB_ACTIONS").orNull == "true"
+val useJetBrainsCacheRedirector =
+    providers.gradleProperty("org.jetbrains.intellij.platform.useCacheRedirector").orNull?.toBoolean() ?: !isCiEnvironment
+val starterIdeRepositoryUrl = if (useJetBrainsCacheRedirector) {
+    "https://cache-redirector.jetbrains.com/packages.jetbrains.team/maven/p/ij/intellij-ide-starter"
+} else {
+    "https://packages.jetbrains.team/maven/p/ij/intellij-ide-starter"
+}
+
 // Set the JVM language level used to build the project.
 kotlin {
     jvmToolchain(21)
@@ -31,7 +40,7 @@ kotlin {
 // Configure project's dependencies
 repositories {
     mavenCentral()
-    maven("https://cache-redirector.jetbrains.com/packages.jetbrains.team/maven/p/ij/intellij-ide-starter")
+    maven(starterIdeRepositoryUrl)
     // IntelliJ Platform Gradle Plugin Repositories Extension - read more: https://plugins.jetbrains.com/docs/intellij/tools-intellij-platform-gradle-plugin-repositories-extension.html
     intellijPlatform {
         defaultRepositories()
@@ -67,7 +76,7 @@ configurations.all {
     resolutionStrategy {
         // Force a non-vulnerable version of commons-io, overriding the old version brought in by zt-exec.
         force(libs.commons.io)
-        // Force a non-vulnerable commons-lang3 version for transitive test dependencies (e.g. video-recorder-junit5).
+        // Force a non-vulnerable commons-lang3 version for transitive test dependencies (e.g., video-recorder-junit5).
         force(libs.commons.lang3)
 
         // Substitute the vulnerable log4j: log4j with a safe SLF4J bridge.
@@ -244,7 +253,7 @@ val preparedSharedUiIdeDir = providers.provider {
 }
 
 tasks {
-    val isCi = providers.environmentVariable("GITHUB_ACTIONS").orNull == "true"
+    val isCi = isCiEnvironment
     val defaultRobotServerUrl = "http://127.0.0.1:8082"
     val robotServerUrlProvider = providers.systemProperty("robot.server.url").orElse(defaultRobotServerUrl)
     val robotServerWaitTimeoutProvider = providers.systemProperty("ui.test.server.wait.timeout").orElse(if (isCi) "240" else "90")
@@ -275,6 +284,7 @@ tasks {
         systemProperty("runUiTests", "true")
         systemProperty("robot-server.auto.run", "false")
         systemProperty("robot.server.url", robotServerUrlProvider.get())
+        systemProperty("ui.test.server.wait.timeout", robotServerWaitTimeoutProvider.get())
         systemProperty("ui.test.connection.timeout", robotConnectionTimeoutProvider.get())
         systemProperty("ui.test.timeout", uiTestTimeoutProvider.get())
 
@@ -300,16 +310,30 @@ tasks {
             while (System.nanoTime() < deadline) {
                 attempt += 1
                 try {
-                    val request = HttpRequest.newBuilder(URI.create("$serverUrl/"))
+                    val rootRequest = HttpRequest.newBuilder(URI.create("$serverUrl/"))
                         .timeout(Duration.ofSeconds(5))
                         .GET()
                         .build()
-                    val response = client.send(request, HttpResponse.BodyHandlers.discarding())
-                    if (response.statusCode() in 200..299) {
-                        logger.lifecycle("Remote Robot server is ready at $serverUrl after $attempt check(s).")
+                    val rootResponse = client.send(rootRequest, HttpResponse.BodyHandlers.discarding())
+                    if (rootResponse.statusCode() !in 200..299) {
+                        lastFailure = "unexpected HTTP ${rootResponse.statusCode()}"
+                        Thread.sleep(3000)
+                        continue
+                    }
+
+                    val jsProbeRequest = HttpRequest.newBuilder(URI.create("$serverUrl/js/execute"))
+                        .timeout(Duration.ofSeconds(5))
+                        .header("Content-Type", "application/json")
+                        .header("Accept", "application/json")
+                        .POST(HttpRequest.BodyPublishers.ofString("""{"script":"true","runInEdt":false}"""))
+                        .build()
+                    val jsProbeResponse = client.send(jsProbeRequest, HttpResponse.BodyHandlers.ofString())
+                    if (jsProbeResponse.statusCode() in 200..299) {
+                        logger.lifecycle("Remote Robot server is ready for JS execution at $serverUrl after $attempt check(s).")
                         return@doLast
                     }
-                    lastFailure = "unexpected HTTP ${response.statusCode()}"
+
+                    lastFailure = "JS probe returned HTTP ${jsProbeResponse.statusCode()}"
                 } catch (exception: Exception) {
                     lastFailure = exception.message ?: exception.javaClass.simpleName
                 }
@@ -353,15 +377,15 @@ tasks {
             fun findMatchingProcesses(): List<Pair<String, String>> {
                 val osName = System.getProperty("os.name").lowercase()
                 return if (osName.contains("windows")) {
-                    val script = """
-                        ${'$'}regex = 'runIdeForUiTests|plugins_runIdeForUiTests|robot-server\.port=8082|shared-ui-ide'
+                    val script = $$"""
+                        $regex = 'runIdeForUiTests|plugins_runIdeForUiTests|robot-server\.port=8082|shared-ui-ide'
                         Get-CimInstance Win32_Process |
                             Where-Object {
-                                ${'$'}_.CommandLine -and
-                                ${'$'}_.Name -ne 'powershell.exe' -and
-                                ${'$'}_.CommandLine -match ${'$'}regex
+                                $_.CommandLine -and
+                                $_.Name -ne 'powershell.exe' -and
+                                $_.CommandLine -match $regex
                             } |
-                            ForEach-Object { ${'$'}_.ProcessId.ToString() + '|' + ${'$'}_.Name }
+                            ForEach-Object { $_.ProcessId.ToString() + '|' + $_.Name }
                     """.trimIndent()
 
                     runCommand("powershell", "-NoProfile", "-Command", script)
@@ -485,6 +509,9 @@ tasks {
 
         configureCommonTestTask()
         configureUiRobotTestTask()
+        filter {
+            includeTestsMatching("com.github.uiopak.lstcrc.plugin.*")
+        }
         dependsOn("uiTestReady")
         shouldRunAfter(test)
     }
@@ -562,6 +589,9 @@ intellijPlatformTesting {
                         "-Dapple.laf.useScreenMenuBar=false",
                         "-Didea.trust.all.projects=true",
                         "-Dide.show.tips.on.startup.default.value=false",
+                        "-Djetbrainsd.discovery.enabled=false",
+                        "-Djetbrainsd.uri.handling.enabled=false",
+                        "-Djetbrainsd.launch.on.start=false",
                     )
                 }
             }

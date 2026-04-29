@@ -1,7 +1,7 @@
-@file:Suppress("DialogTitleCapitalization")
-
 package com.github.uiopak.lstcrc.services
 
+import com.github.uiopak.lstcrc.LstCrcConstants
+import com.github.uiopak.lstcrc.messaging.TOOL_WINDOW_STATE_TOPIC
 import com.github.uiopak.lstcrc.resources.LstCrcBundle
 import com.github.uiopak.lstcrc.state.TabInfo
 import com.github.uiopak.lstcrc.state.ToolWindowState
@@ -9,7 +9,6 @@ import com.github.uiopak.lstcrc.toolWindow.LstCrcChangesBrowser
 import com.github.uiopak.lstcrc.toolWindow.SingleRepoBranchSelectionDialog
 import com.github.uiopak.lstcrc.toolWindow.ToolWindowSettingsProvider
 import com.github.uiopak.lstcrc.utils.RevisionUtils
-import com.intellij.ide.util.PropertiesComponent
 import com.intellij.notification.NotificationGroupManager
 import com.intellij.notification.NotificationType
 import com.intellij.openapi.actionSystem.AnAction
@@ -23,76 +22,82 @@ import com.intellij.openapi.components.service
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.wm.ToolWindowManager
-import com.intellij.util.messages.Topic
-import com.intellij.util.xmlb.XmlSerializerUtil
 import git4idea.repo.GitRepository
-import java.util.EventListener
+import kotlinx.coroutines.CoroutineScope
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
 
 /**
  * Manages the tool window's UI state (open tabs, selected tab) and persists it.
  * This service orchestrates the primary data flow: UI events here trigger calls to [GitService]
  * to fetch data, which then updates the [ProjectActiveDiffDataService]. It broadcasts its own
- * state changes via the [TOPIC] for UI components to consume.
+ * state changes via the [TOOL_WINDOW_STATE_TOPIC] for UI components to consume.
  */
 @State(
     name = "com.github.uiopak.lstcrc.services.ToolWindowStateService",
     storages = [Storage("gitTabsIdeaPluginState.xml")]
 )
 @Service(Service.Level.PROJECT)
-class ToolWindowStateService(private val project: Project) : PersistentStateComponent<ToolWindowState> {
+class ToolWindowStateService(private val project: Project, val coroutineScope: CoroutineScope) : PersistentStateComponent<ToolWindowState> {
+
+    private data class LoadDataContext(
+        val tabInfo: TabInfo?,
+        val profileName: String,
+        val isLoadingHead: Boolean,
+        val includeHeadInScopes: Boolean,
+        val diffDataService: ProjectActiveDiffDataService,
+        val resultFuture: CompletableFuture<Unit>
+    )
 
     private var myState = ToolWindowState()
     private val logger = thisLogger()
-    private val isRefreshing = AtomicBoolean(false)
+    private val activeRefresh = AtomicReference<CompletableFuture<Unit>?>(null)
     private val refreshQueued = AtomicBoolean(false)
-    @Volatile
-    private var activeRefreshFuture: CompletableFuture<Unit>? = null
 
     override fun getState(): ToolWindowState {
         logger.debug("getState() called. Current state: $myState")
-        return myState
+        return myState.deepCopy()
     }
 
     override fun loadState(state: ToolWindowState) {
         logger.info("loadState() called. Loading state: $state")
-        XmlSerializerUtil.copyBean(state, myState)
-        project.messageBus.syncPublisher(TOPIC).stateChanged(myState.copy())
+        myState = state.deepCopy()
+        project.messageBus.syncPublisher(TOOL_WINDOW_STATE_TOPIC).stateChanged(myState.deepCopy())
     }
 
     override fun noStateLoaded() {
         logger.info("noStateLoaded() called. Initializing with default state.")
         myState = ToolWindowState()
-        project.messageBus.syncPublisher(TOPIC).stateChanged(myState.copy())
+        project.messageBus.syncPublisher(TOOL_WINDOW_STATE_TOPIC).stateChanged(myState.deepCopy())
     }
 
     fun addTab(branchName: String) {
+        if (project.isDisposed) return
         logger.info("addTab('$branchName') called.")
         val currentTabs = myState.openTabs.toMutableList()
         if (currentTabs.none { it.branchName == branchName }) {
             currentTabs.add(TabInfo(branchName = branchName, alias = null, comparisonMap = mutableMapOf()))
-            // Create a new list instance to ensure the state component detects the change.
             myState.openTabs = ArrayList(currentTabs)
-            myState = myState.copy()
             logger.info("Tab '$branchName' added. New state: $myState")
-            project.messageBus.syncPublisher(TOPIC).stateChanged(myState.copy())
+            commitStateAndBroadcast()
         } else {
             logger.info("Tab $branchName already exists.")
         }
     }
 
     fun removeTab(branchName: String) {
+        if (project.isDisposed) return
         logger.info("removeTab($branchName) called.")
         val currentTabs = myState.openTabs.toMutableList()
         currentTabs.removeAll { it.branchName == branchName }
         myState.openTabs = ArrayList(currentTabs)
-        myState = myState.copy()
         logger.info("Tab $branchName removed from state. New state: $myState")
-        project.messageBus.syncPublisher(TOPIC).stateChanged(myState.copy())
+        commitStateAndBroadcast()
     }
 
     fun setSelectedTab(index: Int) {
+        if (project.isDisposed) return
         val validIndex = if (index >= myState.openTabs.size || index < -1) {
             logger.warn("setSelectedTab called with invalid index: $index. Open tabs: ${myState.openTabs.size}. Clamping to valid range.")
             if (myState.openTabs.isEmpty()) -1 else myState.openTabs.size - 1
@@ -102,7 +107,6 @@ class ToolWindowStateService(private val project: Project) : PersistentStateComp
 
         if (myState.selectedTabIndex != validIndex) {
             myState.selectedTabIndex = validIndex
-            myState = myState.copy()
             logger.info("Selected tab index set to $validIndex. New state: $myState")
 
             // Broadcast state change first to update UI like the status bar widget immediately.
@@ -112,7 +116,7 @@ class ToolWindowStateService(private val project: Project) : PersistentStateComp
             refreshDataForCurrentSelection()
 
         } else {
-            if (validIndex == -1 && activeRefreshFuture == null) {
+            if (validIndex == -1 && activeRefresh.get() == null) {
                 logger.info("HEAD tab is already selected, but no refresh is active. Triggering initial HEAD refresh.")
                 refreshDataForCurrentSelection()
             } else {
@@ -135,62 +139,104 @@ class ToolWindowStateService(private val project: Project) : PersistentStateComp
         val diffDataService = project.service<ProjectActiveDiffDataService>()
         val resultFuture = CompletableFuture<Unit>()
 
-        val properties = PropertiesComponent.getInstance()
-        val includeHeadInScopes = properties.getBoolean(
-            ToolWindowSettingsProvider.APP_INCLUDE_HEAD_IN_SCOPES_KEY,
-            ToolWindowSettingsProvider.DEFAULT_INCLUDE_HEAD_IN_SCOPES
+        val context = LoadDataContext(
+            tabInfo = tabInfo,
+            profileName = profileName,
+            isLoadingHead = isLoadingHead,
+            includeHeadInScopes = ToolWindowSettingsProvider.isIncludeHeadInScopes(),
+            diffDataService = diffDataService,
+            resultFuture = resultFuture
         )
 
         gitService.getChanges(tabInfo).whenCompleteAsync { getChangesResult, throwable ->
             ApplicationManager.getApplication().invokeLater {
-                if (project.isDisposed) {
-                    resultFuture.complete(Unit)
-                    return@invokeLater
-                }
-
-                val activeBrowser = getActiveChangesBrowser(project)
-
-                if (throwable != null) {
-                    logger.error("DATA_FLOW: Error loading changes for '$profileName': ${throwable.message}", throwable)
-                    diffDataService.clearActiveDiff()
-                    activeBrowser?.displayChanges(null, profileName)
-                    resultFuture.completeExceptionally(throwable)
-                    return@invokeLater
-                }
-
-                if (getChangesResult != null) {
-                    val categorizedChanges = getChangesResult.categorizedChanges
-                    logger.info("DATA_FLOW: Successfully loaded ${categorizedChanges.allChanges.size} changes for '$profileName'.")
-
-                    // Handle any branches that were not found during the fetch.
-                    if (getChangesResult.failures.isNotEmpty() && tabInfo != null) {
-                        handleBranchFailures(tabInfo, getChangesResult.failures)
-                    }
-
-                    if (!isLoadingHead || includeHeadInScopes) {
-                        logger.debug("DATA_FLOW: Updating ProjectActiveDiffDataService for '$profileName'.")
-                        diffDataService.updateActiveDiff(
-                            profileName,
-                            categorizedChanges.createdFiles,
-                            categorizedChanges.modifiedFiles,
-                            categorizedChanges.movedFiles,
-                            categorizedChanges.deletedFiles,
-                            categorizedChanges.comparisonContext
-                        )
-                    } else {
-                        logger.debug("DATA_FLOW: On HEAD tab with 'Include HEAD in Scopes' disabled. Clearing ProjectActiveDiffDataService.")
-                        diffDataService.clearActiveDiff()
-                    }
-                    activeBrowser?.displayChanges(categorizedChanges, profileName)
-                } else {
-                    logger.warn("DATA_FLOW: Changes for '$profileName' returned as null. Clearing data and UI.")
-                    diffDataService.clearActiveDiff()
-                    activeBrowser?.displayChanges(null, profileName)
-                }
-                resultFuture.complete(Unit)
+                handleLoadDataResult(context, getChangesResult, throwable)
             }
         }
         return resultFuture
+    }
+
+    private fun handleLoadDataResult(
+        context: LoadDataContext,
+        getChangesResult: GetChangesResult?,
+        throwable: Throwable?
+    ) {
+        if (project.isDisposed) {
+            context.resultFuture.complete(Unit)
+            return
+        }
+
+        val activeBrowser = getActiveChangesBrowser(project)
+        if (throwable != null) {
+            handleLoadDataFailure(context, throwable, activeBrowser)
+            return
+        }
+
+        if (getChangesResult == null) {
+            handleMissingChangesResult(context, activeBrowser)
+            return
+        }
+
+        applyLoadedChanges(context, activeBrowser, getChangesResult)
+        context.resultFuture.complete(Unit)
+    }
+
+    private fun handleLoadDataFailure(
+        context: LoadDataContext,
+        throwable: Throwable,
+        activeBrowser: LstCrcChangesBrowser?
+    ) {
+        logger.error("DATA_FLOW: Error loading changes for '${context.profileName}': ${throwable.message}", throwable)
+        context.diffDataService.clearActiveDiff()
+        activeBrowser?.displayChanges(null, context.profileName)
+        context.resultFuture.completeExceptionally(throwable)
+    }
+
+    private fun handleMissingChangesResult(
+        context: LoadDataContext,
+        activeBrowser: LstCrcChangesBrowser?
+    ) {
+        logger.warn("DATA_FLOW: Changes for '${context.profileName}' returned as null. Clearing data and UI.")
+        context.diffDataService.clearActiveDiff()
+        activeBrowser?.displayChanges(null, context.profileName)
+        context.resultFuture.complete(Unit)
+    }
+
+    private fun applyLoadedChanges(
+        context: LoadDataContext,
+        activeBrowser: LstCrcChangesBrowser?,
+        getChangesResult: GetChangesResult
+    ) {
+        val categorizedChanges = getChangesResult.categorizedChanges
+        logger.info("DATA_FLOW: Successfully loaded ${categorizedChanges.allChanges.size} changes for '${context.profileName}'.")
+
+        if (getChangesResult.failures.isNotEmpty() && context.tabInfo != null) {
+            handleBranchFailures(context.tabInfo, getChangesResult.failures)
+        }
+
+        updateActiveDiffData(context, categorizedChanges)
+        activeBrowser?.displayChanges(categorizedChanges, context.profileName)
+    }
+
+    private fun updateActiveDiffData(
+        context: LoadDataContext,
+        categorizedChanges: CategorizedChanges
+    ) {
+        if (!context.isLoadingHead || context.includeHeadInScopes) {
+            logger.debug("DATA_FLOW: Updating ProjectActiveDiffDataService for '${context.profileName}'.")
+            context.diffDataService.updateActiveDiff(
+                context.profileName,
+                categorizedChanges.createdFiles,
+                categorizedChanges.modifiedFiles,
+                categorizedChanges.movedFiles,
+                categorizedChanges.deletedFiles,
+                categorizedChanges.comparisonContext
+            )
+            return
+        }
+
+        logger.debug("DATA_FLOW: On HEAD tab with 'Include HEAD in Scopes' disabled. Clearing ProjectActiveDiffDataService.")
+        context.diffDataService.clearActiveDiff()
     }
 
     /**
@@ -296,14 +342,15 @@ class ToolWindowStateService(private val project: Project) : PersistentStateComp
      * @return A [CompletableFuture] that completes when the refresh operation is finished.
      */
     fun refreshDataForCurrentSelection(): CompletableFuture<Unit> {
-        if (!isRefreshing.compareAndSet(false, true)) {
-            logger.debug("ACTION: Refresh for current selection is already in progress. Queueing another refresh.")
-            refreshQueued.set(true)
-            return activeRefreshFuture ?: CompletableFuture.completedFuture(Unit)
-        }
+        if (project.isDisposed) return CompletableFuture.completedFuture(Unit)
 
         val refreshFuture = CompletableFuture<Unit>()
-        activeRefreshFuture = refreshFuture
+        if (!activeRefresh.compareAndSet(null, refreshFuture)) {
+            logger.debug("ACTION: Refresh for current selection is already in progress. Queueing another refresh.")
+            refreshQueued.set(true)
+            return activeRefresh.get() ?: CompletableFuture.completedFuture(Unit)
+        }
+
         runRefreshCycle(refreshFuture)
         return refreshFuture
     }
@@ -315,8 +362,7 @@ class ToolWindowStateService(private val project: Project) : PersistentStateComp
 
         loadDataForTab(tabInfoToRefresh).whenComplete { _, throwable ->
             if (throwable != null) {
-                isRefreshing.set(false)
-                activeRefreshFuture = null
+                activeRefresh.set(null)
                 logger.debug("ACTION: Refreshing lock released after failure.")
                 refreshFuture.completeExceptionally(throwable)
                 return@whenComplete
@@ -328,19 +374,25 @@ class ToolWindowStateService(private val project: Project) : PersistentStateComp
                 return@whenComplete
             }
 
-            isRefreshing.set(false)
-            activeRefreshFuture = null
+            activeRefresh.set(null)
             logger.debug("ACTION: Refreshing lock released.")
             refreshFuture.complete(Unit)
         }
+    }
+
+    private fun commitStateAndBroadcast() {
+        if (project.isDisposed) return
+        logger.debug("commitStateAndBroadcast: broadcasting state to listeners.")
+        project.messageBus.syncPublisher(TOOL_WINDOW_STATE_TOPIC).stateChanged(myState.deepCopy())
     }
 
     /**
      * Explicitly broadcasts the current state to all listeners on the message bus.
      */
     fun broadcastCurrentState() {
+        if (project.isDisposed) return
         logger.info("Broadcasting current state explicitly to all listeners.")
-        project.messageBus.syncPublisher(TOPIC).stateChanged(myState.copy())
+        project.messageBus.syncPublisher(TOOL_WINDOW_STATE_TOPIC).stateChanged(myState.deepCopy())
     }
 
     fun getSelectedTabInfo(): TabInfo? {
@@ -355,13 +407,13 @@ class ToolWindowStateService(private val project: Project) : PersistentStateComp
     }
 
     private fun getActiveChangesBrowser(project: Project): LstCrcChangesBrowser? {
-        val toolWindowId = "GitChangesView"
-        val toolWindow = ToolWindowManager.getInstance(project).getToolWindow(toolWindowId)
+        val toolWindow = ToolWindowManager.getInstance(project).getToolWindow(LstCrcConstants.TOOL_WINDOW_ID)
         val selectedContent = toolWindow?.contentManager?.selectedContent
         return selectedContent?.component as? LstCrcChangesBrowser
     }
 
     fun updateTabAlias(branchName: String, newAlias: String?) {
+        if (project.isDisposed) return
         logger.info("updateTabAlias called for branch '$branchName' with new alias '$newAlias'.")
         val tabIndex = myState.openTabs.indexOfFirst { it.branchName == branchName }
 
@@ -372,9 +424,8 @@ class ToolWindowStateService(private val project: Project) : PersistentStateComp
             if (oldTabInfo.alias != newAlias) {
                 updatedTabs[tabIndex] = oldTabInfo.copy(alias = newAlias)
                 myState.openTabs = ArrayList(updatedTabs)
-                myState = myState.copy()
                 logger.info("Tab alias for '$branchName' updated. New state: $myState")
-                project.messageBus.syncPublisher(TOPIC).stateChanged(myState.copy())
+                commitStateAndBroadcast()
             } else {
                 logger.debug("Alias for '$branchName' is already '$newAlias'. No state change needed.")
             }
@@ -384,6 +435,7 @@ class ToolWindowStateService(private val project: Project) : PersistentStateComp
     }
 
     fun updateTabComparisonMap(branchName: String, newMap: Map<String, String>, triggerRefresh: Boolean = true) {
+        if (project.isDisposed) return
         logger.info("updateTabComparisonMap called for branch '$branchName'.")
         val tabIndex = myState.openTabs.indexOfFirst { it.branchName == branchName }
 
@@ -394,9 +446,8 @@ class ToolWindowStateService(private val project: Project) : PersistentStateComp
             if (oldTabInfo.comparisonMap != newMap) {
                 updatedTabs[tabIndex] = oldTabInfo.copy(comparisonMap = newMap.toMutableMap())
                 myState.openTabs = ArrayList(updatedTabs)
-                myState = myState.copy()
                 logger.info("Comparison map for '$branchName' updated. New state: $myState")
-                project.messageBus.syncPublisher(TOPIC).stateChanged(myState.copy())
+                commitStateAndBroadcast()
 
                 // If this tab is currently selected, trigger a refresh to show the new diff.
                 if (myState.selectedTabIndex == tabIndex && triggerRefresh) {
@@ -408,18 +459,6 @@ class ToolWindowStateService(private val project: Project) : PersistentStateComp
             }
         } else {
             logger.warn("Could not find tab for branch '$branchName' to update its comparison map.")
-        }
-    }
-
-    companion object {
-        interface ToolWindowStateListener : EventListener {
-            fun stateChanged(newState: ToolWindowState)
-        }
-
-        val TOPIC = Topic.create("LST-CRC ToolWindow State Changed", ToolWindowStateListener::class.java)
-
-        fun getInstance(project: Project): ToolWindowStateService {
-            return project.getService(ToolWindowStateService::class.java)
         }
     }
 }
