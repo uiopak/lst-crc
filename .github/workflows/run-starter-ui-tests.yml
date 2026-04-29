@@ -14,6 +14,8 @@ jobs:
   starter-ui-test:
     name: Starter UI Tests (Linux)
     runs-on: ubuntu-latest
+    env:
+      ORG_GRADLE_PROJECT_org.jetbrains.intellij.platform.useCacheRedirector: false
     steps:
 
       - name: Fetch Sources
@@ -36,14 +38,21 @@ jobs:
           echo "DISPLAY=:99.0" >> $GITHUB_ENV
 
       - name: Run Starter UI Tests
-        run: ./gradlew starterUiTest --info
+        shell: bash
+        run: |
+          set -o pipefail
+          mkdir -p build/reports/starter-ui-test
+          ./gradlew starterUiTest --info --stacktrace 2>&1 | tee build/reports/starter-ui-test/gradle-starterUiTest.log
 
       - name: Collect test results
         if: ${{ always() }}
         uses: actions/upload-artifact@v7
         with:
           name: starter-ui-test-results
+          if-no-files-found: warn
           path: |
-            build/reports/tests/starterUiTest/
+            build/reports/
+            build/test-results/starterUiTest/
             build/allure-results/starter-ui/
             build/starter-ui-tests/
+            out/ide-tests/

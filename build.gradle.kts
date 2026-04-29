@@ -20,6 +20,15 @@ plugins {
 group = providers.gradleProperty("pluginGroup").get()
 version = providers.gradleProperty("pluginVersion").get()
 
+val isCiEnvironment = providers.environmentVariable("GITHUB_ACTIONS").orNull == "true"
+val useJetBrainsCacheRedirector =
+    providers.gradleProperty("org.jetbrains.intellij.platform.useCacheRedirector").orNull?.toBoolean() ?: !isCiEnvironment
+val starterIdeRepositoryUrl = if (useJetBrainsCacheRedirector) {
+    "https://cache-redirector.jetbrains.com/packages.jetbrains.team/maven/p/ij/intellij-ide-starter"
+} else {
+    "https://packages.jetbrains.team/maven/p/ij/intellij-ide-starter"
+}
+
 // Set the JVM language level used to build the project.
 kotlin {
     jvmToolchain(21)
@@ -31,7 +40,7 @@ kotlin {
 // Configure project's dependencies
 repositories {
     mavenCentral()
-    maven("https://cache-redirector.jetbrains.com/packages.jetbrains.team/maven/p/ij/intellij-ide-starter")
+    maven(starterIdeRepositoryUrl)
     // IntelliJ Platform Gradle Plugin Repositories Extension - read more: https://plugins.jetbrains.com/docs/intellij/tools-intellij-platform-gradle-plugin-repositories-extension.html
     intellijPlatform {
         defaultRepositories()
@@ -244,7 +253,7 @@ val preparedSharedUiIdeDir = providers.provider {
 }
 
 tasks {
-    val isCi = providers.environmentVariable("GITHUB_ACTIONS").orNull == "true"
+    val isCi = isCiEnvironment
     val defaultRobotServerUrl = "http://127.0.0.1:8082"
     val robotServerUrlProvider = providers.systemProperty("robot.server.url").orElse(defaultRobotServerUrl)
     val robotServerWaitTimeoutProvider = providers.systemProperty("ui.test.server.wait.timeout").orElse(if (isCi) "240" else "90")
@@ -580,6 +589,9 @@ intellijPlatformTesting {
                         "-Dapple.laf.useScreenMenuBar=false",
                         "-Didea.trust.all.projects=true",
                         "-Dide.show.tips.on.startup.default.value=false",
+                        "-Djetbrainsd.discovery.enabled=false",
+                        "-Djetbrainsd.uri.handling.enabled=false",
+                        "-Djetbrainsd.launch.on.start=false",
                     )
                 }
             }

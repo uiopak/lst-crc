@@ -20,6 +20,7 @@ jobs:
       UI_TEST_TIMEOUT: 900
       UI_TEST_IDE_RUNTIME_WARMUP_TIMEOUT: 1200
       UI_TEST_IDE_RUNTIME_RETRY_DELAY: 60
+      ORG_GRADLE_PROJECT_org.jetbrains.intellij.platform.useCacheRedirector: false
     strategy:
       fail-fast: false
       matrix:
@@ -95,8 +96,10 @@ jobs:
         run: mkdir -p build/reports
 
       - name: Prepare UI test classpath
-        run: ./gradlew buildPlugin testClasses --stacktrace
         shell: bash
+        run: |
+          set -o pipefail
+          ./gradlew buildPlugin testClasses --stacktrace 2>&1 | tee build/reports/prepare-ui-test-classpath.log
 
       - name: Prepare UI test IDE runtime
         timeout-minutes: 25
@@ -183,6 +186,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.reportName }}
+          if-no-files-found: warn
           path: |
             build/reports
 
