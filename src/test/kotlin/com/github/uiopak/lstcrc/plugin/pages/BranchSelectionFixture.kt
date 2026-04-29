@@ -5,7 +5,6 @@ import com.intellij.remoterobot.data.RemoteComponent
 import com.intellij.remoterobot.fixtures.*
 import com.intellij.remoterobot.search.locators.byXpath
 import com.intellij.remoterobot.stepsProcessing.step
-import com.intellij.remoterobot.utils.keyboard
 import com.intellij.remoterobot.utils.waitFor
 import java.time.Duration
 
@@ -24,42 +23,11 @@ fun IdeaFrame.branchSelection(function: BranchSelectionFixture.() -> Unit) {
 class BranchSelectionFixture(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
     CommonContainerFixture(remoteRobot, remoteComponent) {
 
-    private fun toJsStringLiteral(value: String): String {
-        return buildString {
-            append('"')
-            value.forEach { character ->
-                when (character) {
-                    '\\' -> append("\\\\")
-                    '"' -> append("\\\"")
-                    '\n' -> append("\\n")
-                    '\r' -> append("\\r")
-                    '\t' -> append("\\t")
-                    else -> append(character)
-                }
-            }
-            append('"')
-        }
-    }
-
     companion object {
-        private val searchFieldLocator = byXpath(
-            "Branch search field",
-            "//div[@class='BranchSelectionPanel']//div[@accessiblename='Search' and @class='TextFieldWithProcessing']"
-        )
         private val treeLocator = byXpath(
             "Branch selection tree",
             "//div[@class='BranchSelectionPanel']//div[@class='Tree']"
         )
-    }
-
-    private fun waitForSearchField(): ComponentFixture {
-        val timeout = if (System.getenv("GITHUB_ACTIONS") == "true") Duration.ofSeconds(30) else Duration.ofSeconds(10)
-        var searchField: ComponentFixture? = null
-        waitFor(timeout, interval = Duration.ofMillis(250)) {
-            searchField = remoteRobot.findAll<ComponentFixture>(searchFieldLocator).firstOrNull()
-            searchField != null
-        }
-        return searchField!!
     }
 
     private fun waitForBranchTree(): ContainerFixture {
@@ -104,29 +72,6 @@ class BranchSelectionFixture(remoteRobot: RemoteRobot, remoteComponent: RemoteCo
                 false
             )
 
-            val searchField = waitForSearchField()
-            searchField.click()
-
-            remoteRobot.runJs(
-                """
-                const value = ${toJsStringLiteral(branchName)};
-                const focusOwner = java.awt.KeyboardFocusManager.getCurrentKeyboardFocusManager().getFocusOwner();
-                com.intellij.openapi.application.ApplicationManager.getApplication().invokeAndWait(new java.lang.Runnable({
-                    run: function() {
-                        if (focusOwner instanceof javax.swing.text.JTextComponent) {
-                            focusOwner.setText(value);
-                        }
-                    }
-                }));
-                """.trimIndent(),
-                true
-            )
-
-            keyboard {
-                enter()
-            }
-
-            // The tree should now show the branch. We double click it.
             val tree = waitForBranchTree()
             val timeout = if (System.getenv("GITHUB_ACTIONS") == "true") Duration.ofSeconds(60) else Duration.ofSeconds(20)
             waitFor(timeout, interval = Duration.ofMillis(500)) {

@@ -28,7 +28,7 @@ class LstCrcMultiRootStarterUiTest : LstCrcStarterUiTestBase() {
         commitChangesInRepo(PRIMARY_WORKTREE_REPO, "Target branch commit")
         checkoutBranchInRepo(PRIMARY_WORKTREE_REPO, defaultBranch)
 
-        createLinkedWorktree(PRIMARY_WORKTREE_REPO, LINKED_WORKTREE_REPO, "worktree-topic", defaultBranch)
+        createLinkedWorktree(PRIMARY_WORKTREE_REPO, LINKED_WORKTREE_REPO, "worktree-topic", "feature-worktree-target")
         createNewFileInRepo(LINKED_WORKTREE_REPO, "WorktreeOnly.txt", "linked worktree only\n")
         commitChangesInRepo(LINKED_WORKTREE_REPO, "Worktree branch commit")
 
@@ -51,6 +51,47 @@ class LstCrcMultiRootStarterUiTest : LstCrcStarterUiTestBase() {
         waitUntil(30.seconds) {
             val tree = ui.selectedChangesTreeSnapshot()
             !tree.contains("WorktreeOnly.txt") && tree.contains("TargetOnly.txt")
+        }
+    }
+
+    @Test
+    fun testPrimaryWorktreeBranchSwitchPreservesLinkedWorktreeDiffContribution() = runStarterUiTest {
+        prepareLstCrc()
+        initializeGitRepositoryAt(PRIMARY_WORKTREE_REPO)
+
+        createNewFileInRepo(PRIMARY_WORKTREE_REPO, "Base.txt", "base\n")
+        commitChangesInRepo(PRIMARY_WORKTREE_REPO, "Primary initial commit")
+        val defaultBranch = defaultBranchNameInRepo(PRIMARY_WORKTREE_REPO)
+
+        createBranchInRepo(PRIMARY_WORKTREE_REPO, "feature-worktree-target")
+        createNewFileInRepo(PRIMARY_WORKTREE_REPO, "TargetOnly.txt", "target branch only\n")
+        commitChangesInRepo(PRIMARY_WORKTREE_REPO, "Target branch commit")
+        checkoutBranchInRepo(PRIMARY_WORKTREE_REPO, defaultBranch)
+
+        createLinkedWorktree(PRIMARY_WORKTREE_REPO, LINKED_WORKTREE_REPO, "worktree-topic", defaultBranch)
+        createNewFileInRepo(LINKED_WORKTREE_REPO, "WorktreeOnly.txt", "linked worktree only\n")
+        commitChangesInRepo(LINKED_WORKTREE_REPO, "Worktree branch commit")
+
+        waitUntil(30.seconds) {
+            val repositories = ui.knownGitRepositoriesSnapshot()
+            repositories.contains(primaryWorktreeRepoPath()) && repositories.contains(linkedWorktreeRepoPath())
+        }
+
+        openGitChangesView()
+        ui.createAndSelectTab("feature-worktree-target")
+        waitForSelectedTab("feature-worktree-target")
+        waitForTreeContains("TargetOnly.txt", "WorktreeOnly.txt")
+
+        waitUntil(20.seconds) {
+            val tree = ui.selectedChangesTreeSnapshot()
+            tree.contains("TargetOnly.txt") && tree.contains("WorktreeOnly.txt")
+        }
+
+        checkoutBranchInRepo(PRIMARY_WORKTREE_REPO, "feature-worktree-target")
+
+        waitUntil(30.seconds) {
+            val tree = ui.selectedChangesTreeSnapshot()
+            !tree.contains("TargetOnly.txt") && tree.contains("WorktreeOnly.txt")
         }
     }
 
@@ -264,33 +305,3 @@ class LstCrcMultiRootStarterUiTest : LstCrcStarterUiTestBase() {
 
     private fun runStarterSession(
         project: LstCrcStarterProject,
-        testName: String,
-        block: LstCrcStarterContext.() -> Unit
-    ) {
-        val context = createTestContext(project, testName)
-        context.runLstCrcIdeWithDriver().useDriverAndCloseIde {
-            waitForIndicators(5.minutes)
-            val bridge = service<LstCrcUiTestBridgeRemote>()
-            val starterContext = LstCrcStarterContext(project, bridge, this)
-            starterContext.waitForSmartMode()
-            block(starterContext)
-        }
-    }
-
-    private fun LstCrcStarterContext.secondaryRepoPath(): String = secondaryRepoPath(project)
-
-    private fun LstCrcStarterContext.primaryWorktreeRepoPath(): String = repoPath(project, PRIMARY_WORKTREE_REPO)
-
-    private fun LstCrcStarterContext.linkedWorktreeRepoPath(): String = repoPath(project, LINKED_WORKTREE_REPO)
-
-    private fun secondaryRepoPath(project: LstCrcStarterProject): String = project.path.resolve(SECONDARY_REPO).toString().replace('\\', '/')
-
-    private fun repoPath(project: LstCrcStarterProject, relativePath: String): String =
-        project.path.resolve(relativePath).toString().replace('\\', '/')
-
-    private companion object {
-        const val SECONDARY_REPO = "nested-repo"
-        const val PRIMARY_WORKTREE_REPO = "main-repo"
-        const val LINKED_WORKTREE_REPO = "linked-worktree"
-    }
-}

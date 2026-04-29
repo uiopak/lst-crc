@@ -17,7 +17,11 @@ This file maps each active test method to the capability IDs defined in [plugin-
 | `LstCrcActionVisibilityTest.testSetRevisionAsRepoComparisonActionVisibleOnlyForSingleCommitSelectionWithActiveTab` | `C2.4` | Covers Git Log repo-comparison action visibility guards. |
 | `LstCrcActionVisibilityTest.testRenameTabActionVisibleForClosableBranchTabWhenContextIsNestedUnderBaseLabel` | `C1.5` | Covers positive rename-action visibility through the tab-label component hierarchy. |
 | `LstCrcActionVisibilityTest.testRenameTabActionHiddenWithoutRenamableTabContext` | `C1.5` | Covers rename-action rejection for wrong tool window, non-closeable tabs, missing branch keys, and unrelated components. |
+| `LstCrcStatusWidgetTest.testGetTextReturnsHeadWhenHeadIsSelectedEvenIfWidgetContextEnabled` | `C1.1` | Covers widget fallback to `HEAD` text when no comparison tab is selected. |
+| `LstCrcStatusWidgetTest.testGetTextUsesAliasPrefixAndTruncationForSelectedTab` | `C4.5` | Covers direct widget text computation for alias display, optional context prefix, and status-bar truncation. |
+| `LstCrcStatusWidgetTest.testGetTextFallsBackToPluginNameForInvalidSelectedTabIndex` | `C5.3` | Covers defensive widget fallback when persisted tab selection is out of bounds. |
 | `ProjectActiveDiffDataServiceTest.testAcceptsHeadUpdateWhenHeadTabIsSelected` | `C1.1`, `C5.1` | Covers `HEAD`-selected diff acceptance at the active-diff service boundary. |
+| `ProjectActiveDiffDataServiceTest.testRejectsHeadUpdateWhileComparisonTabIsSelected` | `C5.1` | Covers rejection of `HEAD` diff events while a non-`HEAD` comparison tab remains selected. |
 | `ProjectActiveDiffDataServiceTest.testRejectsStaleUpdateWhenSelectedBranchDoesNotMatch` | `C5.1` | Covers stale diff rejection when the selected comparison no longer matches the incoming update. |
 | `ToolWindowStateServicePersistenceTest.testLoadStateAndGetStateDefensivelyCopyNestedTabState` | `C5.2` | Covers persisted tab state copying. |
 | `ToolWindowStateServicePersistenceTest.testAddTabDeduplicatesAndRemoveTabKeepsOtherTabs` | `C5.2` | Covers add/remove tab identity handling without duplicate branch entries. |
@@ -51,7 +55,6 @@ This file maps each active test method to the capability IDs defined in [plugin-
 | `LstCrcSettingsUiTest.testAdditionalClickSettings` | `C4.1`, `C4.2`, `C4.3` | Extra click settings and delay behavior. |
 | `LstCrcSettingsUiTest.testRenderedTreeContextLabelsRespectSingleRepoAndCommitSettings` | `C3.5`, `C4.6` | Single-repo and commit context-label rendering. |
 | `LstCrcVisualUiTest.testVisualGutterMarkersForModifiedAndDeletedRanges` | `C3.6`, `C3.7` | Modified/deleted gutter rendering. |
-| `LstCrcVisualUiTest.testVisualGutterMarkersForInsertedRanges` | `C3.7` | Verifies end-to-end `INSERTED` gutter rendering for a local-only file when new-file gutter handling is enabled. |
 | `LstCrcVisualUiTest.testVisualGutterMarkers` | `C3.7` | Modified-range gutter rendering. |
 
 ## Starter UI Tests
@@ -62,8 +65,10 @@ This file maps each active test method to the capability IDs defined in [plugin-
 | `LstCrcBranchComparisonStarterUiTest.testMultipleComparisonTabs` | `C1.4` | Starter multi-tab flow. |
 | `LstCrcFileScopeStarterUiTest.testFileOperations` | `C3.1`, `C3.2`, `C3.3` | Starter scope and tree behavior across file operations. |
 | `LstCrcFileScopeStarterUiTest.testPermanentHeadTabScopesStayEmptyUntilIncludeHeadIsEnabled` | `C1.1`, `C3.3`, `C4.7` | `HEAD` scope gating behavior. |
+| `LstCrcFileScopeStarterUiTest.testIncludeHeadInScopesDoesNotAffectBranchTabScopes` | `C4.7` | Verifies the `Include HEAD in scopes` toggle does not clear created/changed scopes for non-`HEAD` comparison tabs. |
 | `LstCrcFileScopeStarterUiTest.testFindDialogShowsLstCrcSearchScopes` | `C3.3` | Search-scope availability in Find. |
 | `LstCrcFileScopeStarterUiTest.testDeletedFilesUseDeletedScopeTreeColor` | `C3.4`, `C3.6` | Deleted-file UI treatment. |
+| `LstCrcFileScopeStarterUiTest.testDeletedFileColorDoesNotLeakToModifiedRows` | `C3.6` | Verifies deleted-row coloring stays isolated from ordinary modified rows in the same comparison tree. |
 | `LstCrcInteractionStarterUiTest.testToolWindowClickActions` | `C4.1` | Starter click-action mapping. |
 | `LstCrcInteractionStarterUiTest.testContextMenuActionsWhenEnabled` | `C4.2` | Starter right-click context menu mode. |
 | `LstCrcInteractionStarterUiTest.testStatusWidgetAndRevisionActions` | `C1.3`, `C2.1`, `C2.4` | Starter widget and revision actions. |

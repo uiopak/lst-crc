@@ -13,7 +13,7 @@
 
 | Capability ID | Case / decision path | Primary coverage |
 | --- | --- | --- |
-| `C1.1` | Permanent `HEAD` tab exists and is the fallback state | `LstCrcBranchComparisonUiTest.testGitBranchComparison`, `LstCrcBranchComparisonStarterUiTest.testGitBranchComparison`, `ToolWindowStateServicePersistenceTest.testNoStateLoadedResetsToHeadSelectionSemantics` |
+| `C1.1` | Permanent `HEAD` tab exists and is the fallback state | `LstCrcBranchComparisonUiTest.testGitBranchComparison`, `LstCrcBranchComparisonStarterUiTest.testGitBranchComparison`, `ToolWindowStateServicePersistenceTest.testNoStateLoadedResetsToHeadSelectionSemantics`, `LstCrcStatusWidgetTest.testGetTextReturnsHeadWhenHeadIsSelectedEvenIfWidgetContextEnabled` |
 | `C1.1` | `HEAD` scopes stay empty until explicitly enabled | `LstCrcFileScopeStarterUiTest.testPermanentHeadTabScopesStayEmptyUntilIncludeHeadIsEnabled` |
 | `C1.2` | Branch comparison tabs show branch-only and shared differences | `LstCrcBranchComparisonUiTest.testGitBranchComparison`, `LstCrcBranchComparisonStarterUiTest.testGitBranchComparison` |
 | `C1.3` | Revision tabs can be created from VCS Log selection | `LstCrcInteractionUiTest.testStatusWidgetAndRevisionActions`, `LstCrcInteractionStarterUiTest.testStatusWidgetAndRevisionActions`, `LstCrcActionVisibilityTest.testCreateTabFromRevisionActionVisibleOnlyForSingleRevisionSelection` |
@@ -58,9 +58,9 @@
 | `C3.5` | Multi-repo override context labels render and can be hidden independently | `LstCrcMultiRootStarterUiTest.testMultiRootComparisonOverrideAppliesOnlyToSelectedRepository` |
 | `C3.5` | Revision/commit context labels render when enabled | `LstCrcSettingsUiTest.testRenderedTreeContextLabelsRespectSingleRepoAndCommitSettings`, `LstCrcSettingsStarterUiTest.testRenderedTreeContextLabelsRespectSingleRepoAndCommitSettings` |
 | `C3.6` | Deleted rows use deleted-file color | `LstCrcFileScopeStarterUiTest.testDeletedFilesUseDeletedScopeTreeColor` |
+| `C3.6` | Deleted-file color does not leak onto non-deleted rows | `LstCrcFileScopeStarterUiTest.testDeletedFileColorDoesNotLeakToModifiedRows` |
 | `C3.7` | Modified gutter markers follow the active comparison | `LstCrcVisualUiTest.testVisualGutterMarkers`, `LstCrcVisualStarterUiTest.testVisualGutterMarkers` |
 | `C3.7` | Deleted gutter markers follow the active comparison | `LstCrcVisualUiTest.testVisualGutterMarkersForModifiedAndDeletedRanges` |
-| `C3.7` | Inserted gutter markers render for local-only files when new-file gutter handling is enabled | `LstCrcVisualUiTest.testVisualGutterMarkersForInsertedRanges` |
 | `C3.8` | Unsaved edits appear before save | `LstCrcBranchComparisonUiTest.testUnsavedLocalEditAppearsWithoutSave` |
 | `C3.8` | Unsaved edits of new files preserve `NEW`/`ADDED` semantics | `LstCrcBranchComparisonUiTest.testNewFileStaysCreatedDuringUnsavedEdits`, `GitServiceOverlayMergeTest.testPreservesNewChangeTypeWhenUnsavedOverlayIsApplied` |
 | `C3.8` | Unsaved overlays for non-new files remain modifications | `GitServiceOverlayMergeTest.testKeepsModificationOverlayForNonNewFiles` |
@@ -73,11 +73,12 @@
 | `C4.2` | Right-click can switch from configured actions to context-menu mode | `LstCrcInteractionUiTest.testContextMenuActionsWhenEnabled`, `LstCrcInteractionStarterUiTest.testContextMenuActionsWhenEnabled`, `LstCrcSettingsUiTest.testAdditionalClickSettings`, `LstCrcSettingsStarterUiTest.testAdditionalClickSettings` |
 | `C4.3` | Double-click delay defers single-click execution | `LstCrcSettingsUiTest.testAdditionalClickSettings`, `LstCrcSettingsStarterUiTest.testAdditionalClickSettings` |
 | `C4.4` | Tool-window title visibility toggles correctly | `LstCrcSettingsUiTest.testTreePresentationAndTitleSettings`, `LstCrcSettingsStarterUiTest.testTreePresentationAndTitleSettings` |
-| `C4.5` | Widget context prefix follows the visibility setting | `LstCrcInteractionUiTest.testTabRenameUpdatesWidgetContext`, `LstCrcInteractionStarterUiTest.testTabRenameUpdatesWidgetContext` |
+| `C4.5` | Widget context prefix follows the visibility setting | `LstCrcInteractionUiTest.testTabRenameUpdatesWidgetContext`, `LstCrcInteractionStarterUiTest.testTabRenameUpdatesWidgetContext`, `LstCrcStatusWidgetTest.testGetTextUsesAliasPrefixAndTruncationForSelectedTab` |
 | `C4.6` | Single-repo context-label setting path | `LstCrcSettingsUiTest.testTreePresentationAndTitleSettings`, `LstCrcSettingsStarterUiTest.testTreePresentationAndTitleSettings` |
 | `C4.6` | Multi-repo context-label setting path | `LstCrcMultiRootStarterUiTest.testMultiRootComparisonOverrideAppliesOnlyToSelectedRepository` |
 | `C4.6` | Commit/revision context-label setting path | `LstCrcSettingsUiTest.testTreePresentationAndTitleSettings`, `LstCrcSettingsStarterUiTest.testTreePresentationAndTitleSettings` |
 | `C4.7` | `HEAD` named/search scopes stay empty until enabled | `LstCrcFileScopeStarterUiTest.testPermanentHeadTabScopesStayEmptyUntilIncludeHeadIsEnabled` |
+| `C4.7` | `Include HEAD in scopes` does not affect non-`HEAD` comparison tabs | `LstCrcFileScopeStarterUiTest.testIncludeHeadInScopesDoesNotAffectBranchTabScopes` |
 | `C4.8` | Main gutter toggle path | `LstCrcSettingsUiTest.testGutterSettingsAndIncludeHead`, `LstCrcSettingsStarterUiTest.testGutterSettingsAndIncludeHead` |
 | `C4.8` | New-file gutter setting path | `LstCrcSettingsUiTest.testGutterSettingsAndIncludeHead`, `LstCrcSettingsStarterUiTest.testGutterSettingsAndIncludeHead` |
 
@@ -88,13 +89,14 @@
 | `C5.1` | Refresh responds to local edits and tab/view changes | `LstCrcBranchComparisonUiTest.testGitBranchComparison`, `LstCrcBranchComparisonUiTest.testUnsavedLocalEditAppearsWithoutSave`, `LstCrcVisualUiTest.testVisualGutterMarkers` |
 | `C5.1` | Refresh responds during branch-repair flow | `LstCrcInteractionStarterUiTest.testMissingBranchComparisonTargetRecoversToHeadAndShowsWarning` |
 | `C5.1` | Active-diff updates apply for `HEAD` only when `HEAD` semantics are selected | `ProjectActiveDiffDataServiceTest.testAcceptsHeadUpdateWhenHeadTabIsSelected` |
+| `C5.1` | Active-diff updates reject `HEAD` events while a comparison tab is selected | `ProjectActiveDiffDataServiceTest.testRejectsHeadUpdateWhileComparisonTabIsSelected` |
 | `C5.1` | Active-diff updates reject stale branch results after tab selection changes | `ProjectActiveDiffDataServiceTest.testRejectsStaleUpdateWhenSelectedBranchDoesNotMatch` |
 | `C5.2` | Persisted tab state is defensively copied | `ToolWindowStateServicePersistenceTest.testLoadStateAndGetStateDefensivelyCopyNestedTabState` |
 | `C5.2` | Alias and repo-override state persists across restart | `LstCrcMultiRootStarterUiTest.testTabsAliasesAndRepoOverridesRestoreAfterRestart`, `ToolWindowStateServicePersistenceTest.testUpdateTabComparisonMapCopiesOverridesWithoutRefreshWhenDisabled` |
 | `C5.2` | Adding tabs deduplicates branch identities and removing one tab preserves others | `ToolWindowStateServicePersistenceTest.testAddTabDeduplicatesAndRemoveTabKeepsOtherTabs` |
 | `C5.2` | Alias updates target only the matching tab and ignore missing or unchanged updates | `ToolWindowStateServicePersistenceTest.testUpdateTabAliasUpdatesMatchingTabAndLeavesOtherTabsUntouched`, `ToolWindowStateServicePersistenceTest.testUpdateTabAliasIgnoresMissingTabAndUnchangedAlias` |
 | `C5.2` | Comparison-map updates ignore missing tabs and unchanged state | `ToolWindowStateServicePersistenceTest.testUpdateTabComparisonMapIgnoresMissingTabAndUnchangedMap`, `ToolWindowStateServicePersistenceTest.testUpdateTabComparisonMapCopiesOverridesWithoutRefreshWhenDisabled` |
-| `C5.3` | No-state load resets to `HEAD` semantics safely | `ToolWindowStateServicePersistenceTest.testNoStateLoadedResetsToHeadSelectionSemantics` |
+| `C5.3` | No-state load resets to `HEAD` semantics safely | `ToolWindowStateServicePersistenceTest.testNoStateLoadedResetsToHeadSelectionSemantics`, `LstCrcStatusWidgetTest.testGetTextFallsBackToPluginNameForInvalidSelectedTabIndex` |
 | `C5.4` | Recoverable branch failures trigger notification and repair | `LstCrcInteractionStarterUiTest.testMissingBranchComparisonTargetRecoversToHeadAndShowsWarning`, `LstCrcMultiRootStarterUiTest.testMissingBranchNotificationRepairReconfiguresOnlyBrokenRepository` |
 | `C5.4` | Commit misses skip the repair notification path | `LstCrcInteractionStarterUiTest.testMissingCommitComparisonTargetDoesNotRecoverToHeadOrWarn` |
 | `C5.5` | Linked worktrees register as distinct comparison roots | `LstCrcMultiRootStarterUiTest.testLinkedWorktreeBranchSwitchRefreshesActiveComparison` |
@@ -104,5 +106,5 @@
 
 - The matrix now treats file-state decisions, scope publication, and search-scope publication as separate cases rather than one broad “scope support” bucket.
 - Linked worktree behavior now has dedicated starter coverage instead of being assumed to behave like ordinary multi-root repositories.
-- New-file gutter behavior now has end-to-end `INSERTED` gutter coverage in addition to the separate settings-toggle coverage.
+- New-file gutter behavior currently has settings-toggle coverage, but end-to-end `INSERTED` rendering is not claimed until the product behavior is validated.
 - Alias behavior now includes the actual tool-window tab context-menu rename path in addition to direct popup and state-level coverage.

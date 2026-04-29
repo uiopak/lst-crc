@@ -74,6 +74,48 @@ class ProjectActiveDiffDataServiceTest : BasePlatformTestCase() {
         assertFalse(diffDataService.createdFilePaths.contains(staleFile.path))
     }
 
+    fun testRejectsHeadUpdateWhileComparisonTabIsSelected() {
+        val diffDataService = project.service<ProjectActiveDiffDataService>()
+        val selectedFile = myFixture.addFileToProject("diff/BranchSelected.txt", "branch selected\n").virtualFile
+        val headFile = myFixture.addFileToProject("diff/HeadShouldBeRejected.txt", "head\n").virtualFile
+
+        project.service<ToolWindowStateService>().loadState(
+            ToolWindowState(
+                openTabs = listOf(TabInfo(branchName = "selected-branch")),
+                selectedTabIndex = 0
+            )
+        )
+
+        diffDataService.updateActiveDiff(
+            "selected-branch",
+            listOf(selectedFile),
+            emptyList<VirtualFile>(),
+            emptyList<VirtualFile>(),
+            emptyList<VirtualFile>(),
+            emptyMap<String, String>()
+        )
+        flushEdt()
+
+        diffDataService.updateActiveDiff(
+            "HEAD",
+            listOf(headFile),
+            emptyList<VirtualFile>(),
+            emptyList<VirtualFile>(),
+            emptyList<VirtualFile>(),
+            emptyMap<String, String>()
+        )
+        flushEdt()
+
+        assertEquals("selected-branch", diffDataService.activeBranchName)
+        assertEquals(listOf(selectedFile), diffDataService.createdFiles)
+        assertTrue(diffDataService.createdFilesSet.contains(selectedFile))
+        assertFalse(diffDataService.createdFilesSet.contains(headFile))
+        assertTrue(diffDataService.changedFilesSet.contains(selectedFile))
+        assertFalse(diffDataService.changedFilesSet.contains(headFile))
+        assertTrue(diffDataService.createdFilePaths.contains(selectedFile.path))
+        assertFalse(diffDataService.createdFilePaths.contains(headFile.path))
+    }
+
     private fun flushEdt() {
         PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
         ApplicationManager.getApplication().invokeAndWait(object : Runnable {

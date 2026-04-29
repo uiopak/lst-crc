@@ -5,6 +5,7 @@ import com.intellij.driver.sdk.ui.components.common.ideFrame
 import com.intellij.driver.sdk.ui.components.common.popups.findInPathPopup
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertNotEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Test
@@ -117,6 +118,48 @@ class LstCrcFileScopeStarterUiTest : LstCrcStarterUiTestBase() {
     }
 
     @Test
+    fun testIncludeHeadInScopesDoesNotAffectBranchTabScopes() = runStarterUiTest {
+        prepareLstCrc()
+        initializeGitRepository()
+
+        createNewFile("Base.txt", "base\n")
+        commitChanges("Initial commit")
+        val defaultBranch = defaultBranchName()
+
+        createBranch("feature-head-independent")
+        createNewFile("BranchMarker.txt", "branch marker\n")
+        commitChanges("Feature commit")
+        checkoutBranch(defaultBranch)
+
+        createNewFile("LocalOnly.txt", "local only\n")
+
+        openGitChangesView()
+        ui.createAndSelectTab("feature-head-independent")
+        waitForSelectedTab("feature-head-independent")
+        waitForTreeContains("LocalOnly.txt")
+
+        ui.setIncludeHeadInScopes(false)
+        if (ui.scopeExists("LSTCRC.Created")) {
+            waitUntil { ui.scopeContains("LSTCRC.Created", "LocalOnly.txt") }
+        }
+        if (ui.scopeExists("LSTCRC.Changed")) {
+            waitUntil { ui.scopeContains("LSTCRC.Changed", "LocalOnly.txt") }
+        }
+        waitUntil { ui.searchScopeContains("LSTCRC: Created Files", "LocalOnly.txt") }
+        waitUntil { ui.searchScopeContains("LSTCRC: Changed Files", "LocalOnly.txt") }
+
+        ui.setIncludeHeadInScopes(true)
+        if (ui.scopeExists("LSTCRC.Created")) {
+            waitUntil { ui.scopeContains("LSTCRC.Created", "LocalOnly.txt") }
+        }
+        if (ui.scopeExists("LSTCRC.Changed")) {
+            waitUntil { ui.scopeContains("LSTCRC.Changed", "LocalOnly.txt") }
+        }
+        waitUntil { ui.searchScopeContains("LSTCRC: Created Files", "LocalOnly.txt") }
+        waitUntil { ui.searchScopeContains("LSTCRC: Changed Files", "LocalOnly.txt") }
+    }
+
+    @Test
     fun testFindDialogShowsLstCrcSearchScopes() = runStarterUiTest {
         prepareLstCrc()
         initializeGitRepository()
@@ -187,5 +230,38 @@ class LstCrcFileScopeStarterUiTest : LstCrcStarterUiTestBase() {
         waitUntil { ui.selectedTreeFileColor("ToDelete.txt").isNotBlank() }
 
         assertEquals(ui.deletedScopeColorSnapshot(), ui.selectedTreeFileColor("ToDelete.txt"))
+    }
+
+    @Test
+    fun testDeletedFileColorDoesNotLeakToModifiedRows() = runStarterUiTest {
+        prepareLstCrc()
+        initializeGitRepository()
+
+        createNewFile("Main.txt", "base\n")
+        createNewFile("ToDelete.txt", "delete me\n")
+        commitChanges("Initial commit")
+        val defaultBranch = defaultBranchName()
+
+        createBranch("feature-delete-contrast")
+        createNewFile("BranchMarker.txt", "branch marker\n")
+        commitChanges("Feature commit")
+        checkoutBranch(defaultBranch)
+
+        modifyFile("Main.txt", "local modified\n")
+        deleteFile("ToDelete.txt")
+
+        openGitChangesView()
+        ui.createAndSelectTab("feature-delete-contrast")
+        waitForSelectedTab("feature-delete-contrast")
+        waitForTreeContains("Main.txt", "ToDelete.txt")
+
+        waitUntil {
+            ui.selectedTreeFileColor("ToDelete.txt").isNotBlank() &&
+                ui.selectedTreeFileColor("Main.txt").isNotBlank()
+        }
+
+        val deletedColor = ui.deletedScopeColorSnapshot()
+        assertEquals(deletedColor, ui.selectedTreeFileColor("ToDelete.txt"))
+        assertNotEquals(deletedColor, ui.selectedTreeFileColor("Main.txt"))
     }
 }
