@@ -43,7 +43,7 @@ jobs:
           - os: macOS-latest
             prepareIdeRuntime: ./gradlew runIdeForUiTests --dry-run --stacktrace
             runIde: ./gradlew runIdeForUiTests --info --stacktrace --scan &> build/reports/idea.log &
-            runTests: ./gradlew uiTest --info --stacktrace -Dui.test.connection.timeout=${UI_TEST_CONNECTION_TIMEOUT} -Dui.test.timeout=${UI_TEST_TIMEOUT}
+            runTests: ./gradlew uiTest --no-configuration-cache --info --stacktrace -Dui.test.connection.timeout=${UI_TEST_CONNECTION_TIMEOUT} -Dui.test.timeout=${UI_TEST_TIMEOUT}
             cleanup: |
               ./gradlew stopUiTestProcesses --stacktrace || true
               ./gradlew --stop || true
@@ -68,6 +68,13 @@ jobs:
         with:
           tool-cache: true
           large-packages: true
+
+      - name: Restore Linux UI dependencies
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y -qq xvfb x11-utils
 
       - name: Audit macOS disk usage before cleanup
         if: runner.os == 'macOS'
@@ -117,20 +124,28 @@ jobs:
         if: runner.os == 'Windows'
         shell: powershell
         run: |
-          function Show-DirectorySize($path) {
+          function Show-DirectoryStatus($path) {
             if (Test-Path $path) {
-              $size = (Get-ChildItem $path -Recurse -Force -File -ErrorAction SilentlyContinue | Measure-Object Length -Sum).Sum
-              '{0:N2} GB  {1}' -f ($size / 1GB), $path
+              $item = Get-Item $path -Force -ErrorAction SilentlyContinue
+              $childCount = (Get-ChildItem $path -Force -ErrorAction SilentlyContinue | Measure-Object).Count
+              [PSCustomObject]@{
+                Path = $path
+                ItemType = if ($item -and $item.PSIsContainer) { 'Directory' } else { 'File' }
+                ChildEntries = $childCount
+              } | Format-Table -AutoSize
+            }
+            else {
+              Write-Host "Missing: $path"
             }
           }
 
           Write-Host "Disk usage before cleanup"
           Get-PSDrive C | Format-Table -AutoSize
-          Show-DirectorySize "C:\Users\runneradmin\AppData\Local\Android"
-          Show-DirectorySize "C:\Program Files (x86)\Android"
-          Show-DirectorySize "C:\Program Files\Android"
-          Show-DirectorySize "C:\ProgramData\chocolatey\cache"
-          Show-DirectorySize "C:\hostedtoolcache\windows"
+          Show-DirectoryStatus "C:\Users\runneradmin\AppData\Local\Android"
+          Show-DirectoryStatus "C:\Program Files (x86)\Android"
+          Show-DirectoryStatus "C:\Program Files\Android"
+          Show-DirectoryStatus "C:\ProgramData\chocolatey\cache"
+          Show-DirectoryStatus "C:\hostedtoolcache\windows"
 
       - name: Free Windows disk space
         if: runner.os == 'Windows'
@@ -153,20 +168,28 @@ jobs:
         if: runner.os == 'Windows'
         shell: powershell
         run: |
-          function Show-DirectorySize($path) {
+          function Show-DirectoryStatus($path) {
             if (Test-Path $path) {
-              $size = (Get-ChildItem $path -Recurse -Force -File -ErrorAction SilentlyContinue | Measure-Object Length -Sum).Sum
-              '{0:N2} GB  {1}' -f ($size / 1GB), $path
+              $item = Get-Item $path -Force -ErrorAction SilentlyContinue
+              $childCount = (Get-ChildItem $path -Force -ErrorAction SilentlyContinue | Measure-Object).Count
+              [PSCustomObject]@{
+                Path = $path
+                ItemType = if ($item -and $item.PSIsContainer) { 'Directory' } else { 'File' }
+                ChildEntries = $childCount
+              } | Format-Table -AutoSize
+            }
+            else {
+              Write-Host "Missing: $path"
             }
           }
 
           Write-Host "Disk usage after cleanup"
           Get-PSDrive C | Format-Table -AutoSize
-          Show-DirectorySize "C:\Users\runneradmin\AppData\Local\Android"
-          Show-DirectorySize "C:\Program Files (x86)\Android"
-          Show-DirectorySize "C:\Program Files\Android"
-          Show-DirectorySize "C:\ProgramData\chocolatey\cache"
-          Show-DirectorySize "C:\hostedtoolcache\windows"
+          Show-DirectoryStatus "C:\Users\runneradmin\AppData\Local\Android"
+          Show-DirectoryStatus "C:\Program Files (x86)\Android"
+          Show-DirectoryStatus "C:\Program Files\Android"
+          Show-DirectoryStatus "C:\ProgramData\chocolatey\cache"
+          Show-DirectoryStatus "C:\hostedtoolcache\windows"
 
       # Check out the current repository
       - name: Fetch Sources
@@ -237,8 +260,13 @@ jobs:
         if: runner.os == 'Windows'
         shell: powershell
         run: |
-          Get-Command Set-DisplayResolution
-          Set-DisplayResolution -Width 1920 -Height 1080 -Force
+          try {
+            Get-Command Set-DisplayResolution -ErrorAction Stop | Out-Null
+            Set-DisplayResolution -Width 1920 -Height 1080 -Force -ErrorAction Stop
+          }
+          catch {
+            Write-Warning "Unable to change Windows screen resolution on this runner: $($_.Exception.Message)"
+          }
 
       - name: Set macOS screen resolution
         if: runner.os == 'macOS'

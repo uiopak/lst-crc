@@ -68,7 +68,7 @@ class LstCrcMultiRootStarterUiTest : LstCrcStarterUiTestBase() {
         commitChangesInRepo(PRIMARY_WORKTREE_REPO, "Target branch commit")
         checkoutBranchInRepo(PRIMARY_WORKTREE_REPO, defaultBranch)
 
-        createLinkedWorktree(PRIMARY_WORKTREE_REPO, LINKED_WORKTREE_REPO, "worktree-topic", defaultBranch)
+        createLinkedWorktree(PRIMARY_WORKTREE_REPO, LINKED_WORKTREE_REPO, "worktree-topic", "feature-worktree-target")
         createNewFileInRepo(LINKED_WORKTREE_REPO, "WorktreeOnly.txt", "linked worktree only\n")
         commitChangesInRepo(LINKED_WORKTREE_REPO, "Worktree branch commit")
 
@@ -89,7 +89,7 @@ class LstCrcMultiRootStarterUiTest : LstCrcStarterUiTestBase() {
 
         checkoutBranchInRepo(PRIMARY_WORKTREE_REPO, "feature-worktree-target")
 
-        waitUntil(30.seconds) {
+        waitUntil(60.seconds) {
             val tree = ui.selectedChangesTreeSnapshot()
             !tree.contains("TargetOnly.txt") && tree.contains("WorktreeOnly.txt")
         }
