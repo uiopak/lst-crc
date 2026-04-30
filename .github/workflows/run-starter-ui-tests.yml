@@ -18,6 +18,13 @@ jobs:
       ORG_GRADLE_PROJECT_org.jetbrains.intellij.platform.useCacheRedirector: false
     steps:
 
+      # Free GitHub Actions Environment Disk Space
+      - name: Maximize Build Space
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: true
+          large-packages: true
+
       - name: Fetch Sources
         uses: actions/checkout@v6
 
@@ -44,6 +51,18 @@ jobs:
           mkdir -p build/reports/starter-ui-test
           ./gradlew starterUiTest --info --stacktrace 2>&1 | tee build/reports/starter-ui-test/gradle-starterUiTest.log
 
+      - name: Collect IDE Starter diagnostics
+        if: ${{ failure() }}
+        shell: bash
+        run: |
+          set -o pipefail
+          diagnostics_dir="build/reports/starter-ui-test/ide-starter-diagnostics"
+          mkdir -p "$diagnostics_dir"
+
+          if [ -d "out/ide-tests/tests" ]; then
+            find out/ide-tests/tests -type f \( -path '*/log/*' -o -path '*/reports/*' \) -exec cp --parents {} "$diagnostics_dir" \;
+          fi
+
       - name: Collect test results
         if: ${{ always() }}
         uses: actions/upload-artifact@v7
@@ -55,4 +74,3 @@ jobs:
             build/test-results/starterUiTest/
             build/allure-results/starter-ui/
             build/starter-ui-tests/
-            out/ide-tests/

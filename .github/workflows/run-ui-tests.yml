@@ -62,6 +62,112 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
 
+      - name: Maximize Build Space
+        if: runner.os == 'Linux'
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: true
+          large-packages: true
+
+      - name: Audit macOS disk usage before cleanup
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          echo "Disk usage before cleanup"
+          df -h /
+
+          for path in \
+            "/Applications" \
+            "/Users/runner/Library/Android/sdk" \
+            "/Library/Developer/CoreSimulator/Profiles/Runtimes" \
+            "$HOME/Library/Caches/Homebrew"
+          do
+            if [ -e "$path" ]; then
+              du -sh "$path" || true
+            fi
+          done
+
+      - name: Free macOS disk space
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          sudo rm -rf /Users/runner/Library/Android/sdk || true
+          brew cleanup -s || true
+          rm -rf "$HOME/Library/Caches/Homebrew" || true
+
+      - name: Audit macOS disk usage after cleanup
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          echo "Disk usage after cleanup"
+          df -h /
+
+          for path in \
+            "/Applications" \
+            "/Users/runner/Library/Android/sdk" \
+            "/Library/Developer/CoreSimulator/Profiles/Runtimes" \
+            "$HOME/Library/Caches/Homebrew"
+          do
+            if [ -e "$path" ]; then
+              du -sh "$path" || true
+            fi
+          done
+
+      - name: Audit Windows disk usage before cleanup
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          function Show-DirectorySize($path) {
+            if (Test-Path $path) {
+              $size = (Get-ChildItem $path -Recurse -Force -File -ErrorAction SilentlyContinue | Measure-Object Length -Sum).Sum
+              '{0:N2} GB  {1}' -f ($size / 1GB), $path
+            }
+          }
+
+          Write-Host "Disk usage before cleanup"
+          Get-PSDrive C | Format-Table -AutoSize
+          Show-DirectorySize "C:\Users\runneradmin\AppData\Local\Android"
+          Show-DirectorySize "C:\Program Files (x86)\Android"
+          Show-DirectorySize "C:\Program Files\Android"
+          Show-DirectorySize "C:\ProgramData\chocolatey\cache"
+          Show-DirectorySize "C:\hostedtoolcache\windows"
+
+      - name: Free Windows disk space
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          $pathsToDelete = @(
+            "C:\Users\runneradmin\AppData\Local\Android",
+            "C:\Program Files (x86)\Android",
+            "C:\Program Files\Android",
+            "C:\ProgramData\chocolatey\cache"
+          )
+
+          foreach ($path in $pathsToDelete) {
+            if (Test-Path $path) {
+              Remove-Item -Recurse -Force $path -ErrorAction SilentlyContinue
+            }
+          }
+
+      - name: Audit Windows disk usage after cleanup
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          function Show-DirectorySize($path) {
+            if (Test-Path $path) {
+              $size = (Get-ChildItem $path -Recurse -Force -File -ErrorAction SilentlyContinue | Measure-Object Length -Sum).Sum
+              '{0:N2} GB  {1}' -f ($size / 1GB), $path
+            }
+          }
+
+          Write-Host "Disk usage after cleanup"
+          Get-PSDrive C | Format-Table -AutoSize
+          Show-DirectorySize "C:\Users\runneradmin\AppData\Local\Android"
+          Show-DirectorySize "C:\Program Files (x86)\Android"
+          Show-DirectorySize "C:\Program Files\Android"
+          Show-DirectorySize "C:\ProgramData\chocolatey\cache"
+          Show-DirectorySize "C:\hostedtoolcache\windows"
+
       # Check out the current repository
       - name: Fetch Sources
         uses: actions/checkout@v6
