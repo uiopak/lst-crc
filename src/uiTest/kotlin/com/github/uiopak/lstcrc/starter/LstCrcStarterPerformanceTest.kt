@@ -13,7 +13,7 @@ import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.measureTime
 
-@Tag("starter")
+@Tag("starter-performance")
 class LstCrcStarterPerformanceTest : LstCrcStarterUiTestBase() {
 
     @Test

@@ -93,4 +93,4 @@ This file maps each active test method to the capability IDs defined in [plugin-
 
 | Test | Reason |
 | --- | --- |
-| `LstCrcStarterPerformanceTest.testToolWindowOpenAndBranchLoadPerformance` | Performance smoke coverage rather than functional capability coverage. |
+| `LstCrcStarterPerformanceTest.testToolWindowOpenAndBranchLoadPerformance` | Performance smoke coverage rather than functional capability coverage. Run it via `starterPerformanceTest` instead of the main `starterUiTest` suite. |

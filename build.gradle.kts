@@ -205,7 +205,7 @@ changelog {
 // Configure Gradle Kover Plugin - read more: https://kotlin.github.io/kotlinx-kover/gradle-plugin/#configuration-details
 kover {
     currentProject {
-        instrumentation.disabledForTestTasks.addAll("starterUiTest", "uiTest")
+        instrumentation.disabledForTestTasks.addAll("starterUiTest", "starterPerformanceTest", "uiTest")
     }
 
     reports {
@@ -222,7 +222,11 @@ kover {
 // It is auto-included when starterUiTest is requested, or manually via -PincludeTestBridge=true.
 val includeTestBridge = providers.gradleProperty("includeTestBridge")
     .map { it.toBoolean() }
-    .orElse(gradle.startParameter.taskNames.any { it.contains("starterUiTest") })
+    .orElse(
+        gradle.startParameter.taskNames.any {
+            it.contains("starterUiTest") || it.contains("starterPerformanceTest")
+        }
+    )
 
 if (!includeTestBridge.get()) {
     sourceSets.main {
@@ -254,6 +258,7 @@ val preparedSharedUiIdeDir = providers.provider {
 
 tasks {
     val isCi = isCiEnvironment
+    val starterPerformanceTag = "starter-performance"
     val defaultRobotServerUrl = "http://127.0.0.1:8082"
     val robotServerUrlProvider = providers.systemProperty("robot.server.url").orElse(defaultRobotServerUrl)
     val robotServerWaitTimeoutProvider = providers.systemProperty("ui.test.server.wait.timeout").orElse(if (isCi) "240" else "90")
@@ -288,7 +293,38 @@ tasks {
         systemProperty("ui.test.connection.timeout", robotConnectionTimeoutProvider.get())
         systemProperty("ui.test.timeout", uiTestTimeoutProvider.get())
 
-        timeout.set(Duration.ofMinutes(20))
+        timeout.set(Duration.ofMinutes(30))
+    }
+
+    fun Test.configureStarterIdeTestTask(allureSubdirectory: String) {
+        configureCommonTestTask()
+
+        notCompatibleWithConfigurationCache("Starter UI test discovery is unstable when this task is restored from configuration cache.")
+
+        maxParallelForks = 1
+        minHeapSize = "1g"
+        maxHeapSize = "4g"
+
+        systemProperty("path.to.build.plugin", buildPlugin.get().archiveFile.get().asFile.absolutePath)
+        systemProperty("idea.home.path", prepareTestSandbox.get().getDestinationDir().parentFile.absolutePath)
+        systemProperty("local.ide.path", preparedSharedUiIdeDir.get().asFile.absolutePath)
+        systemProperty("lstcrc.starter.driver.jmx.port", System.getProperty("lstcrc.starter.driver.jmx.port") ?: "17777")
+        systemProperty("lstcrc.starter.driver.rpc.port", System.getProperty("lstcrc.starter.driver.rpc.port") ?: "24000")
+        systemProperty(
+            "allure.results.directory",
+            project.layout.buildDirectory.get().asFile.absolutePath + "/allure-results/$allureSubdirectory"
+        )
+        systemProperty("idea.test.cyclic.buffer.size", "0")
+
+        jvmArgumentProviders += CommandLineArgumentProvider {
+            mutableListOf(
+                "--add-opens=java.base/java.lang=ALL-UNNAMED",
+                "--add-opens=java.desktop/javax.swing=ALL-UNNAMED"
+            )
+        }
+
+        dependsOn(buildPlugin)
+        shouldRunAfter(test)
     }
 
     register("uiTestReady") {
@@ -497,7 +533,7 @@ tasks {
 
         configureCommonTestTask()
         failOnNoDiscoveredTests = false
-        timeout.set(Duration.ofMinutes(10))
+        timeout.set(Duration.ofMinutes(20))
     }
 
     register<Test>("uiTest") {
@@ -523,38 +559,29 @@ tasks {
         testClassesDirs = sourceSets["uiTest"].output.classesDirs
         classpath = sourceSets["uiTest"].runtimeClasspath
 
-        configureCommonTestTask()
+        configureStarterIdeTestTask("starter-ui")
         useJUnitPlatform {
             includeTags("starter")
+            excludeTags(starterPerformanceTag)
         }
 
-        notCompatibleWithConfigurationCache("Starter UI test discovery is unstable when this task is restored from configuration cache.")
+        timeout.set(Duration.ofMinutes(40))
+    }
 
-        maxParallelForks = 1
-        minHeapSize = "1g"
-        maxHeapSize = "4g"
-        timeout.set(Duration.ofMinutes(30))
+    register<Test>("starterPerformanceTest") {
+        description = "Runs IDE Starter performance smoke tests separately from the main Starter UI suite."
+        group = "verification"
 
-        systemProperty("path.to.build.plugin", buildPlugin.get().archiveFile.get().asFile.absolutePath)
-        systemProperty("idea.home.path", prepareTestSandbox.get().getDestinationDir().parentFile.absolutePath)
-        systemProperty("local.ide.path", preparedSharedUiIdeDir.get().asFile.absolutePath)
-        systemProperty("lstcrc.starter.driver.jmx.port", System.getProperty("lstcrc.starter.driver.jmx.port") ?: "17777")
-        systemProperty("lstcrc.starter.driver.rpc.port", System.getProperty("lstcrc.starter.driver.rpc.port") ?: "24000")
-        systemProperty(
-            "allure.results.directory",
-            project.layout.buildDirectory.get().asFile.absolutePath + "/allure-results/starter-ui"
-        )
-        systemProperty("idea.test.cyclic.buffer.size", "0")
+        testClassesDirs = sourceSets["uiTest"].output.classesDirs
+        classpath = sourceSets["uiTest"].runtimeClasspath
 
-        jvmArgumentProviders += CommandLineArgumentProvider {
-            mutableListOf(
-                "--add-opens=java.base/java.lang=ALL-UNNAMED",
-                "--add-opens=java.desktop/javax.swing=ALL-UNNAMED"
-            )
+        configureStarterIdeTestTask("starter-performance")
+        useJUnitPlatform {
+            includeTags(starterPerformanceTag)
         }
 
-        dependsOn(buildPlugin)
-        shouldRunAfter(test)
+        timeout.set(Duration.ofMinutes(20))
+        shouldRunAfter("starterUiTest")
     }
 
     register<Delete>("cleanStarterArtifacts") {
