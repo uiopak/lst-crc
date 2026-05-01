@@ -1,14 +1,9 @@
-@file:Suppress("DialogTitleCapitalization")
-
 package com.github.uiopak.lstcrc.toolWindow
 
 import com.github.uiopak.lstcrc.resources.LstCrcBundle
 import com.github.uiopak.lstcrc.services.CategorizedChanges
-import com.github.uiopak.lstcrc.services.GitService
 import com.github.uiopak.lstcrc.services.ToolWindowStateService
 import com.github.uiopak.lstcrc.utils.getTreePathForMouseCoordinates
-import com.intellij.icons.AllIcons
-import com.intellij.ide.DataManager
 import com.intellij.ide.projectView.ProjectView
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.actionSystem.*
@@ -20,7 +15,6 @@ import com.intellij.openapi.fileEditor.OpenFileDescriptor
 import com.intellij.openapi.project.DumbAwareAction
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.Messages
-import com.intellij.openapi.ui.popup.JBPopupFactory
 import com.intellij.openapi.vcs.changes.Change
 import com.intellij.openapi.vcs.changes.ContentRevision
 import com.intellij.openapi.vcs.changes.ChangesUtil
@@ -37,6 +31,7 @@ import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.psi.PsiManager
 import com.intellij.ui.PopupHandler
 import com.intellij.util.ui.JBUI
+import com.intellij.util.Alarm
 import git4idea.repo.GitRepository
 import git4idea.repo.GitRepositoryChangeListener
 import java.awt.BorderLayout
@@ -47,7 +42,6 @@ import java.awt.event.MouseEvent
 import javax.swing.JComponent
 import javax.swing.JPanel
 import javax.swing.SwingUtilities
-import javax.swing.Timer
 
 /**
  * The main UI part for displaying the tree of file changes for a specific branch comparison.
@@ -60,8 +54,13 @@ class LstCrcChangesBrowser(
     parentDisposable: Disposable
 ) : AsyncChangesBrowserBase(project, false, true), Disposable, GitRepositoryChangeListener {
 
+    private companion object {
+        const val OPEN_SOURCE_ERROR_TITLE_KEY = "changes.browser.open.source.error.title"
+        const val OPEN_SOURCE_ERROR_MESSAGE_KEY = "changes.browser.open.source.error.message"
+    }
+
     private val logger = thisLogger()
-    private var refreshDebounceTimer: Timer? = null
+    private val refreshDebounceAlarm = Alarm(this)
 
     // This field will hold the changes and context for the async tree model builder.
     private var currentChanges: CategorizedChanges? = null
@@ -70,23 +69,31 @@ class LstCrcChangesBrowser(
         get() = VcsTreeModelData.selected(viewer).userObjects(Change::class.java)
 
     /** Helper class to manage the state for detecting single vs. double clicks. */
-    private class ClickState {
-        var timer: Timer? = null
+    private class ClickState(parentDisposable: Disposable) {
+        private val alarm = Alarm(parentDisposable)
         var pendingChange: Change? = null
         var pendingPath: javax.swing.tree.TreePath? = null
         var actionHasFiredForPath: javax.swing.tree.TreePath? = null
 
+        fun schedule(delayMs: Int, action: () -> Unit) {
+            alarm.cancelAllRequests()
+            alarm.addRequest(action, delayMs)
+        }
+
+        fun cancelPending() {
+            alarm.cancelAllRequests()
+        }
+
         fun clear() {
-            timer?.stop()
-            timer = null
+            alarm.cancelAllRequests()
             pendingChange = null
             pendingPath = null
             actionHasFiredForPath = null
         }
     }
-    private val leftClickState = ClickState()
-    private val middleClickState = ClickState()
-    private val rightClickState = ClickState()
+    private val leftClickState = ClickState(this)
+    private val middleClickState = ClickState(this)
+    private val rightClickState = ClickState(this)
 
     init {
         // This is CRITICAL. Unlike SimpleAsyncChangesBrowser, AsyncChangesBrowserBase does not call
@@ -115,91 +122,9 @@ class LstCrcChangesBrowser(
         // Disable default click/key handlers to install our own custom configurable versions.
         viewer.setDoubleClickAndEnterKeyHandler {}
 
-        // Remove the default popup handler installed by the base class. This is critical to preventing
-        // an empty context menu on right-click, as simply overriding createPopupMenuActions() is not enough.
-        viewer.mouseListeners.filterIsInstance<PopupHandler>().forEach {
-            viewer.removeMouseListener(it)
-            logger.debug("Removed a default PopupHandler to prevent empty context menu.")
-        }
-
-        // Install a single primary listener to gain full control over all mouse clicks.
-        viewer.addMouseListener(object : MouseAdapter() {
-            override fun mouseClicked(e: MouseEvent) {
-                val path = viewer.getTreePathForMouseCoordinates(e) ?: return
-                val change = (path.lastPathComponent as? ChangesBrowserNode<*>)?.userObject as? Change ?: return
-
-                when {
-                    SwingUtilities.isLeftMouseButton(e) -> {
-                        middleClickState.clear()
-                        rightClickState.clear()
-                        handleGenericClick(e, change, path, getSingleClickAction(), getDoubleClickAction(), leftClickState)
-                    }
-                    SwingUtilities.isMiddleMouseButton(e) -> {
-                        leftClickState.clear()
-                        rightClickState.clear()
-                        handleGenericClick(e, change, path, getMiddleClickAction(), getDoubleMiddleClickAction(), middleClickState)
-                    }
-                    SwingUtilities.isRightMouseButton(e) -> {
-                        if (isContextMenuEnabled()) {
-                            showContextMenu(e)
-                        } else {
-                            leftClickState.clear()
-                            middleClickState.clear()
-                            handleGenericClick(e, change, path, getRightClickAction(), getDoubleRightClickAction(), rightClickState)
-                        }
-                    }
-                }
-            }
-        })
-
-        // Set up the toolbar border to appear on scroll, which is the idiomatic UI for tool windows.
-        val scrollPane = viewerScrollPane
-
-        // To find the correct component to apply the border to, we must navigate the layout of the base class.
-        // The full toolbar is inside the top panel, which is at the NORTH position of the main layout.
-        val mainLayout = this.layout as? BorderLayout
-        val topPanel = mainLayout?.getLayoutComponent(BorderLayout.NORTH) as? JPanel
-
-        // Inside the top panel, the full toolbar (TreeActionsToolbarPanel) is at the CENTER position.
-        val fullToolbarComponent = topPanel?.let {
-            (it.layout as? BorderLayout)?.getLayoutComponent(BorderLayout.CENTER) as? JComponent
-        }
-
-
-        if (fullToolbarComponent != null) {
-            // This is the standard 1 px separator border used across the IDE for toolbars.
-            val bottomBorder = JBUI.Borders.customLine(JBColor.border(), 0, 0, 1, 0)
-
-            // This function checks the scroll position and applies or removes the border.
-            val updateToolbarBorder = {
-                val verticalScrollBar = scrollPane.verticalScrollBar
-                // A border is needed if the scrollbar is visible and not at the very top.
-                val needsBorder = verticalScrollBar.isVisible && verticalScrollBar.value > 0
-                fullToolbarComponent.border = if (needsBorder) bottomBorder else JBUI.Borders.empty()
-            }
-
-            // Set the initial border state. Using invokeLater ensures the layout is complete
-            // and scrollbar visibility is correctly determined.
-            ApplicationManager.getApplication().invokeLater {
-                if (!project.isDisposed) {
-                    updateToolbarBorder()
-                }
-            }
-
-            // Listen for scroll events to update the border dynamically.
-            scrollPane.verticalScrollBar.addAdjustmentListener {
-                updateToolbarBorder()
-            }
-
-            // Also listen to component resize events, as this can affect scrollbar visibility.
-            scrollPane.addComponentListener(object : ComponentAdapter() {
-                override fun componentResized(e: ComponentEvent?) {
-                    updateToolbarBorder()
-                }
-            })
-        } else {
-            logger.warn("Could not find full toolbar component; cannot apply dynamic toolbar border.")
-        }
+        removeDefaultPopupHandlers()
+        installViewerMouseHandling()
+        configureDynamicToolbarBorder()
     }
 
     override fun createToolbarActions(): MutableList<AnAction> {
@@ -274,7 +199,7 @@ class LstCrcChangesBrowser(
             }
 
             // Fallback to default rose color if scope color is not configured
-            return JBColor.namedColor("FileColor.Rose", Color(255, 220, 220))
+            return JBColor.namedColor("FileColor.Rose", JBColor(Color(255, 235, 236), Color(71, 43, 43)))
         }
 
 
@@ -303,52 +228,44 @@ class LstCrcChangesBrowser(
         doubleClickAction: String,
         clickState: ClickState
     ) {
-        if (viewer.selectionPath != path) {
-            viewer.selectionPath = path
-        }
-        viewer.requestFocusInWindow()
+        selectPathAndFocus(path)
 
-        // If double-click is disabled, we can fire the single-click action immediately.
         if (doubleClickAction == "NONE") {
-            clickState.clear()
-            if (e.clickCount == 1 && singleClickAction != "NONE") {
-                performConfiguredAction(change, singleClickAction)
-            }
+            handleImmediateSingleClick(e, change, singleClickAction, clickState)
             return
         }
 
-        // This logic handles the case where double-click is enabled.
-        // On the first click, we start a timer. If it expires, we fire the single-click action.
         if (e.clickCount == 1) {
-            if (clickState.pendingPath != path || clickState.actionHasFiredForPath != null) {
-                clickState.clear()
-            }
-            clickState.pendingChange = change
-            clickState.pendingPath = path
-            clickState.timer?.stop()
-            // If the timer expires, it was a single click.
-            clickState.timer = Timer(ToolWindowSettingsProvider.getUserDoubleClickDelayMs()) {
-                val sChange = clickState.pendingChange
-                val sPath = clickState.pendingPath
-                clickState.clear()
+            scheduleSingleClick(path, change, singleClickAction, clickState)
+            return
+        }
 
-                if (sChange != null && sPath != null && singleClickAction != "NONE") {
-                    performConfiguredAction(sChange, singleClickAction)
-                    clickState.actionHasFiredForPath = sPath
-                }
-            }.apply { isRepeats = false; start() }
-        } else if (e.clickCount >= 2) {
-            // This is a double click. Cancel any pending single-click action and fire the double-click one.
-            if (clickState.actionHasFiredForPath == path) {
-                clickState.actionHasFiredForPath = null
-                clickState.timer?.stop()
-                return
+        if (e.clickCount >= 2) {
+            handleDoubleClick(path, change, doubleClickAction, clickState)
+        }
+    }
+
+    /**
+     * Routes a click event to the correct [handleGenericClick] call based on the mouse button.
+     * Shared by the real [MouseAdapter] listener and the test-bridge [invokeConfiguredActionForFile].
+     */
+    private fun dispatchClickAction(e: MouseEvent, change: Change, path: javax.swing.tree.TreePath) {
+        when {
+            SwingUtilities.isLeftMouseButton(e) -> {
+                middleClickState.clear()
+                rightClickState.clear()
+                handleGenericClick(e, change, path, ToolWindowSettingsProvider.getSingleClickAction(), ToolWindowSettingsProvider.getDoubleClickAction(), leftClickState)
             }
-            if (clickState.pendingPath == path) {
-                clickState.clear()
+            SwingUtilities.isMiddleMouseButton(e) -> {
+                leftClickState.clear()
+                rightClickState.clear()
+                handleGenericClick(e, change, path, ToolWindowSettingsProvider.getMiddleClickAction(), ToolWindowSettingsProvider.getDoubleMiddleClickAction(), middleClickState)
             }
-            performConfiguredAction(change, doubleClickAction)
-            clickState.actionHasFiredForPath = null
+            SwingUtilities.isRightMouseButton(e) -> {
+                leftClickState.clear()
+                middleClickState.clear()
+                handleGenericClick(e, change, path, ToolWindowSettingsProvider.getRightClickAction(), ToolWindowSettingsProvider.getDoubleRightClickAction(), rightClickState)
+            }
         }
     }
 
@@ -403,8 +320,8 @@ class LstCrcChangesBrowser(
             if (beforeRevision != null) {
                 try {
                     openRevisionSource(beforeRevision)
-                } catch (e: Exception) {
-                    Messages.showErrorDialog(project, LstCrcBundle.message("changes.browser.open.source.error.message", beforeRevision.file.path), "Error")
+                } catch (_: Exception) {
+                    showOpenSourceError(beforeRevision.file.path)
                 }
             }
             return
@@ -421,14 +338,13 @@ class LstCrcChangesBrowser(
             try {
                 openRevisionSource(revisionToOpen)
                 return
-            } catch (e: Exception) {
-                val pathForMessage = revisionToOpen.file.path
-                Messages.showWarningDialog(project, LstCrcBundle.message("changes.browser.open.source.error.message", pathForMessage), LstCrcBundle.message("changes.browser.open.source.error.title"))
+            } catch (_: Exception) {
+                showOpenSourceWarning(revisionToOpen.file.path)
                 return
             }
         } else {
             val pathForMessage = (change.afterRevision?.file ?: change.beforeRevision?.file)?.path ?: LstCrcBundle.message("changes.browser.open.source.error.unknown.path")
-            Messages.showWarningDialog(project, LstCrcBundle.message("changes.browser.open.source.error.message", pathForMessage), LstCrcBundle.message("changes.browser.open.source.error.title"))
+            showOpenSourceWarning(pathForMessage)
         }
     }
 
@@ -446,15 +362,21 @@ class LstCrcChangesBrowser(
                 logger.warn("Failed to preload revision-backed file '${revision.file.path}'.", e)
                 ApplicationManager.getApplication().invokeLater {
                     if (project.isDisposed) return@invokeLater
-                    Messages.showWarningDialog(
-                        project,
-                        LstCrcBundle.message("changes.browser.open.source.error.message", revision.file.path),
-                        LstCrcBundle.message("changes.browser.open.source.error.title")
-                    )
+                    showOpenSourceWarning(revision.file.path)
                 }
             }
         }
     }
+
+    private fun showOpenSourceWarning(path: String) {
+        Messages.showWarningDialog(project, LstCrcBundle.message(OPEN_SOURCE_ERROR_MESSAGE_KEY, path), openSourceErrorTitle())
+    }
+
+    private fun showOpenSourceError(path: String) {
+        Messages.showErrorDialog(project, LstCrcBundle.message(OPEN_SOURCE_ERROR_MESSAGE_KEY, path), openSourceErrorTitle())
+    }
+
+    private fun openSourceErrorTitle(): String = LstCrcBundle.message(OPEN_SOURCE_ERROR_TITLE_KEY)
 
     /**
      * Updates the browser with a new set of changes, preserving the user's scroll and expansion state.
@@ -550,7 +472,7 @@ class LstCrcChangesBrowser(
         val change = ((path.lastPathComponent as? ChangesBrowserNode<*>)?.userObject as? Change)
             ?: error("Could not find change for file '$fileName' in '$targetBranchToCompare'.")
 
-        if (button.equals("RIGHT", ignoreCase = true) && isContextMenuEnabled()) {
+        if (button.equals("RIGHT", ignoreCase = true) && ToolWindowSettingsProvider.isContextMenuEnabled()) {
             error("Context menu is enabled for right click. Query contextMenuActionTitlesForFile() instead of invoking a configured action.")
         }
 
@@ -572,23 +494,7 @@ class LstCrcChangesBrowser(
             awtButton
         )
 
-        when {
-            button.equals("LEFT", ignoreCase = true) -> {
-                middleClickState.clear()
-                rightClickState.clear()
-                handleGenericClick(event, change, path, getSingleClickAction(), getDoubleClickAction(), leftClickState)
-            }
-            button.equals("MIDDLE", ignoreCase = true) -> {
-                leftClickState.clear()
-                rightClickState.clear()
-                handleGenericClick(event, change, path, getMiddleClickAction(), getDoubleMiddleClickAction(), middleClickState)
-            }
-            button.equals("RIGHT", ignoreCase = true) -> {
-                leftClickState.clear()
-                middleClickState.clear()
-                handleGenericClick(event, change, path, getRightClickAction(), getDoubleRightClickAction(), rightClickState)
-            }
-        }
+        dispatchClickAction(event, change, path)
     }
 
     @org.jetbrains.annotations.ApiStatus.Internal
@@ -615,23 +521,16 @@ class LstCrcChangesBrowser(
     }
 
     private fun triggerDebouncedDataRefresh() {
-        refreshDebounceTimer?.stop()
-        refreshDebounceTimer = Timer(100, null).apply {
-            addActionListener {
-                ApplicationManager.getApplication().invokeLater {
-                    if (!project.isDisposed) {
-                        requestRefreshData()
-                    }
-                }
+        refreshDebounceAlarm.cancelAllRequests()
+        refreshDebounceAlarm.addRequest({
+            if (!project.isDisposed) {
+                requestRefreshData()
             }
-            isRepeats = false
-        }
-        refreshDebounceTimer?.start()
+        }, 100)
     }
 
     override fun dispose() {
         shutdown()
-        refreshDebounceTimer?.stop()
         leftClickState.clear()
         middleClickState.clear()
         rightClickState.clear()
@@ -674,14 +573,6 @@ class LstCrcChangesBrowser(
     }
 
 
-    private fun isContextMenuEnabled(): Boolean = ToolWindowSettingsProvider.isContextMenuEnabled()
-    private fun getSingleClickAction(): String = ToolWindowSettingsProvider.getSingleClickAction()
-    private fun getDoubleClickAction(): String = ToolWindowSettingsProvider.getDoubleClickAction()
-    private fun getMiddleClickAction(): String = ToolWindowSettingsProvider.getMiddleClickAction()
-    private fun getDoubleMiddleClickAction(): String = ToolWindowSettingsProvider.getDoubleMiddleClickAction()
-    private fun getRightClickAction(): String = ToolWindowSettingsProvider.getRightClickAction()
-    private fun getDoubleRightClickAction(): String = ToolWindowSettingsProvider.getDoubleRightClickAction()
-
     private fun findChangeByFileName(fileName: String): Change? {
         return currentChanges?.allChanges?.firstOrNull { change ->
             change.afterRevision?.file?.name == fileName || change.beforeRevision?.file?.name == fileName
@@ -698,70 +589,125 @@ class LstCrcChangesBrowser(
         }
         return null
     }
-}
 
-/**
- * Action to open a popup showing the current comparison context for each repository
- * and allowing the user to change it.
- */
-private class ShowRepoComparisonInfoAction : DumbAwareAction(
-    LstCrcBundle.message("action.configure.repos.text"),
-    LstCrcBundle.message("action.configure.repos.description"),
-    AllIcons.General.GearPlain
-) {
-    override fun update(e: AnActionEvent) {
-        val project = e.project
-        if (project == null) {
-            e.presentation.isEnabledAndVisible = false
-            return
+    private fun removeDefaultPopupHandlers() {
+        viewer.mouseListeners.filterIsInstance<PopupHandler>().forEach {
+            viewer.removeMouseListener(it)
+            logger.debug("Removed a default PopupHandler to prevent empty context menu.")
         }
-        // Action is enabled for any closable tab (i.e., not HEAD).
-        val stateService = project.service<ToolWindowStateService>()
-        e.presentation.isEnabledAndVisible = stateService.getSelectedTabInfo() != null
     }
 
-    override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
+    private fun installViewerMouseHandling() {
+        viewer.addMouseListener(object : MouseAdapter() {
+            override fun mouseClicked(e: MouseEvent) {
+                val path = viewer.getTreePathForMouseCoordinates(e) ?: return
+                val change = (path.lastPathComponent as? ChangesBrowserNode<*>)?.userObject as? Change ?: return
 
-    override fun actionPerformed(e: AnActionEvent) {
-        val project = e.project ?: return
-        val stateService = project.service<ToolWindowStateService>()
-        val gitService = project.service<GitService>()
-        val tabInfo = stateService.getSelectedTabInfo() ?: return
+                if (SwingUtilities.isRightMouseButton(e) && ToolWindowSettingsProvider.isContextMenuEnabled()) {
+                    showContextMenu(e)
+                    return
+                }
 
-        val repositories = gitService.getRepositories()
+                dispatchClickAction(e, change, path)
+            }
+        })
+    }
 
-        // For single-repo projects, show the dialog directly for a better UX.
-        if (repositories.size == 1) {
-            SingleRepoBranchSelectionDialog(project, repositories.first(), tabInfo).show()
+    private fun configureDynamicToolbarBorder() {
+        val fullToolbarComponent = findToolbarComponent()
+        if (fullToolbarComponent == null) {
+            logger.warn("Could not find full toolbar component; cannot apply dynamic toolbar border.")
             return
         }
 
-        // For multi-repo projects, show the popup to choose a repository.
-        val actionGroup = DefaultActionGroup()
-
-        for (repo in repositories.sortedBy { it.root.name }) {
-            // Correctly determine the target. Use the override if it exists, otherwise the primary tab revision.
-            // This now correctly handles commit hashes by not attempting to resolve them as branches.
-            val currentTarget = tabInfo.comparisonMap[repo.root.path] ?: tabInfo.branchName
-
-            val actionText = LstCrcBundle.message("changes.browser.repo.node.full.comparison.text", repo.root.name, currentTarget)
-
-            actionGroup.add(object : AnAction(actionText) {
-                override fun actionPerformed(e: AnActionEvent) {
-                    val dialog = SingleRepoBranchSelectionDialog(project, repo, tabInfo)
-                    dialog.show()
-                }
-            })
+        val scrollPane = viewerScrollPane
+        val bottomBorder = JBUI.Borders.customLine(JBColor.border(), 0, 0, 1, 0)
+        val updateToolbarBorder = {
+            val verticalScrollBar = scrollPane.verticalScrollBar
+            val needsBorder = verticalScrollBar.isVisible && verticalScrollBar.value > 0
+            fullToolbarComponent.border = if (needsBorder) bottomBorder else JBUI.Borders.empty()
         }
 
-        val dataContext = DataManager.getInstance().getDataContext(e.inputEvent?.component)
-        val popup = JBPopupFactory.getInstance().createActionGroupPopup(
-            LstCrcBundle.message("action.configure.repos.popup.title"),
-            actionGroup,
-            dataContext,
-            JBPopupFactory.ActionSelectionAid.MNEMONICS,
-            true
-        )
-        popup.showInBestPositionFor(dataContext)
+        ApplicationManager.getApplication().invokeLater {
+            if (!project.isDisposed) {
+                updateToolbarBorder()
+            }
+        }
+        scrollPane.verticalScrollBar.addAdjustmentListener { updateToolbarBorder() }
+        scrollPane.addComponentListener(object : ComponentAdapter() {
+            override fun componentResized(e: ComponentEvent?) {
+                updateToolbarBorder()
+            }
+        })
+    }
+
+    private fun findToolbarComponent(): JComponent? {
+        val mainLayout = this.layout as? BorderLayout ?: return null
+        val topPanel = mainLayout.getLayoutComponent(BorderLayout.NORTH) as? JPanel ?: return null
+        return (topPanel.layout as? BorderLayout)?.getLayoutComponent(BorderLayout.CENTER) as? JComponent
+    }
+
+    private fun selectPathAndFocus(path: javax.swing.tree.TreePath) {
+        if (viewer.selectionPath != path) {
+            viewer.selectionPath = path
+        }
+        viewer.requestFocusInWindow()
+    }
+
+    private fun handleImmediateSingleClick(
+        e: MouseEvent,
+        change: Change,
+        singleClickAction: String,
+        clickState: ClickState
+    ) {
+        clickState.clear()
+        if (e.clickCount == 1 && singleClickAction != "NONE") {
+            performConfiguredAction(change, singleClickAction)
+        }
+    }
+
+    private fun scheduleSingleClick(
+        path: javax.swing.tree.TreePath,
+        change: Change,
+        singleClickAction: String,
+        clickState: ClickState
+    ) {
+        if (clickState.pendingPath != path || clickState.actionHasFiredForPath != null) {
+            clickState.clear()
+        }
+
+        clickState.pendingChange = change
+        clickState.pendingPath = path
+        clickState.cancelPending()
+        clickState.schedule(ToolWindowSettingsProvider.getUserDoubleClickDelayMs()) {
+            val scheduledChange = clickState.pendingChange
+            val scheduledPath = clickState.pendingPath
+            clickState.clear()
+
+            if (scheduledChange != null && scheduledPath != null && singleClickAction != "NONE") {
+                performConfiguredAction(scheduledChange, singleClickAction)
+                clickState.actionHasFiredForPath = scheduledPath
+            }
+        }
+    }
+
+    private fun handleDoubleClick(
+        path: javax.swing.tree.TreePath,
+        change: Change,
+        doubleClickAction: String,
+        clickState: ClickState
+    ) {
+        if (clickState.actionHasFiredForPath == path) {
+            clickState.actionHasFiredForPath = null
+            clickState.cancelPending()
+            return
+        }
+
+        if (clickState.pendingPath == path) {
+            clickState.clear()
+        }
+
+        performConfiguredAction(change, doubleClickAction)
+        clickState.actionHasFiredForPath = null
     }
 }

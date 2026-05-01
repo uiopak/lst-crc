@@ -1,7 +1,6 @@
 package com.github.uiopak.lstcrc.listeners
 
 import com.github.uiopak.lstcrc.services.GitService
-import com.github.uiopak.lstcrc.services.LstCrcGutterTrackerService
 import com.github.uiopak.lstcrc.services.ProjectActiveDiffDataService
 import com.github.uiopak.lstcrc.services.ToolWindowStateService
 import com.github.uiopak.lstcrc.services.VfsListenerService
@@ -14,11 +13,10 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.startup.ProjectActivity
 import com.intellij.openapi.wm.WindowManager
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.future.await
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
-import java.util.concurrent.CompletableFuture
 import kotlin.coroutines.resume
-import kotlin.coroutines.resumeWithException
 
 /**
  * Runs on project startup to perform the initial load of Git diff data based on the plugin's
@@ -39,33 +37,14 @@ class PluginStartupActivity : ProjectActivity {
         }
     }
 
-    /**
-     * Helper extension to bridge CompletableFuture with coroutines.
-     */
-    private suspend fun <T> CompletableFuture<T>.await(): T =
-        suspendCancellableCoroutine { cont ->
-            whenComplete { result, exception ->
-                if (exception == null) {
-                    if (cont.isActive) cont.resume(result)
-                } else {
-                    cont.resumeWithException(exception)
-                }
-            }
-            cont.invokeOnCancellation {
-                cancel(true)
-            }
-        }
-
-
     override suspend fun execute(project: Project) {
         logger.info("STARTUP_LOGIC: ProjectActivity executing for project: ${project.name}")
 
         // Eagerly initialize services that need to listen to events from the start to ensure
         // features like gutter markers and VFS-triggered refreshes work correctly.
         project.service<VfsListenerService>()
-        project.service<LstCrcGutterTrackerService>()
         project.service<VcsChangeListener>()
-        project.service<com.github.uiopak.lstcrc.gutters.VisualTrackerManager>().init() // Initialize Visual Tracker Interceptor
+        project.service<com.github.uiopak.lstcrc.gutters.VisualTrackerManager>().init()
         logger.info("STARTUP_LOGIC: Background services initialized.")
 
         // Perform a quick initial refresh for tab colors of already open files.

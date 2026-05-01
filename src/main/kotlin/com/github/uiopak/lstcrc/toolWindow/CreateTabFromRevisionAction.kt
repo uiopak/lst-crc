@@ -1,5 +1,6 @@
 package com.github.uiopak.lstcrc.toolWindow
 
+import com.github.uiopak.lstcrc.LstCrcConstants
 import com.github.uiopak.lstcrc.resources.LstCrcBundle
 import com.github.uiopak.lstcrc.services.ToolWindowStateService
 import com.intellij.openapi.actionSystem.ActionUpdateThread
@@ -54,8 +55,8 @@ class CreateTabFromRevisionAction : AnAction() {
         }
 
         val toolWindowManager = ToolWindowManager.getInstance(project)
-        val toolWindow = toolWindowManager.getToolWindow("GitChangesView") ?: run {
-            logger.error("Could not find ToolWindow 'GitChangesView'")
+        val toolWindow = toolWindowManager.getToolWindow(LstCrcConstants.TOOL_WINDOW_ID) ?: run {
+            logger.error("Could not find ToolWindow '${LstCrcConstants.TOOL_WINDOW_ID}'")
             return
         }
 

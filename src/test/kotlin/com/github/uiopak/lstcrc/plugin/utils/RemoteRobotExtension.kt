@@ -25,10 +25,17 @@ class RemoteRobotExtension : AfterTestExecutionCallback, ParameterResolver {
     private val url: String = System.getProperty("robot.server.url")
         ?: System.getProperty("remote-robot-url")
         ?: "http://127.0.0.1:8082"
+    private val explicitConnectionTimeoutSeconds = System.getProperty("ui.test.connection.timeout")?.toLongOrNull()
+    private val serverWaitTimeoutSeconds = System.getProperty("ui.test.server.wait.timeout")?.toLongOrNull()
     private val connectionTimeout: Duration = Duration.ofSeconds(
-        System.getProperty("ui.test.connection.timeout")?.toLongOrNull()
-            ?: System.getProperty("ui.test.timeout")?.toLongOrNull()
-            ?: 30L
+        when {
+            explicitConnectionTimeoutSeconds != null && serverWaitTimeoutSeconds != null -> {
+                maxOf(explicitConnectionTimeoutSeconds, serverWaitTimeoutSeconds)
+            }
+            explicitConnectionTimeoutSeconds != null -> explicitConnectionTimeoutSeconds
+            serverWaitTimeoutSeconds != null -> serverWaitTimeoutSeconds
+            else -> System.getProperty("ui.test.timeout")?.toLongOrNull() ?: 30L
+        }
     )
     private val remoteRobot: RemoteRobot = if (System.getProperty("debug-retrofit")?.equals("enable") == true) {
         val interceptor: HttpLoggingInterceptor = HttpLoggingInterceptor().apply {

@@ -10,4 +10,10 @@ data class TabInfo(
     var alias: String? = null,
     @get:MapAnnotation(sortBeforeSave = false)
     var comparisonMap: MutableMap<String, String> = mutableMapOf()
-)
+) {
+    fun deepCopy(): TabInfo = TabInfo(
+        branchName = branchName,
+        alias = alias,
+        comparisonMap = comparisonMap.toMutableMap()
+    )
+}

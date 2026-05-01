@@ -13,6 +13,7 @@
 - Run a single Remote Robot UI class or method: `.\gradlew.bat uiTest --tests "com.github.uiopak.lstcrc.plugin.LstCrcInteractionUiTest"` or `.\gradlew.bat uiTest --tests "com.github.uiopak.lstcrc.plugin.LstCrcInteractionUiTest.testStatusWidgetAndRevisionActions"`
 - IDE Starter UI tests launch and manage their own IDE: `.\gradlew.bat starterUiTest`
 - Run a single IDE Starter UI class or method: `.\gradlew.bat starterUiTest --tests "com.github.uiopak.lstcrc.starter.LstCrcInteractionStarterUiTest"` or `.\gradlew.bat starterUiTest --tests "com.github.uiopak.lstcrc.starter.LstCrcInteractionStarterUiTest.testStatusWidgetAndRevisionActions"`
+- Run Starter performance smoke coverage separately: `.\gradlew.bat starterPerformanceTest`
 - Run Qodana inspections locally: `.\gradlew.bat qodanaScan`
 - Clean IDE Starter artifacts that accumulate outside `build\`: `.\gradlew.bat cleanStarterArtifacts`
 
@@ -27,7 +28,7 @@
 - `PluginStartupActivity` eagerly initializes listeners (`VfsListenerService`, `VcsChangeListener`, gutter services, visual tracker manager), waits for smart mode, then triggers the first refresh so scopes, widgets, and gutter state are ready early.
 - There are two separate UI-testing stacks:
   - Remote Robot tests live under `src\test\kotlin\com\github\uiopak\lstcrc\plugin` and run through the `uiTest` task against an IDE started by `runIdeForUiTests`.
-  - IDE Starter tests live under `src\uiTest\kotlin\com\github\uiopak\lstcrc\starter` and run through `starterUiTest`. They use a test bridge in `src\main\kotlin\com\github\uiopak\lstcrc\testing` that is excluded from the published plugin unless `starterUiTest` is in the task graph or `-PincludeTestBridge=true` is set.
+  - IDE Starter tests live under `src\uiTest\kotlin\com\github\uiopak\lstcrc\starter`. Functional coverage runs through `starterUiTest`, while the performance smoke runs through `starterPerformanceTest`. They use a test bridge in `src\main\kotlin\com\github\uiopak\lstcrc\testing` that is excluded from the published plugin unless one of those Starter tasks is in the task graph or `-PincludeTestBridge=true` is set.
 
 ## Key conventions
 
@@ -38,4 +39,4 @@
 - Store plugin settings in `PropertiesComponent` through `ToolWindowSettingsProvider`; components such as the status widget and gutter services expect settings changes to flow through that provider and the related message-bus notifications.
 - Localize all user-facing strings through `LstCrcBundle` and `messages\LstCrcMessages.properties`. `plugin.xml` also points at that resource bundle for action and notification text.
 - The plugin description shipped in `plugin.xml` is extracted from the `<!-- Plugin description -->` block in `README.md` during the Gradle build. Update that README section when changing marketplace-facing description text.
-- The maintained automated coverage is UI-focused. Remote Robot tests are tagged `ui`, IDE Starter tests are tagged `starter`, and JUnit parallel execution is disabled in `src\test\resources\junit-platform.properties`.
+- The maintained automated coverage is UI-focused. Remote Robot tests are tagged `ui`, functional IDE Starter tests are tagged `starter`, performance smoke coverage runs through the dedicated `starter-performance` tag/task, and JUnit parallel execution is disabled in `src\test\resources\junit-platform.properties`.

@@ -13,7 +13,7 @@ import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.measureTime
 
-@Tag("starter")
+@Tag("starter-performance")
 class LstCrcStarterPerformanceTest : LstCrcStarterUiTestBase() {
 
     @Test
@@ -38,7 +38,7 @@ class LstCrcStarterPerformanceTest : LstCrcStarterUiTestBase() {
         context.runLstCrcIdeWithDriver().useDriverAndCloseIde {
             waitForIndicators(5.minutes)
             val bridge = service<LstCrcUiTestBridgeRemote>()
-            val starterContext = LstCrcStarterContext(project, bridge)
+            val starterContext = LstCrcStarterContext(project, bridge, this)
             starterContext.waitForSmartMode()
             bridge.activateGitVcsIntegration()
             starterContext.waitUntil(30.seconds) { bridge.isGitVcsActive() }

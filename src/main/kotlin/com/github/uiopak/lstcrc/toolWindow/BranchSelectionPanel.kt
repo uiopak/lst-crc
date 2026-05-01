@@ -163,93 +163,129 @@ class BranchSelectionPanel(
     }
 
     private fun createBranchSelectionTree(): Tree {
-        val newTree = Tree(fullTreeModel)
-        newTree.isRootVisible = false
-        newTree.showsRootHandles = true
+        return Tree(fullTreeModel).apply {
+            isRootVisible = false
+            showsRootHandles = true
+            cellRenderer = createBranchTreeCellRenderer()
+            TreeUtil.expandAll(this)
+            addMouseListener(createBranchTreeMouseListener(this))
+            addKeyListener(createBranchTreeKeyListener(this))
+        }
+    }
 
-        newTree.cellRenderer = object : ColoredTreeCellRenderer() {
+    private fun createBranchTreeCellRenderer(): ColoredTreeCellRenderer {
+        return object : ColoredTreeCellRenderer() {
             override fun customizeCellRenderer(
                 jtree: JTree, value: Any?, selected: Boolean, expanded: Boolean,
                 leaf: Boolean, row: Int, hasFocus: Boolean
             ) {
-                val node = value as? DefaultMutableTreeNode ?: return
-                val searchTerm = jtree.getClientProperty("search.term") as? String
-
-                val (text, icon) = when (val userObject = node.userObject) {
-                    is BranchCategory -> userObject.displayName to if (userObject.type == BranchCategoryType.LOCAL) AllIcons.Nodes.Folder else AllIcons.Nodes.WebFolder
-                    is BranchInfo -> userObject.displayName to AllIcons.Vcs.Branch
-                    is String -> userObject to AllIcons.Nodes.Folder
-                    else -> return
-                }
-
-                this.icon = icon
-                val attributes = SimpleTextAttributes.REGULAR_ATTRIBUTES
-                val highlightAttributes = SimpleTextAttributes(attributes.style or SimpleTextAttributes.STYLE_SEARCH_MATCH, attributes.fgColor)
-
-                if (searchTerm.isNullOrBlank()) {
-                    append(text, attributes)
-                } else {
-                    var lastIndex = 0
-                    var matchIndex = text.indexOf(searchTerm, ignoreCase = true)
-                    while (matchIndex >= 0) {
-                        if (matchIndex > lastIndex) {
-                            append(text.substring(lastIndex, matchIndex), attributes)
-                        }
-                        append(text.substring(matchIndex, matchIndex + searchTerm.length), highlightAttributes)
-                        lastIndex = matchIndex + searchTerm.length
-                        matchIndex = text.indexOf(searchTerm, lastIndex, ignoreCase = true)
-                    }
-                    if (lastIndex < text.length) {
-                        append(text.substring(lastIndex), attributes)
-                    }
-                }
+                renderBranchTreeNode(jtree, value)
             }
         }
-        TreeUtil.expandAll(newTree)
+    }
 
-        // Combined mouse and key listener for better usability.
-        newTree.addMouseListener(object : MouseAdapter() {
+    private fun ColoredTreeCellRenderer.renderBranchTreeNode(tree: JTree, value: Any?) {
+        val node = value as? DefaultMutableTreeNode ?: return
+        val (text, icon) = resolveBranchNodePresentation(node) ?: return
+        val searchTerm = tree.getClientProperty("search.term") as? String
+        val attributes = SimpleTextAttributes.REGULAR_ATTRIBUTES
+
+        this.icon = icon
+        appendSearchAwareText(text, searchTerm, attributes)
+    }
+
+    private fun resolveBranchNodePresentation(node: DefaultMutableTreeNode): Pair<String, javax.swing.Icon>? {
+        return when (val userObject = node.userObject) {
+            is BranchCategory -> userObject.displayName to when (userObject.type) {
+                BranchCategoryType.LOCAL -> AllIcons.Nodes.Folder
+                BranchCategoryType.REMOTE -> AllIcons.Nodes.WebFolder
+            }
+            is BranchInfo -> userObject.displayName to AllIcons.Vcs.Branch
+            is String -> userObject to AllIcons.Nodes.Folder
+            else -> null
+        }
+    }
+
+    private fun ColoredTreeCellRenderer.appendSearchAwareText(
+        text: String,
+        searchTerm: String?,
+        attributes: SimpleTextAttributes
+    ) {
+        if (searchTerm.isNullOrBlank()) {
+            append(text, attributes)
+            return
+        }
+
+        val highlightAttributes = SimpleTextAttributes(
+            attributes.style or SimpleTextAttributes.STYLE_SEARCH_MATCH,
+            attributes.fgColor
+        )
+
+        var lastIndex = 0
+        var matchIndex = text.indexOf(searchTerm, ignoreCase = true)
+        while (matchIndex >= 0) {
+            if (matchIndex > lastIndex) {
+                append(text.substring(lastIndex, matchIndex), attributes)
+            }
+            append(text.substring(matchIndex, matchIndex + searchTerm.length), highlightAttributes)
+            lastIndex = matchIndex + searchTerm.length
+            matchIndex = text.indexOf(searchTerm, lastIndex, ignoreCase = true)
+        }
+
+        if (lastIndex < text.length) {
+            append(text.substring(lastIndex), attributes)
+        }
+    }
+
+    private fun createBranchTreeMouseListener(tree: Tree): MouseAdapter {
+        return object : MouseAdapter() {
             override fun mouseClicked(e: MouseEvent) {
-                // Handle single and double clicks to select a branch.
                 if (e.clickCount < 1) return
 
-                val path = newTree.getTreePathForMouseCoordinates(e) ?: return
+                val path = tree.getTreePathForMouseCoordinates(e) ?: return
                 val node = path.lastPathComponent as? DefaultMutableTreeNode ?: return
-                if (node.isLeaf) {
-                    (node.userObject as? BranchInfo)?.let {
-                        onBranchSelected(it.fullBranchName)
-                    }
-                }
+                selectBranchNode(node)
             }
-        })
+        }
+    }
 
-        newTree.addKeyListener(object : KeyAdapter() {
+    private fun createBranchTreeKeyListener(tree: Tree): KeyAdapter {
+        return object : KeyAdapter() {
             override fun keyPressed(e: KeyEvent) {
-                // Allow selection with the Enter key.
-                if (e.keyCode == KeyEvent.VK_ENTER) {
-                    val path = newTree.selectionPath ?: return
-                    val node = path.lastPathComponent as? DefaultMutableTreeNode ?: return
-                    if (node.isLeaf) {
-                        (node.userObject as? BranchInfo)?.let {
-                            onBranchSelected(it.fullBranchName)
-                            e.consume() // Prevent the event from being processed further.
-                        }
-                    }
+                if (e.keyCode != KeyEvent.VK_ENTER) return
+
+                val path = tree.selectionPath ?: return
+                val node = path.lastPathComponent as? DefaultMutableTreeNode ?: return
+                if (selectBranchNode(node)) {
+                    e.consume()
                 }
             }
 
             override fun keyTyped(e: KeyEvent) {
-                // Speed-search functionality: typing redirects focus to the search field.
-                if (searchTextField.textEditor.hasFocus()) return
-                if (e.keyChar == KeyEvent.CHAR_UNDEFINED || e.keyChar < ' ' || e.isControlDown || e.isMetaDown || e.isAltDown) {
-                    return
-                }
+                if (!shouldRedirectKeyTypedToSearch(e)) return
+
                 searchTextField.requestFocusInWindow()
                 searchTextField.text += e.keyChar
             }
-        })
+        }
+    }
 
-        return newTree
+    private fun selectBranchNode(node: DefaultMutableTreeNode): Boolean {
+        if (!node.isLeaf) return false
+
+        val branchInfo = node.userObject as? BranchInfo ?: return false
+        onBranchSelected(branchInfo.fullBranchName)
+        return true
+    }
+
+    private fun shouldRedirectKeyTypedToSearch(e: KeyEvent): Boolean {
+        if (searchTextField.textEditor.hasFocus()) return false
+
+        return e.keyChar != KeyEvent.CHAR_UNDEFINED &&
+            e.keyChar >= ' ' &&
+            !e.isControlDown &&
+            !e.isMetaDown &&
+            !e.isAltDown
     }
 
     private fun buildFullBranchTreeModel(): DefaultTreeModel {
@@ -259,7 +295,7 @@ class BranchSelectionPanel(
 
         // Use the pre-fetched snapshot if available; otherwise fall back to the
         // Git4Idea repository model which is already cached in memory (no I/O).
-        // This method may be called on the EDT so it must never run git commands.
+        // This method may be called on the EDT, so it must never run git commands.
         val targetRepo = repository ?: gitService.getPrimaryRepository()
         val localBranches = branchSnapshot?.localBranches?.takeIf { it.isNotEmpty() }
             ?: targetRepo?.branches?.localBranches?.map { it.name }

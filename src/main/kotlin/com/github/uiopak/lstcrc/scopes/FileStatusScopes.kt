@@ -17,8 +17,8 @@ import com.intellij.psi.search.scope.packageSet.PackageSetBase
  */
 private class LstCrcPackageSet(
     private val descriptionKey: String, // Store the key, not the message
-    private val filesExtractor: (ProjectActiveDiffDataService) -> Collection<VirtualFile>,
-    private val usePathMatching: Boolean = false // Flag for deleted files that need path-based matching
+    private val filesExtractor: (ProjectActiveDiffDataService) -> Set<VirtualFile>,
+    private val pathsExtractor: ((ProjectActiveDiffDataService) -> Set<String>)? = null // For deleted files that need path-based matching
 ) : PackageSetBase() {
 
     override fun contains(file: VirtualFile, project: Project, holder: NamedScopesHolder?): Boolean {
@@ -31,48 +31,52 @@ private class LstCrcPackageSet(
             return false
         }
 
-        val relevantFiles = filesExtractor(diffDataService)
-        
         // For deleted files scope or VcsVirtualFile, use path-based matching
         // since file instances differ between tree nodes and opened editors
-        return if (usePathMatching || file is com.intellij.openapi.vcs.vfs.VcsVirtualFile) {
-            relevantFiles.any { it.path == file.path }
+        return if (pathsExtractor != null || file is com.intellij.openapi.vcs.vfs.VcsVirtualFile) {
+            val paths = pathsExtractor?.invoke(diffDataService)
+                ?: filesExtractor(diffDataService).mapTo(HashSet()) { it.path }
+            file.path in paths
         } else {
-            file in relevantFiles.toSet()
+            file in filesExtractor(diffDataService)
         }
     }
 
-    override fun createCopy(): PackageSet = LstCrcPackageSet(descriptionKey, filesExtractor, usePathMatching)
+    override fun createCopy(): PackageSet = LstCrcPackageSet(descriptionKey, filesExtractor, pathsExtractor)
     // Defer the call to LstCrcBundle until getText() is actually called by the UI
     override fun getText(): String = LstCrcBundle.message(descriptionKey)
     override fun getNodePriority(): Int = 1
 }
 
-// Instantiate the generic PackageSet for each change type, passing the resource key.
+// Instantiate the generic PackageSet for each change type, using pre-computed sets from the service.
 private val createdFilesPackageSet = LstCrcPackageSet(
     "scope.created.description",
-    filesExtractor = { it.createdFiles }
+    filesExtractor = { it.createdFilesSet },
+    pathsExtractor = { it.createdFilePaths }
 )
 
 private val modifiedFilesPackageSet = LstCrcPackageSet(
     "scope.modified.description",
-    filesExtractor = { it.modifiedFiles }
+    filesExtractor = { it.modifiedFilesSet },
+    pathsExtractor = { it.modifiedFilePaths }
 )
 
 private val movedFilesPackageSet = LstCrcPackageSet(
     "scope.moved.description",
-    filesExtractor = { it.movedFiles }
+    filesExtractor = { it.movedFilesSet },
+    pathsExtractor = { it.movedFilePaths }
 )
 
 private val deletedFilesPackageSet = LstCrcPackageSet(
     "scope.deleted.description",
-    filesExtractor = { it.deletedFiles },
-    usePathMatching = true
+    filesExtractor = { emptySet() },
+    pathsExtractor = { it.deletedFilePaths }
 )
 
 private val changedFilesPackageSet = LstCrcPackageSet(
     "scope.changed.description",
-    filesExtractor = { it.createdFiles + it.modifiedFiles + it.movedFiles }
+    filesExtractor = { it.changedFilesSet },
+    pathsExtractor = { it.changedFilePaths }
 )
 
 

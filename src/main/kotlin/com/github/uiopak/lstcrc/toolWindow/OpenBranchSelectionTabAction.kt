@@ -36,11 +36,8 @@ class OpenBranchSelectionTabAction(
         e.presentation.isEnabledAndVisible = !selectionTabExists
     }
 
-    /**
-     * This action is safe to run on a background thread as it only reads UI properties.
-     */
     override fun getActionUpdateThread(): ActionUpdateThread {
-        return ActionUpdateThread.BGT
+        return ActionUpdateThread.EDT
     }
 
     override fun actionPerformed(e: AnActionEvent) {
