@@ -189,7 +189,14 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
                 const gitChangesViewAction = actionManager.getAction("ActivateGitChangesViewToolWindow");
                 if (gitChangesViewAction) {
                     const dataContext = com.intellij.ide.DataManager.getInstance().getDataContext();
-                    const event = com.intellij.openapi.actionSystem.AnActionEvent.createFromAnAction(gitChangesViewAction, null, "test", dataContext);
+                    const event = com.intellij.openapi.actionSystem.AnActionEvent.createEvent(
+                        gitChangesViewAction,
+                        dataContext,
+                        null,
+                        "test",
+                        com.intellij.openapi.actionSystem.ActionUiKind.NONE,
+                        null
+                    );
                     gitChangesViewAction.actionPerformed(event);
                 }
             """, true
@@ -962,7 +969,14 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
                         )
                         .build();
 
-                    const event = com.intellij.openapi.actionSystem.AnActionEvent.createFromAnAction(action, null, "test", dataContext);
+                    const event = com.intellij.openapi.actionSystem.AnActionEvent.createEvent(
+                        action,
+                        dataContext,
+                        null,
+                        "test",
+                        com.intellij.openapi.actionSystem.ActionUiKind.NONE,
+                        null
+                    );
                     com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater(new java.lang.Runnable({
                         run: function() {
                             action.actionPerformed(event);

@@ -315,7 +315,14 @@ class GitChangesViewFixture(remoteRobot: RemoteRobot, remoteComponent: RemoteCom
                     .add(com.intellij.openapi.actionSystem.PlatformDataKeys.TOOL_WINDOW, toolWindow)
                     .add(com.intellij.openapi.actionSystem.PlatformCoreDataKeys.CONTEXT_COMPONENT, component)
                     .build();
-                const event = com.intellij.openapi.actionSystem.AnActionEvent.createFromAnAction(action, null, "test", dataContext);
+                const event = com.intellij.openapi.actionSystem.AnActionEvent.createEvent(
+                    action,
+                    dataContext,
+                    null,
+                    "test",
+                    com.intellij.openapi.actionSystem.ActionUiKind.NONE,
+                    null
+                );
 
                 com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater(new java.lang.Runnable({
                     run: function() {

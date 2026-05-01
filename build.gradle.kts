@@ -1,6 +1,7 @@
 import org.jetbrains.changelog.Changelog
 import org.jetbrains.changelog.markdownToHTML
 import org.jetbrains.intellij.platform.gradle.TestFrameworkType
+import org.jetbrains.kotlin.gradle.dsl.JvmDefaultMode
 import java.net.URI
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
@@ -33,7 +34,7 @@ val starterIdeRepositoryUrl = if (useJetBrainsCacheRedirector) {
 kotlin {
     jvmToolchain(21)
     compilerOptions {
-        freeCompilerArgs.add("-Xjvm-default=all")
+        jvmDefault.set(JvmDefaultMode.NO_COMPATIBILITY)
     }
 }
 

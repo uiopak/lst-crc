@@ -21,6 +21,7 @@ jobs:
       UI_TEST_IDE_RUNTIME_WARMUP_TIMEOUT: 1200
       UI_TEST_IDE_RUNTIME_RETRY_DELAY: 60
       ORG_GRADLE_PROJECT_org.jetbrains.intellij.platform.useCacheRedirector: false
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     strategy:
       fail-fast: false
       matrix:
@@ -50,12 +51,24 @@ jobs:
             url: http://127.0.0.1:8082
             reportName: ui-test-fails-report-mac
           - os: windows-latest
-            prepareIdeRuntime: ./gradlew.bat runIdeForUiTests --dry-run --stacktrace
-            runIde: ./gradlew.bat runIdeForUiTests --info --stacktrace --scan &> build/reports/idea.log &
-            runTests: ./gradlew.bat uiTest --info --stacktrace -Dui.test.connection.timeout=${UI_TEST_CONNECTION_TIMEOUT} -Dui.test.timeout=${UI_TEST_TIMEOUT}
+            prepareIdeRuntime: .\gradlew.bat runIdeForUiTests --dry-run --stacktrace
+            runIde: |
+              $process = Start-Process -FilePath "cmd.exe" -ArgumentList @(
+                "/d",
+                "/c",
+                ".\\gradlew.bat runIdeForUiTests --info --stacktrace --scan > build\\reports\\idea.log 2>&1"
+              ) -WorkingDirectory $PWD -PassThru
+              Write-Host "Started runIdeForUiTests with PID $($process.Id)"
+            runTests: .\gradlew.bat uiTest --info --stacktrace -Dui.test.connection.timeout=$env:UI_TEST_CONNECTION_TIMEOUT -Dui.test.timeout=$env:UI_TEST_TIMEOUT
             cleanup: |
-              ./gradlew.bat stopUiTestProcesses --stacktrace || true
-              ./gradlew.bat --stop || true
+              & .\gradlew.bat stopUiTestProcesses --stacktrace
+              if ($LASTEXITCODE -ne 0) {
+                Write-Warning "stopUiTestProcesses exited with code $LASTEXITCODE"
+              }
+              & .\gradlew.bat --stop
+              if ($LASTEXITCODE -ne 0) {
+                Write-Warning "gradlew --stop exited with code $LASTEXITCODE"
+              }
             url: http://localhost:8082
             reportName: ui-test-fails-report-windows
 
@@ -213,15 +226,8 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v6
 
-      - name: Cache IntelliJ Platform IDE
-        uses: actions/cache@v5
-        with:
-          # The path to the directory where the IDEs are downloaded
-          path: ~/.gradle/caches/jetbrains/idea
-          # A key that invalidates the cache when the OS or IDE version changes
-          key: ${{ runner.os }}-intellij-platform-${{ hashFiles('gradle.properties') }}
-
       - name: Create reports directory
+        shell: bash
         run: mkdir -p build/reports
 
       - name: Prepare UI test classpath
@@ -231,6 +237,7 @@ jobs:
           ./gradlew buildPlugin testClasses --stacktrace 2>&1 | tee build/reports/prepare-ui-test-classpath.log
 
       - name: Prepare UI test IDE runtime
+        if: runner.os != 'Windows'
         timeout-minutes: 25
         shell: bash
         env:
@@ -256,6 +263,34 @@ jobs:
             attempt=$(( attempt + 1 ))
           done
 
+      - name: Prepare UI test IDE runtime
+        if: runner.os == 'Windows'
+        timeout-minutes: 25
+        shell: powershell
+        env:
+          GRADLE_ACTIONS_SKIP_BUILD_RESULT_CAPTURE: true
+        run: |
+          $deadline = (Get-Date).AddSeconds([int]$env:UI_TEST_IDE_RUNTIME_WARMUP_TIMEOUT)
+          $attempt = 1
+
+          while ($true) {
+            & .\gradlew.bat runIdeForUiTests --dry-run --stacktrace
+            if ($LASTEXITCODE -eq 0) {
+              exit 0
+            }
+
+            $now = Get-Date
+            if ($now -ge $deadline) {
+              Write-Host "IDE runtime warmup timed out after $($env:UI_TEST_IDE_RUNTIME_WARMUP_TIMEOUT)s"
+              exit 1
+            }
+
+            $remaining = [int][Math]::Max(0, ($deadline - $now).TotalSeconds)
+            Write-Host "IDE runtime warmup failed on attempt $attempt. $remaining s remaining before timeout. Retrying in $($env:UI_TEST_IDE_RUNTIME_RETRY_DELAY)s..."
+            Start-Sleep -Seconds ([int]$env:UI_TEST_IDE_RUNTIME_RETRY_DELAY)
+            $attempt++
+          }
+
       - name: Set Windows screen resolution
         if: runner.os == 'Windows'
         shell: powershell
@@ -272,31 +307,86 @@ jobs:
         if: runner.os == 'macOS'
         shell: bash
         run: |
-          system_profiler SPDisplaysDataType | grep Resolution || echo "Resolution line not reported before resize"
+          print_desktop_bounds() {
+            osascript -e 'tell application "Finder" to get bounds of window of desktop' 2>/dev/null || echo "Finder desktop bounds unavailable"
+          }
 
-          if [ -x "/Library/Application Support/VMware Tools/vmware-resolutionSet" ]; then
-            "/Library/Application Support/VMware Tools/vmware-resolutionSet" 2560 1440 || echo "Failed to change macOS screen resolution"
+          print_display_state() {
+            local label="$1"
+            echo "== $label =="
+            echo "Desktop bounds:"
+            print_desktop_bounds
+            echo "system_profiler SPDisplaysDataType:"
+            system_profiler SPDisplaysDataType 2>/dev/null || echo "SPDisplaysDataType unavailable"
+          }
+
+          print_display_state "Before resize"
+
+          if [ -d "/Library/Application Support/VMware Tools" ]; then
+            echo "VMware Tools directory contents:"
+            ls -la "/Library/Application Support/VMware Tools" || true
           else
-            echo "vmware-resolutionSet is not available on this macOS runner"
+            echo "VMware Tools directory is not present"
           fi
 
-          system_profiler SPDisplaysDataType | grep Resolution || echo "Resolution line not reported after resize"
+          if [ -x "/Library/Application Support/VMware Tools/vmware-resolutionSet" ]; then
+            "/Library/Application Support/VMware Tools/vmware-resolutionSet" 2560 1440 || echo "Failed to change macOS screen resolution with vmware-resolutionSet"
+          else
+            echo "vmware-resolutionSet is not available on this macOS runner"
+
+            if command -v displayplacer >/dev/null 2>&1; then
+              echo "displayplacer is installed; dumping detected displays"
+              displayplacer list || true
+            else
+              echo "displayplacer is not installed"
+            fi
+
+            if command -v cscreen >/dev/null 2>&1; then
+              echo "cscreen is installed at $(command -v cscreen)"
+            else
+              echo "cscreen is not installed"
+            fi
+
+            defaults -currentHost read com.apple.windowserver DisplaySets 2>/dev/null || echo "No com.apple.windowserver DisplaySets data available"
+          fi
+
+          print_display_state "After resize"
 
       # Run IDEA prepared for UI testing
       - name: Run IDE
+        if: runner.os != 'Windows'
         shell: bash
+        env:
+          GRADLE_ACTIONS_SKIP_BUILD_RESULT_CAPTURE: true
+        run: ${{ matrix.runIde }}
+
+      - name: Run IDE
+        if: runner.os == 'Windows'
+        shell: powershell
         env:
           GRADLE_ACTIONS_SKIP_BUILD_RESULT_CAPTURE: true
         run: ${{ matrix.runIde }}
 
       # Wait for IDEA to be started and the Remote Robot server to respond through Gradle's readiness task.
       - name: Wait for IDE readiness
+        if: runner.os != 'Windows'
         run: ./gradlew uiTestReady --info --stacktrace -Dui.test.server.wait.timeout=${UI_TEST_SERVER_WAIT_TIMEOUT}
         shell: bash
 
+      - name: Wait for IDE readiness
+        if: runner.os == 'Windows'
+        run: .\gradlew.bat uiTestReady --info --stacktrace -Dui.test.server.wait.timeout=$env:UI_TEST_SERVER_WAIT_TIMEOUT
+        shell: powershell
+
       # Run tests
       - name: Run tests
+        if: runner.os != 'Windows'
         shell: bash
+        run: ${{ matrix.runTests }}
+
+      - name: Run tests
+        if: runner.os == 'Windows'
+        shell: powershell
         run: ${{ matrix.runTests }}
 
       - name: Move video
@@ -325,8 +415,15 @@ jobs:
             build/reports
 
       - name: Stop UI test IDE and daemons
-        if: ${{ always() }}
+        if: ${{ always() && runner.os != 'Windows' }}
         shell: bash
+        env:
+          GRADLE_ACTIONS_SKIP_BUILD_RESULT_CAPTURE: true
+        run: ${{ matrix.cleanup }}
+
+      - name: Stop UI test IDE and daemons
+        if: ${{ always() && runner.os == 'Windows' }}
+        shell: powershell
         env:
           GRADLE_ACTIONS_SKIP_BUILD_RESULT_CAPTURE: true
         run: ${{ matrix.cleanup }}

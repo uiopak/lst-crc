@@ -32,7 +32,7 @@ class GitServiceOverlayMergeTest : BasePlatformTestCase() {
     }
 
     private class StubRevision(path: String) : ContentRevision {
-        private val filePath: FilePath = VcsUtil.getFilePath(path)
+        private val filePath: FilePath = VcsUtil.getFilePath(path, false)
         private val revisionNumber = object : VcsRevisionNumber {
             override fun asString(): String = "stub"
 

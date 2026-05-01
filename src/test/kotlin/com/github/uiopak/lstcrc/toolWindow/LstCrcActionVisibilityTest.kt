@@ -6,6 +6,7 @@ import com.github.uiopak.lstcrc.state.TabInfo
 import com.github.uiopak.lstcrc.state.ToolWindowState
 import com.github.uiopak.lstcrc.services.ToolWindowStateService
 import com.github.uiopak.lstcrc.utils.LstCrcKeys
+import com.intellij.openapi.actionSystem.ActionUiKind
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.CommonDataKeys
 import com.intellij.openapi.actionSystem.PlatformDataKeys
@@ -195,7 +196,7 @@ class LstCrcActionVisibilityTest : BasePlatformTestCase() {
             builder.add(VcsLogDataKeys.VCS_LOG_COMMIT_SELECTION, commitSelection(commitSelectionSize))
         }
 
-        return AnActionEvent.createFromAnAction(action, null, "test", builder.build())
+        return AnActionEvent.createEvent(action, builder.build(), null, "test", ActionUiKind.NONE, null)
     }
 
     private fun commitSelection(size: Int): VcsLogCommitSelection {
