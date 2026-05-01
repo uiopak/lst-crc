@@ -59,7 +59,15 @@ jobs:
                 ".\\gradlew.bat runIdeForUiTests --info --stacktrace --scan > build\\reports\\idea.log 2>&1"
               ) -WorkingDirectory $PWD -PassThru
               Write-Host "Started runIdeForUiTests with PID $($process.Id)"
-            runTests: .\gradlew.bat uiTest --info --stacktrace -Dui.test.connection.timeout=$env:UI_TEST_CONNECTION_TIMEOUT -Dui.test.timeout=$env:UI_TEST_TIMEOUT
+            runTests: |
+              $gradleArgs = @(
+                "uiTest",
+                "--info",
+                "--stacktrace",
+                "-Dui.test.connection.timeout=$($env:UI_TEST_CONNECTION_TIMEOUT)",
+                "-Dui.test.timeout=$($env:UI_TEST_TIMEOUT)"
+              )
+              & .\gradlew.bat @gradleArgs
             cleanup: |
               & .\gradlew.bat stopUiTestProcesses --stacktrace
               if ($LASTEXITCODE -ne 0) {
@@ -375,7 +383,14 @@ jobs:
 
       - name: Wait for IDE readiness
         if: runner.os == 'Windows'
-        run: .\gradlew.bat uiTestReady --info --stacktrace -Dui.test.server.wait.timeout=$env:UI_TEST_SERVER_WAIT_TIMEOUT
+        run: |
+          $gradleArgs = @(
+            "uiTestReady",
+            "--info",
+            "--stacktrace",
+            "-Dui.test.server.wait.timeout=$($env:UI_TEST_SERVER_WAIT_TIMEOUT)"
+          )
+          & .\gradlew.bat @gradleArgs
         shell: powershell
 
       # Run tests
