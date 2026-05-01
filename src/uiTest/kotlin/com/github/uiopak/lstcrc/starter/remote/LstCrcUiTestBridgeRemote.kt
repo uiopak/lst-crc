@@ -53,8 +53,8 @@ interface LstCrcUiTestBridgeRemote {
     fun setIncludeHeadInScopes(include: Boolean)
     fun setGutterSettings(enableMarkers: Boolean?, enableForNewFiles: Boolean?)
     fun setTreeContextSettings(showSingleRepo: Boolean?, showCommits: Boolean?)
-        fun setMultiRepoTreeContextSetting(show: Boolean)
-        fun isMultiRepoTreeContextEnabled(): Boolean
+    fun setMultiRepoTreeContextSetting(show: Boolean)
+    fun isMultiRepoTreeContextEnabled(): Boolean
     fun treeContextSettingsSnapshot(): String
     fun gutterSettingsSnapshot(): String
     fun selectedTabComparisonMap(): String
