@@ -30,11 +30,22 @@ class BranchSelectionFixture(remoteRobot: RemoteRobot, remoteComponent: RemoteCo
         )
     }
 
+    private fun ContainerFixture.isShowingOnScreen(): Boolean {
+        return runCatching {
+            callJs<Boolean>("component.isShowing()", true)
+        }.getOrDefault(false)
+    }
+
+    private fun findShowingBranchTree(): ContainerFixture? {
+        return remoteRobot.findAll<ContainerFixture>(treeLocator)
+            .firstOrNull { it.isShowingOnScreen() }
+    }
+
     private fun waitForBranchTree(): ContainerFixture {
         val timeout = if (System.getenv("GITHUB_ACTIONS") == "true") Duration.ofSeconds(30) else Duration.ofSeconds(10)
         var branchTree: ContainerFixture? = null
         waitFor(timeout, interval = Duration.ofMillis(250)) {
-            branchTree = remoteRobot.findAll<ContainerFixture>(treeLocator).firstOrNull()
+            branchTree = findShowingBranchTree()
             branchTree != null
         }
         return branchTree!!
@@ -72,11 +83,13 @@ class BranchSelectionFixture(remoteRobot: RemoteRobot, remoteComponent: RemoteCo
                 false
             )
 
-            val tree = waitForBranchTree()
             val timeout = if (System.getenv("GITHUB_ACTIONS") == "true") Duration.ofSeconds(60) else Duration.ofSeconds(20)
+            var tree = waitForBranchTree()
             waitFor(timeout, interval = Duration.ofMillis(500)) {
-                tree.findAllText(branchName).isNotEmpty()
+                tree = findShowingBranchTree() ?: return@waitFor false
+                runCatching { tree.findAllText(branchName).isNotEmpty() }.getOrDefault(false)
             }
+            tree = waitForBranchTree()
             tree.findText(branchName).doubleClick()
 
             waitForPanelToClose()
