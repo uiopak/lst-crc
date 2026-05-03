@@ -43,16 +43,7 @@ class LstCrcFileScopeUiTest : LstCrcUiTestSupport() {
             uiSteps.renameFile("ToMove.txt", "Moved.txt")
             uiSteps.deleteFile("ToDelete.txt")
             uiSteps.createNewFile("NewFile.txt", "Brand new\n")
-            runJs(
-                """
-                com.intellij.ide.util.PropertiesComponent.getInstance().setValue(
-                    "com.github.uiopak.lstcrc.app.includeHeadInScopes",
-                    true,
-                    false
-                );
-                """.trimIndent(),
-                true
-            )
+            setIncludeHeadInScopes(true)
 
             openGitChangesView()
             gitChangesView {

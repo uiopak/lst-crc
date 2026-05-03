@@ -259,6 +259,30 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
                     properties.setValue("com.github.uiopak.lstcrc.app.expandNewFilesInCollapsedDirs", true, true);
                     properties.setValue("com.github.uiopak.lstcrc.app.showUntrackedFilesAsNew", false, false);
 
+                    // Also update LstCrcSettingsService in-memory cache, which takes priority over PropertiesComponent.
+                    const pluginId = com.intellij.openapi.extensions.PluginId.getId("com.github.uiopak.lstcrc");
+                    const plugin = com.intellij.ide.plugins.PluginManagerCore.getPlugin(pluginId);
+                    const cl = plugin ? plugin.getPluginClassLoader() : null;
+                    if (cl) {
+                        try {
+                            const settingsClass = cl.loadClass("com.github.uiopak.lstcrc.toolWindow.LstCrcSettingsService");
+                            const svc = com.intellij.openapi.application.ApplicationManager.getApplication().getService(settingsClass);
+                            if (svc) {
+                                svc.setBoolean("com.github.uiopak.lstcrc.app.showContextMenu", false, false);
+                                svc.setBoolean("com.github.uiopak.lstcrc.app.includeHeadInScopes", false, false);
+                                svc.setBoolean("com.github.uiopak.lstcrc.app.enableGutterMarkers", true, true);
+                                svc.setBoolean("com.github.uiopak.lstcrc.app.enableGutterForNewFiles", false, false);
+                                svc.setBoolean("com.github.uiopak.lstcrc.app.showToolWindowTitle", false, false);
+                                svc.setBoolean("com.github.uiopak.lstcrc.app.showWidgetContext", false, false);
+                                svc.setBoolean("com.github.uiopak.lstcrc.app.showContextSingleRepo", true, true);
+                                svc.setBoolean("com.github.uiopak.lstcrc.app.showContextMultiRepo", true, true);
+                                svc.setBoolean("com.github.uiopak.lstcrc.app.showContextForCommits", false, false);
+                                svc.setBoolean("com.github.uiopak.lstcrc.app.expandNewFilesInCollapsedDirs", true, true);
+                                svc.setBoolean("com.github.uiopak.lstcrc.app.showUntrackedFilesAsNew", false, false);
+                            }
+                        } catch(e) {}
+                    }
+
                     const toolWindow = com.intellij.openapi.wm.ToolWindowManager.getInstance(project).getToolWindow("GitChangesView");
                     if (toolWindow) {
                         toolWindow.getComponent().putClientProperty(
@@ -551,24 +575,16 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
 
     fun setShowWidgetContext(show: Boolean) {
         step("Set widget context prefix to $show") {
-            runJs(
-                """
-                const properties = com.intellij.ide.util.PropertiesComponent.getInstance();
-                properties.setValue('$SHOW_WIDGET_CONTEXT_KEY', ${if (show) "true" else "false"}, false);
-                """.trimIndent(),
-                true
-            )
+            setPluginBooleanSetting(SHOW_WIDGET_CONTEXT_KEY, show, false)
         }
     }
 
     fun setShowToolWindowTitle(show: Boolean) {
         step("Set tool window title visibility to $show") {
+            setPluginBooleanSetting(SHOW_TOOL_WINDOW_TITLE_KEY, show, false)
             runJs(
                 """
                 (function() {
-                    const properties = com.intellij.ide.util.PropertiesComponent.getInstance();
-                    properties.setValue('$SHOW_TOOL_WINDOW_TITLE_KEY', ${if (show) "true" else "false"}, false);
-
                     const project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
                     if (!project) return;
 
@@ -617,12 +633,10 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
 
     fun setIncludeHeadInScopes(include: Boolean) {
         step("Set include HEAD in scopes to $include") {
+            setPluginBooleanSetting(INCLUDE_HEAD_IN_SCOPES_KEY, include, false)
             runJs(
                 """
                 (function() {
-                    const properties = com.intellij.ide.util.PropertiesComponent.getInstance();
-                    properties.setValue('$INCLUDE_HEAD_IN_SCOPES_KEY', ${if (include) "true" else "false"}, false);
-
                     const project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
                     if (!project) return;
 
@@ -643,39 +657,19 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
     fun setGutterSettings(enableMarkers: Boolean? = null, enableForNewFiles: Boolean? = null) {
         step("Update gutter settings") {
             check(enableMarkers != null || enableForNewFiles != null) { "At least one gutter setting must be provided" }
-
-            val updates = buildList {
-                enableMarkers?.let { add("properties.setValue('$ENABLE_GUTTER_MARKERS_KEY', ${if (it) "true" else "false"}, true);") }
-                enableForNewFiles?.let { add("properties.setValue('$ENABLE_GUTTER_FOR_NEW_FILES_KEY', ${if (it) "true" else "false"}, false);") }
-            }
-
-            runJs(
-                """
-                (function() {
-                    const properties = com.intellij.ide.util.PropertiesComponent.getInstance();
-                    ${updates.joinToString("\n")}
-                })();
-                """.trimIndent(),
-                true
-            )
+            enableMarkers?.let { setPluginBooleanSetting(ENABLE_GUTTER_MARKERS_KEY, it, true) }
+            enableForNewFiles?.let { setPluginBooleanSetting(ENABLE_GUTTER_FOR_NEW_FILES_KEY, it, false) }
         }
     }
 
     fun setTreeContextSettings(showSingleRepo: Boolean? = null, showCommits: Boolean? = null) {
         step("Update tree context settings") {
             check(showSingleRepo != null || showCommits != null) { "At least one tree context setting must be provided" }
-
-            val updates = buildList {
-                showSingleRepo?.let { add("properties.setValue('$SHOW_CONTEXT_SINGLE_REPO_KEY', ${if (it) "true" else "false"}, true);") }
-                showCommits?.let { add("properties.setValue('$SHOW_CONTEXT_FOR_COMMITS_KEY', ${if (it) "true" else "false"}, false);") }
-            }
-
+            showSingleRepo?.let { setPluginBooleanSetting(SHOW_CONTEXT_SINGLE_REPO_KEY, it, true) }
+            showCommits?.let { setPluginBooleanSetting(SHOW_CONTEXT_FOR_COMMITS_KEY, it, false) }
             runJs(
                 """
                 (function() {
-                    const properties = com.intellij.ide.util.PropertiesComponent.getInstance();
-                    ${updates.joinToString("\n")}
-
                     const project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
                     if (!project) return;
 
@@ -695,26 +689,16 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
 
     fun setExpandNewFilesInCollapsedDirs(enabled: Boolean) {
         step("Set expand new files in collapsed dirs to $enabled") {
-            runJs(
-                """
-                (function() {
-                    const properties = com.intellij.ide.util.PropertiesComponent.getInstance();
-                    properties.setValue('$EXPAND_NEW_FILES_IN_COLLAPSED_DIRS_KEY', ${if (enabled) "true" else "false"}, true);
-                })();
-                """.trimIndent(),
-                true
-            )
+            setPluginBooleanSetting(EXPAND_NEW_FILES_IN_COLLAPSED_DIRS_KEY, enabled, true)
         }
     }
 
     fun setShowUntrackedFilesAsNew(enabled: Boolean) {
         step("Set show untracked files as new to $enabled") {
+            setPluginBooleanSetting(SHOW_UNTRACKED_FILES_AS_NEW_KEY, enabled, false)
             runJs(
                 """
                 (function() {
-                    const properties = com.intellij.ide.util.PropertiesComponent.getInstance();
-                    properties.setValue('$SHOW_UNTRACKED_FILES_AS_NEW_KEY', ${if (enabled) "true" else "false"}, false);
-
                     const project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
                     if (!project) return;
 
@@ -1152,8 +1136,7 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
 
                 const displayName = content.getDisplayName ? String(content.getDisplayName()) : "";
                 const classLoader = content.getComponent().getClass().getClassLoader();
-                const projectDir = project.guessProjectDir();
-                const repoRootPath = projectDir ? String(projectDir.getPath()) : (project.getBasePath() ? String(project.getBasePath()).replace(/\\/g, '/') : null);
+                const repoRootPath = project.getBasePath() ? String(project.getBasePath()).replace(/\\/g, '/') : null;
                 if (!repoRootPath) {
                     throw new java.lang.IllegalStateException("Project base path is not available for repo comparison update");
                 }
@@ -1335,6 +1318,33 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
                 true
             )
         }
+    }
+
+    /**
+     * Sets a boolean plugin setting via [LstCrcSettingsService], bypassing PropertiesComponent.
+     * This is needed because [LstCrcSettingsService] maintains its own in-memory cache in
+     * [LstCrcSettingsService.SettingsState.values] which takes priority over PropertiesComponent.
+     * Direct PropertiesComponent writes from test JS would be ignored if the cache already holds a value.
+     */
+    private fun setPluginBooleanSetting(key: String, value: Boolean, default: Boolean) {
+        val valueStr = if (value) "true" else "false"
+        val defaultStr = if (default) "true" else "false"
+        runJs(
+            """
+            (function() {
+                const pluginId = com.intellij.openapi.extensions.PluginId.getId("com.github.uiopak.lstcrc");
+                const plugin = com.intellij.ide.plugins.PluginManagerCore.getPlugin(pluginId);
+                const cl = plugin ? plugin.getPluginClassLoader() : null;
+                if (!cl) return;
+                try {
+                    const settingsClass = cl.loadClass("com.github.uiopak.lstcrc.toolWindow.LstCrcSettingsService");
+                    const appService = com.intellij.openapi.application.ApplicationManager.getApplication().getService(settingsClass);
+                    if (appService) appService.setBoolean(${toJsStringLiteral(key)}, $valueStr, $defaultStr);
+                } catch(e) {}
+            })();
+            """.trimIndent(),
+            true
+        )
     }
 
     private fun toJsStringLiteral(value: String): String {
