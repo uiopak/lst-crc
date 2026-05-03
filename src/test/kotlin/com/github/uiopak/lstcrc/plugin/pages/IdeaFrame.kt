@@ -37,6 +37,8 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
         private const val SHOW_WIDGET_CONTEXT_KEY = "com.github.uiopak.lstcrc.app.showWidgetContext"
         private const val SHOW_CONTEXT_SINGLE_REPO_KEY = "com.github.uiopak.lstcrc.app.showContextSingleRepo"
         private const val SHOW_CONTEXT_FOR_COMMITS_KEY = "com.github.uiopak.lstcrc.app.showContextForCommits"
+        private const val EXPAND_NEW_FILES_IN_COLLAPSED_DIRS_KEY = "com.github.uiopak.lstcrc.app.expandNewFilesInCollapsedDirs"
+        private const val SHOW_UNTRACKED_FILES_AS_NEW_KEY = "com.github.uiopak.lstcrc.app.showUntrackedFilesAsNew"
     }
 
     val projectViewTree
@@ -254,6 +256,8 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
                     properties.setValue("com.github.uiopak.lstcrc.app.showContextSingleRepo", true, true);
                     properties.setValue("com.github.uiopak.lstcrc.app.showContextMultiRepo", true, true);
                     properties.setValue("com.github.uiopak.lstcrc.app.showContextForCommits", false, false);
+                    properties.setValue("com.github.uiopak.lstcrc.app.expandNewFilesInCollapsedDirs", true, true);
+                    properties.setValue("com.github.uiopak.lstcrc.app.showUntrackedFilesAsNew", false, false);
 
                     const toolWindow = com.intellij.openapi.wm.ToolWindowManager.getInstance(project).getToolWindow("GitChangesView");
                     if (toolWindow) {
@@ -689,6 +693,45 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
         }
     }
 
+    fun setExpandNewFilesInCollapsedDirs(enabled: Boolean) {
+        step("Set expand new files in collapsed dirs to $enabled") {
+            runJs(
+                """
+                (function() {
+                    const properties = com.intellij.ide.util.PropertiesComponent.getInstance();
+                    properties.setValue('$EXPAND_NEW_FILES_IN_COLLAPSED_DIRS_KEY', ${if (enabled) "true" else "false"}, true);
+                })();
+                """.trimIndent(),
+                true
+            )
+        }
+    }
+
+    fun setShowUntrackedFilesAsNew(enabled: Boolean) {
+        step("Set show untracked files as new to $enabled") {
+            runJs(
+                """
+                (function() {
+                    const properties = com.intellij.ide.util.PropertiesComponent.getInstance();
+                    properties.setValue('$SHOW_UNTRACKED_FILES_AS_NEW_KEY', ${if (enabled) "true" else "false"}, false);
+
+                    const project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
+                    if (!project) return;
+
+                    const toolWindow = com.intellij.openapi.wm.ToolWindowManager.getInstance(project).getToolWindow("GitChangesView");
+                    const browser = toolWindow && toolWindow.getContentManager().getSelectedContent()
+                        ? toolWindow.getContentManager().getSelectedContent().getComponent()
+                        : null;
+                    if (browser && browser.requestRefreshData) {
+                        browser.requestRefreshData();
+                    }
+                })();
+                """.trimIndent(),
+                true
+            )
+        }
+    }
+
     fun treeContextSettingsSnapshot(): String {
         return step("Read tree context settings") {
             callJs<String>(
@@ -801,17 +844,34 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
                         const iterator = files.iterator();
                         while (iterator.hasNext()) {
                             const file = iterator.next();
-                            items.push(String(file.getPath()).split('/').pop());
+                            const p = String(file.getPath());
+                            items.push(p.split('/').pop() + "(" + p.substring(Math.max(0, p.length - 60)) + ")");
                         }
                         items.sort();
                         return items.join(",");
                     }
 
+                    const compCtx = diffDataService.getActiveComparisonContext ? diffDataService.getActiveComparisonContext() : null;
+                    const ctxValues = [];
+                    if (compCtx) {
+                        const ctxIt = compCtx.values().iterator();
+                        while (ctxIt.hasNext()) { ctxValues.push(String(ctxIt.next())); }
+                    }
+                    function namesFromPaths(paths) {
+                        if (!paths) return "";
+                        const items = [];
+                        const it = paths.iterator();
+                        while (it.hasNext()) { const p = String(it.next()); items.push(p); }
+                        items.sort();
+                        return items.join(",");
+                    }
                     return [
-                        "created=" + namesOf(diffDataService.getCreatedFiles()),
-                        "modified=" + namesOf(diffDataService.getModifiedFiles()),
-                        "moved=" + namesOf(diffDataService.getMovedFiles()),
-                        "deleted=" + namesOf(diffDataService.getDeletedFiles())
+                        "branch=" + String(diffDataService.getActiveBranchName() || ""),
+                        "ctx=" + ctxValues.sort().join(","),
+                        "created=" + namesFromPaths(diffDataService.getCreatedFilePaths()),
+                        "modified=" + namesFromPaths(diffDataService.getModifiedFilePaths()),
+                        "moved=" + namesFromPaths(diffDataService.getMovedFilePaths()),
+                        "deleted=" + namesFromPaths(diffDataService.getDeletedFilePaths())
                     ].join("|");
                 })();
                 """.trimIndent(),
@@ -824,6 +884,63 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
         return findAll<ComponentFixture>(
             byXpath("LstCrcAsyncChangesTree with '$text'", "//div[@class='LstCrcAsyncChangesTree' and contains(@visible_text,'$text')]")
         ).isNotEmpty()
+    }
+
+    fun fileStatusForTreeItem(fileName: String): String {
+        return step("Read file status for '$fileName' in changes tree") {
+            callJs<String>(
+                """
+                (function() {
+                    var result = new java.util.concurrent.atomic.AtomicReference("");
+                    com.intellij.openapi.application.ApplicationManager.getApplication().invokeAndWait(new java.lang.Runnable({
+                        run: function() {
+                            var tree = null;
+                            var windows = java.awt.Window.getWindows();
+                            for (var w = 0; w < windows.length && !tree; w++) {
+                                var queue = new java.util.LinkedList();
+                                queue.add(windows[w]);
+                                while (!queue.isEmpty()) {
+                                    var c = queue.poll();
+                                    if (c && c.getClass().getName().endsWith("LstCrcAsyncChangesTree") && c.isShowing()) {
+                                        tree = c;
+                                        break;
+                                    } else if (c) {
+                                        try {
+                                            var children = c.getComponents();
+                                            if (children) {
+                                                for (var ci = 0; ci < children.length; ci++) queue.add(children[ci]);
+                                            }
+                                        } catch(e) {}
+                                    }
+                                }
+                            }
+                            if (!tree) return;
+                            for (var row = 0; row < tree.getRowCount(); row++) {
+                                var path = tree.getPathForRow(row);
+                                if (!path) continue;
+                                var node = path.getLastPathComponent();
+                                if (!node) continue;
+                                var userObj = null;
+                                try { userObj = node.getUserObject(); } catch(e) { continue; }
+                                if (!(userObj instanceof com.intellij.openapi.vcs.changes.Change)) continue;
+                                var afterRev = userObj.getAfterRevision();
+                                var beforeRev = userObj.getBeforeRevision();
+                                var file = afterRev ? afterRev.getFile() : (beforeRev ? beforeRev.getFile() : null);
+                                if (!file) continue;
+                                var name = String(file.getName());
+                                if (name === ${toJsStringLiteral(fileName)}) {
+                                    result.set(String(userObj.getFileStatus().getId()));
+                                    break;
+                                }
+                            }
+                        }
+                    }));
+                    return result.get();
+                })()
+                """.trimIndent(),
+                true
+            )
+        }
     }
 
     fun selectedLstCrcTabName(): String {
@@ -1035,7 +1152,8 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
 
                 const displayName = content.getDisplayName ? String(content.getDisplayName()) : "";
                 const classLoader = content.getComponent().getClass().getClassLoader();
-                const repoRootPath = project.getBasePath();
+                const projectDir = project.guessProjectDir();
+                const repoRootPath = projectDir ? String(projectDir.getPath()) : (project.getBasePath() ? String(project.getBasePath()).replace(/\\/g, '/') : null);
                 if (!repoRootPath) {
                     throw new java.lang.IllegalStateException("Project base path is not available for repo comparison update");
                 }
@@ -1063,6 +1181,73 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
 
                 const comparisonMap = new java.util.HashMap(selectedTabInfo.getComparisonMap());
                 comparisonMap.put(repoRootPath, revision);
+                stateService.updateTabComparisonMap(selectedTabInfo.getBranchName(), comparisonMap, true);
+                """.trimIndent(),
+                true
+            )
+        }
+    }
+
+    fun setBranchAsRepoComparison(branchName: String) {
+        step("Set selected tab repo comparison to branch $branchName") {
+            runJs(
+                """
+                const branchName = ${toJsStringLiteral(branchName)};
+                const project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
+                if (!project) {
+                    throw new java.lang.IllegalStateException("No open project available for repo comparison update");
+                }
+
+                const toolWindow = com.intellij.openapi.wm.ToolWindowManager.getInstance(project).getToolWindow("GitChangesView");
+                const content = toolWindow ? toolWindow.getContentManager().getSelectedContent() : null;
+                if (!content) {
+                    throw new java.lang.IllegalStateException("No selected LST-CRC tab content available for repo comparison update");
+                }
+
+                const displayName = content.getDisplayName ? String(content.getDisplayName()) : "";
+                const classLoader = content.getComponent().getClass().getClassLoader();
+                const stateServiceClass = java.lang.Class.forName("com.github.uiopak.lstcrc.services.ToolWindowStateService", true, classLoader);
+                const stateService = project.getService(stateServiceClass);
+                let selectedTabInfo = stateService ? stateService.getSelectedTabInfo() : null;
+                const state = stateService ? stateService.getState() : null;
+                const openTabs = state ? state.getOpenTabs() : null;
+                let selectedTabIndex = -1;
+
+                if (openTabs && displayName.length > 0) {
+                    let index = 0;
+                    const iterator = openTabs.iterator();
+                    while (iterator.hasNext()) {
+                        const candidate = iterator.next();
+                        if (candidate.getBranchName() === displayName || candidate.getAlias() === displayName) {
+                            selectedTabInfo = candidate;
+                            selectedTabIndex = index;
+                            break;
+                        }
+                        index += 1;
+                    }
+                }
+
+                if (!selectedTabInfo) {
+                    throw new java.lang.IllegalStateException("No selected LST-CRC tab available for repo comparison update");
+                }
+
+                if (selectedTabIndex >= 0) {
+                    stateService.setSelectedTab(selectedTabIndex);
+                    selectedTabInfo = stateService.getSelectedTabInfo();
+                }
+
+                // Use ProjectUtil.guessProjectDir().path — the same call used by the Starter bridge — to
+                // get a VirtualFile path with forward slashes that exactly matches repo.root.path in GitService.
+                const projectDir = com.intellij.openapi.project.ProjectUtil.guessProjectDir(project);
+                const repoRootPath = projectDir
+                    ? String(projectDir.getPath())
+                    : (project.getBasePath() ? String(project.getBasePath()).replace(/\\/g, '/') : null);
+                if (!repoRootPath) {
+                    throw new java.lang.IllegalStateException("Project base path is not available for repo comparison update");
+                }
+
+                const comparisonMap = new java.util.HashMap(selectedTabInfo.getComparisonMap());
+                comparisonMap.put(repoRootPath, branchName);
                 stateService.updateTabComparisonMap(selectedTabInfo.getBranchName(), comparisonMap, true);
                 """.trimIndent(),
                 true

@@ -257,7 +257,7 @@ class PluginUiTestSteps(private val remoteRobot: RemoteRobot) {
         runGitCommand("config", "user.email", "lst-crc-ui-tests@example.invalid")
     }
 
-    private fun runGitCommand(vararg args: String): String = with(remoteRobot) {
+    internal fun runGitCommand(vararg args: String): String = with(remoteRobot) {
         val commandArguments = listOf("git", *args).joinToString(", ") { "\"$it\"" }
         waitForGitIdle()
 

@@ -109,16 +109,11 @@ This document correlates each production file with the JetBrains Platform APIs a
 
 ### LstCrcSearchScopeProvider.kt
 - JetBrains correlation: Correct `SearchScopeProvider` usage for search UI integration.
-- Keep assessment: Keep it for the current search behavior because it groups the LST-CRC search scopes, intentionally omits deleted-file search, and pairs with `NamedScopeWrapper` to avoid library-backed results.
-- Simplify or remove: Small cleanup only. The scope-wrapping logic could be shared more explicitly with `LstCrcScopeProvider` or cached, but replacing this provider would need to preserve the deleted-file omission and current library-search behavior.
-
-### NamedScopeWrapper.kt
-- JetBrains correlation: Reimplements the platform's named-scope-to-search-scope adapter. The real public baseline is `GlobalSearchScopesCore.filterScope(...)`; `DefaultSearchScopeProviders.wrapNamedScope(...)` is the IDE's own internal convenience wrapper built on top of that adapter. The plugin keeps its own wrapper to preserve named-scope matching while forcing `isSearchInLibraries() = false`.
-- Keep assessment: Keep it while that custom behavior matters.
-- Simplify or remove: Re-evaluate whether the platform adapter can be reused if library exclusion is enforced elsewhere. If not, this file is justified.
+- Keep assessment: Keep it for the current search behavior because it groups the LST-CRC search scopes, intentionally omits deleted-file search, and now uses platform `GlobalSearchScopesCore.filterScope(...)` directly.
+- Simplify or remove: Small cleanup only. The scope construction logic could be cached or shared more explicitly with `LstCrcScopeProvider`, but replacing this provider would still need to preserve the deleted-file omission and current `myAllScope` behavior.
 
 ### Search-Scope Limitation
-- JetBrains correlation: Deleted-file revisions are materialized as VCS-backed virtual files, but the current Find/Search integration path treats the plugin wrapper as a plain `GlobalSearchScope`, not as a file enumeration source.
+- JetBrains correlation: Deleted-file revisions are materialized as VCS-backed virtual files, but the current Find/Search integration path treats the filtered named scope as a plain `GlobalSearchScope`, not as a file enumeration source.
 - Keep assessment: Keep the current limitation explicit in the docs. The plugin can classify and color deleted files, but it should not claim deleted-file search support through Find in Files. The same search scopes are also empty on `HEAD` unless `Include HEAD in scopes` is enabled.
 - Simplify or remove: If deleted-file search is ever revisited, it needs a different enumeration strategy rather than simply adding `DeletedFilesScope` to `LstCrcSearchScopeProvider`. The platform VCS path that supports change-scoped searching uses a VCS-specific local scope with explicit virtual-file and range enumeration, which deleted revisions do not fit cleanly.
 
@@ -162,7 +157,7 @@ This document correlates each production file with the JetBrains Platform APIs a
 - Simplify or remove: The popup-building code can be extracted into smaller helpers, but the behavior itself is justified.
 
 ### ToolWindowSettingsProvider.kt
-- JetBrains correlation: Standard `PropertiesComponent` storage and toggle-action menu building, with one contained use of internal tool-window UI classes.
+- JetBrains correlation: Typed app-level settings storage via `LstCrcSettingsService` plus toggle-action menu building, with one contained use of internal tool-window UI classes.
 - Keep assessment: Keep it; centralized settings are the right design.
 - Simplify or remove: The strongest cleanup targets are repetitive toggle factories and direct access from tests. The internal `ToolWindowContentUi` coupling should be watched during IDE upgrades.
 
@@ -206,4 +201,4 @@ This document correlates each production file with the JetBrains Platform APIs a
 ### LstCrcUiTestBridge.kt
 - JetBrains correlation: Uses application services, editors, scopes, VCS APIs, and some reflection-heavy inspection to support IDE Starter tests. It is intentionally excluded from the published plugin in normal builds.
 - Keep assessment: Keep it for UI testing; the test suite needs a bridge with broad reach.
-- Simplify or remove: The best cleanup targets are reflection-heavy tracker inspection, repeated `PropertiesComponent` lookups, and consolidating repeated path and tab-manipulation helpers. Because it is test-only, these are maintainability issues rather than product risks.
+- Simplify or remove: The best cleanup targets are reflection-heavy tracker inspection and consolidating repeated path/tab-manipulation helpers. Settings access has already moved to `LstCrcSettingsService`, reducing direct string-key coupling.

@@ -25,11 +25,6 @@ import kotlinx.coroutines.withContext
 object ToolWindowHelper {
     private val logger = thisLogger()
 
-    private data class BranchSelectionData(
-        val primaryRepo: GitRepository?,
-        val branchSnapshot: BranchSnapshot
-    )
-
     /**
      * Creates a new closable content tab for a branch comparison and adds it to the content manager.
      * This is the standardized way to create a new branch tab.
@@ -120,38 +115,30 @@ object ToolWindowHelper {
             val selectionTabName = LstCrcBundle.message("tab.name.select.branch")
             val contentManager: ContentManager = toolWindow.contentManager
 
-            if (selectExistingBranchSelectionTab(contentManager, selectionTabName)) {
+            val existingSelection = contentManager.findContent(selectionTabName)
+            if (existingSelection != null) {
+                contentManager.setSelectedContent(existingSelection, true)
+                (existingSelection.component as? BranchSelectionPanel)?.requestFocusOnSearchField()
+                logger.info("HELPER: Found existing '$selectionTabName' tab and selected it.")
                 return@activate
             }
 
             val stateService = project.service<ToolWindowStateService>()
 
             stateService.coroutineScope.launch {
-                val data = loadBranchSelectionData(project)
+                val gitService = project.service<GitService>()
+                val (primaryRepo, branchSnapshot) = withBackgroundProgress(project, LstCrcBundle.message("git.task.repo.info")) {
+                    val repo = gitService.getPrimaryRepository()
+                    Pair(repo, gitService.getBranchSnapshot(repo))
+                }
 
                 withContext(Dispatchers.EDT) {
                     if (project.isDisposed || toolWindow.isDisposed) return@withContext
-                    addBranchSelectionContent(project, toolWindow, selectionTabName, contentManager, stateService, data)
+                    addBranchSelectionContent(project, toolWindow, selectionTabName, contentManager, stateService, primaryRepo, branchSnapshot)
                 }
             }
 
         }, true, true)
-    }
-
-    private fun selectExistingBranchSelectionTab(contentManager: ContentManager, selectionTabName: String): Boolean {
-        val existingContent = contentManager.findContent(selectionTabName) ?: return false
-        contentManager.setSelectedContent(existingContent, true)
-        (existingContent.component as? BranchSelectionPanel)?.requestFocusOnSearchField()
-        logger.info("HELPER: Found existing '$selectionTabName' tab and selected it.")
-        return true
-    }
-
-    private suspend fun loadBranchSelectionData(project: Project): BranchSelectionData {
-        return withBackgroundProgress(project, LstCrcBundle.message("git.task.repo.info")) {
-            val gitService = project.service<GitService>()
-            val repo = gitService.getPrimaryRepository()?.also { it.update() }
-            BranchSelectionData(repo, gitService.getBranchSnapshot(repo))
-        }
     }
 
     private fun addBranchSelectionContent(
@@ -160,9 +147,13 @@ object ToolWindowHelper {
         selectionTabName: String,
         contentManager: ContentManager,
         stateService: ToolWindowStateService,
-        data: BranchSelectionData
+        primaryRepo: GitRepository?,
+        branchSnapshot: BranchSnapshot
     ) {
-        val branchSelectionUi = createBranchSelectionPanel(project, toolWindow, selectionTabName, stateService, data)
+        val gitService = project.service<GitService>()
+        val branchSelectionUi = BranchSelectionPanel(gitService, primaryRepo, branchSnapshot) { selectedBranchName ->
+            handleBranchSelected(project, toolWindow, selectionTabName, stateService, selectedBranchName)
+        }
         logger.info("HELPER: Creating and adding new '$selectionTabName' tab to UI.")
         val newContent = ContentFactory.getInstance().createContent(branchSelectionUi.getPanel(), selectionTabName, true).apply {
             isCloseable = true
@@ -170,19 +161,6 @@ object ToolWindowHelper {
         contentManager.addContent(newContent)
         contentManager.setSelectedContent(newContent, true)
         branchSelectionUi.requestFocusOnSearchField()
-    }
-
-    private fun createBranchSelectionPanel(
-        project: Project,
-        toolWindow: ToolWindow,
-        selectionTabName: String,
-        stateService: ToolWindowStateService,
-        data: BranchSelectionData
-    ): BranchSelectionPanel {
-        val gitService = project.service<GitService>()
-        return BranchSelectionPanel(gitService, data.primaryRepo, data.branchSnapshot) { selectedBranchName ->
-            handleBranchSelected(project, toolWindow, selectionTabName, stateService, selectedBranchName)
-        }
     }
 
     private fun handleBranchSelected(

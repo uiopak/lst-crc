@@ -60,6 +60,12 @@ class VisualTrackerManager(
     private val logger = thisLogger()
     private val visualTrackers = ConcurrentHashMap<Document, SimpleLocalLineStatusTracker>()
 
+    private fun isExpectedMissingFileInRevision(message: String?): Boolean {
+        if (message.isNullOrBlank()) return false
+        return message.contains("does not exist in", ignoreCase = true) ||
+            message.contains("exists on disk, but not in", ignoreCase = true)
+    }
+
     private data class TargetRevisionContext(
         val diffDataService: ProjectActiveDiffDataService,
         val repository: GitRepository,
@@ -332,7 +338,7 @@ class VisualTrackerManager(
                 gitService.getFileContentForRevision(revision, file)
                     ?: return@withContext fallbackContent()
             } catch (e: VcsException) {
-                if (e.message.contains("does not exist in", ignoreCase = true)) {
+                if (isExpectedMissingFileInRevision(e.message)) {
                     ""
                 } else {
                     logger.warn("VISUAL_TRACKER: Failed to load content for ${file.path}. VcsException Error: ${e.message}")
@@ -342,7 +348,7 @@ class VisualTrackerManager(
                 // Defensive fallback for unexpected non-VcsException errors
                 val rootCause = generateSequence<Throwable>(e) { it.cause }
                     .firstOrNull { it is VcsException } as? VcsException
-                if (rootCause != null && rootCause.message.contains("does not exist in", ignoreCase = true)) {
+                if (rootCause != null && isExpectedMissingFileInRevision(rootCause.message)) {
                     ""
                 } else {
                     logger.warn("VISUAL_TRACKER: Failed to load content for ${file.path}. Unexpected Error: ${(rootCause ?: e).message}")

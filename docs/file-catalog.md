@@ -1,6 +1,6 @@
 # File Catalog
 
-This document lists each current `src/main` file separately and explains why it exists, what role it performs, and what it depends on. That includes the IDE Starter test bridge file, which lives under `src/main` for service discovery but is excluded from ordinary main builds unless `starterUiTest` or `includeTestBridge` enables it.
+This document lists each current `src/main` file separately and explains why it exists, what role it performs, and what it depends on. IDE Starter bridge code lives under `src/testBridge` and is included only for `starterUiTest` / `starterPerformanceTest` (or when `-PincludeTestBridge=true` is passed).
 
 ## Entry And Resource Files
 
@@ -128,15 +128,9 @@ This document lists each current `src/main` file separately and explains why it 
 
 ### LstCrcSearchScopeProvider.kt
 - Role: `SearchScopeProvider` that wraps the plugin scopes for Find/Search scope pickers.
-- Depends on: `LstCrcProvidedScopes`, `NamedScopeWrapper`, and `NamedScopeManager`.
-- Connected to: Find/Search UI and `NamedScopeWrapper`.
+- Depends on: `LstCrcProvidedScopes`, `NamedScopeManager`, and `GlobalSearchScopesCore.filterScope(...)`.
+- Connected to: Find/Search UI and platform search-scope infrastructure.
 - Why it exists: Search-scope integration is a separate platform extension point from custom scope registration, and this provider re-exposes the same named-scope data for Find/Search UI. It intentionally exposes only created, modified, moved, and changed. Deleted files remain available only as a named scope because the current search integration path does not enumerate those revision-backed virtual files correctly.
-
-### NamedScopeWrapper.kt
-- Role: Adapter that turns a `NamedScope` into a `GlobalSearchScope` suitable for search UIs.
-- Depends on: `GlobalSearchScope`, `NamedScope`, `PackageSetBase`, `NamedScopeManager`, and PSI fallback lookup.
-- Connected to: `LstCrcSearchScopeProvider` and search infrastructure.
-- Why it exists: The plugin needs custom behavior, especially library exclusion, beyond the default platform wrapper shape.
 
 ## Gutter And Visual Tracking
 
@@ -186,7 +180,7 @@ This document lists each current `src/main` file separately and explains why it 
 
 ### ToolWindowSettingsProvider.kt
 - Role: Central settings holder and gear-menu builder for click behavior, gutter options, context visibility, widget display, and scope-related toggles.
-- Depends on: `PropertiesComponent`, toggle-action APIs, message bus, and a few tool-window internals for title visibility.
+- Depends on: `LstCrcSettingsService`, toggle-action APIs, message bus, and a few tool-window internals for title visibility.
 - Connected to: `MyToolWindowFactory`, `VisualTrackerManager`, `LstCrcChangesBrowser`, `LstCrcStatusWidget`, and the UI test bridge.
 - Why it exists: The plugin exposes many interaction toggles and needs one authoritative settings source.
 
@@ -238,4 +232,4 @@ This document lists each current `src/main` file separately and explains why it 
 - Role: Application-level bridge that exposes plugin state and operations to IDE Starter UI tests.
 - Depends on: Core plugin services, editors, scopes, VCS services, and test-only path helpers.
 - Connected to: IDE Starter remote test clients and UI-test task wiring.
-- Why it exists: The plugin's advanced UI flows need reliable programmatic hooks during automated UI testing. It is kept under `src/main` for IDE Starter service discovery, but ordinary main builds exclude it unless `starterUiTest` or `includeTestBridge` enables it.
+- Why it exists: The plugin's advanced UI flows need reliable programmatic hooks during automated UI testing. It is implemented in `src/testBridge` and wired into `main` source only for starter test tasks or explicit `-PincludeTestBridge=true` runs.

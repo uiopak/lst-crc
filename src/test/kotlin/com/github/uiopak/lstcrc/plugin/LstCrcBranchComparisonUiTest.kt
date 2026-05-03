@@ -516,6 +516,581 @@ class LstCrcBranchComparisonUiTest : LstCrcUiTestSupport() {
         }
     }
 
+    @Test
+    @Video
+    fun testTreeStatePersistsAcrossTabSwitches(remoteRobot: RemoteRobot) = with(remoteRobot) {
+        val uiSteps = PluginUiTestSteps(remoteRobot)
+
+        prepareFreshProject()
+
+        idea {
+            step("Wait for smart mode") {
+                dumbAware(Duration.ofMinutes(5)) {}
+            }
+
+            uiSteps.initializeGitRepository()
+            resetGitChangesViewState()
+
+            uiSteps.createNewFile("Base.txt", "base\n")
+            uiSteps.commitChanges("Initial commit")
+            val defaultBranch = uiSteps.defaultBranchName()
+
+            uiSteps.createBranch("feature-tree-a")
+            uiSteps.createNewFile("nested/featureA/OnlyA.txt", "only a\n")
+            uiSteps.commitChanges("Branch A nested file")
+            uiSteps.checkoutBranch(defaultBranch)
+
+            uiSteps.createBranch("feature-tree-b")
+            uiSteps.createNewFile("nested/featureB/OnlyB.txt", "only b\n")
+            uiSteps.commitChanges("Branch B nested file")
+            uiSteps.checkoutBranch(defaultBranch)
+
+            openGitChangesView()
+
+            gitChangesView { addTab() }
+            branchSelection { searchAndSelect("feature-tree-a") }
+            gitChangesView {
+                selectTab("feature-tree-a")
+                step("Wait for OnlyA.txt to appear") {
+                    waitFor(Duration.ofSeconds(10)) {
+                        changesTree.findAllText("OnlyA.txt").isNotEmpty()
+                    }
+                }
+            }
+
+            step("Collapse 'nested' on tab A") {
+                setChangesTreeNodeExpanded("nested", false)
+            }
+
+            gitChangesView {
+                step("Verify OnlyA.txt is hidden after collapse") {
+                    waitFor(Duration.ofSeconds(5), interval = Duration.ofMillis(200)) {
+                        changesTree.findAllText("OnlyA.txt").isEmpty()
+                    }
+                    assertTrue(
+                        changesTree.findAllText("OnlyA.txt").isEmpty(),
+                        "OnlyA.txt should be hidden after collapsing 'nested'"
+                    )
+                }
+            }
+
+            gitChangesView { addTab() }
+            branchSelection { searchAndSelect("feature-tree-b") }
+            gitChangesView {
+                selectTab("feature-tree-b")
+                step("Wait for OnlyB.txt to appear on tab B") {
+                    waitFor(Duration.ofSeconds(10)) {
+                        changesTree.findAllText("OnlyB.txt").isNotEmpty()
+                    }
+                }
+            }
+
+            gitChangesView {
+                selectTab("feature-tree-a")
+                step("Wait for tree to stabilize on tab A after switch") {
+                    waitFor(Duration.ofSeconds(10)) {
+                        changesTree.findAllText("(vs feature-tree-a)").isNotEmpty()
+                    }
+                }
+            }
+
+            gitChangesView {
+                step("Verify collapse state persisted across tab switch") {
+                    val visibleItems = changesTree.findAllText("OnlyA.txt")
+                    assertTrue(
+                        visibleItems.isEmpty(),
+                        "Tree collapse state should be preserved after tab switch: 'nested' should still be collapsed, so OnlyA.txt should not be visible"
+                    )
+                }
+            }
+
+            step("Re-expand 'nested' on tab A") {
+                setChangesTreeNodeExpanded("nested", true)
+            }
+
+            gitChangesView {
+                step("Verify OnlyA.txt is visible after re-expanding") {
+                    waitFor(Duration.ofSeconds(5)) {
+                        changesTree.findAllText("OnlyA.txt").isNotEmpty()
+                    }
+                }
+            }
+        }
+    }
+
+    @Test
+    @Video
+    fun testNewFileInCollapsedDirExpandsDirWhenSettingEnabled(remoteRobot: RemoteRobot) = with(remoteRobot) {
+        val uiSteps = PluginUiTestSteps(remoteRobot)
+
+        prepareFreshProject()
+
+        idea {
+            step("Wait for smart mode") {
+                dumbAware(Duration.ofMinutes(5)) {}
+            }
+
+            uiSteps.initializeGitRepository()
+            resetGitChangesViewState()
+
+            uiSteps.createNewFile("Base.txt", "base\n")
+            uiSteps.commitChanges("Initial commit")
+            val defaultBranch = uiSteps.defaultBranchName()
+
+            uiSteps.createBranch("feature-expand-initial")
+            uiSteps.createNewFile("nested/featureA/ExistingA.txt", "existing\n")
+            uiSteps.commitChanges("Initial nested change")
+            uiSteps.checkoutBranch("feature-expand-initial")
+            uiSteps.createBranch("feature-expand-updated")
+            uiSteps.createNewFile("nested/featureA/NewA.txt", "new\n")
+            uiSteps.commitChanges("Updated nested change")
+            uiSteps.checkoutBranch(defaultBranch)
+
+            openGitChangesView()
+            gitChangesView { addTab() }
+            branchSelection { searchAndSelect("feature-expand-initial") }
+            gitChangesView {
+                selectTab("feature-expand-initial")
+                step("Wait for initial nested file to appear") {
+                    waitFor(Duration.ofSeconds(10)) {
+                        changesTree.findAllText("ExistingA.txt").isNotEmpty()
+                    }
+                }
+            }
+
+            step("Collapse 'nested' before introducing a new file") {
+                setChangesTreeNodeExpanded("nested", false)
+            }
+
+            gitChangesView {
+                step("Verify ExistingA.txt is hidden after collapse") {
+                    waitFor(Duration.ofSeconds(5), interval = Duration.ofMillis(200)) {
+                        changesTree.findAllText("ExistingA.txt").isEmpty()
+                    }
+                }
+            }
+
+            setExpandNewFilesInCollapsedDirs(true)
+            setBranchAsRepoComparison("feature-expand-updated")
+
+            step("Wait for selected tab comparison map to update") {
+                waitFor(Duration.ofSeconds(10)) {
+                    selectedTabComparisonMap().contains("feature-expand-updated")
+                }
+            }
+
+            var lastSnapshotA = ""
+            step("Wait for active diff to include the newly added file") {
+                val deadline = System.nanoTime() + Duration.ofSeconds(20).toNanos()
+                while (System.nanoTime() < deadline) {
+                    lastSnapshotA = activeDiffSnapshot()
+                    if (lastSnapshotA.contains("NewA.txt")) break
+                    Thread.sleep(1000)
+                }
+                assertTrue(lastSnapshotA.contains("NewA.txt"),
+                    "Active diff never included NewA.txt after 20s. Last snapshot: '$lastSnapshotA'")
+            }
+
+            gitChangesView {
+                step("Verify collapsed directory expands to reveal NewA.txt") {
+                    waitFor(Duration.ofSeconds(10), interval = Duration.ofMillis(200)) {
+                        changesTree.findAllText("NewA.txt").isNotEmpty()
+                    }
+                    assertTrue(
+                        changesTree.findAllText("NewA.txt").isNotEmpty(),
+                        "NewA.txt should be visible when the setting is enabled and a new file appears in a collapsed directory"
+                    )
+                }
+            }
+        }
+    }
+
+    @Test
+    @Video
+    fun testNewFileInCollapsedDirStaysCollapsedWhenSettingDisabled(remoteRobot: RemoteRobot) = with(remoteRobot) {
+        val uiSteps = PluginUiTestSteps(remoteRobot)
+
+        prepareFreshProject()
+
+        idea {
+            step("Wait for smart mode") {
+                dumbAware(Duration.ofMinutes(5)) {}
+            }
+
+            uiSteps.initializeGitRepository()
+            resetGitChangesViewState()
+
+            uiSteps.createNewFile("Base.txt", "base\n")
+            uiSteps.commitChanges("Initial commit")
+            val defaultBranch = uiSteps.defaultBranchName()
+
+            uiSteps.createBranch("feature-collapse-initial")
+            uiSteps.createNewFile("nested/featureB/ExistingB.txt", "existing\n")
+            uiSteps.commitChanges("Initial nested change")
+            uiSteps.checkoutBranch("feature-collapse-initial")
+            uiSteps.createBranch("feature-collapse-updated")
+            uiSteps.createNewFile("nested/featureB/NewB.txt", "new\n")
+            uiSteps.commitChanges("Updated nested change")
+            uiSteps.checkoutBranch(defaultBranch)
+
+            openGitChangesView()
+            gitChangesView { addTab() }
+            branchSelection { searchAndSelect("feature-collapse-initial") }
+            gitChangesView {
+                selectTab("feature-collapse-initial")
+                step("Wait for initial nested file to appear") {
+                    waitFor(Duration.ofSeconds(10)) {
+                        changesTree.findAllText("ExistingB.txt").isNotEmpty()
+                    }
+                }
+            }
+
+            step("Collapse 'nested' before introducing a new file") {
+                setChangesTreeNodeExpanded("nested", false)
+            }
+
+            gitChangesView {
+                step("Verify ExistingB.txt is hidden after collapse") {
+                    waitFor(Duration.ofSeconds(5), interval = Duration.ofMillis(200)) {
+                        changesTree.findAllText("ExistingB.txt").isEmpty()
+                    }
+                }
+            }
+
+            setExpandNewFilesInCollapsedDirs(false)
+            setBranchAsRepoComparison("feature-collapse-updated")
+
+            step("Wait for selected tab comparison map to update") {
+                waitFor(Duration.ofSeconds(10)) {
+                    selectedTabComparisonMap().contains("feature-collapse-updated")
+                }
+            }
+
+            val branchLog = uiSteps.runGitCommand("diff", "--name-status", "feature-collapse-updated").replace("\n", "|")
+            var lastSnapshotB = ""
+            step("Wait for active diff to include the newly added file") {
+                val deadline = System.nanoTime() + Duration.ofSeconds(20).toNanos()
+                while (System.nanoTime() < deadline) {
+                    lastSnapshotB = activeDiffSnapshot()
+                    if (lastSnapshotB.contains("NewB.txt")) break
+                    Thread.sleep(1000)
+                }
+                assertTrue(lastSnapshotB.contains("NewB.txt"),
+                    "Active diff never included NewB.txt after 20s. " +
+                    "Last snapshot: '$lastSnapshotB'. " +
+                    "feature-collapse-updated log: '$branchLog'")
+            }
+
+            gitChangesView {
+                step("Verify collapsed directory stays collapsed so NewB.txt remains hidden") {
+                    waitFor(Duration.ofSeconds(3), interval = Duration.ofMillis(200)) {
+                        changesTree.findAllText("NewB.txt").isEmpty()
+                    }
+                    assertTrue(
+                        changesTree.findAllText("NewB.txt").isEmpty(),
+                        "NewB.txt should stay hidden when the setting is disabled and a new file appears in a collapsed directory"
+                    )
+                }
+            }
+        }
+    }
+
+    @Test
+    @Video
+    fun testUntrackedFileAppearsWhenSettingEnabled(remoteRobot: RemoteRobot) = with(remoteRobot) {
+        val uiSteps = PluginUiTestSteps(remoteRobot)
+
+        prepareFreshProject()
+
+        idea {
+            step("Wait for smart mode") {
+                dumbAware(Duration.ofMinutes(5)) {}
+            }
+
+            uiSteps.initializeGitRepository()
+            resetGitChangesViewState()
+
+            uiSteps.createNewFile("Base.txt", "base\n")
+            uiSteps.commitChanges("Initial commit")
+            val defaultBranch = uiSteps.defaultBranchName()
+
+            uiSteps.createBranch("feature-untracked-visible")
+            uiSteps.createNewFile("Feature.txt", "feature\n")
+            uiSteps.commitChanges("Feature commit")
+            uiSteps.checkoutBranch(defaultBranch)
+
+            openGitChangesView()
+            gitChangesView {
+                addTab()
+            }
+            branchSelection {
+                searchAndSelect("feature-untracked-visible")
+            }
+            gitChangesView {
+                selectTab("feature-untracked-visible")
+                waitFor(Duration.ofSeconds(10)) {
+                    changesTree.findAllText("Feature.txt").isNotEmpty()
+                }
+            }
+
+            setShowUntrackedFilesAsNew(true)
+            uiSteps.createNewFile("UntrackedEnabled.txt", "enabled\n", stage = false)
+            setShowUntrackedFilesAsNew(true)
+
+            gitChangesView {
+                step("Verify untracked file appears when setting is enabled") {
+                    waitFor(Duration.ofSeconds(20), interval = Duration.ofMillis(300)) {
+                        changesTree.findAllText("UntrackedEnabled.txt").isNotEmpty()
+                    }
+                }
+            }
+        }
+    }
+
+    @Test
+    @Video
+    fun testUntrackedFileStaysHiddenWhenSettingDisabled(remoteRobot: RemoteRobot) = with(remoteRobot) {
+        val uiSteps = PluginUiTestSteps(remoteRobot)
+
+        prepareFreshProject()
+
+        idea {
+            step("Wait for smart mode") {
+                dumbAware(Duration.ofMinutes(5)) {}
+            }
+
+            uiSteps.initializeGitRepository()
+            resetGitChangesViewState()
+
+            uiSteps.createNewFile("Base.txt", "base\n")
+            uiSteps.commitChanges("Initial commit")
+            val defaultBranch = uiSteps.defaultBranchName()
+
+            uiSteps.createBranch("feature-untracked-hidden")
+            uiSteps.createNewFile("Feature.txt", "feature\n")
+            uiSteps.commitChanges("Feature commit")
+            uiSteps.checkoutBranch(defaultBranch)
+
+            openGitChangesView()
+            gitChangesView {
+                addTab()
+            }
+            branchSelection {
+                searchAndSelect("feature-untracked-hidden")
+            }
+            gitChangesView {
+                selectTab("feature-untracked-hidden")
+                waitFor(Duration.ofSeconds(10)) {
+                    changesTree.findAllText("Feature.txt").isNotEmpty()
+                }
+            }
+
+            setShowUntrackedFilesAsNew(false)
+            uiSteps.createNewFile("UntrackedDisabled.txt", "disabled\n", stage = false)
+            setShowUntrackedFilesAsNew(false)
+
+            gitChangesView {
+                step("Verify untracked file stays hidden when setting is disabled") {
+                    waitFor(Duration.ofSeconds(5), interval = Duration.ofMillis(200)) {
+                        changesTree.findAllText("UntrackedDisabled.txt").isEmpty()
+                    }
+                }
+            }
+
+            setShowUntrackedFilesAsNew(true)
+            gitChangesView {
+                step("Verify same file appears after enabling setting") {
+                    waitFor(Duration.ofSeconds(20), interval = Duration.ofMillis(300)) {
+                        changesTree.findAllText("UntrackedDisabled.txt").isNotEmpty()
+                    }
+                }
+            }
+        }
+    }
+
+    @Test
+    @Video
+    fun testUntrackedFileHasUnknownFileStatus(remoteRobot: RemoteRobot) = with(remoteRobot) {
+        val uiSteps = PluginUiTestSteps(remoteRobot)
+
+        prepareFreshProject()
+
+        idea {
+            step("Wait for smart mode") {
+                dumbAware(Duration.ofMinutes(5)) {}
+            }
+
+            uiSteps.initializeGitRepository()
+            resetGitChangesViewState()
+
+            uiSteps.createNewFile("Base.txt", "base\n")
+            uiSteps.commitChanges("Initial commit")
+            val defaultBranch = uiSteps.defaultBranchName()
+
+            uiSteps.createBranch("feature-file-status")
+            uiSteps.createNewFile("TrackedAdded.txt", "tracked\n")
+            uiSteps.commitChanges("Add tracked file")
+            uiSteps.checkoutBranch(defaultBranch)
+
+            openGitChangesView()
+            gitChangesView {
+                addTab()
+            }
+            branchSelection {
+                searchAndSelect("feature-file-status")
+            }
+            gitChangesView {
+                selectTab("feature-file-status")
+                waitFor(Duration.ofSeconds(10)) {
+                    changesTree.findAllText("TrackedAdded.txt").isNotEmpty()
+                }
+            }
+
+            setShowUntrackedFilesAsNew(true)
+            uiSteps.createNewFile("UntrackedStatus.txt", "untracked\n", stage = false)
+            setShowUntrackedFilesAsNew(true)
+
+            gitChangesView {
+                step("Wait for untracked file to appear") {
+                    waitFor(Duration.ofSeconds(20), interval = Duration.ofMillis(300)) {
+                        changesTree.findAllText("UntrackedStatus.txt").isNotEmpty()
+                    }
+                }
+            }
+
+            val untrackedStatus = fileStatusForTreeItem("UntrackedStatus.txt")
+            val addedStatus = fileStatusForTreeItem("TrackedAdded.txt")
+
+            Assertions.assertEquals("UNKNOWN", untrackedStatus,
+                "Untracked file should have UNKNOWN file status for native text coloring")
+            Assertions.assertNotEquals(untrackedStatus, addedStatus,
+                "Untracked and added files should have different file statuses")
+        }
+    }
+
+    @Test
+    @Video
+    fun testFileTypeFileStatuses(remoteRobot: RemoteRobot) = with(remoteRobot) {
+        val uiSteps = PluginUiTestSteps(remoteRobot)
+
+        prepareFreshProject()
+
+        idea {
+            step("Wait for smart mode") {
+                dumbAware(Duration.ofMinutes(5)) {}
+            }
+
+            uiSteps.initializeGitRepository()
+            resetGitChangesViewState()
+
+            uiSteps.createNewFile("ToModify.txt", "original\n")
+            uiSteps.createNewFile("ToDelete.txt", "to be deleted\n")
+            uiSteps.createNewFile("ToRename.txt", "to be renamed\n")
+            uiSteps.commitChanges("Initial commit")
+            val defaultBranch = uiSteps.defaultBranchName()
+
+            uiSteps.createBranch("feature-change-types")
+            uiSteps.modifyFile("ToModify.txt", "modified content\n")
+            uiSteps.deleteFile("ToDelete.txt")
+            uiSteps.renameFile("ToRename.txt", "Renamed.txt")
+            uiSteps.createNewFile("NewFile.txt", "brand new\n")
+            uiSteps.commitChanges("All change types")
+            uiSteps.checkoutBranch(defaultBranch)
+
+            openGitChangesView()
+            gitChangesView {
+                addTab()
+            }
+            branchSelection {
+                searchAndSelect("feature-change-types")
+            }
+            gitChangesView {
+                selectTab("feature-change-types")
+                waitFor(Duration.ofSeconds(10)) {
+                    changesTree.findAllText("ToModify.txt").isNotEmpty() &&
+                        changesTree.findAllText("NewFile.txt").isNotEmpty() &&
+                        changesTree.findAllText("ToDelete.txt").isNotEmpty() &&
+                        changesTree.findAllText("ToRename.txt").isNotEmpty()
+                }
+            }
+
+            Assertions.assertEquals("DELETED", fileStatusForTreeItem("NewFile.txt"),
+                "File only in comparison branch should have DELETED file status (not present in working dir)")
+            Assertions.assertEquals("MODIFIED", fileStatusForTreeItem("ToModify.txt"),
+                "Modified file should have MODIFIED file status")
+            Assertions.assertEquals("ADDED", fileStatusForTreeItem("ToDelete.txt"),
+                "File only in working dir should have ADDED file status (deleted in comparison branch)")
+            Assertions.assertEquals("MODIFIED", fileStatusForTreeItem("ToRename.txt"),
+                "Renamed file should have MODIFIED file status (rename detected)")
+        }
+    }
+
+
+    private fun RemoteRobot.setChangesTreeNodeExpanded(nodeText: String, expanded: Boolean) {
+        step("${if (expanded) "Expand" else "Collapse"} tree node '$nodeText'") {
+            val success = callJs<Boolean>(
+                """
+                (function() {
+                    var result = new java.util.concurrent.atomic.AtomicBoolean(false);
+                    com.intellij.openapi.application.ApplicationManager.getApplication().invokeAndWait(new java.lang.Runnable({
+                        run: function() {
+                            var targetText = ${toJsStringLiteral(nodeText)};
+                            var expand = ${if (expanded) "true" else "false"};
+                            var tree = null;
+                            var windows = java.awt.Window.getWindows();
+                            for (var w = 0; w < windows.length && !tree; w++) {
+                                var queue = new java.util.LinkedList();
+                                queue.add(windows[w]);
+                                while (!queue.isEmpty()) {
+                                    var c = queue.poll();
+                                    if (c != null && c.getClass().getName().endsWith("LstCrcAsyncChangesTree") && c.isShowing()) {
+                                        tree = c;
+                                        break;
+                                    } else if (c != null) {
+                                        try {
+                                            var children = c.getComponents();
+                                            if (children) {
+                                                for (var ci = 0; ci < children.length; ci++) {
+                                                    queue.add(children[ci]);
+                                                }
+                                            }
+                                        } catch(e2) {}
+                                    }
+                                }
+                            }
+                            if (!tree) return;
+                            for (var row = 0; row < tree.getRowCount(); row++) {
+                                var path = tree.getPathForRow(row);
+                                if (!path) continue;
+                                var node = path.getLastPathComponent();
+                                if (!node) continue;
+                                try { if (node.isLeaf()) continue; } catch(e) {}
+                                var userObject = null;
+                                try { userObject = node.getUserObject(); } catch(e) {}
+                                var text = "";
+                                if (userObject) {
+                                    try { text = String(userObject.getPath()); } catch(e) {}
+                                    if (!text) { try { text = String(userObject.getName()); } catch(e) {} }
+                                    if (!text) { try { text = String(userObject); } catch(e) {} }
+                                }
+                                if (!text) { try { text = String(node); } catch(e) {} }
+                                if (text.indexOf(targetText) >= 0) {
+                                    if (expand) { tree.expandPath(path); } else { tree.collapsePath(path); }
+                                    result.set(true);
+                                    break;
+                                }
+                            }
+                        }
+                    }));
+                    return result.get();
+                })()
+                """.trimIndent(),
+                true
+            )
+            check(success) { "Could not find tree node '$nodeText' to ${if (expanded) "expand" else "collapse"}" }
+        }
+    }
+
     private fun RemoteRobot.modifyFileWithoutSave(fileName: String, content: String) {
         val typedContent = content.trimEnd('\r', '\n')
 

@@ -9,4 +9,4 @@ Documents:
 - `file-catalog.md` documents each current `src/main` file separately, including its role, dependencies, and why it exists.
 - `file-refactor-audit.md` reviews each current `src/main` file against the JetBrains Platform APIs and patterns it relies on and records realistic simplification or refactor opportunities.
 
-The documented `src/main` surface also includes `LstCrcUiTestBridge.kt`, which lives under `src/main` for IDE Starter service discovery but is excluded from ordinary main builds unless `starterUiTest` or `includeTestBridge=true` enables it.
+The IDE Starter test bridge lives in `src/testBridge` (`LstCrcUiTestBridge.kt`) and is only included in the plugin build for Starter tasks (or when `-PincludeTestBridge=true` is set).

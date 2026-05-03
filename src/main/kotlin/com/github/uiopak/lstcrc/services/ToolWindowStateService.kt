@@ -23,10 +23,15 @@ import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.wm.ToolWindowManager
 import git4idea.repo.GitRepository
+import com.intellij.openapi.application.EDT
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.future.asCompletableFuture
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import java.util.concurrent.CompletableFuture
-import java.util.concurrent.atomic.AtomicBoolean
-import java.util.concurrent.atomic.AtomicReference
 
 /**
  * Manages the tool window's UI state (open tabs, selected tab) and persists it.
@@ -41,19 +46,9 @@ import java.util.concurrent.atomic.AtomicReference
 @Service(Service.Level.PROJECT)
 class ToolWindowStateService(private val project: Project, val coroutineScope: CoroutineScope) : PersistentStateComponent<ToolWindowState> {
 
-    private data class LoadDataContext(
-        val tabInfo: TabInfo?,
-        val profileName: String,
-        val isLoadingHead: Boolean,
-        val includeHeadInScopes: Boolean,
-        val diffDataService: ProjectActiveDiffDataService,
-        val resultFuture: CompletableFuture<Unit>
-    )
-
     private var myState = ToolWindowState()
     private val logger = thisLogger()
-    private val activeRefresh = AtomicReference<CompletableFuture<Unit>?>(null)
-    private val refreshQueued = AtomicBoolean(false)
+    private val refreshMutex = Mutex()
 
     override fun getState(): ToolWindowState {
         logger.debug("getState() called. Current state: $myState")
@@ -116,7 +111,7 @@ class ToolWindowStateService(private val project: Project, val coroutineScope: C
             refreshDataForCurrentSelection()
 
         } else {
-            if (validIndex == -1 && activeRefresh.get() == null) {
+            if (validIndex == -1) {
                 logger.info("HEAD tab is already selected, but no refresh is active. Triggering initial HEAD refresh.")
                 refreshDataForCurrentSelection()
             } else {
@@ -128,104 +123,62 @@ class ToolWindowStateService(private val project: Project, val coroutineScope: C
     /**
      * Central point for loading data for a given tab profile. It fetches changes from Git,
      * updates the data cache ([ProjectActiveDiffDataService]), and refreshes the UI.
-     * @return A CompletableFuture that completes when the entire data loading and UI update process is finished.
      */
-    private fun loadDataForTab(tabInfo: TabInfo?): CompletableFuture<Unit> {
-        val isLoadingHead = tabInfo == null
+    private suspend fun loadDataForTab(tabInfo: TabInfo?) {
         val profileName = tabInfo?.branchName ?: "HEAD"
         logger.info("DATA_FLOW: Initiating data load for profile: '$profileName'")
-
+        val includeHeadInScopes = ToolWindowSettingsProvider.isIncludeHeadInScopes()
         val gitService = project.service<GitService>()
         val diffDataService = project.service<ProjectActiveDiffDataService>()
-        val resultFuture = CompletableFuture<Unit>()
 
-        val context = LoadDataContext(
-            tabInfo = tabInfo,
-            profileName = profileName,
-            isLoadingHead = isLoadingHead,
-            includeHeadInScopes = ToolWindowSettingsProvider.isIncludeHeadInScopes(),
-            diffDataService = diffDataService,
-            resultFuture = resultFuture
-        )
-
-        gitService.getChanges(tabInfo).whenCompleteAsync { getChangesResult, throwable ->
-            ApplicationManager.getApplication().invokeLater {
-                handleLoadDataResult(context, getChangesResult, throwable)
+        try {
+            val getChangesResult = gitService.getChanges(tabInfo)
+            withContext(Dispatchers.EDT) {
+                if (project.isDisposed) return@withContext
+                val activeBrowser = getActiveChangesBrowser(project)
+                applyLoadedChanges(tabInfo, profileName, includeHeadInScopes, diffDataService, activeBrowser, getChangesResult)
+            }
+        } catch (e: Exception) {
+            withContext(Dispatchers.EDT) {
+                if (project.isDisposed) return@withContext
+                val activeBrowser = getActiveChangesBrowser(project)
+                logger.error("DATA_FLOW: Error loading changes for '$profileName': ${e.message}", e)
+                diffDataService.clearActiveDiff()
+                activeBrowser?.displayChanges(null, profileName)
             }
         }
-        return resultFuture
-    }
-
-    private fun handleLoadDataResult(
-        context: LoadDataContext,
-        getChangesResult: GetChangesResult?,
-        throwable: Throwable?
-    ) {
-        if (project.isDisposed) {
-            context.resultFuture.complete(Unit)
-            return
-        }
-
-        val activeBrowser = getActiveChangesBrowser(project)
-        if (throwable != null) {
-            handleLoadDataFailure(context, throwable, activeBrowser)
-            return
-        }
-
-        if (getChangesResult == null) {
-            handleMissingChangesResult(context, activeBrowser)
-            return
-        }
-
-        applyLoadedChanges(context, activeBrowser, getChangesResult)
-        context.resultFuture.complete(Unit)
-    }
-
-    private fun handleLoadDataFailure(
-        context: LoadDataContext,
-        throwable: Throwable,
-        activeBrowser: LstCrcChangesBrowser?
-    ) {
-        logger.error("DATA_FLOW: Error loading changes for '${context.profileName}': ${throwable.message}", throwable)
-        context.diffDataService.clearActiveDiff()
-        activeBrowser?.displayChanges(null, context.profileName)
-        context.resultFuture.completeExceptionally(throwable)
-    }
-
-    private fun handleMissingChangesResult(
-        context: LoadDataContext,
-        activeBrowser: LstCrcChangesBrowser?
-    ) {
-        logger.warn("DATA_FLOW: Changes for '${context.profileName}' returned as null. Clearing data and UI.")
-        context.diffDataService.clearActiveDiff()
-        activeBrowser?.displayChanges(null, context.profileName)
-        context.resultFuture.complete(Unit)
     }
 
     private fun applyLoadedChanges(
-        context: LoadDataContext,
+        tabInfo: TabInfo?,
+        profileName: String,
+        includeHeadInScopes: Boolean,
+        diffDataService: ProjectActiveDiffDataService,
         activeBrowser: LstCrcChangesBrowser?,
         getChangesResult: GetChangesResult
     ) {
         val categorizedChanges = getChangesResult.categorizedChanges
-        logger.info("DATA_FLOW: Successfully loaded ${categorizedChanges.allChanges.size} changes for '${context.profileName}'.")
+        logger.info("DATA_FLOW: Successfully loaded ${categorizedChanges.allChanges.size} changes for '$profileName'.")
 
-        if (getChangesResult.failures.isNotEmpty() && context.tabInfo != null) {
-            handleBranchFailures(context.tabInfo, getChangesResult.failures)
+        if (getChangesResult.failures.isNotEmpty() && tabInfo != null) {
+            handleBranchFailures(tabInfo, getChangesResult.failures)
         }
 
-        updateActiveDiffData(context, categorizedChanges)
-        activeBrowser?.displayChanges(categorizedChanges, context.profileName)
+        updateActiveDiffData(tabInfo, profileName, includeHeadInScopes, diffDataService, categorizedChanges)
+        activeBrowser?.displayChanges(categorizedChanges, profileName)
     }
 
     private fun updateActiveDiffData(
-        context: LoadDataContext,
+        tabInfo: TabInfo?,
+        profileName: String,
+        includeHeadInScopes: Boolean,
+        diffDataService: ProjectActiveDiffDataService,
         categorizedChanges: CategorizedChanges
     ) {
-        if (!context.isLoadingHead || context.includeHeadInScopes) {
-            logger.debug("DATA_FLOW: Updating ProjectActiveDiffDataService for '${context.profileName}'.")
-            context.diffDataService.updateActiveDiff(
-                context.profileName,
+        if (tabInfo != null || includeHeadInScopes) {
+            logger.debug("DATA_FLOW: Updating ProjectActiveDiffDataService for '$profileName'.")
+            diffDataService.updateActiveDiff(
+                profileName,
                 categorizedChanges.createdFiles,
                 categorizedChanges.modifiedFiles,
                 categorizedChanges.movedFiles,
@@ -236,7 +189,7 @@ class ToolWindowStateService(private val project: Project, val coroutineScope: C
         }
 
         logger.debug("DATA_FLOW: On HEAD tab with 'Include HEAD in Scopes' disabled. Clearing ProjectActiveDiffDataService.")
-        context.diffDataService.clearActiveDiff()
+        diffDataService.clearActiveDiff()
     }
 
     /**
@@ -344,40 +297,15 @@ class ToolWindowStateService(private val project: Project, val coroutineScope: C
     fun refreshDataForCurrentSelection(): CompletableFuture<Unit> {
         if (project.isDisposed) return CompletableFuture.completedFuture(Unit)
 
-        val refreshFuture = CompletableFuture<Unit>()
-        if (!activeRefresh.compareAndSet(null, refreshFuture)) {
-            logger.debug("ACTION: Refresh for current selection is already in progress. Queueing another refresh.")
-            refreshQueued.set(true)
-            return activeRefresh.get() ?: CompletableFuture.completedFuture(Unit)
-        }
-
-        runRefreshCycle(refreshFuture)
-        return refreshFuture
-    }
-
-    private fun runRefreshCycle(refreshFuture: CompletableFuture<Unit>) {
         val tabInfoToRefresh = getSelectedTabInfo()
         val profileName = tabInfoToRefresh?.branchName ?: "HEAD"
         logger.info("ACTION: Refreshing data for current selection: '$profileName'")
 
-        loadDataForTab(tabInfoToRefresh).whenComplete { _, throwable ->
-            if (throwable != null) {
-                activeRefresh.set(null)
-                logger.debug("ACTION: Refreshing lock released after failure.")
-                refreshFuture.completeExceptionally(throwable)
-                return@whenComplete
+        return coroutineScope.async {
+            refreshMutex.withLock {
+                loadDataForTab(tabInfoToRefresh)
             }
-
-            if (refreshQueued.getAndSet(false) && !project.isDisposed) {
-                logger.debug("ACTION: Running queued refresh for the latest selection.")
-                runRefreshCycle(refreshFuture)
-                return@whenComplete
-            }
-
-            activeRefresh.set(null)
-            logger.debug("ACTION: Refreshing lock released.")
-            refreshFuture.complete(Unit)
-        }
+        }.asCompletableFuture()
     }
 
     private fun commitStateAndBroadcast() {

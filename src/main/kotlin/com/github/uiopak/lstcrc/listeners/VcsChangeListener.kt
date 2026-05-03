@@ -8,7 +8,12 @@ import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vcs.changes.ChangeListListener
 import com.intellij.openapi.vcs.changes.ChangeListManager
-import com.intellij.util.Alarm
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.launch
+import kotlin.time.Duration.Companion.milliseconds
 
 /**
  * Listens for `ChangeListManager` updates to detect when VCS state changes (e.g., local edits,
@@ -16,14 +21,29 @@ import com.intellij.util.Alarm
  * decoupling them from the direct source of VCS events.
  */
 @Service(Service.Level.PROJECT)
-class VcsChangeListener(private val project: Project) : ChangeListListener, Disposable {
+@OptIn(FlowPreview::class)
+class VcsChangeListener(
+    private val project: Project,
+    private val coroutineScope: CoroutineScope
+) : ChangeListListener, Disposable {
 
     private val logger = thisLogger()
-    private val debounceAlarm = Alarm(this)
+    private val refreshSignals = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
 
     init {
         logger.info("VCS_CHANGE_LISTENER: Initializing for project ${project.name}")
         ChangeListManager.getInstance(project).addChangeListListener(this, this)
+
+        coroutineScope.launch {
+            refreshSignals
+                .debounce(250.milliseconds)
+                .collect {
+                    if (!project.isDisposed) {
+                        logger.info("VCS_CHANGE_LISTENER: Debounced refresh executing.")
+                        project.service<ToolWindowStateService>().refreshDataForCurrentSelection()
+                    }
+                }
+        }
     }
 
     override fun changeListUpdateDone() {
@@ -32,13 +52,7 @@ class VcsChangeListener(private val project: Project) : ChangeListListener, Disp
     }
 
     private fun triggerDebouncedRefresh() {
-        debounceAlarm.cancelAllRequests()
-        debounceAlarm.addRequest({
-            if (!project.isDisposed) {
-                logger.info("VCS_CHANGE_LISTENER: Debounced refresh executing.")
-                project.service<ToolWindowStateService>().refreshDataForCurrentSelection()
-            }
-        }, 250)
+        refreshSignals.tryEmit(Unit)
     }
 
     override fun dispose() {

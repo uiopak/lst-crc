@@ -10,94 +10,174 @@ import javax.swing.tree.DefaultMutableTreeNode
 import javax.swing.tree.TreePath
 
 /**
- * A custom TreeStateStrategy for ChangesTree that preserves the existing expansion state
- * while ensuring that any new nodes (Changes) are made visible by expanding their parent directories.
+ * Preserves the current expansion/collapse state while ensuring newly-added changes become visible.
  *
- * How it works:
- * 1. `saveState`: It saves the complete current TreeState (selections and expansions) and also
- *    collects the set of all `Change` objects currently displayed in the tree.
- * 2. `restoreState`:
- *    A. It first applies the saved TreeState, which restores the user's previous expansions
- *       and collapses for nodes that still exist.
- *    B. It then determines which `Change` objects are new by comparing the current set of changes
- *       with the set saved in the state.
- *    C. For each new `Change`, it finds its path in the tree and collects all of its parent paths.
- *    D. Finally, it expands all the parent paths of the new files, ensuring they are visible in the tree,
- *       while leaving the previously existing, unchanged parts of the tree untouched.
+ * When [expandNewFilesInCollapsedDirs] returns `true` (the default, driven by the
+ * "Expand Collapsed Folders for New Changes" setting), directories that are currently
+ * collapsed will be expanded when new changes appear inside them — matching the
+ * pre-collapse-persistence behaviour. When it returns `false`, collapsed directories
+ * stay collapsed even if they receive new changes.
  */
-class ExpandNewNodesStateStrategy : ChangesTree.TreeStateStrategy<ExpandNewNodesStateStrategy.State> {
+class ExpandNewNodesStateStrategy(
+    private val expandNewFilesInCollapsedDirs: () -> Boolean = {
+        ToolWindowSettingsProvider.isExpandNewFilesInCollapsedDirs()
+    }
+) : ChangesTree.TreeStateStrategy<ExpandNewNodesStateStrategy.State> {
 
-    /**
-     * Holds the state captured from the tree before a rebuild.
-     * @param treeState The complete expansion and selection state of the tree.
-     * @param changes The set of all `Change` objects present in the tree.
-     */
+    data class ChangeKey(
+        val firstPath: String?,
+        val secondPath: String?
+    )
+
+    private fun Change.asChangeKey(): ChangeKey {
+        val beforePath = beforeRevision?.file?.path
+        val afterPath = afterRevision?.file?.path
+
+        return when {
+            beforePath == null && afterPath == null -> ChangeKey(null, null)
+            beforePath == null -> ChangeKey(null, afterPath)
+            afterPath == null -> ChangeKey(null, beforePath)
+            beforePath <= afterPath -> ChangeKey(beforePath, afterPath)
+            else -> ChangeKey(afterPath, beforePath)
+        }
+    }
+
     data class State(
         val treeState: TreeState?,
-        val changes: Set<Change>
+        val changes: Set<ChangeKey>,
+        val collapsedPaths: Set<String>
     )
+
+    private fun userObjectKey(userObject: Any?): String {
+        return when (userObject) {
+            null -> "null"
+            is Change -> {
+                val key = userObject.asChangeKey()
+                "change:${key.firstPath}|${key.secondPath}"
+            }
+            is String -> "string:$userObject"
+            else -> {
+                val pathValue = runCatching {
+                    userObject.javaClass.methods
+                        .firstOrNull { method ->
+                            method.parameterCount == 0 &&
+                                (method.name == "getPath" || method.name == "path")
+                        }
+                        ?.invoke(userObject)
+                        ?.toString()
+                }.getOrNull()
+
+                if (!pathValue.isNullOrBlank()) {
+                    return "${userObject.javaClass.name}:path=$pathValue"
+                }
+
+                val nameValue = runCatching {
+                    userObject.javaClass.methods
+                        .firstOrNull { method ->
+                            method.parameterCount == 0 &&
+                                (method.name == "getName" || method.name == "name")
+                        }
+                        ?.invoke(userObject)
+                        ?.toString()
+                }.getOrNull()
+
+                if (!nameValue.isNullOrBlank()) {
+                    return "${userObject.javaClass.name}:name=$nameValue"
+                }
+
+                userObject.javaClass.name
+            }
+        }
+    }
+
+    private fun pathKey(path: TreePath): String {
+        return path.path
+            .drop(1)
+            .joinToString("/") { component ->
+                val node = component as? DefaultMutableTreeNode
+                userObjectKey(node?.userObject)
+            }
+    }
 
     override fun saveState(tree: ChangesTree): State {
         val state = TreeState.createOn(tree, true, true)
-        val currentChanges = VcsTreeModelData.all(tree).userObjects(Change::class.java).toSet()
-        return State(state, currentChanges)
+        val currentChanges = VcsTreeModelData.all(tree)
+            .userObjects(Change::class.java)
+            .map { it.asChangeKey() }
+            .toSet()
+
+        val collapsedPaths = mutableSetOf<String>()
+        for (row in 0 until tree.rowCount) {
+            val path = tree.getPathForRow(row) ?: continue
+            val node = path.lastPathComponent as? DefaultMutableTreeNode ?: continue
+            if (path.pathCount <= 1 || node.isLeaf) continue
+            if (!tree.isExpanded(path)) {
+                collapsedPaths.add(pathKey(path))
+            }
+        }
+
+        return State(state, currentChanges, collapsedPaths)
     }
 
     override fun restoreState(tree: ChangesTree, savedState: State, scrollToSelection: Boolean) {
         val oldTreeState = savedState.treeState
-        if (oldTreeState == null || oldTreeState.isEmpty) {
-            // This happens on the very first load or if the previous state was empty.
-            // Fall back to the default behavior of expanding the tree.
+        if (oldTreeState == null) {
             tree.resetTreeState()
             return
         }
 
-        // 1. Restore the previous expansion and selection state for all existing nodes.
         oldTreeState.setScrollToSelection(scrollToSelection)
         oldTreeState.applyTo(tree)
 
-        // 2. Find new changes and ensure their parent nodes are expanded.
         val oldChanges = savedState.changes
         val allCurrentChanges = VcsTreeModelData.all(tree).userObjects(Change::class.java)
-        val newChangesToMakeVisible = allCurrentChanges.filter { it !in oldChanges }
+        val newChangesToMakeVisible = allCurrentChanges.filter { it.asChangeKey() !in oldChanges }
 
-        if (newChangesToMakeVisible.isEmpty()) {
-            return
+        val expandedForNewFiles = mutableSetOf<String>()
+
+        if (newChangesToMakeVisible.isNotEmpty()) {
+            val changeKeyToNodeMap = mutableMapOf<ChangeKey, DefaultMutableTreeNode>()
+            TreeUtil.treeNodeTraverser(tree.root).forEach { treeNode ->
+                val node = treeNode as? DefaultMutableTreeNode ?: return@forEach
+                val change = node.userObject as? Change ?: return@forEach
+                changeKeyToNodeMap[change.asChangeKey()] = node
+            }
+
+            val pathsToExpand = mutableSetOf<TreePath>()
+            for (newChange in newChangesToMakeVisible) {
+                val node = changeKeyToNodeMap[newChange.asChangeKey()] ?: continue
+                var parentPath = TreeUtil.getPathFromRoot(node).parentPath
+                while (parentPath != null && parentPath.pathCount > 1) {
+                    pathsToExpand.add(parentPath)
+                    parentPath = parentPath.parentPath
+                }
+            }
+
+            val sortedPaths = pathsToExpand.sortedWith(Comparator.comparingInt(TreePath::getPathCount))
+            for (path in sortedPaths) {
+                tree.expandPath(path)
+                expandedForNewFiles.add(pathKey(path))
+            }
         }
 
-        // Build a map of user objects to their nodes for efficient lookup.
-        val userObjectToNodeMap = mutableMapOf<Any, DefaultMutableTreeNode>()
-        val traverser = TreeUtil.treeNodeTraverser(tree.root)
-
-        traverser.forEach { treeNode ->
+        val collapsedPathToTreePath = mutableMapOf<String, TreePath>()
+        TreeUtil.treeNodeTraverser(tree.root).forEach { treeNode ->
             val node = treeNode as? DefaultMutableTreeNode ?: return@forEach
-            node.userObject?.let { userObject ->
-                userObjectToNodeMap[userObject] = node
+            val path = TreeUtil.getPathFromRoot(node)
+            if (path.pathCount > 1 && !node.isLeaf) {
+                collapsedPathToTreePath[pathKey(path)] = path
             }
         }
 
-        // Collect all unique parent paths of the new changes.
-        val pathsToExpand = mutableSetOf<TreePath>()
-        for (newChange in newChangesToMakeVisible) {
-            val node = userObjectToNodeMap[newChange] ?: continue
-            var parentPath = TreeUtil.getPathFromRoot(node).parentPath
-
-            // Add all ancestors to the set to ensure the entire branch is expanded.
-            // We stop when parentPath is null or is the invisible root (pathCount <= 1).
-            while (parentPath != null && parentPath.pathCount > 1) {
-                pathsToExpand.add(parentPath)
-                parentPath = parentPath.parentPath
+        savedState.collapsedPaths
+            .asSequence()
+            .filter { key ->
+                // When the setting is enabled, don't re-collapse a dir that was just expanded
+                // to reveal newly-appeared changes inside it.
+                expandedForNewFiles.isEmpty() || !expandNewFilesInCollapsedDirs() || key !in expandedForNewFiles
             }
-        }
-
-        if (pathsToExpand.isEmpty()) return
-
-        // Sort paths by depth to ensure parents are expanded before their children.
-        val sortedPaths = pathsToExpand.sortedWith(Comparator.comparingInt(TreePath::getPathCount))
-
-        // Expand the paths to make the new files visible.
-        for (path in sortedPaths) {
-            tree.expandPath(path)
-        }
+            .mapNotNull { key -> collapsedPathToTreePath[key] }
+            .sortedByDescending { it.pathCount }
+            .forEach { tree.collapsePath(it) }
     }
 }

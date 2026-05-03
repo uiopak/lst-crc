@@ -1,6 +1,7 @@
 package com.github.uiopak.lstcrc.testing
 
 import com.github.uiopak.lstcrc.LstCrcConstants
+import com.github.uiopak.lstcrc.resources.LstCrcBundle
 import com.github.uiopak.lstcrc.gutters.VisualTrackerManager
 import com.github.uiopak.lstcrc.messaging.PLUGIN_SETTINGS_CHANGED_TOPIC
 import com.github.uiopak.lstcrc.scopes.LstCrcProvidedScopes
@@ -11,6 +12,7 @@ import com.github.uiopak.lstcrc.services.ToolWindowStateService
 import com.github.uiopak.lstcrc.state.TabInfo
 import com.github.uiopak.lstcrc.toolWindow.LstCrcChangesBrowser
 import com.github.uiopak.lstcrc.toolWindow.BranchSelectionPanel
+import com.github.uiopak.lstcrc.toolWindow.LstCrcSettingsService
 import com.github.uiopak.lstcrc.toolWindow.ShowRepoComparisonInfoAction
 import com.github.uiopak.lstcrc.toolWindow.ToolWindowHelper
 import com.github.uiopak.lstcrc.toolWindow.ToolWindowSettingsProvider
@@ -20,11 +22,9 @@ import com.intellij.openapi.actionSystem.ActionPlaces
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.CommonDataKeys
 import com.intellij.openapi.actionSystem.DataContext
-import com.intellij.ide.util.PropertiesComponent
 import com.intellij.notification.Notification
 import com.intellij.notification.NotificationsManager
 import com.intellij.openapi.application.ApplicationManager
-import com.intellij.openapi.actionSystem.ex.ActionUtil
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.service
 import com.intellij.openapi.command.WriteCommandAction
@@ -38,8 +38,10 @@ import com.intellij.openapi.actionSystem.impl.SimpleDataContext
 import com.intellij.openapi.editor.ex.MarkupModelEx
 import com.intellij.openapi.editor.impl.DocumentMarkupModel
 import com.intellij.openapi.vcs.ProjectLevelVcsManager
+import com.intellij.openapi.vcs.VcsDirectoryMapping
 import com.intellij.openapi.vcs.VcsConfiguration
 import com.intellij.openapi.vcs.VcsShowConfirmationOption
+import com.intellij.openapi.vcs.changes.Change
 import com.intellij.openapi.vcs.changes.ChangeListManagerEx
 import com.intellij.openapi.vcs.ex.ProjectLevelVcsManagerEx
 import com.intellij.openapi.vcs.ex.LocalLineStatusTracker
@@ -92,18 +94,19 @@ class LstCrcUiTestBridge {
 
     private val syntheticRepoComparisonDialog = AtomicReference<SyntheticRepoComparisonDialog?>()
 
+    private fun vcsManager(project: Project): ProjectLevelVcsManager = project.service()
+
     fun isDumbMode(): Boolean = project().service<com.intellij.openapi.project.DumbService>().isDumb
 
     fun isGitVcsActive(): Boolean = onEdtResult {
-        ProjectLevelVcsManager.getInstance(project()).getAllActiveVcss().any { it.name == "Git" }
+        vcsManager(project()).allActiveVcss.any { it.name == "Git" }
     }
 
     fun activateGitVcsIntegration() {
         val project = project()
         val basePath = project.basePath ?: return
         onEdt {
-            val vcsManager = ProjectLevelVcsManager.getInstance(project)
-            vcsManager.setDirectoryMapping(basePath, "Git")
+            addGitDirectoryMapping(project, basePath)
             ProjectLevelVcsManagerEx.getInstanceEx(project).scheduleMappedRootsUpdate()
             configureGitConfirmationDialogs(project)
         }
@@ -119,8 +122,7 @@ class LstCrcUiTestBridge {
         val rootPath = projectDir(project).findFileByRelativePath(relativePath)?.path
             ?: File(project.basePath ?: error("Project base path is not available"), relativePath).path
         onEdt {
-            val vcsManager = ProjectLevelVcsManager.getInstance(project)
-            vcsManager.setDirectoryMapping(rootPath, "Git")
+            addGitDirectoryMapping(project, rootPath)
             ProjectLevelVcsManagerEx.getInstanceEx(project).scheduleMappedRootsUpdate()
             configureGitConfirmationDialogs(project)
         }
@@ -169,23 +171,25 @@ class LstCrcUiTestBridge {
     fun resetGitChangesViewState() {
         val project = project()
         onEdt {
-            val properties = PropertiesComponent.getInstance()
-            properties.setValue(ToolWindowSettingsProvider.APP_SINGLE_CLICK_ACTION_KEY, ToolWindowSettingsProvider.ACTION_OPEN_SOURCE)
-            properties.setValue(ToolWindowSettingsProvider.APP_DOUBLE_CLICK_ACTION_KEY, ToolWindowSettingsProvider.ACTION_NONE)
-            properties.setValue(ToolWindowSettingsProvider.APP_MIDDLE_CLICK_ACTION_KEY, ToolWindowSettingsProvider.ACTION_SHOW_IN_PROJECT_TREE)
-            properties.setValue(ToolWindowSettingsProvider.APP_DOUBLE_MIDDLE_CLICK_ACTION_KEY, ToolWindowSettingsProvider.ACTION_NONE)
-            properties.setValue(ToolWindowSettingsProvider.APP_RIGHT_CLICK_ACTION_KEY, ToolWindowSettingsProvider.ACTION_OPEN_DIFF)
-            properties.setValue(ToolWindowSettingsProvider.APP_DOUBLE_RIGHT_CLICK_ACTION_KEY, ToolWindowSettingsProvider.ACTION_NONE)
-            properties.setValue(ToolWindowSettingsProvider.APP_SHOW_CONTEXT_MENU_KEY, ToolWindowSettingsProvider.DEFAULT_SHOW_CONTEXT_MENU, false)
-            properties.setValue(ToolWindowSettingsProvider.APP_USER_DOUBLE_CLICK_DELAY_KEY, ToolWindowSettingsProvider.DELAY_OPTION_SYSTEM_DEFAULT.toString())
-            properties.setValue(ToolWindowSettingsProvider.APP_INCLUDE_HEAD_IN_SCOPES_KEY, ToolWindowSettingsProvider.DEFAULT_INCLUDE_HEAD_IN_SCOPES, false)
-            properties.setValue(ToolWindowSettingsProvider.APP_ENABLE_GUTTER_MARKERS_KEY, ToolWindowSettingsProvider.DEFAULT_ENABLE_GUTTER_MARKERS, true)
-            properties.setValue(ToolWindowSettingsProvider.APP_ENABLE_GUTTER_FOR_NEW_FILES_KEY, ToolWindowSettingsProvider.DEFAULT_ENABLE_GUTTER_FOR_NEW_FILES, false)
-            properties.setValue(ToolWindowSettingsProvider.APP_SHOW_TOOL_WINDOW_TITLE_KEY, ToolWindowSettingsProvider.DEFAULT_SHOW_TOOL_WINDOW_TITLE, false)
-            properties.setValue(ToolWindowSettingsProvider.APP_SHOW_WIDGET_CONTEXT_KEY, ToolWindowSettingsProvider.DEFAULT_SHOW_WIDGET_CONTEXT, false)
-            properties.setValue(ToolWindowSettingsProvider.APP_SHOW_CONTEXT_SINGLE_REPO_KEY, ToolWindowSettingsProvider.DEFAULT_SHOW_CONTEXT_SINGLE_REPO, true)
-            properties.setValue(ToolWindowSettingsProvider.APP_SHOW_CONTEXT_MULTI_REPO_KEY, ToolWindowSettingsProvider.DEFAULT_SHOW_CONTEXT_MULTI_REPO, true)
-            properties.setValue(ToolWindowSettingsProvider.APP_SHOW_CONTEXT_FOR_COMMITS_KEY, ToolWindowSettingsProvider.DEFAULT_SHOW_CONTEXT_FOR_COMMITS, false)
+            val settings = settingsService()
+            settings.setSingleClickAction(ToolWindowSettingsProvider.ACTION_OPEN_SOURCE)
+            settings.setDoubleClickAction(ToolWindowSettingsProvider.ACTION_NONE)
+            settings.setMiddleClickAction(ToolWindowSettingsProvider.ACTION_SHOW_IN_PROJECT_TREE)
+            settings.setDoubleMiddleClickAction(ToolWindowSettingsProvider.ACTION_NONE)
+            settings.setRightClickAction(ToolWindowSettingsProvider.ACTION_OPEN_DIFF)
+            settings.setDoubleRightClickAction(ToolWindowSettingsProvider.ACTION_NONE)
+            settings.setBoolean(ToolWindowSettingsProvider.APP_SHOW_CONTEXT_MENU_KEY, ToolWindowSettingsProvider.DEFAULT_SHOW_CONTEXT_MENU, false)
+            settings.setInt(ToolWindowSettingsProvider.APP_USER_DOUBLE_CLICK_DELAY_KEY, ToolWindowSettingsProvider.DELAY_OPTION_SYSTEM_DEFAULT, ToolWindowSettingsProvider.DELAY_OPTION_SYSTEM_DEFAULT)
+            settings.setBoolean(ToolWindowSettingsProvider.APP_INCLUDE_HEAD_IN_SCOPES_KEY, ToolWindowSettingsProvider.DEFAULT_INCLUDE_HEAD_IN_SCOPES, false)
+            settings.setBoolean(ToolWindowSettingsProvider.APP_ENABLE_GUTTER_MARKERS_KEY, ToolWindowSettingsProvider.DEFAULT_ENABLE_GUTTER_MARKERS, true)
+            settings.setBoolean(ToolWindowSettingsProvider.APP_ENABLE_GUTTER_FOR_NEW_FILES_KEY, ToolWindowSettingsProvider.DEFAULT_ENABLE_GUTTER_FOR_NEW_FILES, false)
+            settings.setBoolean(ToolWindowSettingsProvider.APP_SHOW_TOOL_WINDOW_TITLE_KEY, ToolWindowSettingsProvider.DEFAULT_SHOW_TOOL_WINDOW_TITLE, false)
+            settings.setBoolean(ToolWindowSettingsProvider.APP_SHOW_WIDGET_CONTEXT_KEY, ToolWindowSettingsProvider.DEFAULT_SHOW_WIDGET_CONTEXT, false)
+            settings.setBoolean(ToolWindowSettingsProvider.APP_SHOW_CONTEXT_SINGLE_REPO_KEY, ToolWindowSettingsProvider.DEFAULT_SHOW_CONTEXT_SINGLE_REPO, true)
+            settings.setBoolean(ToolWindowSettingsProvider.APP_SHOW_CONTEXT_MULTI_REPO_KEY, ToolWindowSettingsProvider.DEFAULT_SHOW_CONTEXT_MULTI_REPO, true)
+            settings.setBoolean(ToolWindowSettingsProvider.APP_SHOW_CONTEXT_FOR_COMMITS_KEY, ToolWindowSettingsProvider.DEFAULT_SHOW_CONTEXT_FOR_COMMITS, false)
+            settings.setBoolean(ToolWindowSettingsProvider.APP_EXPAND_NEW_FILES_IN_COLLAPSED_DIRS_KEY, ToolWindowSettingsProvider.DEFAULT_EXPAND_NEW_FILES_IN_COLLAPSED_DIRS, true)
+            settings.setBoolean(ToolWindowSettingsProvider.APP_SHOW_UNTRACKED_FILES_AS_NEW_KEY, ToolWindowSettingsProvider.DEFAULT_SHOW_UNTRACKED_FILES_AS_NEW, false)
 
             val toolWindow = toolWindowOrNull(project) ?: return@onEdt
             toolWindow.component.putClientProperty(ToolWindowContentUi.HIDE_ID_LABEL, "true")
@@ -229,17 +233,50 @@ class LstCrcUiTestBridge {
     }
 
     fun selectedRenderedRowsSnapshot(): String = onEdtResult {
-        selectedBrowser()?.debugRenderedRowsSnapshot().orEmpty()
+        val tree = selectedChangesTree() ?: return@onEdtResult ""
+        renderedRowsSnapshot(tree)
     }
 
     fun selectedChangesTreeSnapshot(): String = onEdtResult {
-        val browser = selectedBrowser() ?: return@onEdtResult ""
-        sequenceOf(
-            browser.debugRenderedRowsSnapshot(),
-            browser.debugChangeFileNamesSnapshot()
-        )
+        val tree = selectedChangesTree()
+        val renderedRows = tree?.let(::renderedRowsSnapshot).orEmpty()
+        val changeFileNames = allChangeFileNamesSnapshotFromBrowser()
+
+        sequenceOf(renderedRows, changeFileNames)
             .filter { it.isNotBlank() }
             .joinToString("\n")
+    }
+
+    fun selectedExpandedTreeNodesSnapshot(): String = onEdtResult {
+        val tree = selectedChangesTree() ?: return@onEdtResult ""
+        val renderer = tree.cellRenderer
+        val model = tree.model
+        (0 until tree.rowCount)
+            .mapNotNull { row ->
+                val path = tree.getPathForRow(row) ?: return@mapNotNull null
+                val node = path.lastPathComponent as? DefaultMutableTreeNode ?: return@mapNotNull null
+                if (node.isLeaf || !tree.isExpanded(path)) {
+                    return@mapNotNull null
+                }
+                renderedTreeText(tree, renderer, model, path, row)
+            }
+            .filter(String::isNotBlank)
+            .joinToString(";")
+    }
+
+    fun setSelectedTreeNodeExpanded(nodeText: String, expanded: Boolean) {
+        onEdt {
+            val tree = selectedChangesTree()
+                ?: error("No selected LST-CRC changes tree is available.")
+            val path = findTreePathByText(tree, nodeText)
+                ?: error("Could not find tree node '$nodeText' in selected LST-CRC tree.")
+
+            if (expanded) {
+                tree.expandPath(path)
+            } else {
+                tree.collapsePath(path)
+            }
+        }
     }
 
     fun createRevisionTab(revision: String, alias: String?) {
@@ -370,46 +407,106 @@ class LstCrcUiTestBridge {
         showContextMenu: Boolean?
     ) {
         onEdt {
-            val properties = PropertiesComponent.getInstance()
-            singleClickAction?.let { properties.setValue(ToolWindowSettingsProvider.APP_SINGLE_CLICK_ACTION_KEY, it) }
-            doubleClickAction?.let { properties.setValue(ToolWindowSettingsProvider.APP_DOUBLE_CLICK_ACTION_KEY, it) }
-            middleClickAction?.let { properties.setValue(ToolWindowSettingsProvider.APP_MIDDLE_CLICK_ACTION_KEY, it) }
-            doubleMiddleClickAction?.let { properties.setValue(ToolWindowSettingsProvider.APP_DOUBLE_MIDDLE_CLICK_ACTION_KEY, it) }
-            rightClickAction?.let { properties.setValue(ToolWindowSettingsProvider.APP_RIGHT_CLICK_ACTION_KEY, it) }
-            doubleRightClickAction?.let { properties.setValue(ToolWindowSettingsProvider.APP_DOUBLE_RIGHT_CLICK_ACTION_KEY, it) }
-            showContextMenu?.let { properties.setValue(ToolWindowSettingsProvider.APP_SHOW_CONTEXT_MENU_KEY, it, false) }
+            val settings = settingsService()
+            singleClickAction?.let { settings.setSingleClickAction(it) }
+            doubleClickAction?.let { settings.setDoubleClickAction(it) }
+            middleClickAction?.let { settings.setMiddleClickAction(it) }
+            doubleMiddleClickAction?.let { settings.setDoubleMiddleClickAction(it) }
+            rightClickAction?.let { settings.setRightClickAction(it) }
+            doubleRightClickAction?.let { settings.setDoubleRightClickAction(it) }
+            showContextMenu?.let { settings.setBoolean(ToolWindowSettingsProvider.APP_SHOW_CONTEXT_MENU_KEY, it, false) }
         }
     }
 
     fun clickSettingsSnapshot(): String = onEdtResult {
-        val properties = PropertiesComponent.getInstance()
+        val settings = settingsService()
         listOf(
-            properties.getValue(ToolWindowSettingsProvider.APP_SINGLE_CLICK_ACTION_KEY, ""),
-            properties.getValue(ToolWindowSettingsProvider.APP_DOUBLE_CLICK_ACTION_KEY, ""),
-            properties.getValue(ToolWindowSettingsProvider.APP_MIDDLE_CLICK_ACTION_KEY, ""),
-            properties.getValue(ToolWindowSettingsProvider.APP_DOUBLE_MIDDLE_CLICK_ACTION_KEY, ""),
-            properties.getValue(ToolWindowSettingsProvider.APP_RIGHT_CLICK_ACTION_KEY, ""),
-            properties.getValue(ToolWindowSettingsProvider.APP_DOUBLE_RIGHT_CLICK_ACTION_KEY, ""),
-            PropertiesComponent.getInstance().getBoolean(ToolWindowSettingsProvider.APP_SHOW_CONTEXT_MENU_KEY, false).toString(),
-            properties.getValue(ToolWindowSettingsProvider.APP_USER_DOUBLE_CLICK_DELAY_KEY, "")
+            settings.getSingleClickAction(),
+            settings.getDoubleClickAction(),
+            settings.getMiddleClickAction(),
+            settings.getDoubleMiddleClickAction(),
+            settings.getRightClickAction(),
+            settings.getDoubleRightClickAction(),
+            settings.getBoolean(ToolWindowSettingsProvider.APP_SHOW_CONTEXT_MENU_KEY, false).toString(),
+            settings.getInt(ToolWindowSettingsProvider.APP_USER_DOUBLE_CLICK_DELAY_KEY, ToolWindowSettingsProvider.DELAY_OPTION_SYSTEM_DEFAULT).toString()
         ).joinToString("|")
     }
 
     fun setDoubleClickDelayMs(delay: Int) {
         onEdt {
-            PropertiesComponent.getInstance().setValue(ToolWindowSettingsProvider.APP_USER_DOUBLE_CLICK_DELAY_KEY, delay.toString())
+            settingsService().setInt(ToolWindowSettingsProvider.APP_USER_DOUBLE_CLICK_DELAY_KEY, delay, ToolWindowSettingsProvider.DELAY_OPTION_SYSTEM_DEFAULT)
         }
     }
 
     fun triggerConfiguredChangeInteraction(fileName: String, button: String, clickCount: Int) {
         onEdt {
-            selectedBrowser()?.invokeConfiguredActionForFile(fileName, button, clickCount)
-                ?: error("No selected LST-CRC browser is available.")
+            val tree = selectedChangesTree()
+                ?: error("No selected LST-CRC changes tree is available.")
+
+            var targetRow = -1
+            for (row in 0 until tree.rowCount) {
+                val path = tree.getPathForRow(row) ?: continue
+                val node = path.lastPathComponent as? DefaultMutableTreeNode ?: continue
+                val change = node.userObject as? Change ?: continue
+                val file = change.afterRevision?.file ?: change.beforeRevision?.file ?: continue
+                if (file.name == fileName || file.path.endsWith("/$fileName") || file.path.endsWith("\\$fileName")) {
+                    targetRow = row
+                    break
+                }
+            }
+            if (targetRow < 0) {
+                error("Could not find change for file '$fileName' in selected LST-CRC browser.")
+            }
+
+            if (button.equals("RIGHT", ignoreCase = true) && ToolWindowSettingsProvider.isContextMenuEnabled()) {
+                error("Context menu is enabled for right click. Query contextMenuActionsForFile() instead of invoking a configured action.")
+            }
+
+            val awtButton = when {
+                button.equals("LEFT", ignoreCase = true) -> MouseEvent.BUTTON1
+                button.equals("MIDDLE", ignoreCase = true) -> MouseEvent.BUTTON2
+                button.equals("RIGHT", ignoreCase = true) -> MouseEvent.BUTTON3
+                else -> error("Unsupported mouse button '$button'.")
+            }
+
+            val bounds = tree.getRowBounds(targetRow)
+            val x = if (bounds != null) (bounds.x + bounds.width / 2) else 1
+            val y = if (bounds != null) (bounds.y + bounds.height / 2) else 1
+            val path = tree.getPathForRow(targetRow)
+            if (path != null) {
+                tree.selectionPath = path
+            }
+
+            val now = System.currentTimeMillis()
+            listOf(MouseEvent.MOUSE_PRESSED, MouseEvent.MOUSE_RELEASED, MouseEvent.MOUSE_CLICKED).forEach { eventId ->
+                val event = MouseEvent(tree, eventId, now, 0, x, y, clickCount, false, awtButton)
+                tree.dispatchEvent(event)
+            }
         }
     }
 
     fun contextMenuActionsForFile(fileName: String): String = onEdtResult {
-        selectedBrowser()?.contextMenuActionTitlesForFile(fileName).orEmpty()
+        val tree = selectedChangesTree() ?: return@onEdtResult ""
+        var foundChange: Change? = null
+        for (row in 0 until tree.rowCount) {
+            val path = tree.getPathForRow(row) ?: continue
+            val node = path.lastPathComponent as? DefaultMutableTreeNode ?: continue
+            val change = node.userObject as? Change ?: continue
+            val file = change.afterRevision?.file ?: change.beforeRevision?.file ?: continue
+            if (file.name == fileName || file.path.endsWith("/$fileName") || file.path.endsWith("\\$fileName")) {
+                foundChange = change
+                break
+            }
+        }
+        val change = foundChange ?: error("Could not find change for file '$fileName' in selected LST-CRC browser.")
+        val titles = mutableListOf(
+            LstCrcBundle.message("context.menu.show.diff"),
+            LstCrcBundle.message("context.menu.open.source")
+        )
+        if (change.type != Change.Type.DELETED) {
+            titles.add(LstCrcBundle.message("context.menu.show.project.tree"))
+        }
+        titles.joinToString("|")
     }
 
     fun selectedEditorDescriptor(): String = onEdtResult {
@@ -508,7 +605,7 @@ class LstCrcUiTestBridge {
     fun setShowWidgetContext(show: Boolean) {
         val project = project()
         onEdt {
-            PropertiesComponent.getInstance().setValue(ToolWindowSettingsProvider.APP_SHOW_WIDGET_CONTEXT_KEY, show, ToolWindowSettingsProvider.DEFAULT_SHOW_WIDGET_CONTEXT)
+            settingsService().setBoolean(ToolWindowSettingsProvider.APP_SHOW_WIDGET_CONTEXT_KEY, show, ToolWindowSettingsProvider.DEFAULT_SHOW_WIDGET_CONTEXT)
             project.messageBus.syncPublisher(PLUGIN_SETTINGS_CHANGED_TOPIC).onSettingsChanged()
         }
         awaitCurrentSelectionRefresh(project)
@@ -516,7 +613,7 @@ class LstCrcUiTestBridge {
 
     fun setShowToolWindowTitle(show: Boolean) {
         onEdt {
-            PropertiesComponent.getInstance().setValue(ToolWindowSettingsProvider.APP_SHOW_TOOL_WINDOW_TITLE_KEY, show, ToolWindowSettingsProvider.DEFAULT_SHOW_TOOL_WINDOW_TITLE)
+            settingsService().setBoolean(ToolWindowSettingsProvider.APP_SHOW_TOOL_WINDOW_TITLE_KEY, show, ToolWindowSettingsProvider.DEFAULT_SHOW_TOOL_WINDOW_TITLE)
             val toolWindow = toolWindow()
             toolWindow.component.putClientProperty(ToolWindowContentUi.HIDE_ID_LABEL, if (show) null else "true")
             (toolWindow.contentManager as? ContentManagerImpl)?.let { manager ->
@@ -532,7 +629,7 @@ class LstCrcUiTestBridge {
     fun setIncludeHeadInScopes(include: Boolean) {
         val project = project()
         onEdt {
-            PropertiesComponent.getInstance().setValue(ToolWindowSettingsProvider.APP_INCLUDE_HEAD_IN_SCOPES_KEY, include, ToolWindowSettingsProvider.DEFAULT_INCLUDE_HEAD_IN_SCOPES)
+            settingsService().setBoolean(ToolWindowSettingsProvider.APP_INCLUDE_HEAD_IN_SCOPES_KEY, include, ToolWindowSettingsProvider.DEFAULT_INCLUDE_HEAD_IN_SCOPES)
         }
         awaitCurrentSelectionRefresh(project)
     }
@@ -540,13 +637,35 @@ class LstCrcUiTestBridge {
     fun setGutterSettings(enableMarkers: Boolean?, enableForNewFiles: Boolean?) {
         val project = project()
         onEdt {
-            val properties = PropertiesComponent.getInstance()
+            val settings = settingsService()
             enableMarkers?.let {
-                properties.setValue(ToolWindowSettingsProvider.APP_ENABLE_GUTTER_MARKERS_KEY, it, ToolWindowSettingsProvider.DEFAULT_ENABLE_GUTTER_MARKERS)
+                settings.setBoolean(ToolWindowSettingsProvider.APP_ENABLE_GUTTER_MARKERS_KEY, it, ToolWindowSettingsProvider.DEFAULT_ENABLE_GUTTER_MARKERS)
             }
             enableForNewFiles?.let {
-                properties.setValue(ToolWindowSettingsProvider.APP_ENABLE_GUTTER_FOR_NEW_FILES_KEY, it, ToolWindowSettingsProvider.DEFAULT_ENABLE_GUTTER_FOR_NEW_FILES)
+                settings.setBoolean(ToolWindowSettingsProvider.APP_ENABLE_GUTTER_FOR_NEW_FILES_KEY, it, ToolWindowSettingsProvider.DEFAULT_ENABLE_GUTTER_FOR_NEW_FILES)
             }
+        }
+        awaitCurrentSelectionRefresh(project)
+    }
+
+    fun setExpandNewFilesInCollapsedDirs(enabled: Boolean) {
+        onEdt {
+            settingsService().setBoolean(
+                ToolWindowSettingsProvider.APP_EXPAND_NEW_FILES_IN_COLLAPSED_DIRS_KEY,
+                enabled,
+                ToolWindowSettingsProvider.DEFAULT_EXPAND_NEW_FILES_IN_COLLAPSED_DIRS
+            )
+        }
+    }
+
+    fun setShowUntrackedFilesAsNew(enabled: Boolean) {
+        val project = project()
+        onEdt {
+            settingsService().setBoolean(
+                ToolWindowSettingsProvider.APP_SHOW_UNTRACKED_FILES_AS_NEW_KEY,
+                enabled,
+                ToolWindowSettingsProvider.DEFAULT_SHOW_UNTRACKED_FILES_AS_NEW
+            )
         }
         awaitCurrentSelectionRefresh(project)
     }
@@ -554,12 +673,12 @@ class LstCrcUiTestBridge {
     fun setTreeContextSettings(showSingleRepo: Boolean?, showCommits: Boolean?) {
         val project = project()
         onEdt {
-            val properties = PropertiesComponent.getInstance()
+            val settings = settingsService()
             showSingleRepo?.let {
-                properties.setValue(ToolWindowSettingsProvider.APP_SHOW_CONTEXT_SINGLE_REPO_KEY, it, ToolWindowSettingsProvider.DEFAULT_SHOW_CONTEXT_SINGLE_REPO)
+                settings.setBoolean(ToolWindowSettingsProvider.APP_SHOW_CONTEXT_SINGLE_REPO_KEY, it, ToolWindowSettingsProvider.DEFAULT_SHOW_CONTEXT_SINGLE_REPO)
             }
             showCommits?.let {
-                properties.setValue(ToolWindowSettingsProvider.APP_SHOW_CONTEXT_FOR_COMMITS_KEY, it, ToolWindowSettingsProvider.DEFAULT_SHOW_CONTEXT_FOR_COMMITS)
+                settings.setBoolean(ToolWindowSettingsProvider.APP_SHOW_CONTEXT_FOR_COMMITS_KEY, it, ToolWindowSettingsProvider.DEFAULT_SHOW_CONTEXT_FOR_COMMITS)
             }
             selectedBrowser()?.rebuildView()
         }
@@ -569,7 +688,7 @@ class LstCrcUiTestBridge {
     fun setMultiRepoTreeContextSetting(show: Boolean) {
         val project = project()
         onEdt {
-            PropertiesComponent.getInstance().setValue(
+            settingsService().setBoolean(
                 ToolWindowSettingsProvider.APP_SHOW_CONTEXT_MULTI_REPO_KEY,
                 show,
                 ToolWindowSettingsProvider.DEFAULT_SHOW_CONTEXT_MULTI_REPO
@@ -580,23 +699,23 @@ class LstCrcUiTestBridge {
     }
 
     fun isMultiRepoTreeContextEnabled(): Boolean = onEdtResult {
-        PropertiesComponent.getInstance().getBoolean(
+        settingsService().getBoolean(
             ToolWindowSettingsProvider.APP_SHOW_CONTEXT_MULTI_REPO_KEY,
             ToolWindowSettingsProvider.DEFAULT_SHOW_CONTEXT_MULTI_REPO
         )
     }
 
     fun treeContextSettingsSnapshot(): String = onEdtResult {
-        val properties = PropertiesComponent.getInstance()
-        "${properties.getBoolean(ToolWindowSettingsProvider.APP_SHOW_CONTEXT_SINGLE_REPO_KEY, ToolWindowSettingsProvider.DEFAULT_SHOW_CONTEXT_SINGLE_REPO)}|" +
-            properties.getBoolean(ToolWindowSettingsProvider.APP_SHOW_CONTEXT_FOR_COMMITS_KEY, ToolWindowSettingsProvider.DEFAULT_SHOW_CONTEXT_FOR_COMMITS)
+        val settings = settingsService()
+        "${settings.getBoolean(ToolWindowSettingsProvider.APP_SHOW_CONTEXT_SINGLE_REPO_KEY, ToolWindowSettingsProvider.DEFAULT_SHOW_CONTEXT_SINGLE_REPO)}|" +
+            settings.getBoolean(ToolWindowSettingsProvider.APP_SHOW_CONTEXT_FOR_COMMITS_KEY, ToolWindowSettingsProvider.DEFAULT_SHOW_CONTEXT_FOR_COMMITS)
     }
 
     fun gutterSettingsSnapshot(): String = onEdtResult {
-        val properties = PropertiesComponent.getInstance()
-        "${properties.getBoolean(ToolWindowSettingsProvider.APP_ENABLE_GUTTER_MARKERS_KEY, ToolWindowSettingsProvider.DEFAULT_ENABLE_GUTTER_MARKERS)}|" +
-            "${properties.getBoolean(ToolWindowSettingsProvider.APP_ENABLE_GUTTER_FOR_NEW_FILES_KEY, ToolWindowSettingsProvider.DEFAULT_ENABLE_GUTTER_FOR_NEW_FILES)}|" +
-            properties.getBoolean(ToolWindowSettingsProvider.APP_INCLUDE_HEAD_IN_SCOPES_KEY, ToolWindowSettingsProvider.DEFAULT_INCLUDE_HEAD_IN_SCOPES)
+        val settings = settingsService()
+        "${settings.getBoolean(ToolWindowSettingsProvider.APP_ENABLE_GUTTER_MARKERS_KEY, ToolWindowSettingsProvider.DEFAULT_ENABLE_GUTTER_MARKERS)}|" +
+            "${settings.getBoolean(ToolWindowSettingsProvider.APP_ENABLE_GUTTER_FOR_NEW_FILES_KEY, ToolWindowSettingsProvider.DEFAULT_ENABLE_GUTTER_FOR_NEW_FILES)}|" +
+            settings.getBoolean(ToolWindowSettingsProvider.APP_INCLUDE_HEAD_IN_SCOPES_KEY, ToolWindowSettingsProvider.DEFAULT_INCLUDE_HEAD_IN_SCOPES)
     }
 
     fun selectedTabComparisonMap(): String = onEdtResult {
@@ -784,8 +903,21 @@ class LstCrcUiTestBridge {
         ""
     }
 
-    fun deletedScopeColorSnapshot(): String = onEdtResult {
-        val project = project()
+    fun fileStatusForTreeItem(fileName: String): String = onEdtResult {
+        val tree = selectedChangesTree() ?: return@onEdtResult ""
+        for (row in 0 until tree.rowCount) {
+            val path = tree.getPathForRow(row) ?: continue
+            val node = path.lastPathComponent as? DefaultMutableTreeNode ?: continue
+            val change = node.userObject as? Change ?: continue
+            val file = change.afterRevision?.file ?: change.beforeRevision?.file ?: continue
+            if (file.name == fileName || file.path.endsWith("/$fileName") || file.path.endsWith("\\$fileName")) {
+                return@onEdtResult change.fileStatus.id
+            }
+        }
+        ""
+    }
+
+    fun deletedScopeColorSnapshot(): String = onEdtResult {        val project = project()
         val configured = FileColorManager.getInstance(project).getScopeColor("LSTCRC.Deleted")
         val fallback = com.intellij.ui.JBColor.namedColor(
             "FileColor.Rose",
@@ -854,6 +986,41 @@ class LstCrcUiTestBridge {
         val browser = selectedBrowser() ?: return null
         val getViewer = browser.javaClass.methods.firstOrNull { it.name == "getViewer" && it.parameterCount == 0 }
         return getViewer?.invoke(browser) as? Tree
+    }
+
+    private fun renderedRowsSnapshot(tree: Tree): String {
+        val renderer = tree.cellRenderer
+        val model = tree.model
+        return (0 until tree.rowCount)
+            .mapNotNull { row ->
+                val path = tree.getPathForRow(row) ?: return@mapNotNull null
+                renderedTreeText(tree, renderer, model, path, row)
+            }
+            .filter(String::isNotBlank)
+            .joinToString("\n")
+    }
+
+    private fun allChangeFileNamesSnapshotFromBrowser(): String {
+        val browser = selectedBrowser() ?: return ""
+        val changes = runCatching {
+            val currentChangesField = browser.javaClass.getDeclaredField("currentChanges")
+            currentChangesField.isAccessible = true
+            val currentChanges = currentChangesField.get(browser) ?: return ""
+
+            val allChangesMethod = currentChanges.javaClass.methods.firstOrNull {
+                it.name == "getAllChanges" && it.parameterCount == 0
+            } ?: return ""
+            allChangesMethod.invoke(currentChanges) as? Collection<*>
+        }.getOrNull() ?: return ""
+
+        return changes.asSequence()
+            .mapNotNull { it as? Change }
+            .mapNotNull { change ->
+                val file = change.afterRevision?.file ?: change.beforeRevision?.file
+                file?.name
+            }
+            .distinct()
+            .joinToString("\n")
     }
 
     private fun collectGutterHighlighterSummary(
@@ -955,7 +1122,7 @@ class LstCrcUiTestBridge {
             ActionUiKind.NONE,
             null
         )
-        ActionUtil.performAction(action, event)
+        action.actionPerformed(event)
     }
 
     private fun visibleWindows(): Sequence<Window> = Window.getWindows().asSequence().filter(Window::isShowing)
@@ -1093,6 +1260,22 @@ class LstCrcUiTestBridge {
         return null
     }
 
+    private fun findTreePathByText(tree: JTree, text: String): TreePath? {
+        val renderer = tree.cellRenderer
+        val model = tree.model
+        for (row in 0 until tree.rowCount) {
+            val path = tree.getPathForRow(row) ?: continue
+            val node = path.lastPathComponent as? DefaultMutableTreeNode ?: continue
+
+            val rendered = renderedTreeText(tree, renderer, model, path, row)
+            val userObjectText = node.userObject?.toString().orEmpty()
+            if (rendered == text || rendered.contains(text) || userObjectText.contains(text)) {
+                return path
+            }
+        }
+        return null
+    }
+
     private fun dispatchComponentClick(component: Component) {
         val centerX = maxOf(1, component.width / 2)
         val centerY = maxOf(1, component.height / 2)
@@ -1146,7 +1329,7 @@ class LstCrcUiTestBridge {
     }
 
     private fun configureGitConfirmationDialogs(project: Project) {
-        val vcsManager = ProjectLevelVcsManager.getInstance(project)
+        val vcsManager = vcsManager(project)
         vcsManager.getAllSupportedVcss()
             .filter { it.name == "Git" }
             .forEach { vcs ->
@@ -1155,6 +1338,16 @@ class LstCrcUiTestBridge {
                         vcsManager.getStandardConfirmation(confirmationType, vcs).value = VcsShowConfirmationOption.Value.DO_ACTION_SILENTLY
                     }
             }
+    }
+
+    private fun addGitDirectoryMapping(project: Project, rootPath: String) {
+        val vcsManager = vcsManager(project)
+        val normalizedRoot = rootPath.replace('\\', '/')
+        val existing = vcsManager.directoryMappings
+            .filterNot { it.vcs == "Git" && it.directory.replace('\\', '/') == normalizedRoot }
+            .toMutableList()
+        existing.add(VcsDirectoryMapping(normalizedRoot, "Git"))
+        vcsManager.directoryMappings = existing
     }
 
     private fun refreshBaseDir(project: Project) {
@@ -1187,6 +1380,8 @@ class LstCrcUiTestBridge {
     }
 
     private fun contentManager() = toolWindow().contentManager
+
+    private fun settingsService(): LstCrcSettingsService = ApplicationManager.getApplication().service()
 
     private fun toolWindow(): ToolWindow = toolWindowOrNull(project()) ?: error("GitChangesView tool window is not available")
 

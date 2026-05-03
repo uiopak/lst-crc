@@ -6,6 +6,7 @@ import com.github.uiopak.lstcrc.services.GitService
 import com.github.uiopak.lstcrc.gutters.VisualTrackerManager
 import com.github.uiopak.lstcrc.services.ToolWindowStateService
 import com.intellij.ide.util.PropertiesComponent
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.actionSystem.ActionGroup
 import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnActionEvent
@@ -13,8 +14,6 @@ import com.intellij.openapi.actionSystem.DefaultActionGroup
 import com.intellij.openapi.actionSystem.PlatformDataKeys
 import com.intellij.openapi.actionSystem.ToggleAction
 import com.intellij.openapi.components.service
-import com.intellij.openapi.wm.impl.content.ToolWindowContentUi
-import com.intellij.ui.content.impl.ContentManagerImpl
 import javax.swing.UIManager
 
 /**
@@ -22,6 +21,9 @@ import javax.swing.UIManager
  * all user-configurable settings, which are stored at the application level in [PropertiesComponent].
  */
 object ToolWindowSettingsProvider {
+
+    private fun settingsService(): LstCrcSettingsService =
+        ApplicationManager.getApplication().service()
 
     // --- Keys for Click Actions ---
     internal const val ACTION_NONE = "NONE"
@@ -66,6 +68,12 @@ object ToolWindowSettingsProvider {
     const val APP_SHOW_WIDGET_CONTEXT_KEY = "com.github.uiopak.lstcrc.app.showWidgetContext"
     const val DEFAULT_SHOW_WIDGET_CONTEXT = false
 
+    const val APP_EXPAND_NEW_FILES_IN_COLLAPSED_DIRS_KEY = "com.github.uiopak.lstcrc.app.expandNewFilesInCollapsedDirs"
+    const val DEFAULT_EXPAND_NEW_FILES_IN_COLLAPSED_DIRS = true
+
+    const val APP_SHOW_UNTRACKED_FILES_AS_NEW_KEY = "com.github.uiopak.lstcrc.app.showUntrackedFilesAsNew"
+    const val DEFAULT_SHOW_UNTRACKED_FILES_AS_NEW = false
+
     const val APP_SHOW_CONTEXT_SINGLE_REPO_KEY = "com.github.uiopak.lstcrc.app.showContextSingleRepo"
     const val DEFAULT_SHOW_CONTEXT_SINGLE_REPO = true
     const val APP_SHOW_CONTEXT_MULTI_REPO_KEY = "com.github.uiopak.lstcrc.app.showContextMultiRepo"
@@ -75,24 +83,26 @@ object ToolWindowSettingsProvider {
 
 
     // --- Public Getters for Settings ---
-    fun getSingleClickAction(): String = PropertiesComponent.getInstance().getValue(APP_SINGLE_CLICK_ACTION_KEY, DEFAULT_SINGLE_CLICK_ACTION)
-    fun getDoubleClickAction(): String = PropertiesComponent.getInstance().getValue(APP_DOUBLE_CLICK_ACTION_KEY, DEFAULT_DOUBLE_CLICK_ACTION)
-    fun getMiddleClickAction(): String = PropertiesComponent.getInstance().getValue(APP_MIDDLE_CLICK_ACTION_KEY, DEFAULT_MIDDLE_CLICK_ACTION)
-    fun getDoubleMiddleClickAction(): String = PropertiesComponent.getInstance().getValue(APP_DOUBLE_MIDDLE_CLICK_ACTION_KEY, DEFAULT_DOUBLE_MIDDLE_CLICK_ACTION)
-    fun getRightClickAction(): String = PropertiesComponent.getInstance().getValue(APP_RIGHT_CLICK_ACTION_KEY, DEFAULT_RIGHT_CLICK_ACTION)
-    fun getDoubleRightClickAction(): String = PropertiesComponent.getInstance().getValue(APP_DOUBLE_RIGHT_CLICK_ACTION_KEY, DEFAULT_DOUBLE_RIGHT_CLICK_ACTION)
-    fun isContextMenuEnabled(): Boolean = PropertiesComponent.getInstance().getBoolean(APP_SHOW_CONTEXT_MENU_KEY, DEFAULT_SHOW_CONTEXT_MENU)
-    fun isShowContextForSingleRepoEnabled(): Boolean = PropertiesComponent.getInstance().getBoolean(APP_SHOW_CONTEXT_SINGLE_REPO_KEY, DEFAULT_SHOW_CONTEXT_SINGLE_REPO)
-    fun isShowContextForMultiRepoEnabled(): Boolean = PropertiesComponent.getInstance().getBoolean(APP_SHOW_CONTEXT_MULTI_REPO_KEY, DEFAULT_SHOW_CONTEXT_MULTI_REPO)
-    fun isShowContextForCommitsEnabled(): Boolean = PropertiesComponent.getInstance().getBoolean(APP_SHOW_CONTEXT_FOR_COMMITS_KEY, DEFAULT_SHOW_CONTEXT_FOR_COMMITS)
-    fun isGutterMarkersEnabled(): Boolean = PropertiesComponent.getInstance().getBoolean(APP_ENABLE_GUTTER_MARKERS_KEY, DEFAULT_ENABLE_GUTTER_MARKERS)
-    fun isGutterForNewFilesEnabled(): Boolean = PropertiesComponent.getInstance().getBoolean(APP_ENABLE_GUTTER_FOR_NEW_FILES_KEY, DEFAULT_ENABLE_GUTTER_FOR_NEW_FILES)
-    fun isIncludeHeadInScopes(): Boolean = PropertiesComponent.getInstance().getBoolean(APP_INCLUDE_HEAD_IN_SCOPES_KEY, DEFAULT_INCLUDE_HEAD_IN_SCOPES)
-    fun isShowWidgetContext(): Boolean = PropertiesComponent.getInstance().getBoolean(APP_SHOW_WIDGET_CONTEXT_KEY, DEFAULT_SHOW_WIDGET_CONTEXT)
+    fun getSingleClickAction(): String = settingsService().getSingleClickAction()
+    fun getDoubleClickAction(): String = settingsService().getDoubleClickAction()
+    fun getMiddleClickAction(): String = settingsService().getMiddleClickAction()
+    fun getDoubleMiddleClickAction(): String = settingsService().getDoubleMiddleClickAction()
+    fun getRightClickAction(): String = settingsService().getRightClickAction()
+    fun getDoubleRightClickAction(): String = settingsService().getDoubleRightClickAction()
+    fun isContextMenuEnabled(): Boolean = settingsService().getBoolean(APP_SHOW_CONTEXT_MENU_KEY, DEFAULT_SHOW_CONTEXT_MENU)
+    fun isShowContextForSingleRepoEnabled(): Boolean = settingsService().getBoolean(APP_SHOW_CONTEXT_SINGLE_REPO_KEY, DEFAULT_SHOW_CONTEXT_SINGLE_REPO)
+    fun isShowContextForMultiRepoEnabled(): Boolean = settingsService().getBoolean(APP_SHOW_CONTEXT_MULTI_REPO_KEY, DEFAULT_SHOW_CONTEXT_MULTI_REPO)
+    fun isShowContextForCommitsEnabled(): Boolean = settingsService().getBoolean(APP_SHOW_CONTEXT_FOR_COMMITS_KEY, DEFAULT_SHOW_CONTEXT_FOR_COMMITS)
+    fun isGutterMarkersEnabled(): Boolean = settingsService().getBoolean(APP_ENABLE_GUTTER_MARKERS_KEY, DEFAULT_ENABLE_GUTTER_MARKERS)
+    fun isGutterForNewFilesEnabled(): Boolean = settingsService().getBoolean(APP_ENABLE_GUTTER_FOR_NEW_FILES_KEY, DEFAULT_ENABLE_GUTTER_FOR_NEW_FILES)
+    fun isIncludeHeadInScopes(): Boolean = settingsService().getBoolean(APP_INCLUDE_HEAD_IN_SCOPES_KEY, DEFAULT_INCLUDE_HEAD_IN_SCOPES)
+    fun isShowWidgetContext(): Boolean = settingsService().getBoolean(APP_SHOW_WIDGET_CONTEXT_KEY, DEFAULT_SHOW_WIDGET_CONTEXT)
+    fun isExpandNewFilesInCollapsedDirs(): Boolean = settingsService().getBoolean(APP_EXPAND_NEW_FILES_IN_COLLAPSED_DIRS_KEY, DEFAULT_EXPAND_NEW_FILES_IN_COLLAPSED_DIRS)
+    fun isShowUntrackedFilesAsNew(): Boolean = settingsService().getBoolean(APP_SHOW_UNTRACKED_FILES_AS_NEW_KEY, DEFAULT_SHOW_UNTRACKED_FILES_AS_NEW)
 
 
     fun getUserDoubleClickDelayMs(): Int {
-        val storedValue = PropertiesComponent.getInstance().getInt(APP_USER_DOUBLE_CLICK_DELAY_KEY, DELAY_OPTION_SYSTEM_DEFAULT)
+        val storedValue = settingsService().getInt(APP_USER_DOUBLE_CLICK_DELAY_KEY, DELAY_OPTION_SYSTEM_DEFAULT)
         if (storedValue > 0) {
             return storedValue
         }
@@ -101,13 +111,13 @@ object ToolWindowSettingsProvider {
     }
 
     // --- Private Setters used by Actions ---
-    private fun setSingleClickAction(action: String) = PropertiesComponent.getInstance().setValue(APP_SINGLE_CLICK_ACTION_KEY, action)
-    private fun setDoubleClickAction(action: String) = PropertiesComponent.getInstance().setValue(APP_DOUBLE_CLICK_ACTION_KEY, action)
-    private fun setMiddleClickAction(action: String) = PropertiesComponent.getInstance().setValue(APP_MIDDLE_CLICK_ACTION_KEY, action)
-    private fun setDoubleMiddleClickAction(action: String) = PropertiesComponent.getInstance().setValue(APP_DOUBLE_MIDDLE_CLICK_ACTION_KEY, action)
-    private fun setRightClickAction(action: String) = PropertiesComponent.getInstance().setValue(APP_RIGHT_CLICK_ACTION_KEY, action)
-    private fun setDoubleRightClickAction(action: String) = PropertiesComponent.getInstance().setValue(APP_DOUBLE_RIGHT_CLICK_ACTION_KEY, action)
-    private fun setUserDoubleClickDelayMs(delay: Int) = PropertiesComponent.getInstance().setValue(APP_USER_DOUBLE_CLICK_DELAY_KEY, delay, DELAY_OPTION_SYSTEM_DEFAULT)
+    private fun setSingleClickAction(action: String) = settingsService().setSingleClickAction(action)
+    private fun setDoubleClickAction(action: String) = settingsService().setDoubleClickAction(action)
+    private fun setMiddleClickAction(action: String) = settingsService().setMiddleClickAction(action)
+    private fun setDoubleMiddleClickAction(action: String) = settingsService().setDoubleMiddleClickAction(action)
+    private fun setRightClickAction(action: String) = settingsService().setRightClickAction(action)
+    private fun setDoubleRightClickAction(action: String) = settingsService().setDoubleRightClickAction(action)
+    private fun setUserDoubleClickDelayMs(delay: Int) = settingsService().setInt(APP_USER_DOUBLE_CLICK_DELAY_KEY, delay, DELAY_OPTION_SYSTEM_DEFAULT)
 
 
     fun createToolWindowSettingsGroup(): ActionGroup {
@@ -128,7 +138,7 @@ object ToolWindowSettingsProvider {
             APP_ENABLE_GUTTER_FOR_NEW_FILES_KEY, DEFAULT_ENABLE_GUTTER_FOR_NEW_FILES,
             onChanged = { e, _ -> e.project?.service<VisualTrackerManager>()?.settingsChanged() },
             updateCheck = { e ->
-                e.presentation.isEnabled = PropertiesComponent.getInstance()
+                e.presentation.isEnabled = settingsService()
                     .getBoolean(APP_ENABLE_GUTTER_MARKERS_KEY, DEFAULT_ENABLE_GUTTER_MARKERS)
             }
         ))
@@ -163,6 +173,17 @@ object ToolWindowSettingsProvider {
                 updateCheck = { e ->
                     e.presentation.isEnabled = isShowContextForSingleRepoEnabled() || isShowContextForMultiRepoEnabled()
                 }
+            ))
+
+            add(createBooleanSettingToggle(
+                LstCrcBundle.message("settings.tree.view.expand.new.files.in.collapsed.dirs"),
+                APP_EXPAND_NEW_FILES_IN_COLLAPSED_DIRS_KEY, DEFAULT_EXPAND_NEW_FILES_IN_COLLAPSED_DIRS
+            ))
+
+            add(createBooleanSettingToggle(
+                LstCrcBundle.message("settings.tree.view.show.untracked.files.as.new"),
+                APP_SHOW_UNTRACKED_FILES_AS_NEW_KEY, DEFAULT_SHOW_UNTRACKED_FILES_AS_NEW,
+                onChanged = { e, _ -> e.project?.service<ToolWindowStateService>()?.refreshDataForCurrentSelection() }
             ))
         }
         rootSettingsGroup.add(treeViewSettingsGroup)
@@ -208,11 +229,11 @@ object ToolWindowSettingsProvider {
         val rightClickSettingsGroup = DefaultActionGroup({ LstCrcBundle.message("settings.right.click.behavior") }, true)
         rightClickSettingsGroup.add(createToggleAction(LstCrcBundle.message("settings.right.click.show.menu"),
             { isContextMenuEnabled() },
-            { PropertiesComponent.getInstance().setValue(APP_SHOW_CONTEXT_MENU_KEY, true, DEFAULT_SHOW_CONTEXT_MENU) })
+            { settingsService().setBoolean(APP_SHOW_CONTEXT_MENU_KEY, true, DEFAULT_SHOW_CONTEXT_MENU) })
         )
         rightClickSettingsGroup.add(createToggleAction(LstCrcBundle.message("settings.right.click.trigger.actions"),
             { !isContextMenuEnabled() },
-            { PropertiesComponent.getInstance().setValue(APP_SHOW_CONTEXT_MENU_KEY, false, DEFAULT_SHOW_CONTEXT_MENU) })
+            { settingsService().setBoolean(APP_SHOW_CONTEXT_MENU_KEY, false, DEFAULT_SHOW_CONTEXT_MENU) })
         )
         mouseClickActionsGroup.add(rightClickSettingsGroup)
 
@@ -238,7 +259,7 @@ object ToolWindowSettingsProvider {
         )
         predefinedDelays.forEach { (label, value) ->
             delaySpeedGroup.add(createToggleAction(label,
-                { PropertiesComponent.getInstance().getInt(APP_USER_DOUBLE_CLICK_DELAY_KEY, DELAY_OPTION_SYSTEM_DEFAULT) == value },
+                { settingsService().getInt(APP_USER_DOUBLE_CLICK_DELAY_KEY, DELAY_OPTION_SYSTEM_DEFAULT) == value },
                 { setUserDoubleClickDelayMs(value) }
             ))
         }
@@ -269,10 +290,10 @@ object ToolWindowSettingsProvider {
     }
 
     /**
-     * Helper to create a [ToggleAction] for a boolean setting stored in [PropertiesComponent].
+     * Helper to create a [ToggleAction] for a boolean setting stored in [LstCrcSettingsService].
      *
      * @param text The display text for the action.
-     * @param key The property key.
+     * @param key The settings key.
      * @param default The default value.
      * @param onChanged Optional callback invoked after the value changes. Receives the event and new state.
      * @param updateCheck Optional predicate to control enabled/visible state in [ToggleAction.update].
@@ -291,10 +312,10 @@ object ToolWindowSettingsProvider {
             }
 
             override fun isSelected(e: AnActionEvent): Boolean =
-                PropertiesComponent.getInstance().getBoolean(key, default)
+                settingsService().getBoolean(key, default)
 
             override fun setSelected(e: AnActionEvent, state: Boolean) {
-                PropertiesComponent.getInstance().setValue(key, state, default)
+                settingsService().setBoolean(key, state, default)
                 onChanged?.invoke(e, state)
             }
 
@@ -318,10 +339,7 @@ object ToolWindowSettingsProvider {
      */
     private fun updateToolWindowTitleVisibility(e: AnActionEvent, showTitle: Boolean) {
         val toolWindow = e.getData(PlatformDataKeys.TOOL_WINDOW) ?: return
-        toolWindow.component.putClientProperty(ToolWindowContentUi.HIDE_ID_LABEL, if (showTitle) null else "true")
-        (toolWindow.contentManager as? ContentManagerImpl)?.let {
-            (it.ui as? ToolWindowContentUi)?.update()
-        }
+        ToolWindowUiCompatibility.setToolWindowTitleVisible(toolWindow, showTitle)
     }
 
     /**

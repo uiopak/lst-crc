@@ -3,9 +3,9 @@ package com.github.uiopak.lstcrc.scopes
 import com.github.uiopak.lstcrc.resources.LstCrcBundle
 import com.intellij.openapi.actionSystem.DataContext
 import com.intellij.openapi.project.Project
+import com.intellij.psi.search.GlobalSearchScopesCore
 import com.intellij.psi.search.SearchScope
 import com.intellij.psi.search.SearchScopeProvider
-import com.intellij.psi.search.scope.packageSet.NamedScopeManager
 
 /**
  * Provides the LSTCRC scopes under a "LSTCRC Changes" group in the scope selection dropdown.
@@ -19,18 +19,16 @@ class LstCrcSearchScopeProvider : SearchScopeProvider {
     }
 
     override fun getSearchScopes(project: Project, dataContext: DataContext): List<SearchScope> {
-        val namedScopeManager = NamedScopeManager.getInstance(project)
-
         val createdScope = LstCrcProvidedScopes.CREATED_FILES_SCOPE
         val modifiedScope = LstCrcProvidedScopes.MODIFIED_FILES_SCOPE
         val movedScope = LstCrcProvidedScopes.MOVED_FILES_SCOPE
         val changedScope = LstCrcProvidedScopes.CHANGED_FILES_SCOPE
 
         return listOf(
-            NamedScopeWrapper(project, createdScope, namedScopeManager),
-            NamedScopeWrapper(project, modifiedScope, namedScopeManager),
-            NamedScopeWrapper(project, movedScope, namedScopeManager),
-            NamedScopeWrapper(project, changedScope, namedScopeManager)
+            GlobalSearchScopesCore.filterScope(project, createdScope),
+            GlobalSearchScopesCore.filterScope(project, modifiedScope),
+            GlobalSearchScopesCore.filterScope(project, movedScope),
+            GlobalSearchScopesCore.filterScope(project, changedScope)
         )
     }
 }

@@ -78,6 +78,9 @@ LST-CRC is an IntelliJ Platform plugin for comparing the current working tree ag
 	- Unsaved editor content participates in the active diff, including preserving `NEW` versus `MODIFIED` semantics when overlays merge into comparison data.
 	- Unsaved edits can appear before save.
 	- Unsaved edits to already-new files must stay `NEW`/`ADDED`, not degrade into ordinary modifications.
+- `C3.9` Tree expansion-state persistence.
+	- The comparison tree keeps user expand/collapse decisions when the active comparison tab changes and later returns.
+	- New nodes can still be revealed without forcing previously collapsed nodes open.
 
 ### C4. Interaction model and presentation settings
 

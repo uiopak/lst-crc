@@ -5,9 +5,10 @@ import com.github.uiopak.lstcrc.state.TabInfo
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.progress.ProgressIndicator
-import com.intellij.openapi.progress.Task
 import com.intellij.openapi.fileEditor.FileDocumentManager
+import com.intellij.platform.ide.progress.withBackgroundProgress
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import com.intellij.openapi.util.text.StringUtil
 import com.intellij.openapi.vcs.FileStatus
 import com.intellij.openapi.vcs.VcsException
@@ -19,6 +20,7 @@ import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.openapi.vfs.VfsUtilCore
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.vcsUtil.VcsUtil
+import com.github.uiopak.lstcrc.toolWindow.ToolWindowSettingsProvider
 import git4idea.GitContentRevision
 import git4idea.GitRevisionNumber
 import git4idea.changes.GitChangeUtils
@@ -28,8 +30,7 @@ import git4idea.commands.GitLineHandler
 import git4idea.repo.GitRepository
 import git4idea.repo.GitRepositoryManager
 import git4idea.util.GitFileUtils
-import kotlinx.collections.immutable.toImmutableMap
-import java.util.concurrent.CompletableFuture
+
 
 /**
  * Holds the result of a Git diff, with files categorized by their change type.
@@ -77,22 +78,10 @@ class GitService(private val project: Project) {
 
     private val logger = thisLogger()
 
-    private data class BranchSnapshotTarget(
-        val repository: GitRepository?,
-        val root: VirtualFile
-    )
-
     private data class ChangeLoadContext(
         val allChanges: MutableList<Change> = mutableListOf(),
         val comparisonContext: MutableMap<String, String> = mutableMapOf(),
         val failures: MutableMap<GitRepository, String> = mutableMapOf()
-    )
-
-    private data class ChangeBuckets(
-        val createdFiles: MutableList<VirtualFile> = mutableListOf(),
-        val modifiedFiles: MutableList<VirtualFile> = mutableListOf(),
-        val movedFiles: MutableList<VirtualFile> = mutableListOf(),
-        val deletedFiles: MutableList<VirtualFile> = mutableListOf()
     )
 
     internal fun getRepositoryForFile(file: VirtualFile): GitRepository? {
@@ -141,125 +130,64 @@ class GitService(private val project: Project) {
     }
 
     fun getBranchSnapshot(repository: GitRepository?): BranchSnapshot {
-        val target = resolveBranchSnapshotTarget(repository)
-        if (target == null) {
+        val repo = repository ?: getPrimaryRepository() ?: run {
             logger.debug("getBranchSnapshot() called with no repository available.")
             return BranchSnapshot(emptyList(), emptyList())
         }
-
-        updateBranchSnapshotRepository(target)
-        val snapshot = loadBranchSnapshot(target)
-
+        repo.update()
+        val branches = repo.branches
+        val snapshot = BranchSnapshot(
+            branches.localBranches.map { it.name },
+            branches.remoteBranches.map { it.name }
+        )
         logger.info(
-            "Loaded branch snapshot for repo '${target.root.name}': " +
+            "Loaded branch snapshot for repo '${repo.root.name}': " +
                 "${snapshot.localBranches.size} local, ${snapshot.remoteBranches.size} remote branches."
         )
         return snapshot
     }
 
-    fun getChanges(tabInfo: TabInfo?): CompletableFuture<GetChangesResult> {
-        val future = CompletableFuture<GetChangesResult>()
+    suspend fun getChanges(tabInfo: TabInfo?): GetChangesResult {
         val repositories = getRepositories()
-        val isLoadingHead = tabInfo == null
         val profileName = tabInfo?.branchName ?: "HEAD"
 
         logger.debug("getChanges called for profile: $profileName")
 
         if (repositories.isEmpty()) {
-            val emptyChanges = CategorizedChanges(emptyList(), emptyList(), emptyList(), emptyList(), emptyList(), emptyMap())
-            future.complete(GetChangesResult(emptyChanges, emptyMap()))
-            return future
+            return GetChangesResult(
+                CategorizedChanges(emptyList(), emptyList(), emptyList(), emptyList(), emptyList(), emptyMap()),
+                emptyMap()
+            )
         }
 
-        object : Task.Backgroundable(project, LstCrcBundle.message("git.task.loading.changes")) {
-            override fun run(indicator: ProgressIndicator) {
-                try {
-                    future.complete(loadChangesResult(repositories, tabInfo, indicator, isLoadingHead))
-
-                } catch (e: Exception) {
-                    // This will now only catch truly unexpected errors.
-                    logger.error("Unexpected error getting changes for $profileName: ${e.message}", e)
-                    future.completeExceptionally(e)
-                }
+        return withBackgroundProgress(project, LstCrcBundle.message("git.task.loading.changes")) {
+            withContext(Dispatchers.IO) {
+                loadChangesResult(repositories, tabInfo)
             }
-        }.queue()
-
-        return future
-    }
-
-    private fun resolveBranchSnapshotTarget(repository: GitRepository?): BranchSnapshotTarget? {
-        val targetRepository = repository ?: getPrimaryRepository()
-        val branchRoot = targetRepository?.root ?: project.basePath
-            ?.let { LocalFileSystem.getInstance().refreshAndFindFileByPath(it) }
-            ?.takeIf { it.findChild(".git") != null }
-
-        return branchRoot?.let { BranchSnapshotTarget(targetRepository, it) }
-    }
-
-    private fun updateBranchSnapshotRepository(target: BranchSnapshotTarget) {
-        val repository = target.repository
-        if (repository == null) {
-            logger.info("getBranchSnapshot() is using the project base path fallback: ${target.root.path}")
-            return
         }
-
-        repository.update()
-    }
-
-    private fun loadBranchSnapshot(target: BranchSnapshotTarget): BranchSnapshot {
-        val localBranches = runBranchList(target.root, includeRemoteBranches = false)
-        val remoteBranches = runBranchList(target.root, includeRemoteBranches = true)
-        if (localBranches.isNotEmpty() || remoteBranches.isNotEmpty()) {
-            return BranchSnapshot(localBranches, remoteBranches)
-        }
-
-        val repository = target.repository ?: return BranchSnapshot(emptyList(), emptyList())
-        return BranchSnapshot(
-            repository.branches.localBranches.map { it.name },
-            repository.branches.remoteBranches.map { it.name }
-        )
     }
 
     private fun loadChangesResult(
         repositories: List<GitRepository>,
-        tabInfo: TabInfo?,
-        indicator: ProgressIndicator,
-        isLoadingHead: Boolean
+        tabInfo: TabInfo?
     ): GetChangesResult {
         val context = ChangeLoadContext()
-        if (isLoadingHead) {
-            loadHeadChanges(repositories, context)
+        if (tabInfo == null) {
+            logger.debug("Using direct Git status for HEAD across all repositories.")
+            for (repo in repositories) {
+                context.allChanges.addAll(loadLocalChanges(repo))
+                context.comparisonContext[repo.root.path] = "HEAD"
+            }
         } else {
-            loadTabChanges(repositories, tabInfo ?: error("tabInfo is required when loading non-HEAD changes"), indicator, context)
+            val primaryRevision = tabInfo.branchName
+            for (repo in repositories) {
+                val target = tabInfo.comparisonMap[repo.root.path] ?: primaryRevision
+                context.comparisonContext[repo.root.path] = target
+                logger.debug("Repo '${repo.root.path}': using target '$target'")
+                context.allChanges.addAll(loadChangesForTarget(repo, target, context.failures))
+            }
         }
-
         return GetChangesResult(buildCategorizedChanges(context.allChanges, context.comparisonContext), context.failures)
-    }
-
-    private fun loadHeadChanges(repositories: List<GitRepository>, context: ChangeLoadContext) {
-        logger.debug("Using direct Git status for HEAD across all repositories.")
-        repositories.forEach { repo ->
-            context.allChanges.addAll(loadLocalChanges(repo))
-            context.comparisonContext[repo.root.path] = "HEAD"
-        }
-    }
-
-    private fun loadTabChanges(
-        repositories: List<GitRepository>,
-        tabInfo: TabInfo,
-        indicator: ProgressIndicator,
-        context: ChangeLoadContext
-    ) {
-        val primaryRevision = tabInfo.branchName
-        val overrides = tabInfo.comparisonMap.toImmutableMap()
-
-        for (repo in repositories) {
-            indicator.text = "Checking repository: ${repo.root.name}"
-            val target = overrides[repo.root.path] ?: primaryRevision
-            context.comparisonContext[repo.root.path] = target
-            logger.debug("Repo '${repo.root.path}': using target '$target'")
-            context.allChanges.addAll(loadChangesForTarget(repo, target, context.failures))
-        }
     }
 
     private fun loadChangesForTarget(
@@ -274,7 +202,11 @@ class GitService(private val project: Project) {
 
         return try {
             val trackedChanges = GitChangeUtils.getDiffWithWorkingDir(project, repo.root, target, null, false, true).toList()
-            val untrackedChanges = loadUntrackedChanges(repo)
+            val untrackedChanges = if (ToolWindowSettingsProvider.isShowUntrackedFilesAsNew()) {
+                loadUntrackedChanges(repo)
+            } else {
+                emptyList()
+            }
             overlayUnsavedDocumentChanges(repo, target, trackedChanges + untrackedChanges)
         } catch (e: VcsException) {
             logger.warn(
@@ -299,66 +231,21 @@ class GitService(private val project: Project) {
         allChanges: List<Change>,
         comparisonContext: Map<String, String>
     ): CategorizedChanges {
-        val buckets = ChangeBuckets()
-        allChanges.forEach { change -> categorizeChange(change, buckets) }
-
-        return CategorizedChanges(
-            allChanges.distinct(),
-            buckets.createdFiles.distinct(),
-            buckets.modifiedFiles.distinct(),
-            buckets.movedFiles.distinct(),
-            buckets.deletedFiles.distinct(),
-            comparisonContext
-        )
-    }
-
-    private fun categorizeChange(change: Change, buckets: ChangeBuckets) {
-        when (change.type) {
-            Change.Type.NEW -> change.afterRevision?.let { afterRevision ->
-                createComparisonVirtualFile(afterRevision)?.let { buckets.createdFiles.add(it) }
-            }
-            Change.Type.MODIFICATION -> change.afterRevision?.let { afterRevision ->
-                createComparisonVirtualFile(afterRevision)?.let { buckets.modifiedFiles.add(it) }
-            }
-            Change.Type.MOVED -> change.afterRevision?.let { afterRevision ->
-                createComparisonVirtualFile(afterRevision)?.let { buckets.movedFiles.add(it) }
-            }
-            Change.Type.DELETED -> change.beforeRevision?.let { beforeRevision ->
-                createDeletedVirtualFile(beforeRevision)?.let { buckets.deletedFiles.add(it) }
-            }
-        }
-    }
-
-    private fun runBranchList(root: VirtualFile, includeRemoteBranches: Boolean): List<String> {
-        val handler = GitLineHandler(project, root, GitCommand.BRANCH)
-        @Suppress("UsePropertyAccessSyntax")
-        handler.setSilent(true)
-        handler.addParameters("--list")
-        handler.addParameters("--format=%(refname:short)")
-        if (includeRemoteBranches) {
-            handler.addParameters("--remotes")
-        }
-
-        val result = Git.getInstance().runCommand(handler)
-        if (result.exitCode != 0) {
-            logger.warn(
-                "Failed to load ${if (includeRemoteBranches) "remote" else "local"} branches for repo '${root.name}': " +
-                    result.errorOutputAsJoinedString
-            )
-            return emptyList()
-        }
-
-        return result.outputAsJoinedString
-            .lineSequence()
-            .map { it.trim() }
-            .filter { it.isNotEmpty() }
-            .filterNot { includeRemoteBranches && it.endsWith("/HEAD") }
-            .toList()
+        val byType = allChanges.groupBy { it.type }
+        val created  = byType[Change.Type.NEW].orEmpty().mapNotNull { it.afterRevision?.let(::createComparisonVirtualFile) }.distinct()
+        val modified = byType[Change.Type.MODIFICATION].orEmpty().mapNotNull { it.afterRevision?.let(::createComparisonVirtualFile) }.distinct()
+        val moved    = byType[Change.Type.MOVED].orEmpty().mapNotNull { it.afterRevision?.let(::createComparisonVirtualFile) }.distinct()
+        val deleted  = byType[Change.Type.DELETED].orEmpty().mapNotNull { it.beforeRevision?.let(::createDeletedVirtualFile) }.distinct()
+        return CategorizedChanges(allChanges.distinct(), created, modified, moved, deleted, comparisonContext)
     }
 
     private fun loadLocalChanges(repo: GitRepository): List<Change> {
         val trackedChanges = loadTrackedChangesAgainstHead(repo)
-        val untrackedChanges = loadUntrackedChanges(repo)
+        val untrackedChanges = if (ToolWindowSettingsProvider.isShowUntrackedFilesAsNew()) {
+            loadUntrackedChanges(repo)
+        } else {
+            emptyList()
+        }
         return overlayUnsavedDocumentChanges(repo, "HEAD", trackedChanges + untrackedChanges)
     }
 
@@ -398,7 +285,7 @@ class GitService(private val project: Project) {
                 try {
                     val afterFilePath = GitContentRevision.createPathFromEscaped(repo.root, relativePath)
                     val afterRevision = GitContentRevision.createRevision(afterFilePath, null, project)
-                    Change(null, afterRevision, FileStatus.ADDED)
+                    Change(null, afterRevision, FileStatus.UNKNOWN)
                 } catch (e: Exception) {
                     logger.error("Failed to parse untracked file path '$relativePath' for repo '${repo.root.name}'", e)
                     null

@@ -218,9 +218,9 @@ kover {
     }
 }
 
-// Exclude the IDE Starter test bridge from the published plugin JAR by default.
-// The bridge (@Service) is only needed when running starterUiTest.
-// It is auto-included when starterUiTest is requested, or manually via -PincludeTestBridge=true.
+// Include the IDE Starter test bridge source set only when needed.
+// The bridge (@Service) is required in the running IDE only for starterUiTest / starterPerformanceTest,
+// or manually via -PincludeTestBridge=true.
 val includeTestBridge = providers.gradleProperty("includeTestBridge")
     .map { it.toBoolean() }
     .orElse(
@@ -229,9 +229,9 @@ val includeTestBridge = providers.gradleProperty("includeTestBridge")
         }
     )
 
-if (!includeTestBridge.get()) {
+if (includeTestBridge.get()) {
     sourceSets.main {
-        kotlin.exclude("com/github/uiopak/lstcrc/testing/**")
+        kotlin.srcDir("src/testBridge/kotlin")
     }
 }
 

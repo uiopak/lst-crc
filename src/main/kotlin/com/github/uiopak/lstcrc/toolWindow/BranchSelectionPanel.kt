@@ -44,7 +44,7 @@ class BranchSelectionPanel(
 
     private val searchTextField = SearchTextField(false)
     private val tree: Tree
-    private var fullTreeModel: DefaultTreeModel
+    private val fullTreeModel: DefaultTreeModel
 
     // Data classes to represent nodes in the tree clearly.
     private data class BranchCategory(val type: BranchCategoryType, val displayName: String)
@@ -61,7 +61,8 @@ class BranchSelectionPanel(
             override fun changedUpdate(e: DocumentEvent?) = filterTree()
         })
 
-        this.add(searchTextField, BorderLayout.NORTH)
+        add(searchTextField, BorderLayout.NORTH)
+
         val scrollPane = JBScrollPane(tree).apply {
             border = JBUI.Borders.empty()
         }
@@ -70,20 +71,16 @@ class BranchSelectionPanel(
 
     private fun filterTree() {
         val searchTerm = searchTextField.text
-        tree.putClientProperty("search.term", searchTerm) // Pass term to renderer for highlighting
+        tree.putClientProperty("search.term", searchTerm)
 
         val newModel = if (searchTerm.isBlank()) {
             fullTreeModel
         } else {
-            var filteredRoot = buildFilteredRoot(searchTerm)
-            if (filteredRoot.childCount == 0) {
-                fullTreeModel = buildFullBranchTreeModel()
-                filteredRoot = buildFilteredRoot(searchTerm)
-            }
-            DefaultTreeModel(filteredRoot)
+            DefaultTreeModel(buildFilteredRoot(searchTerm))
         }
         tree.model = newModel
         TreeUtil.expandAll(tree)
+        refreshSearchSelection(searchTerm)
     }
 
     private fun buildFilteredRoot(searchTerm: String): DefaultMutableTreeNode {
@@ -101,27 +98,18 @@ class BranchSelectionPanel(
         return filteredRoot
     }
 
-    /**
-     * Clones a node if it or any of its descendants match the search term.
-     */
     private fun cloneNodeIfMatching(originalNode: DefaultMutableTreeNode, searchTerm: String): DefaultMutableTreeNode? {
-        val userObject = originalNode.userObject
-
-        // Get the text representation of the node for searching.
-        val textToSearch = when (userObject) {
+        val textToSearch = when (val userObject = originalNode.userObject) {
             is BranchInfo -> userObject.fullBranchName
             is String -> userObject
             is BranchCategory -> userObject.displayName
             else -> ""
         }
 
-        // Case 1: The node's text itself matches. Clone the entire subtree.
         if (textToSearch.contains(searchTerm, ignoreCase = true)) {
             return deepCloneNode(originalNode)
         }
 
-        // Case 2: The node's text doesn't match, but a descendant might.
-        // Recursively check children.
         val matchingChildren = mutableListOf<DefaultMutableTreeNode>()
         if (!originalNode.isLeaf) {
             for (child in originalNode.children()) {
@@ -132,29 +120,61 @@ class BranchSelectionPanel(
             }
         }
 
-        // If any children matched, create a clone of the current node and add only the matching children.
         if (matchingChildren.isNotEmpty()) {
-            val clonedNode = DefaultMutableTreeNode(userObject)
-            matchingChildren.forEach { clonedNode.add(it) }
-            return clonedNode
+            return DefaultMutableTreeNode(originalNode.userObject).apply {
+                matchingChildren.forEach(::add)
+            }
         }
 
-        // No match for this node or any of its descendants.
         return null
     }
 
-    /**
-     * Helper function to create a deep copy of a tree node and its children.
-     */
     private fun deepCloneNode(node: DefaultMutableTreeNode): DefaultMutableTreeNode {
         val newNode = node.clone() as DefaultMutableTreeNode
-        newNode.removeAllChildren() // `clone()` is shallow, so we clear and re-add deep-cloned children.
+        newNode.removeAllChildren()
         for (child in node.children()) {
             newNode.add(deepCloneNode(child as DefaultMutableTreeNode))
         }
         return newNode
     }
 
+    private fun refreshSearchSelection(searchTerm: String) {
+        if (searchTerm.isBlank()) {
+            tree.clearSelection()
+            return
+        }
+
+        val firstMatchingPath = findFirstMatchingPath(tree.model.root as? DefaultMutableTreeNode, searchTerm)
+        if (firstMatchingPath != null) {
+            tree.selectionPath = firstMatchingPath
+            tree.scrollPathToVisible(firstMatchingPath)
+        } else {
+            tree.clearSelection()
+        }
+    }
+
+    private fun findFirstMatchingPath(node: DefaultMutableTreeNode?, searchTerm: String): javax.swing.tree.TreePath? {
+        if (node == null) return null
+
+        val textToSearch = when (val userObject = node.userObject) {
+            is BranchInfo -> userObject.fullBranchName
+            is String -> userObject
+            is BranchCategory -> userObject.displayName
+            else -> ""
+        }
+        if (textToSearch.contains(searchTerm, ignoreCase = true)) {
+            return javax.swing.tree.TreePath(node.path)
+        }
+
+        for (child in node.children()) {
+            val matchingPath = findFirstMatchingPath(child as DefaultMutableTreeNode, searchTerm)
+            if (matchingPath != null) {
+                return matchingPath
+            }
+        }
+
+        return null
+    }
 
     fun requestFocusOnSearchField() {
         UIUtil.invokeLaterIfNeeded {
@@ -179,43 +199,22 @@ class BranchSelectionPanel(
                 jtree: JTree, value: Any?, selected: Boolean, expanded: Boolean,
                 leaf: Boolean, row: Int, hasFocus: Boolean
             ) {
-                renderBranchTreeNode(jtree, value)
+                val node = value as? DefaultMutableTreeNode ?: return
+                val (text, nodeIcon) = resolveBranchNodePresentation(node) ?: return
+                val searchTerm = jtree.getClientProperty("search.term") as? String
+                icon = nodeIcon
+
+                if (searchTerm.isNullOrBlank()) {
+                    append(text, SimpleTextAttributes.REGULAR_ATTRIBUTES)
+                } else {
+                    appendSearchAwareText(text, searchTerm)
+                }
             }
         }
     }
 
-    private fun ColoredTreeCellRenderer.renderBranchTreeNode(tree: JTree, value: Any?) {
-        val node = value as? DefaultMutableTreeNode ?: return
-        val (text, icon) = resolveBranchNodePresentation(node) ?: return
-        val searchTerm = tree.getClientProperty("search.term") as? String
+    private fun ColoredTreeCellRenderer.appendSearchAwareText(text: String, searchTerm: String) {
         val attributes = SimpleTextAttributes.REGULAR_ATTRIBUTES
-
-        this.icon = icon
-        appendSearchAwareText(text, searchTerm, attributes)
-    }
-
-    private fun resolveBranchNodePresentation(node: DefaultMutableTreeNode): Pair<String, javax.swing.Icon>? {
-        return when (val userObject = node.userObject) {
-            is BranchCategory -> userObject.displayName to when (userObject.type) {
-                BranchCategoryType.LOCAL -> AllIcons.Nodes.Folder
-                BranchCategoryType.REMOTE -> AllIcons.Nodes.WebFolder
-            }
-            is BranchInfo -> userObject.displayName to AllIcons.Vcs.Branch
-            is String -> userObject to AllIcons.Nodes.Folder
-            else -> null
-        }
-    }
-
-    private fun ColoredTreeCellRenderer.appendSearchAwareText(
-        text: String,
-        searchTerm: String?,
-        attributes: SimpleTextAttributes
-    ) {
-        if (searchTerm.isNullOrBlank()) {
-            append(text, attributes)
-            return
-        }
-
         val highlightAttributes = SimpleTextAttributes(
             attributes.style or SimpleTextAttributes.STYLE_SEARCH_MATCH,
             attributes.fgColor
@@ -231,9 +230,20 @@ class BranchSelectionPanel(
             lastIndex = matchIndex + searchTerm.length
             matchIndex = text.indexOf(searchTerm, lastIndex, ignoreCase = true)
         }
-
         if (lastIndex < text.length) {
             append(text.substring(lastIndex), attributes)
+        }
+    }
+
+    private fun resolveBranchNodePresentation(node: DefaultMutableTreeNode): Pair<String, javax.swing.Icon>? {
+        return when (val userObject = node.userObject) {
+            is BranchCategory -> userObject.displayName to when (userObject.type) {
+                BranchCategoryType.LOCAL -> AllIcons.Nodes.Folder
+                BranchCategoryType.REMOTE -> AllIcons.Nodes.WebFolder
+            }
+            is BranchInfo -> userObject.displayName to AllIcons.Vcs.Branch
+            is String -> userObject to AllIcons.Nodes.Folder
+            else -> null
         }
     }
 
@@ -251,6 +261,14 @@ class BranchSelectionPanel(
 
     private fun createBranchTreeKeyListener(tree: Tree): KeyAdapter {
         return object : KeyAdapter() {
+            override fun keyTyped(e: KeyEvent) {
+                if (!shouldRedirectKeyTypedToSearch(e)) return
+
+                searchTextField.requestFocusInWindow()
+                searchTextField.text = searchTextField.text + e.keyChar
+                e.consume()
+            }
+
             override fun keyPressed(e: KeyEvent) {
                 if (e.keyCode != KeyEvent.VK_ENTER) return
 
@@ -260,14 +278,13 @@ class BranchSelectionPanel(
                     e.consume()
                 }
             }
-
-            override fun keyTyped(e: KeyEvent) {
-                if (!shouldRedirectKeyTypedToSearch(e)) return
-
-                searchTextField.requestFocusInWindow()
-                searchTextField.text += e.keyChar
-            }
         }
+    }
+
+    private fun shouldRedirectKeyTypedToSearch(e: KeyEvent): Boolean {
+        if (searchTextField.textEditor.hasFocus()) return false
+        if (e.keyChar == KeyEvent.CHAR_UNDEFINED || e.keyChar < ' ') return false
+        return !e.isControlDown && !e.isMetaDown && !e.isAltDown
     }
 
     private fun selectBranchNode(node: DefaultMutableTreeNode): Boolean {
@@ -276,16 +293,6 @@ class BranchSelectionPanel(
         val branchInfo = node.userObject as? BranchInfo ?: return false
         onBranchSelected(branchInfo.fullBranchName)
         return true
-    }
-
-    private fun shouldRedirectKeyTypedToSearch(e: KeyEvent): Boolean {
-        if (searchTextField.textEditor.hasFocus()) return false
-
-        return e.keyChar != KeyEvent.CHAR_UNDEFINED &&
-            e.keyChar >= ' ' &&
-            !e.isControlDown &&
-            !e.isMetaDown &&
-            !e.isAltDown
     }
 
     private fun buildFullBranchTreeModel(): DefaultTreeModel {

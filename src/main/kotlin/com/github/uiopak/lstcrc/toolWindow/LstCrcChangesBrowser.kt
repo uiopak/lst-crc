@@ -34,6 +34,15 @@ import com.intellij.util.ui.JBUI
 import com.intellij.util.Alarm
 import git4idea.repo.GitRepository
 import git4idea.repo.GitRepositoryChangeListener
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.launch
 import java.awt.BorderLayout
 import java.awt.event.ComponentAdapter
 import java.awt.event.ComponentEvent
@@ -48,6 +57,7 @@ import javax.swing.SwingUtilities
  * It extends [AsyncChangesBrowserBase] to provide a fully custom asynchronous tree model, and
  * highly customized mouse click handling based on user settings.
  */
+@OptIn(FlowPreview::class)
 class LstCrcChangesBrowser(
     private val project: Project,
     private val targetBranchToCompare: String,
@@ -60,7 +70,8 @@ class LstCrcChangesBrowser(
     }
 
     private val logger = thisLogger()
-    private val refreshDebounceAlarm = Alarm(this)
+    private val debounceScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val repositoryChangeSignals = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
 
     // This field will hold the changes and context for the async tree model builder.
     private var currentChanges: CategorizedChanges? = null
@@ -100,8 +111,18 @@ class LstCrcChangesBrowser(
         // init() in its constructor, so we must do it to build the component layout.
         init()
 
-        // Set the custom strategy to preserve the tree state while expanding new nodes.
+        // Preserve user expansion/collapse state while still revealing newly-added nodes.
         viewer.treeStateStrategy = ExpandNewNodesStateStrategy()
+
+        debounceScope.launch {
+            repositoryChangeSignals
+                .debounce(100)
+                .collectLatest {
+                    if (!project.isDisposed) {
+                        requestRefreshData()
+                    }
+                }
+        }
 
         viewer.setCellRenderer(
             RepoNodeRenderer(
@@ -421,98 +442,6 @@ class LstCrcChangesBrowser(
         }
     }
 
-    // -- Test bridge helpers: used only by LstCrcUiTestBridge for IDE Starter tests --
-
-    @org.jetbrains.annotations.ApiStatus.Internal
-    internal fun debugRenderedRowsSnapshot(): String {
-        val renderer = viewer.cellRenderer
-        val model = viewer.model
-        val rows = mutableListOf<String>()
-
-        for (row in 0 until viewer.rowCount) {
-            val path = viewer.getPathForRow(row) ?: continue
-            val node = path.lastPathComponent
-            val rendered = renderer.getTreeCellRendererComponent(
-                viewer,
-                node,
-                viewer.isRowSelected(row),
-                viewer.isExpanded(row),
-                model.isLeaf(node),
-                row,
-                false
-            )
-
-            val text = rendered.accessibleContext?.accessibleName
-                ?: (rendered as? javax.swing.JLabel)?.text
-                ?: rendered.name
-
-            if (!text.isNullOrBlank()) {
-                rows.add(text)
-            }
-        }
-
-        return rows.joinToString("\n")
-    }
-
-    @org.jetbrains.annotations.ApiStatus.Internal
-    internal fun debugChangeFileNamesSnapshot(): String {
-        return currentChanges?.allChanges
-            ?.mapNotNull { change ->
-                change.afterRevision?.file?.name ?: change.beforeRevision?.file?.name
-            }
-            ?.distinct()
-            ?.joinToString("\n")
-            .orEmpty()
-    }
-
-    @org.jetbrains.annotations.ApiStatus.Internal
-    internal fun invokeConfiguredActionForFile(fileName: String, button: String, clickCount: Int) {
-        val path = findPathByFileName(fileName)
-            ?: error("Could not find change for file '$fileName' in '$targetBranchToCompare'.")
-        val change = ((path.lastPathComponent as? ChangesBrowserNode<*>)?.userObject as? Change)
-            ?: error("Could not find change for file '$fileName' in '$targetBranchToCompare'.")
-
-        if (button.equals("RIGHT", ignoreCase = true) && ToolWindowSettingsProvider.isContextMenuEnabled()) {
-            error("Context menu is enabled for right click. Query contextMenuActionTitlesForFile() instead of invoking a configured action.")
-        }
-
-        val awtButton = when {
-            button.equals("LEFT", ignoreCase = true) -> MouseEvent.BUTTON1
-            button.equals("MIDDLE", ignoreCase = true) -> MouseEvent.BUTTON2
-            button.equals("RIGHT", ignoreCase = true) -> MouseEvent.BUTTON3
-            else -> error("Unsupported mouse button '$button'.")
-        }
-        val event = MouseEvent(
-            viewer,
-            MouseEvent.MOUSE_CLICKED,
-            System.currentTimeMillis(),
-            0,
-            1,
-            1,
-            clickCount,
-            false,
-            awtButton
-        )
-
-        dispatchClickAction(event, change, path)
-    }
-
-    @org.jetbrains.annotations.ApiStatus.Internal
-    internal fun contextMenuActionTitlesForFile(fileName: String): String {
-        val change = findChangeByFileName(fileName)
-            ?: error("Could not find change for file '$fileName' in '$targetBranchToCompare'.")
-
-        val titles = mutableListOf(
-            LstCrcBundle.message("context.menu.show.diff"),
-            LstCrcBundle.message("context.menu.open.source")
-        )
-        if (change.type != Change.Type.DELETED) {
-            titles.add(LstCrcBundle.message("context.menu.show.project.tree"))
-        }
-        return titles.joinToString("|")
-    }
-
-
     override fun repositoryChanged(repository: GitRepository) {
         if (repository.project == project) {
             logger.debug("GIT_REPO_CHANGE: repositoryChanged event received in browser, triggering debounced refresh.")
@@ -521,15 +450,11 @@ class LstCrcChangesBrowser(
     }
 
     private fun triggerDebouncedDataRefresh() {
-        refreshDebounceAlarm.cancelAllRequests()
-        refreshDebounceAlarm.addRequest({
-            if (!project.isDisposed) {
-                requestRefreshData()
-            }
-        }, 100)
+        repositoryChangeSignals.tryEmit(Unit)
     }
 
     override fun dispose() {
+        debounceScope.cancel()
         shutdown()
         leftClickState.clear()
         middleClickState.clear()
@@ -572,23 +497,6 @@ class LstCrcChangesBrowser(
         popupMenu.component.show(e.component, e.x, e.y)
     }
 
-
-    private fun findChangeByFileName(fileName: String): Change? {
-        return currentChanges?.allChanges?.firstOrNull { change ->
-            change.afterRevision?.file?.name == fileName || change.beforeRevision?.file?.name == fileName
-        }
-    }
-
-    private fun findPathByFileName(fileName: String): javax.swing.tree.TreePath? {
-        for (row in 0 until viewer.rowCount) {
-            val path = viewer.getPathForRow(row) ?: continue
-            val change = (path.lastPathComponent as? ChangesBrowserNode<*>)?.userObject as? Change ?: continue
-            if (change.afterRevision?.file?.name == fileName || change.beforeRevision?.file?.name == fileName) {
-                return path
-            }
-        }
-        return null
-    }
 
     private fun removeDefaultPopupHandlers() {
         viewer.mouseListeners.filterIsInstance<PopupHandler>().forEach {

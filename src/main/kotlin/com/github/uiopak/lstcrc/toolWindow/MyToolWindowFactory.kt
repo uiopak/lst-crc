@@ -17,7 +17,6 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.wm.ToolWindow
 import com.intellij.openapi.wm.ToolWindowFactory
 import com.intellij.openapi.wm.ex.ToolWindowEx
-import com.intellij.openapi.wm.impl.content.ToolWindowContentUi
 import com.intellij.ui.content.ContentFactory
 import com.intellij.ui.content.ContentManagerEvent
 import com.intellij.ui.content.ContentManagerListener
@@ -89,7 +88,7 @@ class MyToolWindowFactory : ToolWindowFactory {
             ToolWindowSettingsProvider.APP_SHOW_TOOL_WINDOW_TITLE_KEY,
             ToolWindowSettingsProvider.DEFAULT_SHOW_TOOL_WINDOW_TITLE
         )
-        toolWindow.component.putClientProperty(ToolWindowContentUi.HIDE_ID_LABEL, if (showTitle) null else "true")
+        ToolWindowUiCompatibility.setToolWindowTitleVisible(toolWindow, showTitle)
     }
 
     private fun subscribeToStateChanges(project: Project, toolWindow: ToolWindow) {
@@ -156,15 +155,7 @@ class MyToolWindowFactory : ToolWindowFactory {
             }
         } else {
             if (currentActualBranchName != null) {
-                val initialBranchContent = ToolWindowHelper.createBranchContent(
-                    project, toolWindow, currentActualBranchName, currentActualBranchName, contentManager
-                )
-                contentManager.setSelectedContent(initialBranchContent, true)
-                stateService.addTab(currentActualBranchName)
-                val newTabIndexInState = stateService.state.openTabs.indexOfFirst { it.branchName == currentActualBranchName }
-                if (newTabIndexInState != -1) {
-                    stateService.setSelectedTab(newTabIndexInState)
-                }
+                ToolWindowHelper.createAndSelectTab(project, toolWindow, currentActualBranchName)
                 return true
             }
         }

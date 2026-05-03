@@ -19,6 +19,8 @@ interface LstCrcUiTestBridgeRemote {
     fun selectedTabName(): String
     fun selectedRenderedRowsSnapshot(): String
     fun selectedChangesTreeSnapshot(): String
+    fun selectedExpandedTreeNodesSnapshot(): String
+    fun setSelectedTreeNodeExpanded(nodeText: String, expanded: Boolean)
     fun createRevisionTab(revision: String, alias: String?)
     fun updateTabAlias(branchName: String, newAlias: String?)
     fun setBranchAsRepoComparison(branchName: String)
@@ -52,6 +54,8 @@ interface LstCrcUiTestBridgeRemote {
     fun isToolWindowTitleVisible(): Boolean
     fun setIncludeHeadInScopes(include: Boolean)
     fun setGutterSettings(enableMarkers: Boolean?, enableForNewFiles: Boolean?)
+    fun setExpandNewFilesInCollapsedDirs(enabled: Boolean)
+    fun setShowUntrackedFilesAsNew(enabled: Boolean)
     fun setTreeContextSettings(showSingleRepo: Boolean?, showCommits: Boolean?)
     fun setMultiRepoTreeContextSetting(show: Boolean)
     fun isMultiRepoTreeContextEnabled(): Boolean
@@ -72,6 +76,7 @@ interface LstCrcUiTestBridgeRemote {
     fun selectBranchInVisibleRepoComparisonDialog(branchName: String)
     fun setRepoComparisonForRoot(relativePath: String, targetRevision: String)
     fun selectedTreeFileColor(fileName: String): String
+    fun fileStatusForTreeItem(fileName: String): String
     fun deletedScopeColorSnapshot(): String
     fun visualGutterSummaryForSelectedEditor(): String
 }

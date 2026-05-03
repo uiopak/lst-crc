@@ -65,6 +65,7 @@
 | `C3.8` | Unsaved edits appear before save | `LstCrcBranchComparisonUiTest.testUnsavedLocalEditAppearsWithoutSave` |
 | `C3.8` | Unsaved edits of new files preserve `NEW`/`ADDED` semantics | `LstCrcBranchComparisonUiTest.testNewFileStaysCreatedDuringUnsavedEdits`, `GitServiceOverlayMergeTest.testPreservesNewChangeTypeWhenUnsavedOverlayIsApplied` |
 | `C3.8` | Unsaved overlays for non-new files remain modifications | `GitServiceOverlayMergeTest.testKeepsModificationOverlayForNonNewFiles` |
+| `C3.9` | Tree expansion/collapse state persists when switching between comparison tabs | `LstCrcBranchComparisonStarterUiTest.testTreeStatePersistsAcrossTabSwitches`, `LstCrcBranchComparisonUiTest.testTreeStatePersistsAcrossTabSwitches` |
 
 ### Presentation, Settings, And Interaction
 

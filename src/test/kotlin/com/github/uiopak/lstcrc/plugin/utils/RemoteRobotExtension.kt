@@ -16,7 +16,6 @@ import org.junit.jupiter.api.extension.ParameterResolver
 import java.awt.image.BufferedImage
 import java.io.ByteArrayOutputStream
 import java.io.File
-import java.lang.IllegalStateException
 import java.lang.reflect.Method
 import java.time.Duration
 import javax.imageio.ImageIO
@@ -51,7 +50,7 @@ class RemoteRobotExtension : AfterTestExecutionCallback, ParameterResolver {
     private val client = OkHttpClient()
 
     override fun supportsParameter(parameterContext: ParameterContext, extensionContext: ExtensionContext): Boolean {
-        return parameterContext.parameter?.type?.equals(RemoteRobot::class.java) ?: false
+        return parameterContext.parameter.type == RemoteRobot::class.java
     }
 
     override fun resolveParameter(parameterContext: ParameterContext, extensionContext: ExtensionContext): Any {
@@ -60,9 +59,9 @@ class RemoteRobotExtension : AfterTestExecutionCallback, ParameterResolver {
     }
 
     override fun afterTestExecution(context: ExtensionContext) {
-        val testMethod: Method = context.requiredTestMethod ?: throw IllegalStateException("test method is null")
+        val testMethod: Method = context.requiredTestMethod
         val testMethodName = testMethod.name
-        val testFailed: Boolean = context.executionException?.isPresent ?: false
+        val testFailed: Boolean = context.executionException.isPresent
         if (testFailed) {
 //            saveScreenshot(testMethodName)
             saveIdeaFrames(testMethodName)
@@ -88,7 +87,7 @@ class RemoteRobotExtension : AfterTestExecutionCallback, ParameterResolver {
         return File(folder).apply {
             mkdirs()
         }.resolve(name).apply {
-            writeText(response.body?.string() ?: "")
+            writeText(response.body.string())
         }
     }
 
