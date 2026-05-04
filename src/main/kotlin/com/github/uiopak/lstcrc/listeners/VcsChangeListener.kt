@@ -24,7 +24,7 @@ import kotlin.time.Duration.Companion.milliseconds
 @OptIn(FlowPreview::class)
 class VcsChangeListener(
     private val project: Project,
-    private val coroutineScope: CoroutineScope
+    coroutineScope: CoroutineScope
 ) : ChangeListListener, Disposable {
 
     private val logger = thisLogger()

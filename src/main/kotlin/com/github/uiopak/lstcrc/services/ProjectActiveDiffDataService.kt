@@ -10,7 +10,6 @@ import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vcs.FileStatusManager
 import com.intellij.openapi.vfs.VirtualFile
-import java.util.*
 
 /**
  * Caches the diff data ([CategorizedChanges]) for the currently selected branch comparison.
@@ -23,7 +22,6 @@ class ProjectActiveDiffDataService(private val project: Project) : Disposable {
     private val logger = thisLogger()
 
     private data class ActiveDiffSnapshot(
-        val diffSessionId: UUID,
         val activeBranchName: String?,
         val createdFiles: List<VirtualFile>,
         val modifiedFiles: List<VirtualFile>,
@@ -60,7 +58,6 @@ class ProjectActiveDiffDataService(private val project: Project) : Disposable {
                 val movedPaths = movedFiles.mapTo(HashSet()) { it.path }
                 val deletedPaths = deletedFiles.mapTo(HashSet()) { it.path }
                 return ActiveDiffSnapshot(
-                    diffSessionId = UUID.randomUUID(),
                     activeBranchName = activeBranchName,
                     createdFiles = createdFiles,
                     modifiedFiles = modifiedFiles,
@@ -92,16 +89,17 @@ class ProjectActiveDiffDataService(private val project: Project) : Disposable {
 
     private var snapshot: ActiveDiffSnapshot = ActiveDiffSnapshot.empty()
 
-    val diffSessionId: UUID
-        get() = snapshot.diffSessionId
     val activeBranchName: String?
         get() = snapshot.activeBranchName
     val createdFiles: List<VirtualFile>
         get() = snapshot.createdFiles
+    @get:Suppress("unused")
     val modifiedFiles: List<VirtualFile>
         get() = snapshot.modifiedFiles
+    @get:Suppress("unused")
     val movedFiles: List<VirtualFile>
         get() = snapshot.movedFiles
+    @get:Suppress("unused")
     val deletedFiles: List<VirtualFile>
         get() = snapshot.deletedFiles
     val activeComparisonContext: Map<String, String>

@@ -78,6 +78,11 @@ class GitService(private val project: Project) {
 
     private val logger = thisLogger()
 
+    private data class ParsedDiffStatus(
+        val changeType: Change.Type,
+        val fileStatus: FileStatus
+    )
+
     private data class ChangeLoadContext(
         val allChanges: MutableList<Change> = mutableListOf(),
         val comparisonContext: MutableMap<String, String> = mutableMapOf(),
@@ -222,14 +227,11 @@ class GitService(private val project: Project) {
 
     private fun loadChangesAgainstWorkingTree(repo: GitRepository, target: String): List<Change> {
         val trackedChanges = loadTrackedChangesAgainstWorkingTree(repo, target)
-        val untrackedChanges = if (ToolWindowSettingsProvider.isShowUntrackedFilesAsNew()) {
-            loadUntrackedChanges(repo)
-        } else {
-            emptyList()
-        }
+        val untrackedChanges = loadOptionalUntrackedChanges(repo)
         return overlayUnsavedDocumentChanges(repo, target, trackedChanges + untrackedChanges)
     }
 
+    @Suppress("UsePropertyAccessSyntax")
     private fun loadTrackedChangesAgainstWorkingTree(repo: GitRepository, target: String): List<Change> {
         val handler = GitLineHandler(project, repo.root, GitCommand.DIFF)
         handler.setSilent(true)
@@ -244,6 +246,7 @@ class GitService(private val project: Project) {
             .toList()
     }
 
+    @Suppress("UsePropertyAccessSyntax")
     private fun loadTrackedChangesBetweenRevisions(
         repo: GitRepository,
         baseRevision: String,
@@ -268,37 +271,12 @@ class GitService(private val project: Project) {
         targetRevision: GitRevisionNumber,
         line: String
     ): Change? {
-        if (line.isBlank()) {
-            return null
-        }
-
-        val tokens = line.split('\t')
-        val statusToken = tokens.firstOrNull().orEmpty()
-        val statusCode = statusToken.firstOrNull() ?: return null
-
-        fun pathAt(index: Int) = GitContentRevision.createPathFromEscaped(repo.root, tokens[index])
-        fun beforeRevision(index: Int) = GitContentRevision.createRevision(pathAt(index), targetRevision, project)
-        fun afterRevision(index: Int) = GitContentRevision.createRevision(pathAt(index), null, project)
-
-        return when (statusCode) {
-            'A' -> {
-                if (tokens.size < 2) return null
-                Change(null, afterRevision(1), FileStatus.ADDED)
-            }
-            'D' -> {
-                if (tokens.size < 2) return null
-                Change(beforeRevision(1), null, FileStatus.DELETED)
-            }
-            'M', 'T', 'U', 'X' -> {
-                if (tokens.size < 2) return null
-                Change(beforeRevision(1), afterRevision(1), FileStatus.MODIFIED)
-            }
-            'R', 'C' -> {
-                if (tokens.size < 3) return null
-                Change(beforeRevision(1), afterRevision(2), FileStatus.MODIFIED)
-            }
-            else -> null
-        }
+        return parseDiffLine(
+            repo = repo,
+            line = line,
+            beforeRevisionAt = { path -> GitContentRevision.createRevision(path, targetRevision, project) },
+            afterRevisionAt = { path -> GitContentRevision.createRevision(path, null, project) }
+        )
     }
 
     private fun parseRevisionDiffLine(
@@ -307,35 +285,58 @@ class GitService(private val project: Project) {
         afterRevisionNumber: GitRevisionNumber,
         line: String
     ): Change? {
+        return parseDiffLine(
+            repo = repo,
+            line = line,
+            beforeRevisionAt = { path -> GitContentRevision.createRevision(path, beforeRevisionNumber, project) },
+            afterRevisionAt = { path -> GitContentRevision.createRevision(path, afterRevisionNumber, project) }
+        )
+    }
+
+    private fun parseDiffLine(
+        repo: GitRepository,
+        line: String,
+        beforeRevisionAt: (com.intellij.openapi.vcs.FilePath) -> ContentRevision,
+        afterRevisionAt: (com.intellij.openapi.vcs.FilePath) -> ContentRevision
+    ): Change? {
         if (line.isBlank()) {
             return null
         }
 
         val tokens = line.split('\t')
         val statusToken = tokens.firstOrNull().orEmpty()
-        val statusCode = statusToken.firstOrNull() ?: return null
+        val parsedStatus = parseDiffStatus(statusToken) ?: return null
 
-        fun pathAt(index: Int) = GitContentRevision.createPathFromEscaped(repo.root, tokens[index])
-        fun beforeRevision(index: Int) = GitContentRevision.createRevision(pathAt(index), beforeRevisionNumber, project)
-        fun afterRevision(index: Int) = GitContentRevision.createRevision(pathAt(index), afterRevisionNumber, project)
+        fun revisionPath(index: Int) = GitContentRevision.createPathFromEscaped(repo.root, tokens[index])
 
-        return when (statusCode) {
-            'A' -> {
+        return when (parsedStatus.changeType) {
+            Change.Type.NEW -> {
                 if (tokens.size < 2) return null
-                Change(null, afterRevision(1), FileStatus.ADDED)
+                Change(null, afterRevisionAt(revisionPath(1)), parsedStatus.fileStatus)
             }
-            'D' -> {
+            Change.Type.DELETED -> {
                 if (tokens.size < 2) return null
-                Change(beforeRevision(1), null, FileStatus.DELETED)
+                Change(beforeRevisionAt(revisionPath(1)), null, parsedStatus.fileStatus)
             }
-            'M', 'T', 'U', 'X' -> {
+            Change.Type.MODIFICATION -> {
                 if (tokens.size < 2) return null
-                Change(beforeRevision(1), afterRevision(1), FileStatus.MODIFIED)
+                val path = revisionPath(1)
+                Change(beforeRevisionAt(path), afterRevisionAt(path), parsedStatus.fileStatus)
             }
-            'R', 'C' -> {
+            Change.Type.MOVED -> {
                 if (tokens.size < 3) return null
-                Change(beforeRevision(1), afterRevision(2), FileStatus.MODIFIED)
+                Change(beforeRevisionAt(revisionPath(1)), afterRevisionAt(revisionPath(2)), parsedStatus.fileStatus)
             }
+            else -> null
+        }
+    }
+
+    private fun parseDiffStatus(statusToken: String): ParsedDiffStatus? {
+        return when (statusToken.firstOrNull()) {
+            'A' -> ParsedDiffStatus(Change.Type.NEW, FileStatus.ADDED)
+            'D' -> ParsedDiffStatus(Change.Type.DELETED, FileStatus.DELETED)
+            'M', 'T', 'U', 'X' -> ParsedDiffStatus(Change.Type.MODIFICATION, FileStatus.MODIFIED)
+            'R', 'C' -> ParsedDiffStatus(Change.Type.MOVED, FileStatus.MODIFIED)
             else -> null
         }
     }
@@ -377,17 +378,28 @@ class GitService(private val project: Project) {
             }
         }
 
-        return CategorizedChanges(allChanges.distinct(), created, modified, moved, deleted, comparisonContext)
+        return CategorizedChanges(
+            allChanges = allChanges.distinct(),
+            createdFiles = created.distinct(),
+            modifiedFiles = modified.distinct(),
+            movedFiles = moved.distinct(),
+            deletedFiles = deleted.distinct(),
+            comparisonContext = comparisonContext
+        )
     }
 
     private fun loadLocalChanges(repo: GitRepository): List<Change> {
         val trackedChanges = loadTrackedChangesAgainstHead(repo)
-        val untrackedChanges = if (ToolWindowSettingsProvider.isShowUntrackedFilesAsNew()) {
+        val untrackedChanges = loadOptionalUntrackedChanges(repo)
+        return overlayUnsavedDocumentChanges(repo, "HEAD", trackedChanges + untrackedChanges)
+    }
+
+    private fun loadOptionalUntrackedChanges(repo: GitRepository): List<Change> {
+        return if (ToolWindowSettingsProvider.isShowUntrackedFilesAsNew()) {
             loadUntrackedChanges(repo)
         } else {
             emptyList()
         }
-        return overlayUnsavedDocumentChanges(repo, "HEAD", trackedChanges + untrackedChanges)
     }
 
     private fun loadTrackedChangesAgainstHead(repo: GitRepository): List<Change> {
@@ -405,9 +417,9 @@ class GitService(private val project: Project) {
         }
     }
 
+    @Suppress("UsePropertyAccessSyntax")
     private fun loadUntrackedChanges(repo: GitRepository): List<Change> {
         val handler = GitLineHandler(project, repo.root, GitCommand.LS_FILES)
-        @Suppress("UsePropertyAccessSyntax")
         handler.setSilent(true)
         handler.addParameters("--others", "--exclude-standard", "-z")
         val result = Git.getInstance().runCommand(handler)

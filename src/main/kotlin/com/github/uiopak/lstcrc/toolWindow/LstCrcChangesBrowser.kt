@@ -43,6 +43,7 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.launch
+import kotlin.time.Duration.Companion.milliseconds
 import java.awt.BorderLayout
 import java.awt.event.ComponentAdapter
 import java.awt.event.ComponentEvent
@@ -116,7 +117,7 @@ class LstCrcChangesBrowser(
 
         debounceScope.launch {
             repositoryChangeSignals
-                .debounce(100)
+                .debounce(100.milliseconds)
                 .collectLatest {
                     if (!project.isDisposed) {
                         requestRefreshData()

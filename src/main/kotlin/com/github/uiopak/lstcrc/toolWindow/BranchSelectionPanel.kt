@@ -265,7 +265,7 @@ class BranchSelectionPanel(
                 if (!shouldRedirectKeyTypedToSearch(e)) return
 
                 searchTextField.requestFocusInWindow()
-                searchTextField.text = searchTextField.text + e.keyChar
+                searchTextField.text += e.keyChar
                 e.consume()
             }
 
