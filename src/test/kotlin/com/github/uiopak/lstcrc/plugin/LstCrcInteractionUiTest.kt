@@ -15,6 +15,7 @@ import com.intellij.remoterobot.utils.waitFor
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import java.time.Duration
+import kotlin.math.abs
 
 @LstCrcUiTest
 class LstCrcInteractionUiTest : LstCrcUiTestSupport() {
@@ -192,6 +193,7 @@ class LstCrcInteractionUiTest : LstCrcUiTestSupport() {
                     byXpath("//div[@class='MyList' and contains(@accessiblename, 'LST-CRC Actions')]")
                 ).isNotEmpty()
             }
+            assertWidgetPopupAnchoredNearStatusWidget(statusWidgetPopupSnapshot())
             keyboard {
                 enterText("HEAD")
                 enter()
@@ -437,4 +439,47 @@ class LstCrcInteractionUiTest : LstCrcUiTestSupport() {
             }
         }
     }
+
+    private fun assertWidgetPopupAnchoredNearStatusWidget(snapshot: String) {
+        val widgetBounds = parseSnapshotBounds(snapshot, "widget")
+        val popupBounds = parseSnapshotBounds(snapshot, "popup")
+
+        assertTrue(widgetBounds != null, "Missing widget bounds in popup snapshot: $snapshot")
+        assertTrue(popupBounds != null, "Missing popup bounds in popup snapshot: $snapshot")
+
+        val widget = widgetBounds!!
+        val popup = popupBounds!!
+        assertTrue(
+            abs(popup.x - widget.x) <= 80,
+            "Widget popup should open near the widget's horizontal position. Snapshot: $snapshot"
+        )
+        assertTrue(
+            popup.y + popup.height <= widget.y + 40,
+            "Widget popup should open above the widget instead of near the status bar origin. Snapshot: $snapshot"
+        )
+    }
+
+    private fun parseSnapshotBounds(snapshot: String, key: String): ScreenBounds? {
+        val value = snapshot
+            .split("|")
+            .firstOrNull { it.startsWith("$key=") }
+            ?.substringAfter('=')
+            ?.takeIf { it.isNotBlank() }
+            ?: return null
+        val parts = value.split(',')
+        if (parts.size != 4) return null
+        return ScreenBounds(
+            x = parts[0].toIntOrNull() ?: return null,
+            y = parts[1].toIntOrNull() ?: return null,
+            width = parts[2].toIntOrNull() ?: return null,
+            height = parts[3].toIntOrNull() ?: return null
+        )
+    }
+
+    private data class ScreenBounds(
+        val x: Int,
+        val y: Int,
+        val width: Int,
+        val height: Int
+    )
 }

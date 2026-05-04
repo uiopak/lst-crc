@@ -184,7 +184,7 @@ class GitService(private val project: Project) {
                 val target = tabInfo.comparisonMap[repo.root.path] ?: primaryRevision
                 context.comparisonContext[repo.root.path] = target
                 logger.debug("Repo '${repo.root.path}': using target '$target'")
-                context.allChanges.addAll(loadChangesForTarget(repo, target, context.failures))
+                context.allChanges.addAll(loadChangesForTarget(repo, primaryRevision, target, context.failures))
             }
         }
         return GetChangesResult(buildCategorizedChanges(context.allChanges, context.comparisonContext), context.failures)
@@ -192,22 +192,24 @@ class GitService(private val project: Project) {
 
     private fun loadChangesForTarget(
         repo: GitRepository,
+        primaryRevision: String,
         target: String,
         failures: MutableMap<GitRepository, String>
     ): List<Change> {
-        if (repo.isFresh || target == "HEAD") {
+        repo.update()
+
+        if (repo.isFresh) {
             logLocalComparisonFallback(repo, target)
             return loadLocalChanges(repo)
         }
 
+        if (target == "HEAD" || target == primaryRevision) {
+            logLocalComparisonFallback(repo, target)
+            return loadChangesAgainstWorkingTree(repo, target)
+        }
+
         return try {
-            val trackedChanges = GitChangeUtils.getDiffWithWorkingDir(project, repo.root, target, null, false, true).toList()
-            val untrackedChanges = if (ToolWindowSettingsProvider.isShowUntrackedFilesAsNew()) {
-                loadUntrackedChanges(repo)
-            } else {
-                emptyList()
-            }
-            overlayUnsavedDocumentChanges(repo, target, trackedChanges + untrackedChanges)
+            loadTrackedChangesBetweenRevisions(repo, primaryRevision, target)
         } catch (e: VcsException) {
             logger.warn(
                 "git diff failed for repo '${repo.root.name}' against target '$target'. " +
@@ -215,6 +217,126 @@ class GitService(private val project: Project) {
             )
             failures[repo] = target
             emptyList()
+        }
+    }
+
+    private fun loadChangesAgainstWorkingTree(repo: GitRepository, target: String): List<Change> {
+        val trackedChanges = loadTrackedChangesAgainstWorkingTree(repo, target)
+        val untrackedChanges = if (ToolWindowSettingsProvider.isShowUntrackedFilesAsNew()) {
+            loadUntrackedChanges(repo)
+        } else {
+            emptyList()
+        }
+        return overlayUnsavedDocumentChanges(repo, target, trackedChanges + untrackedChanges)
+    }
+
+    private fun loadTrackedChangesAgainstWorkingTree(repo: GitRepository, target: String): List<Change> {
+        val handler = GitLineHandler(project, repo.root, GitCommand.DIFF)
+        handler.setSilent(true)
+        handler.setStdoutSuppressed(true)
+        handler.addParameters("--name-status", "--diff-filter=ADCMRUXT", "-M", target)
+
+        val output = Git.getInstance().runCommand(handler).getOutputOrThrow()
+        val targetRevision = GitRevisionNumber(target)
+
+        return output.lineSequence()
+            .mapNotNull { parseWorkingTreeDiffLine(repo, targetRevision, it) }
+            .toList()
+    }
+
+    private fun loadTrackedChangesBetweenRevisions(
+        repo: GitRepository,
+        baseRevision: String,
+        targetRevision: String
+    ): List<Change> {
+        val handler = GitLineHandler(project, repo.root, GitCommand.DIFF)
+        handler.setSilent(true)
+        handler.setStdoutSuppressed(true)
+        handler.addParameters("--name-status", "--diff-filter=ADCMRUXT", "-M", baseRevision, targetRevision)
+
+        val output = Git.getInstance().runCommand(handler).getOutputOrThrow()
+        val beforeRevision = GitRevisionNumber(baseRevision)
+        val afterRevision = GitRevisionNumber(targetRevision)
+
+        return output.lineSequence()
+            .mapNotNull { parseRevisionDiffLine(repo, beforeRevision, afterRevision, it) }
+            .toList()
+    }
+
+    private fun parseWorkingTreeDiffLine(
+        repo: GitRepository,
+        targetRevision: GitRevisionNumber,
+        line: String
+    ): Change? {
+        if (line.isBlank()) {
+            return null
+        }
+
+        val tokens = line.split('\t')
+        val statusToken = tokens.firstOrNull().orEmpty()
+        val statusCode = statusToken.firstOrNull() ?: return null
+
+        fun pathAt(index: Int) = GitContentRevision.createPathFromEscaped(repo.root, tokens[index])
+        fun beforeRevision(index: Int) = GitContentRevision.createRevision(pathAt(index), targetRevision, project)
+        fun afterRevision(index: Int) = GitContentRevision.createRevision(pathAt(index), null, project)
+
+        return when (statusCode) {
+            'A' -> {
+                if (tokens.size < 2) return null
+                Change(null, afterRevision(1), FileStatus.ADDED)
+            }
+            'D' -> {
+                if (tokens.size < 2) return null
+                Change(beforeRevision(1), null, FileStatus.DELETED)
+            }
+            'M', 'T', 'U', 'X' -> {
+                if (tokens.size < 2) return null
+                Change(beforeRevision(1), afterRevision(1), FileStatus.MODIFIED)
+            }
+            'R', 'C' -> {
+                if (tokens.size < 3) return null
+                Change(beforeRevision(1), afterRevision(2), FileStatus.MODIFIED)
+            }
+            else -> null
+        }
+    }
+
+    private fun parseRevisionDiffLine(
+        repo: GitRepository,
+        beforeRevisionNumber: GitRevisionNumber,
+        afterRevisionNumber: GitRevisionNumber,
+        line: String
+    ): Change? {
+        if (line.isBlank()) {
+            return null
+        }
+
+        val tokens = line.split('\t')
+        val statusToken = tokens.firstOrNull().orEmpty()
+        val statusCode = statusToken.firstOrNull() ?: return null
+
+        fun pathAt(index: Int) = GitContentRevision.createPathFromEscaped(repo.root, tokens[index])
+        fun beforeRevision(index: Int) = GitContentRevision.createRevision(pathAt(index), beforeRevisionNumber, project)
+        fun afterRevision(index: Int) = GitContentRevision.createRevision(pathAt(index), afterRevisionNumber, project)
+
+        return when (statusCode) {
+            'A' -> {
+                if (tokens.size < 2) return null
+                Change(null, afterRevision(1), FileStatus.ADDED)
+            }
+            'D' -> {
+                if (tokens.size < 2) return null
+                Change(beforeRevision(1), null, FileStatus.DELETED)
+            }
+            'M', 'T', 'U', 'X' -> {
+                if (tokens.size < 2) return null
+                Change(beforeRevision(1), afterRevision(1), FileStatus.MODIFIED)
+            }
+            'R', 'C' -> {
+                if (tokens.size < 3) return null
+                Change(beforeRevision(1), afterRevision(2), FileStatus.MODIFIED)
+            }
+            else -> null
         }
     }
 
@@ -231,11 +353,30 @@ class GitService(private val project: Project) {
         allChanges: List<Change>,
         comparisonContext: Map<String, String>
     ): CategorizedChanges {
-        val byType = allChanges.groupBy { it.type }
-        val created  = byType[Change.Type.NEW].orEmpty().mapNotNull { it.afterRevision?.let(::createComparisonVirtualFile) }.distinct()
-        val modified = byType[Change.Type.MODIFICATION].orEmpty().mapNotNull { it.afterRevision?.let(::createComparisonVirtualFile) }.distinct()
-        val moved    = byType[Change.Type.MOVED].orEmpty().mapNotNull { it.afterRevision?.let(::createComparisonVirtualFile) }.distinct()
-        val deleted  = byType[Change.Type.DELETED].orEmpty().mapNotNull { it.beforeRevision?.let(::createDeletedVirtualFile) }.distinct()
+        val created = mutableListOf<VirtualFile>()
+        val modified = mutableListOf<VirtualFile>()
+        val moved = mutableListOf<VirtualFile>()
+        val deleted = mutableListOf<VirtualFile>()
+
+        allChanges.forEach { change ->
+            val beforeRevision = change.beforeRevision
+            val afterRevision = change.afterRevision
+            when {
+                beforeRevision == null && afterRevision != null -> {
+                    createComparisonVirtualFile(afterRevision)?.let(created::add)
+                }
+                beforeRevision != null && afterRevision == null -> {
+                    createDeletedVirtualFile(beforeRevision)?.let(deleted::add)
+                }
+                beforeRevision != null && afterRevision != null -> {
+                    val beforePath = beforeRevision.file.path
+                    val afterPath = afterRevision.file.path
+                    val targetCollection = if (beforePath != afterPath) moved else modified
+                    createComparisonVirtualFile(afterRevision)?.let(targetCollection::add)
+                }
+            }
+        }
+
         return CategorizedChanges(allChanges.distinct(), created, modified, moved, deleted, comparisonContext)
     }
 
@@ -250,6 +391,8 @@ class GitService(private val project: Project) {
     }
 
     private fun loadTrackedChangesAgainstHead(repo: GitRepository): List<Change> {
+        repo.update()
+
         if (repo.isFresh) {
             return emptyList()
         }
@@ -344,6 +487,9 @@ class GitService(private val project: Project) {
     private fun createComparisonVirtualFile(afterRevision: ContentRevision): VirtualFile? {
         return afterRevision.file.virtualFile
             ?: LocalFileSystem.getInstance().refreshAndFindFileByPath(afterRevision.file.path)
+            ?: runCatching { ContentRevisionVirtualFile.create(afterRevision) }
+                .onFailure { logger.warn("Failed to create VcsVirtualFile for comparison file: ${afterRevision.file.path}", it) }
+                .getOrNull()
     }
 
     private fun createDeletedVirtualFile(beforeRevision: ContentRevision): VirtualFile? {

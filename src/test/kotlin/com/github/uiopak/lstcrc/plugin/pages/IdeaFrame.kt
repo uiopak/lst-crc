@@ -268,7 +268,14 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
                             const settingsClass = cl.loadClass("com.github.uiopak.lstcrc.toolWindow.LstCrcSettingsService");
                             const svc = com.intellij.openapi.application.ApplicationManager.getApplication().getService(settingsClass);
                             if (svc) {
+                                svc.setSingleClickAction("OPEN_SOURCE");
+                                svc.setDoubleClickAction("NONE");
+                                svc.setMiddleClickAction("SHOW_IN_PROJECT_TREE");
+                                svc.setDoubleMiddleClickAction("NONE");
+                                svc.setRightClickAction("OPEN_DIFF");
+                                svc.setDoubleRightClickAction("NONE");
                                 svc.setBoolean("com.github.uiopak.lstcrc.app.showContextMenu", false, false);
+                                svc.setInt("com.github.uiopak.lstcrc.app.userDoubleClickDelay", -1, -1);
                                 svc.setBoolean("com.github.uiopak.lstcrc.app.includeHeadInScopes", false, false);
                                 svc.setBoolean("com.github.uiopak.lstcrc.app.enableGutterMarkers", true, true);
                                 svc.setBoolean("com.github.uiopak.lstcrc.app.enableGutterForNewFiles", false, false);
@@ -279,6 +286,19 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
                                 svc.setBoolean("com.github.uiopak.lstcrc.app.showContextForCommits", false, false);
                                 svc.setBoolean("com.github.uiopak.lstcrc.app.expandNewFilesInCollapsedDirs", true, true);
                                 svc.setBoolean("com.github.uiopak.lstcrc.app.showUntrackedFilesAsNew", false, false);
+                            }
+
+                            const toolWindowStateClass = cl.loadClass("com.github.uiopak.lstcrc.state.ToolWindowState");
+                            const toolWindowStateServiceClass = cl.loadClass("com.github.uiopak.lstcrc.services.ToolWindowStateService");
+                            const stateService = project.getService(toolWindowStateServiceClass);
+                            if (stateService) {
+                                stateService.loadState(toolWindowStateClass.getDeclaredConstructor().newInstance());
+                            }
+
+                            const diffDataServiceClass = cl.loadClass("com.github.uiopak.lstcrc.services.ProjectActiveDiffDataService");
+                            const diffDataService = project.getService(diffDataServiceClass);
+                            if (diffDataService) {
+                                diffDataService.clearActiveDiff();
                             }
                         } catch(e) {}
                     }
@@ -322,25 +342,23 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
         showContextMenu: Boolean? = null
     ) {
         step("Configure LST-CRC click actions") {
-            val updates = buildList {
-                singleClickAction?.let { add("properties.setValue('$SINGLE_CLICK_ACTION_KEY', ${toJsStringLiteral(it)});") }
-                doubleClickAction?.let { add("properties.setValue('$DOUBLE_CLICK_ACTION_KEY', ${toJsStringLiteral(it)});") }
-                middleClickAction?.let { add("properties.setValue('$MIDDLE_CLICK_ACTION_KEY', ${toJsStringLiteral(it)});") }
-                doubleMiddleClickAction?.let { add("properties.setValue('$DOUBLE_MIDDLE_CLICK_ACTION_KEY', ${toJsStringLiteral(it)});") }
-                rightClickAction?.let { add("properties.setValue('$RIGHT_CLICK_ACTION_KEY', ${toJsStringLiteral(it)});") }
-                doubleRightClickAction?.let { add("properties.setValue('$DOUBLE_RIGHT_CLICK_ACTION_KEY', ${toJsStringLiteral(it)});") }
-                showContextMenu?.let { add("properties.setValue('$SHOW_CONTEXT_MENU_KEY', ${if (it) "true" else "false"}, false);") }
-            }
+            check(
+                singleClickAction != null ||
+                    doubleClickAction != null ||
+                    middleClickAction != null ||
+                    doubleMiddleClickAction != null ||
+                    rightClickAction != null ||
+                    doubleRightClickAction != null ||
+                    showContextMenu != null
+            ) { "At least one click action setting must be provided" }
 
-            check(updates.isNotEmpty()) { "At least one click action setting must be provided" }
-
-            runJs(
-                """
-                const properties = com.intellij.ide.util.PropertiesComponent.getInstance();
-                ${updates.joinToString("\n")}
-                """.trimIndent(),
-                true
-            )
+            singleClickAction?.let { setPluginStringSetting(SINGLE_CLICK_ACTION_KEY, it, "setSingleClickAction") }
+            doubleClickAction?.let { setPluginStringSetting(DOUBLE_CLICK_ACTION_KEY, it, "setDoubleClickAction") }
+            middleClickAction?.let { setPluginStringSetting(MIDDLE_CLICK_ACTION_KEY, it, "setMiddleClickAction") }
+            doubleMiddleClickAction?.let { setPluginStringSetting(DOUBLE_MIDDLE_CLICK_ACTION_KEY, it, "setDoubleMiddleClickAction") }
+            rightClickAction?.let { setPluginStringSetting(RIGHT_CLICK_ACTION_KEY, it, "setRightClickAction") }
+            doubleRightClickAction?.let { setPluginStringSetting(DOUBLE_RIGHT_CLICK_ACTION_KEY, it, "setDoubleRightClickAction") }
+            showContextMenu?.let { setPluginBooleanSetting(SHOW_CONTEXT_MENU_KEY, it, false) }
         }
     }
 
@@ -349,16 +367,27 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
             callJs<String>(
                 """
                 (function() {
+                    const pluginId = com.intellij.openapi.extensions.PluginId.getId("com.github.uiopak.lstcrc");
+                    const plugin = com.intellij.ide.plugins.PluginManagerCore.getPlugin(pluginId);
+                    const cl = plugin ? plugin.getPluginClassLoader() : null;
+                    if (!cl) return "";
+
+                    let service = null;
+                    try {
+                        const settingsClass = cl.loadClass("com.github.uiopak.lstcrc.toolWindow.LstCrcSettingsService");
+                        service = com.intellij.openapi.application.ApplicationManager.getApplication().getService(settingsClass);
+                    } catch(e) {}
+
                     const properties = com.intellij.ide.util.PropertiesComponent.getInstance();
                     const values = [
-                        properties.getValue('$SINGLE_CLICK_ACTION_KEY', ''),
-                        properties.getValue('$DOUBLE_CLICK_ACTION_KEY', ''),
-                        properties.getValue('$MIDDLE_CLICK_ACTION_KEY', ''),
-                        properties.getValue('$DOUBLE_MIDDLE_CLICK_ACTION_KEY', ''),
-                        properties.getValue('$RIGHT_CLICK_ACTION_KEY', ''),
-                        properties.getValue('$DOUBLE_RIGHT_CLICK_ACTION_KEY', ''),
-                        String(properties.getBoolean('$SHOW_CONTEXT_MENU_KEY', false)),
-                        properties.getValue('$DOUBLE_CLICK_DELAY_KEY', '')
+                        service ? service.getSingleClickAction() : properties.getValue('$SINGLE_CLICK_ACTION_KEY', ''),
+                        service ? service.getDoubleClickAction() : properties.getValue('$DOUBLE_CLICK_ACTION_KEY', ''),
+                        service ? service.getMiddleClickAction() : properties.getValue('$MIDDLE_CLICK_ACTION_KEY', ''),
+                        service ? service.getDoubleMiddleClickAction() : properties.getValue('$DOUBLE_MIDDLE_CLICK_ACTION_KEY', ''),
+                        service ? service.getRightClickAction() : properties.getValue('$RIGHT_CLICK_ACTION_KEY', ''),
+                        service ? service.getDoubleRightClickAction() : properties.getValue('$DOUBLE_RIGHT_CLICK_ACTION_KEY', ''),
+                        service ? String(service.getBoolean('$SHOW_CONTEXT_MENU_KEY', false)) : String(properties.getBoolean('$SHOW_CONTEXT_MENU_KEY', false)),
+                        service ? String(service.getInt('$DOUBLE_CLICK_DELAY_KEY', -1)) : properties.getValue('$DOUBLE_CLICK_DELAY_KEY', '')
                     ];
                     return values.join("|");
                 })();
@@ -370,13 +399,7 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
 
     fun setDoubleClickDelayMs(delay: Int) {
         step("Set double click delay to ${delay}ms") {
-            runJs(
-                """
-                const properties = com.intellij.ide.util.PropertiesComponent.getInstance();
-                properties.setValue('$DOUBLE_CLICK_DELAY_KEY', ${toJsStringLiteral(delay.toString())});
-                """.trimIndent(),
-                true
-            )
+            setPluginIntSetting(DOUBLE_CLICK_DELAY_KEY, delay, -1)
         }
     }
 
@@ -520,56 +543,113 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
 
     fun clickStatusWidget() {
         step("Click LST-CRC status widget") {
-            val clicked = callJs<Boolean>(
+            remoteRobot.find<ComponentFixture>(
+                byXpath("LST-CRC status widget", "//div[@class='TextPresentationComponent' and contains(@tooltiptext, 'LST-CRC')]"),
+                Duration.ofSeconds(10)
+            )
+                .click()
+        }
+    }
+
+    fun statusWidgetPopupSnapshot(): String {
+        return step("Read LST-CRC widget popup snapshot") {
+            val widgetAndStatusBar = callJs<String>(
                 """
                 (function() {
                     const project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
-                    if (!project) return false;
+                    if (!project) return "";
 
-                    const result = new java.util.concurrent.atomic.AtomicBoolean(false);
-                    com.intellij.openapi.application.ApplicationManager.getApplication().invokeAndWait(new java.lang.Runnable({
-                        run: function() {
-                            const statusBar = com.intellij.openapi.wm.WindowManager.getInstance().getStatusBar(project);
-                            if (!statusBar) {
-                                return;
+                    function safeText(component) {
+                        try {
+                            if (component.getText) {
+                                const text = component.getText();
+                                return text == null ? "" : String(text);
                             }
+                        } catch (e) {}
+                        return "";
+                    }
 
-                            const widget = statusBar.getWidget("LstCrcStatusWidget");
-                            if (!widget) {
-                                return;
+                    function safeTooltip(component) {
+                        try {
+                            if (component.getToolTipText) {
+                                const text = component.getToolTipText();
+                                return text == null ? "" : String(text);
                             }
+                        } catch (e) {}
+                        return "";
+                    }
 
-                            const presentation = widget.getPresentation ? widget.getPresentation() : widget;
-                            const clickConsumer = presentation && presentation.getClickConsumer
-                                ? presentation.getClickConsumer()
-                                : (widget.getClickConsumer ? widget.getClickConsumer() : null);
-                            const component = statusBar.getComponent ? statusBar.getComponent() : null;
-                            if (!clickConsumer || !component) {
-                                return;
-                            }
-
-                            const event = new java.awt.event.MouseEvent(
-                                component,
-                                java.awt.event.MouseEvent.MOUSE_CLICKED,
-                                java.lang.System.currentTimeMillis(),
-                                0,
-                                Math.max(1, Math.floor(component.getWidth() / 2)),
-                                Math.max(1, Math.floor(component.getHeight() / 2)),
-                                1,
-                                false,
-                                java.awt.event.MouseEvent.BUTTON1
-                            );
-                            clickConsumer.consume(event);
-                            result.set(true);
+                    function boundsString(component) {
+                        if (!component || !component.isShowing || !component.isShowing()) return "";
+                        try {
+                            const location = component.getLocationOnScreen();
+                            return [location.x, location.y, component.getWidth(), component.getHeight()].join(",");
+                        } catch (e) {
+                            return "";
                         }
-                    }));
-                    return result.get();
+                    }
+
+                    const statusBar = com.intellij.openapi.wm.WindowManager.getInstance().getStatusBar(project);
+                    if (!statusBar) return "";
+                    const widget = statusBar.getWidget("LstCrcStatusWidget");
+                    if (!widget) return "";
+
+                    const presentation = widget.getPresentation ? widget.getPresentation() : widget;
+                    const widgetText = presentation && presentation.getText ? String(presentation.getText()) : "";
+                    const tooltipText = presentation && presentation.getTooltipText ? String(presentation.getTooltipText()) : "";
+                    const statusBarComponent = statusBar.getComponent ? statusBar.getComponent() : null;
+
+                    let widgetComponent = statusBarComponent;
+                    if (statusBarComponent && statusBarComponent.isShowing && statusBarComponent.isShowing()) {
+                        const probeY = Math.max(1, Math.floor(Math.max(statusBarComponent.getHeight(), 2) / 2));
+                        const step = Math.max(8, Math.floor(Math.max(statusBarComponent.getWidth(), 20) / 25));
+                        let bestScore = -1;
+                        for (let x = Math.max(1, statusBarComponent.getWidth() - 2); x >= 1; x -= step) {
+                            var widgetProbeCandidate = javax.swing.SwingUtilities.getDeepestComponentAt(statusBarComponent, x, probeY);
+                            if (!widgetProbeCandidate || !widgetProbeCandidate.isShowing || !widgetProbeCandidate.isShowing()) continue;
+                            const text = safeText(widgetProbeCandidate);
+                            const tooltip = safeTooltip(widgetProbeCandidate);
+                            let score = 0;
+                            if (widgetText.length > 0 && text === widgetText) score += 100;
+                            else if (widgetText.length > 0 && text.indexOf(widgetText) >= 0) score += 50;
+                            if (tooltipText.length > 0 && tooltip === tooltipText) score += 25;
+                            try {
+                                score += Math.max(0, widgetProbeCandidate.getLocationOnScreen().x / 100);
+                            } catch (e) {}
+                            if (score > bestScore) {
+                                bestScore = score;
+                                widgetComponent = widgetProbeCandidate;
+                            }
+                        }
+                    }
+
+                    return [
+                        "widget=" + boundsString(widgetComponent),
+                        "statusBar=" + boundsString(statusBarComponent)
+                    ].join("|");
                 })();
                 """.trimIndent(),
                 true
             )
 
-            check(clicked) { "Could not trigger the LST-CRC status widget click consumer." }
+            val popupBounds = findAll<ComponentFixture>(
+                byXpath("LST-CRC widget popup", "//div[@class='MyList' and contains(@accessiblename, 'LST-CRC Actions')]")
+            ).firstOrNull()?.callJs<String>(
+                """
+                (function() {
+                    if (!component || !component.isShowing || !component.isShowing()) return "";
+                    const location = component.getLocationOnScreen();
+                    return [location.x, location.y, component.getWidth(), component.getHeight()].join(",");
+                })();
+                """.trimIndent(),
+                true
+            ).orEmpty()
+
+            if (widgetAndStatusBar.isBlank()) {
+                "popup=$popupBounds"
+            } else {
+                "$widgetAndStatusBar|popup=$popupBounds"
+            }
         }
     }
 
@@ -1340,6 +1420,51 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
                     const settingsClass = cl.loadClass("com.github.uiopak.lstcrc.toolWindow.LstCrcSettingsService");
                     const appService = com.intellij.openapi.application.ApplicationManager.getApplication().getService(settingsClass);
                     if (appService) appService.setBoolean(${toJsStringLiteral(key)}, $valueStr, $defaultStr);
+                } catch(e) {}
+            })();
+            """.trimIndent(),
+            true
+        )
+    }
+
+    private fun setPluginStringSetting(key: String, value: String, setterMethod: String) {
+        runJs(
+            """
+            (function() {
+                const pluginId = com.intellij.openapi.extensions.PluginId.getId("com.github.uiopak.lstcrc");
+                const plugin = com.intellij.ide.plugins.PluginManagerCore.getPlugin(pluginId);
+                const cl = plugin ? plugin.getPluginClassLoader() : null;
+                const properties = com.intellij.ide.util.PropertiesComponent.getInstance();
+                properties.setValue(${toJsStringLiteral(key)}, ${toJsStringLiteral(value)});
+                if (!cl) return;
+                try {
+                    const settingsClass = cl.loadClass("com.github.uiopak.lstcrc.toolWindow.LstCrcSettingsService");
+                    const appService = com.intellij.openapi.application.ApplicationManager.getApplication().getService(settingsClass);
+                    const setterName = ${toJsStringLiteral(setterMethod)};
+                    if (appService && typeof appService[setterName] === "function") {
+                        appService[setterName](${toJsStringLiteral(value)});
+                    } else {
+                        properties.setValue(${toJsStringLiteral(key)}, ${toJsStringLiteral(value)});
+                    }
+                } catch(e) {}
+            })();
+            """.trimIndent(),
+            true
+        )
+    }
+
+    private fun setPluginIntSetting(key: String, value: Int, default: Int) {
+        runJs(
+            """
+            (function() {
+                const pluginId = com.intellij.openapi.extensions.PluginId.getId("com.github.uiopak.lstcrc");
+                const plugin = com.intellij.ide.plugins.PluginManagerCore.getPlugin(pluginId);
+                const cl = plugin ? plugin.getPluginClassLoader() : null;
+                if (!cl) return;
+                try {
+                    const settingsClass = cl.loadClass("com.github.uiopak.lstcrc.toolWindow.LstCrcSettingsService");
+                    const appService = com.intellij.openapi.application.ApplicationManager.getApplication().getService(settingsClass);
+                    if (appService) appService.setInt(${toJsStringLiteral(key)}, $value, $default);
                 } catch(e) {}
             })();
             """.trimIndent(),
