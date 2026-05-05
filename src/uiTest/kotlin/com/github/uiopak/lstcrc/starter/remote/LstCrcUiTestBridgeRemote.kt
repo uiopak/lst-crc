@@ -42,8 +42,10 @@ interface LstCrcUiTestBridgeRemote {
     fun setDoubleClickDelayMs(delay: Int)
     fun triggerConfiguredChangeInteraction(fileName: String, button: String, clickCount: Int)
     fun contextMenuActionsForFile(fileName: String): String
+    fun invokeContextMenuActionForFile(fileName: String, actionTitle: String)
     fun selectedEditorDescriptor(): String
     fun hasDiffEditorOpen(): Boolean
+    fun diffEditorCount(): Int
     fun closeAllEditors()
     fun openFile(relativePath: String)
     fun writeProjectFile(relativePath: String, content: String)

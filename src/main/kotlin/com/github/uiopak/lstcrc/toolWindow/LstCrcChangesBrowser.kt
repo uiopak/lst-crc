@@ -5,6 +5,9 @@ import com.github.uiopak.lstcrc.services.CategorizedChanges
 import com.github.uiopak.lstcrc.services.ToolWindowStateService
 import com.github.uiopak.lstcrc.utils.getTreePathForMouseCoordinates
 import com.intellij.ide.projectView.ProjectView
+import com.intellij.diff.editor.ChainDiffVirtualFile
+import com.intellij.diff.editor.DiffEditorTabFilesManager
+import com.intellij.openapi.ListSelection
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.actionSystem.*
 import com.intellij.openapi.application.EDT
@@ -19,7 +22,9 @@ import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.vcs.changes.Change
 import com.intellij.openapi.vcs.changes.ContentRevision
 import com.intellij.openapi.vcs.changes.ChangesUtil
+import com.intellij.openapi.vcs.changes.actions.diff.ChangeDiffRequestProducer
 import com.intellij.openapi.vcs.changes.actions.diff.ShowDiffAction
+import com.intellij.openapi.vcs.changes.ui.ChangeDiffRequestChain
 import com.intellij.openapi.vcs.changes.ui.*
 import com.intellij.openapi.vcs.changes.ui.AsyncChangesTreeModel
 import com.intellij.openapi.vcs.vfs.ContentRevisionVirtualFile
@@ -70,6 +75,35 @@ class LstCrcChangesBrowser(
     private companion object {
         const val OPEN_SOURCE_ERROR_TITLE_KEY = "changes.browser.open.source.error.title"
         const val OPEN_SOURCE_ERROR_MESSAGE_KEY = "changes.browser.open.source.error.message"
+    }
+
+    private data class DiffChangeKey(
+        val type: Change.Type,
+        val beforePath: String?,
+        val beforeRevision: String?,
+        val afterPath: String?,
+        val afterRevision: String?
+    )
+
+    private data class DiffSelectionKey(
+        val comparisonTarget: String,
+        val changes: List<DiffChangeKey>
+    )
+
+    private class ReusableChangeDiffVirtualFile(
+        chain: ChangeDiffRequestChain,
+        private val diffKey: DiffSelectionKey,
+        name: String
+    ) : ChainDiffVirtualFile(chain, name) {
+        fun matches(otherKey: DiffSelectionKey): Boolean = diffKey == otherKey
+
+        override fun equals(other: Any?): Boolean {
+            if (this === other) return true
+            if (other !is ReusableChangeDiffVirtualFile) return false
+            return diffKey == other.diffKey
+        }
+
+        override fun hashCode(): Int = diffKey.hashCode()
     }
 
     private val logger = thisLogger()
@@ -313,9 +347,50 @@ class LstCrcChangesBrowser(
     }
 
     private fun openDiff(changes: List<Change>) {
-        if (changes.isNotEmpty()) {
+        if (changes.isEmpty()) return
+
+        val diffKey = DiffSelectionKey(targetBranchToCompare, changes.map { it.toDiffChangeKey() })
+        findOpenReusableDiffFile(diffKey)?.let { openDiffFile(it); return }
+
+        val producers = changes.mapNotNull { ChangeDiffRequestProducer.create(project, it) }
+        if (producers.size != changes.size) {
             ShowDiffAction.showDiffForChange(project, changes)
+            return
         }
+
+        val chain = ChangeDiffRequestChain(ListSelection.createAt(producers, 0))
+        val diffFile = ReusableChangeDiffVirtualFile(
+            chain = chain,
+            diffKey = diffKey,
+            name = changes.first().diffFileDisplayName()
+        )
+        openDiffFile(diffFile)
+    }
+
+    private fun findOpenReusableDiffFile(diffKey: DiffSelectionKey): ReusableChangeDiffVirtualFile? {
+        return FileEditorManager.getInstance(project).openFiles
+            .filterIsInstance<ReusableChangeDiffVirtualFile>()
+            .firstOrNull { it.matches(diffKey) }
+    }
+
+    private fun openDiffFile(diffFile: ChainDiffVirtualFile) {
+        DiffEditorTabFilesManager.getInstance(project).showDiffFile(diffFile, true)
+    }
+
+    private fun Change.toDiffChangeKey(): DiffChangeKey {
+        return DiffChangeKey(
+            type = type,
+            beforePath = beforeRevision?.file?.path,
+            beforeRevision = beforeRevision?.revisionNumber?.asString(),
+            afterPath = afterRevision?.file?.path,
+            afterRevision = afterRevision?.revisionNumber?.asString()
+        )
+    }
+
+    private fun Change.diffFileDisplayName(): String {
+        val path = afterRevision?.file?.path ?: beforeRevision?.file?.path
+        return path?.substringAfterLast('/')?.substringAfterLast('\\')
+            ?: LstCrcBundle.message("context.menu.show.diff")
     }
 
     private fun getFileFromChange(change: Change): VirtualFile? {
@@ -357,7 +432,7 @@ class LstCrcChangesBrowser(
 
         val fileToOpen = getFileFromChange(change)
         if (fileToOpen != null && fileToOpen.isValid && !fileToOpen.isDirectory) {
-            OpenFileDescriptor(project, fileToOpen).navigate(true)
+            FileEditorManager.getInstance(project).openTextEditor(OpenFileDescriptor(project, fileToOpen), true)
             return
         }
 
@@ -514,18 +589,43 @@ class LstCrcChangesBrowser(
 
     private fun installViewerMouseHandling() {
         viewer.addMouseListener(object : MouseAdapter() {
-            override fun mouseClicked(e: MouseEvent) {
-                val path = viewer.getTreePathForMouseCoordinates(e) ?: return
-                val change = (path.lastPathComponent as? ChangesBrowserNode<*>)?.userObject as? Change ?: return
-
-                if (SwingUtilities.isRightMouseButton(e) && ToolWindowSettingsProvider.isContextMenuEnabled()) {
-                    showContextMenu(e)
+            override fun mousePressed(e: MouseEvent) {
+                if (handleContextMenuTrigger(e)) {
                     return
                 }
+            }
+
+            override fun mouseReleased(e: MouseEvent) {
+                if (handleContextMenuTrigger(e)) {
+                    return
+                }
+            }
+
+            override fun mouseClicked(e: MouseEvent) {
+                if (SwingUtilities.isRightMouseButton(e) && ToolWindowSettingsProvider.isContextMenuEnabled()) {
+                    e.consume()
+                    return
+                }
+
+                val path = viewer.getTreePathForMouseCoordinates(e) ?: return
+                val change = (path.lastPathComponent as? ChangesBrowserNode<*>)?.userObject as? Change ?: return
 
                 dispatchClickAction(e, change, path)
             }
         })
+    }
+
+    private fun handleContextMenuTrigger(e: MouseEvent): Boolean {
+        if (!ToolWindowSettingsProvider.isContextMenuEnabled() || !e.isPopupTrigger) {
+            return false
+        }
+
+        val path = viewer.getTreePathForMouseCoordinates(e) ?: return false
+        val change = (path.lastPathComponent as? ChangesBrowserNode<*>)?.userObject as? Change ?: return false
+        selectPathAndFocus(path)
+        e.consume()
+        showContextMenu(e)
+        return true
     }
 
     private fun configureDynamicToolbarBorder() {

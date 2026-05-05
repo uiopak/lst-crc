@@ -486,19 +486,8 @@ class LstCrcUiTestBridge {
     }
 
     fun contextMenuActionsForFile(fileName: String): String = onEdtResult {
-        val tree = selectedChangesTree() ?: return@onEdtResult ""
-        var foundChange: Change? = null
-        for (row in 0 until tree.rowCount) {
-            val path = tree.getPathForRow(row) ?: continue
-            val node = path.lastPathComponent as? DefaultMutableTreeNode ?: continue
-            val change = node.userObject as? Change ?: continue
-            val file = change.afterRevision?.file ?: change.beforeRevision?.file ?: continue
-            if (file.name == fileName || file.path.endsWith("/$fileName") || file.path.endsWith("\\$fileName")) {
-                foundChange = change
-                break
-            }
-        }
-        val change = foundChange ?: error("Could not find change for file '$fileName' in selected LST-CRC browser.")
+        val change = findChangeByFileName(fileName)
+            ?: error("Could not find change for file '$fileName' in selected LST-CRC browser.")
         val titles = mutableListOf(
             LstCrcBundle.message("context.menu.show.diff"),
             LstCrcBundle.message("context.menu.open.source")
@@ -507,6 +496,33 @@ class LstCrcUiTestBridge {
             titles.add(LstCrcBundle.message("context.menu.show.project.tree"))
         }
         titles.joinToString("|")
+    }
+
+    fun invokeContextMenuActionForFile(fileName: String, actionTitle: String) {
+        onEdt {
+            val browser = selectedBrowser() ?: error("No selected LST-CRC browser is available.")
+            val change = findChangeByFileName(fileName)
+                ?: error("Could not find change for file '$fileName' in selected LST-CRC browser.")
+
+            when (actionTitle) {
+                LstCrcBundle.message("context.menu.show.diff") -> {
+                    val method = browser.javaClass.getDeclaredMethod("openDiff", List::class.java)
+                    method.isAccessible = true
+                    method.invoke(browser, listOf(change))
+                }
+                LstCrcBundle.message("context.menu.open.source") -> {
+                    val method = browser.javaClass.getDeclaredMethod("openSource", Change::class.java)
+                    method.isAccessible = true
+                    method.invoke(browser, change)
+                }
+                LstCrcBundle.message("context.menu.show.project.tree") -> {
+                    val method = browser.javaClass.getDeclaredMethod("showInProjectTree", Change::class.java)
+                    method.isAccessible = true
+                    method.invoke(browser, change)
+                }
+                else -> error("Unsupported context menu action '$actionTitle'.")
+            }
+        }
     }
 
     fun selectedEditorDescriptor(): String = onEdtResult {
@@ -527,6 +543,19 @@ class LstCrcUiTestBridge {
             Window.getWindows().any { window ->
                 window.isShowing && window.javaClass.name.contains("diff", ignoreCase = true)
             }
+    }
+
+    fun diffEditorCount(): Int = onEdtResult {
+        val project = project()
+        val manager = FileEditorManager.getInstance(project)
+        val diffEditorCount = manager.allEditors.count { it.javaClass.name.contains("diff", ignoreCase = true) }
+        val diffFileCount = manager.openFiles.count { file ->
+            file.javaClass.name.contains("diff", ignoreCase = true) || file.fileType.name.contains("diff", ignoreCase = true)
+        }
+        val diffWindowCount = Window.getWindows().count { window ->
+            window.isShowing && window.javaClass.name.contains("diff", ignoreCase = true)
+        }
+        maxOf(diffEditorCount, diffFileCount, diffWindowCount)
     }
 
     fun closeAllEditors() {
@@ -975,6 +1004,20 @@ class LstCrcUiTestBridge {
 
     private fun selectedBrowser(): LstCrcChangesBrowser? {
         return contentManager().selectedContent?.component as? LstCrcChangesBrowser
+    }
+
+    private fun findChangeByFileName(fileName: String): Change? {
+        val tree = selectedChangesTree() ?: return null
+        for (row in 0 until tree.rowCount) {
+            val path = tree.getPathForRow(row) ?: continue
+            val node = path.lastPathComponent as? DefaultMutableTreeNode ?: continue
+            val change = node.userObject as? Change ?: continue
+            val file = change.afterRevision?.file ?: change.beforeRevision?.file ?: continue
+            if (file.name == fileName || file.path.endsWith("/$fileName") || file.path.endsWith("\\$fileName")) {
+                return change
+            }
+        }
+        return null
     }
 
     private fun branchSelectionPanelTree(): JTree? {

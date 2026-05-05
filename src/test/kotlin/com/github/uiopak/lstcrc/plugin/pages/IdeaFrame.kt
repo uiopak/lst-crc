@@ -515,6 +515,219 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
         }
     }
 
+    fun diffEditorCount(): Int {
+        return step("Count open diff editors") {
+            callJs<Int>(
+                """
+                (function() {
+                    const project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
+                    const manager = project ? com.intellij.openapi.fileEditor.FileEditorManager.getInstance(project) : null;
+                    const diffEditorCount = manager
+                        ? manager.getAllEditors().filter(editor => editor.getClass().getName().toLowerCase().includes("diff")).length
+                        : 0;
+                    const diffFileCount = manager
+                        ? manager.getOpenFiles().filter(file => {
+                            const className = file.getClass().getName().toLowerCase();
+                            const fileType = file.getFileType();
+                            const fileTypeName = fileType ? fileType.getName().toLowerCase() : "";
+                            return className.includes("diff") || fileTypeName.includes("diff");
+                        }).length
+                        : 0;
+                    const diffWindowCount = java.awt.Window.getWindows()
+                        .filter(window => window.isShowing() && window.getClass().getName().toLowerCase().includes("diff"))
+                        .length;
+                    return Math.max(diffEditorCount, diffFileCount, diffWindowCount);
+                })();
+                """.trimIndent(),
+                true
+            )
+        }
+    }
+
+
+    fun contextMenuActionsForFile(fileName: String): List<String> {
+        return step("Read context menu actions for '$fileName'") {
+            val actions = callJs<String>(
+                """
+                (function() {
+                    const project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
+                    if (!project) return "";
+
+                    const toolWindow = com.intellij.openapi.wm.ToolWindowManager.getInstance(project).getToolWindow("GitChangesView");
+                    const contentManager = toolWindow ? toolWindow.getContentManager() : null;
+                    const content = contentManager ? contentManager.getSelectedContent() : null;
+                    const root = content ? content.getComponent() : null;
+
+                    function findBrowser(component) {
+                        if (!component) return null;
+                        if (String(component.getClass().getName()) === "com.github.uiopak.lstcrc.toolWindow.LstCrcChangesBrowser") {
+                            return component;
+                        }
+                        if (!(component instanceof java.awt.Container)) {
+                            return null;
+                        }
+                        const children = component.getComponents();
+                        for (let i = 0; i < children.length; i++) {
+                            const browser = findBrowser(children[i]);
+                            if (browser) return browser;
+                        }
+                        return null;
+                    }
+
+                    const browser = findBrowser(root);
+                    if (!browser) return "";
+
+                    let currentClass = browser.getClass();
+                    let currentChangesField = null;
+                    while (currentClass && !currentChangesField) {
+                        try {
+                            currentChangesField = currentClass.getDeclaredField("currentChanges");
+                        } catch (ignored) {
+                            currentClass = currentClass.getSuperclass();
+                        }
+                    }
+                    if (!currentChangesField) return "";
+
+                    currentChangesField.setAccessible(true);
+                    const categorized = currentChangesField.get(browser);
+                    const allChanges = categorized ? categorized.getAllChanges() : java.util.Collections.emptyList();
+                    const targetFileName = ${toJsStringLiteral(fileName)};
+
+                    const change = java.util.Arrays.stream(allChanges.toArray())
+                        .filter(candidate => {
+                            const afterRevision = candidate.getAfterRevision();
+                            const beforeRevision = candidate.getBeforeRevision();
+                            const afterName = afterRevision ? afterRevision.getFile().getName() : null;
+                            const beforeName = beforeRevision ? beforeRevision.getFile().getName() : null;
+                            return targetFileName === afterName || targetFileName === beforeName;
+                        })
+                        .findFirst()
+                        .orElse(null);
+                    if (!change) return "";
+
+                    const actions = ["Show Diff", "Open Source"];
+                    if (change.getType() !== com.intellij.openapi.vcs.changes.Change.Type.DELETED) {
+                        actions.push("Show in Project Tree");
+                    }
+                    return actions.join("|");
+                })();
+                """.trimIndent(),
+                true
+            )
+
+            actions.split('|').filter { it.isNotBlank() }
+        }
+    }
+
+    fun invokeContextMenuActionForFile(fileName: String, actionTitle: String) {
+        step("Invoke context menu action '$actionTitle' for '$fileName'") {
+            runJs(
+                """
+                (function() {
+                    const project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
+                    if (!project) return;
+
+                    const toolWindow = com.intellij.openapi.wm.ToolWindowManager.getInstance(project).getToolWindow("GitChangesView");
+                    const contentManager = toolWindow ? toolWindow.getContentManager() : null;
+                    const content = contentManager ? contentManager.getSelectedContent() : null;
+                    const root = content ? content.getComponent() : null;
+
+                    function findBrowser(component) {
+                        if (!component) return null;
+                        if (String(component.getClass().getName()) === "com.github.uiopak.lstcrc.toolWindow.LstCrcChangesBrowser") {
+                            return component;
+                        }
+                        if (!(component instanceof java.awt.Container)) {
+                            return null;
+                        }
+                        const children = component.getComponents();
+                        for (let i = 0; i < children.length; i++) {
+                            const browser = findBrowser(children[i]);
+                            if (browser) return browser;
+                        }
+                        return null;
+                    }
+
+                    const browser = findBrowser(root);
+                    if (!browser) return;
+
+                    const browserClass = browser.getClass();
+                    const action = ${toJsStringLiteral(actionTitle)};
+                    let currentClass = browserClass;
+                    let currentChangesField = null;
+                    while (currentClass && !currentChangesField) {
+                        try {
+                            currentChangesField = currentClass.getDeclaredField("currentChanges");
+                        } catch (ignored) {
+                            currentClass = currentClass.getSuperclass();
+                        }
+                    }
+                    if (!currentChangesField) return;
+
+                    currentChangesField.setAccessible(true);
+                    const categorized = currentChangesField.get(browser);
+                    const allChanges = categorized ? categorized.getAllChanges() : java.util.Collections.emptyList();
+                    const targetFileName = ${toJsStringLiteral(fileName)};
+                    let change = null;
+                    const iterator = allChanges.iterator();
+                    while (iterator.hasNext() && !change) {
+                        const candidate = iterator.next();
+                        const afterRevision = candidate.getAfterRevision();
+                        const beforeRevision = candidate.getBeforeRevision();
+                        const afterName = afterRevision ? afterRevision.getFile().getName() : null;
+                        const beforeName = beforeRevision ? beforeRevision.getFile().getName() : null;
+                        if (targetFileName === afterName || targetFileName === beforeName) {
+                            change = candidate;
+                        }
+                    }
+                    if (!change) return;
+
+                    const app = com.intellij.openapi.application.ApplicationManager.getApplication();
+                    app.invokeAndWait(new java.lang.Runnable({
+                        run: function() {
+                            let actionMethod = null;
+                            const declaredMethods = browserClass.getDeclaredMethods();
+
+                            function findMethod(name, parameterCount) {
+                                for (let i = 0; i < declaredMethods.length; i++) {
+                                    const candidate = declaredMethods[i];
+                                    if (candidate.getName() === name && candidate.getParameterCount() === parameterCount) {
+                                        return candidate;
+                                    }
+                                }
+                                return null;
+                            }
+
+                            if (action === "Show Diff") {
+                                actionMethod = findMethod("openDiff", 1);
+                                if (!actionMethod) return;
+                                actionMethod.setAccessible(true);
+                                actionMethod.invoke(browser, java.util.Collections.singletonList(change));
+                                return;
+                            }
+
+                            if (action === "Open Source") {
+                                actionMethod = findMethod("openSource", 1);
+                                if (!actionMethod) return;
+                                actionMethod.setAccessible(true);
+                                actionMethod.invoke(browser, change);
+                                return;
+                            }
+
+                            if (action === "Show in Project Tree") {
+                                actionMethod = findMethod("showInProjectTree", 1);
+                                if (!actionMethod) return;
+                                actionMethod.setAccessible(true);
+                                actionMethod.invoke(browser, change);
+                            }
+                        }
+                    }));
+                })();
+                """.trimIndent(),
+                true
+            )
+        }
+    }
     fun statusWidgetText(): String {
         return step("Read LST-CRC widget text") {
             callJs<String>(

@@ -12,6 +12,8 @@ import com.intellij.remoterobot.search.locators.byXpath
 import com.intellij.remoterobot.stepsProcessing.step
 import com.intellij.remoterobot.utils.keyboard
 import com.intellij.remoterobot.utils.waitFor
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import java.time.Duration
@@ -142,6 +144,79 @@ class LstCrcInteractionUiTest : LstCrcUiTestSupport() {
                     actionMenuItem("Open Source").isShowing &&
                     actionMenuItem("Show in Project Tree").isShowing
             }
+        }
+    }
+
+    @Test
+    @Video
+    fun testContextMenuOpenSourceWinsOverFocusedDiffAndReusesDiff(remoteRobot: RemoteRobot) = with(remoteRobot) {
+        val uiSteps = PluginUiTestSteps(remoteRobot)
+
+        prepareFreshProject()
+
+        idea {
+            step("Wait for smart mode") {
+                dumbAware(Duration.ofMinutes(5)) {}
+            }
+
+            uiSteps.initializeGitRepository()
+            resetGitChangesViewState()
+
+            uiSteps.createNewFile("Main.txt", "Base line\n")
+            uiSteps.commitChanges("Initial commit")
+            val defaultBranch = uiSteps.defaultBranchName()
+
+            uiSteps.createBranch("feature-context-focus")
+            uiSteps.modifyFile("Main.txt", "Feature context focus line\n")
+            uiSteps.commitChanges("Feature context focus commit")
+            uiSteps.checkoutBranch(defaultBranch)
+
+            openGitChangesView()
+            gitChangesView {
+                addTab()
+            }
+            branchSelection {
+                searchAndSelect("feature-context-focus")
+            }
+
+            configureLstCrcClickActions(showContextMenu = true)
+
+            gitChangesView {
+                selectTab("feature-context-focus")
+                rightClickChange("Main.txt")
+            }
+
+            waitFor(Duration.ofSeconds(10)) {
+                actionMenuItem("Show Diff").isShowing &&
+                    actionMenuItem("Open Source").isShowing &&
+                    actionMenuItem("Show in Project Tree").isShowing
+            }
+
+            actionMenuItem("Show Diff").click()
+
+            waitFor(Duration.ofSeconds(15)) { diffEditorCount() > 0 }
+            val firstDiffCount = diffEditorCount()
+            assertTrue(firstDiffCount > 0, "Show Diff should open a diff editor")
+
+            gitChangesView {
+                selectTab("feature-context-focus")
+                rightClickChange("Main.txt")
+            }
+
+            waitFor(Duration.ofSeconds(10)) {
+                actionMenuItem("Open Source").isShowing
+            }
+
+            actionMenuItem("Open Source").click()
+
+            waitFor(Duration.ofSeconds(15)) {
+                val descriptor = selectedEditorDescriptor()
+                descriptor.contains("Main.txt") && !descriptor.lowercase().contains("diff")
+            }
+
+            val selectedEditor = selectedEditorDescriptor()
+            assertTrue(selectedEditor.contains("Main.txt"), "Open Source should select Main.txt after the diff was focused")
+            assertFalse(selectedEditor.lowercase().contains("diff"), "Open Source should activate a text editor, not keep the diff selected: $selectedEditor")
         }
     }
 
