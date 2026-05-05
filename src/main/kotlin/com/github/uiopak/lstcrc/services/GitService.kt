@@ -327,7 +327,6 @@ class GitService(private val project: Project) {
                 if (tokens.size < 3) return null
                 Change(beforeRevisionAt(revisionPath(1)), afterRevisionAt(revisionPath(2)), parsedStatus.fileStatus)
             }
-            else -> null
         }
     }
 

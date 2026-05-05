@@ -28,10 +28,10 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.future.asCompletableFuture
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.util.concurrent.CompletableFuture
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
 
 /**
  * Manages the tool window's UI state (open tabs, selected tab) and persists it.
@@ -48,7 +48,8 @@ class ToolWindowStateService(private val project: Project, val coroutineScope: C
 
     private var myState = ToolWindowState()
     private val logger = thisLogger()
-    private val refreshMutex = Mutex()
+    private val activeRefresh = AtomicReference<CompletableFuture<Unit>?>(null)
+    private val refreshQueued = AtomicBoolean(false)
 
     override fun getState(): ToolWindowState {
         logger.debug("getState() called. Current state: $myState")
@@ -297,15 +298,40 @@ class ToolWindowStateService(private val project: Project, val coroutineScope: C
     fun refreshDataForCurrentSelection(): CompletableFuture<Unit> {
         if (project.isDisposed) return CompletableFuture.completedFuture(Unit)
 
-        val tabInfoToRefresh = getSelectedTabInfo()
-        val profileName = tabInfoToRefresh?.branchName ?: "HEAD"
-        logger.info("ACTION: Refreshing data for current selection: '$profileName'")
+        refreshQueued.set(true)
 
-        return coroutineScope.async {
-            refreshMutex.withLock {
-                loadDataForTab(tabInfoToRefresh)
-            }
+        activeRefresh.get()?.let {
+            logger.debug("ACTION: Refresh already in progress. Coalescing another refresh request.")
+            return it
+        }
+
+        val refreshFuture = coroutineScope.async {
+            runRefreshCycle()
         }.asCompletableFuture()
+
+        if (!activeRefresh.compareAndSet(null, refreshFuture)) {
+            logger.debug("ACTION: Refresh was scheduled concurrently. Reusing the active refresh future.")
+            return activeRefresh.get() ?: refreshFuture
+        }
+
+        refreshFuture.whenComplete { _, _ ->
+            if (activeRefresh.compareAndSet(refreshFuture, null) && refreshQueued.get() && !project.isDisposed) {
+                logger.debug("ACTION: A refresh request arrived during completion. Scheduling another coalesced cycle.")
+                refreshDataForCurrentSelection()
+            }
+        }
+
+        return refreshFuture
+    }
+
+    private suspend fun runRefreshCycle() {
+        while (!project.isDisposed && refreshQueued.getAndSet(false)) {
+            val tabInfoToRefresh = getSelectedTabInfo()
+            val profileName = tabInfoToRefresh?.branchName ?: "HEAD"
+            logger.info("ACTION: Refreshing data for current selection: '$profileName'")
+
+            loadDataForTab(tabInfoToRefresh)
+        }
     }
 
     private fun commitStateAndBroadcast() {

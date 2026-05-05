@@ -11,6 +11,7 @@ import com.intellij.openapi.vcs.changes.ChangeListManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.launch
 import kotlin.time.Duration.Companion.milliseconds
@@ -37,7 +38,7 @@ class VcsChangeListener(
         coroutineScope.launch {
             refreshSignals
                 .debounce(250.milliseconds)
-                .collect {
+                .collectLatest {
                     if (!project.isDisposed) {
                         logger.info("VCS_CHANGE_LISTENER: Debounced refresh executing.")
                         project.service<ToolWindowStateService>().refreshDataForCurrentSelection()

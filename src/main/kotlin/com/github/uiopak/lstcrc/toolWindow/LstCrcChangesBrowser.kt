@@ -7,6 +7,7 @@ import com.github.uiopak.lstcrc.utils.getTreePathForMouseCoordinates
 import com.intellij.ide.projectView.ProjectView
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.actionSystem.*
+import com.intellij.openapi.application.EDT
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.service
 import com.intellij.openapi.diagnostic.thisLogger
@@ -43,6 +44,7 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlin.time.Duration.Companion.milliseconds
 import java.awt.BorderLayout
 import java.awt.event.ComponentAdapter
@@ -120,7 +122,11 @@ class LstCrcChangesBrowser(
                 .debounce(100.milliseconds)
                 .collectLatest {
                     if (!project.isDisposed) {
-                        requestRefreshData()
+                        withContext(Dispatchers.EDT) {
+                            if (!project.isDisposed) {
+                                requestRefreshData()
+                            }
+                        }
                     }
                 }
         }
