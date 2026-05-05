@@ -265,6 +265,8 @@ tasks {
     val robotServerWaitTimeoutProvider = providers.systemProperty("ui.test.server.wait.timeout").orElse(if (isCi) "240" else "90")
     val robotConnectionTimeoutProvider = providers.systemProperty("ui.test.connection.timeout").orElse(if (isCi) "90" else "30")
     val uiTestTimeoutProvider = providers.systemProperty("ui.test.timeout").orElse(if (isCi) "900" else "600")
+    val uiTestTaskTimeoutMinutesProvider = providers.systemProperty("ui.test.task.timeout.minutes").orElse(if (isCi) "45" else "30")
+    val starterUiTestTaskTimeoutMinutesProvider = providers.systemProperty("starter.ui.test.task.timeout.minutes").orElse(if (isCi) "75" else "40")
 
     fun Test.configureCommonTestTask() {
         useJUnitPlatform()
@@ -294,7 +296,7 @@ tasks {
         systemProperty("ui.test.connection.timeout", robotConnectionTimeoutProvider.get())
         systemProperty("ui.test.timeout", uiTestTimeoutProvider.get())
 
-        timeout.set(Duration.ofMinutes(30))
+        timeout.set(Duration.ofMinutes(uiTestTaskTimeoutMinutesProvider.get().toLong()))
     }
 
     fun Test.configureStarterIdeTestTask(allureSubdirectory: String) {
@@ -566,7 +568,7 @@ tasks {
             excludeTags(starterPerformanceTag)
         }
 
-        timeout.set(Duration.ofMinutes(40))
+        timeout.set(Duration.ofMinutes(starterUiTestTaskTimeoutMinutesProvider.get().toLong()))
     }
 
     register<Test>("starterPerformanceTest") {

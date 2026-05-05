@@ -83,11 +83,13 @@ class RemoteRobotExtension : AfterTestExecutionCallback, ParameterResolver {
     }
 
     private fun saveFile(url: String, folder: String, name: String): File {
-        val response = client.newCall(Request.Builder().url(url).build()).execute()
-        return File(folder).apply {
-            mkdirs()
-        }.resolve(name).apply {
-            writeText(response.body.string())
+        client.newCall(Request.Builder().url(url).build()).execute().use { response ->
+            val bodyText = response.body.string()
+            return File(folder).apply {
+                mkdirs()
+            }.resolve(name).apply {
+                writeText(bodyText)
+            }
         }
     }
 

@@ -76,6 +76,10 @@ data class GetChangesResult(
 @Service(Service.Level.PROJECT)
 class GitService(private val project: Project) {
 
+    private companion object {
+        private val COMMIT_HASH_REGEX = Regex("^[0-9a-fA-F]{7,40}$")
+    }
+
     private val logger = thisLogger()
 
     private data class ParsedDiffStatus(
@@ -208,9 +212,18 @@ class GitService(private val project: Project) {
             return loadLocalChanges(repo)
         }
 
-        if (target == "HEAD" || target == primaryRevision) {
+        if (shouldCompareAgainstWorkingTree(primaryRevision, target)) {
             logLocalComparisonFallback(repo, target)
-            return loadChangesAgainstWorkingTree(repo, target)
+            return try {
+                loadChangesAgainstWorkingTree(repo, target)
+            } catch (e: VcsException) {
+                logger.warn(
+                    "git diff failed for repo '${repo.root.name}' against target '$target'. " +
+                        "Assuming revision is invalid. Error: ${e.message}"
+                )
+                failures[repo] = target
+                emptyList()
+            }
         }
 
         return try {
@@ -223,6 +236,14 @@ class GitService(private val project: Project) {
             failures[repo] = target
             emptyList()
         }
+    }
+
+    internal fun shouldCompareAgainstWorkingTree(primaryRevision: String, target: String): Boolean {
+        return target == "HEAD" || target == primaryRevision || !isExplicitRevisionTarget(target)
+    }
+
+    internal fun isExplicitRevisionTarget(target: String): Boolean {
+        return COMMIT_HASH_REGEX.matches(target)
     }
 
     private fun loadChangesAgainstWorkingTree(repo: GitRepository, target: String): List<Change> {

@@ -621,7 +621,9 @@ class LstCrcChangesBrowser(
         }
 
         val path = viewer.getTreePathForMouseCoordinates(e) ?: return false
-        val change = (path.lastPathComponent as? ChangesBrowserNode<*>)?.userObject as? Change ?: return false
+        if ((path.lastPathComponent as? ChangesBrowserNode<*>)?.userObject as? Change == null) {
+            return false
+        }
         selectPathAndFocus(path)
         e.consume()
         showContextMenu(e)
