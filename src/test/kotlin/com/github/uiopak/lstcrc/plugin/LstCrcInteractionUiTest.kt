@@ -525,8 +525,8 @@ class LstCrcInteractionUiTest : LstCrcUiTestSupport() {
         val widget = widgetBounds!!
         val popup = popupBounds!!
         assertTrue(
-            abs(popup.x - widget.x) <= 80,
-            "Widget popup should open near the widget's horizontal position. Snapshot: $snapshot"
+            popup.x <= widget.x + widget.width && popup.x + popup.width >= widget.x,
+            "Widget popup should horizontally overlap the widget instead of opening near the status bar origin. Snapshot: $snapshot"
         )
         assertTrue(
             popup.y + popup.height <= widget.y + 40,

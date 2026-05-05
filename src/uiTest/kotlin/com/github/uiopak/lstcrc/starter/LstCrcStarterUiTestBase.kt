@@ -44,6 +44,10 @@ import kotlin.time.Duration.Companion.seconds
 
 abstract class LstCrcStarterUiTestBase {
 
+    init {
+        initializeTestApplicationManager()
+    }
+
     /**
      * Returns the [com.intellij.ide.starter.models.IdeInfo] to use for the test IDE.
      *
@@ -161,6 +165,13 @@ abstract class LstCrcStarterUiTestBase {
 
     private companion object {
         val starterDriverScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
+        private fun initializeTestApplicationManager() {
+            runCatching {
+                val managerClass = Class.forName("com.intellij.testFramework.TestApplicationManager")
+                managerClass.getMethod("getInstance").invoke(null)
+            }
+        }
     }
 
     /**

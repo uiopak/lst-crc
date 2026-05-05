@@ -239,7 +239,7 @@ class GitService(private val project: Project) {
     }
 
     internal fun shouldCompareAgainstWorkingTree(primaryRevision: String, target: String): Boolean {
-        return target == "HEAD" || target == primaryRevision || !isExplicitRevisionTarget(target)
+        return target == "HEAD" || target == primaryRevision
     }
 
     internal fun isExplicitRevisionTarget(target: String): Boolean {

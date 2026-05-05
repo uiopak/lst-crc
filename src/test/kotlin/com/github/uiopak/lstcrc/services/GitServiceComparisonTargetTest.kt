@@ -4,10 +4,10 @@ import com.intellij.testFramework.fixtures.BasePlatformTestCase
 
 class GitServiceComparisonTargetTest : BasePlatformTestCase() {
 
-    fun testBranchOverrideStillUsesWorkingTreeDiff() {
+    fun testBranchOverrideUsesRevisionComparisonPath() {
         val gitService = GitService(project)
 
-        assertTrue(gitService.shouldCompareAgainstWorkingTree("feature-a", "origin/main"))
+        assertFalse(gitService.shouldCompareAgainstWorkingTree("feature-a", "origin/main"))
         assertFalse(gitService.isExplicitRevisionTarget("origin/main"))
     }
 
