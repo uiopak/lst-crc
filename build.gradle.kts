@@ -236,8 +236,8 @@ if (includeTestBridge.get()) {
 }
 
 // Resolve IntelliJ once via the Gradle plugin, then keep a single shared workspace copy for
-// UI-related tasks. This avoids maintaining separate 4+ GB copies for Remote Robot and
-// IDE Starter, while also keeping the running IDEs off the mutable Gradle transform cache.
+// IDE Starter tasks. Remote Robot uses the standard runIde setup because the Windows local-path
+// flow can fail while resolving bundled plugins from the copied IDE.
 val resolvedIdeHome = intellijPlatform.platformPath
 val sharedUiIdeDir = layout.buildDirectory.dir("shared-ui-ide/idea")
 val preparedSharedUiIdeDir = providers.provider {
@@ -601,8 +601,6 @@ tasks {
 intellijPlatformTesting {
     runIde {
         register("runIdeForUiTests") {
-            localPath.set(preparedSharedUiIdeDir)
-
             task {
                 jvmArgumentProviders += CommandLineArgumentProvider {
                     listOf(

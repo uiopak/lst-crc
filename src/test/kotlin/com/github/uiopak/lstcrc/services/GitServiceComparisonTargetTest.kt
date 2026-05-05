@@ -19,6 +19,12 @@ class GitServiceComparisonTargetTest : BasePlatformTestCase() {
         assertTrue(gitService.isExplicitRevisionTarget(commitHash))
     }
 
+    fun testExplicitRepoOverrideUsesWorkingTreeWhenPrimaryRevisionIsMissingInRepo() {
+        val gitService = GitService(project)
+
+        assertTrue(gitService.shouldCompareAgainstWorkingTree("feature-a", "repair-target", primaryRevisionExistsInRepo = false))
+    }
+
     fun testTabPrimaryRevisionStillUsesWorkingTreeWhenTargetsMatch() {
         val gitService = GitService(project)
         val commitHash = "0123456789abcdef0123456789abcdef01234567"

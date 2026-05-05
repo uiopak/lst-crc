@@ -212,7 +212,10 @@ class GitService(private val project: Project) {
             return loadLocalChanges(repo)
         }
 
-        if (shouldCompareAgainstWorkingTree(primaryRevision, target)) {
+        val primaryRevisionExistsInRepo =
+            target == "HEAD" || target == primaryRevision || revisionExistsInRepo(repo, primaryRevision)
+
+        if (shouldCompareAgainstWorkingTree(primaryRevision, target, primaryRevisionExistsInRepo)) {
             logLocalComparisonFallback(repo, target)
             return try {
                 loadChangesAgainstWorkingTree(repo, target)
@@ -238,12 +241,25 @@ class GitService(private val project: Project) {
         }
     }
 
-    internal fun shouldCompareAgainstWorkingTree(primaryRevision: String, target: String): Boolean {
-        return target == "HEAD" || target == primaryRevision
+    internal fun shouldCompareAgainstWorkingTree(
+        primaryRevision: String,
+        target: String,
+        primaryRevisionExistsInRepo: Boolean = true
+    ): Boolean {
+        return target == "HEAD" || target == primaryRevision || !primaryRevisionExistsInRepo
     }
 
     internal fun isExplicitRevisionTarget(target: String): Boolean {
         return COMMIT_HASH_REGEX.matches(target)
+    }
+
+    @Suppress("UsePropertyAccessSyntax")
+    private fun revisionExistsInRepo(repo: GitRepository, revision: String): Boolean {
+        val handler = GitLineHandler(project, repo.root, GitCommand.REV_PARSE)
+        handler.setSilent(true)
+        handler.setStdoutSuppressed(true)
+        handler.addParameters("--verify", "--quiet", revision)
+        return Git.getInstance().runCommand(handler).exitCode == 0
     }
 
     private fun loadChangesAgainstWorkingTree(repo: GitRepository, target: String): List<Change> {

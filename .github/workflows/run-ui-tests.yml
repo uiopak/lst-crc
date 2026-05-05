@@ -389,14 +389,7 @@ jobs:
 
       - name: Wait for IDE readiness
         if: runner.os == 'Windows'
-        run: |
-          $gradleArgs = @(
-            "uiTestReady",
-            "--info",
-            "--stacktrace",
-            "-Dui.test.server.wait.timeout=${{ matrix.uiTestServerWaitTimeout }}"
-          )
-          & .\gradlew.bat @gradleArgs
+        run: .\gradlew.bat uiTestReady --info --stacktrace -Dui.test.server.wait.timeout=${{ matrix.uiTestServerWaitTimeout }}
         shell: powershell
 
       # Run tests
