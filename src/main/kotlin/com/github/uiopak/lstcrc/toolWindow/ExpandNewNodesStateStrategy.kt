@@ -12,12 +12,12 @@ import javax.swing.tree.DefaultMutableTreeNode
 import javax.swing.tree.TreePath
 
 /**
- * Preserves the current expansion/collapse state while ensuring newly-added changes become visible.
+ * Preserves the current expansion/collapse state while ensuring newly added changes become visible.
  *
  * When [expandNewFilesInCollapsedDirs] returns `true` (the default, driven by the
  * "Expand Collapsed Folders for New Changes" setting), directories that are currently
  * collapsed will be expanded when new changes appear inside them — matching the
- * pre-collapse-persistence behaviour. When it returns `false`, collapsed directories
+ * pre-collapse-persistence behavior. When it returns `false`, collapsed directories
  * stay collapsed even if they receive new changes.
  */
 class ExpandNewNodesStateStrategy(
@@ -187,7 +187,7 @@ class ExpandNewNodesStateStrategy(
             .asSequence()
             .filter { key ->
                 // When the setting is enabled, don't re-collapse a dir that was just expanded
-                // to reveal newly-appeared changes inside it.
+                // to reveal newly appeared changes inside it.
                 expandedForNewFiles.isEmpty() || !expandNewFilesInCollapsedDirs() || key !in expandedForNewFiles
             }
             .mapNotNull { key -> collapsedPathToTreePath[key] }

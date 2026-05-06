@@ -69,10 +69,6 @@ interface LstCrcUiTestBridgeRemote {
     fun searchScopesSnapshot(): String
     fun searchScopeContains(displayName: String, relativePath: String): Boolean
     fun branchSelectionTabBranchesSnapshot(): String
-    fun openFindInFilesDialog()
-    fun findDialogScopeOptionsSnapshot(): String
-    fun dismissTransientUi()
-    fun openRepoComparisonDialog()
     fun visibleRepoComparisonDialogTitle(): String
     fun visibleRepoComparisonDialogBranchesSnapshot(): String
     fun selectBranchInVisibleRepoComparisonDialog(branchName: String)

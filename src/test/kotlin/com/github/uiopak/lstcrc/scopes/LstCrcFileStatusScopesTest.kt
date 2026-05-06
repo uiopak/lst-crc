@@ -46,8 +46,6 @@ class LstCrcFileStatusScopesTest : BasePlatformTestCase() {
 
     private fun flushEdt() {
         PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
-        ApplicationManager.getApplication().invokeAndWait(object : Runnable {
-            override fun run() = Unit
-        })
+        ApplicationManager.getApplication().invokeAndWait { }
     }
 }

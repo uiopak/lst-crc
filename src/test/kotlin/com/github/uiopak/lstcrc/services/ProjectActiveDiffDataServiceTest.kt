@@ -4,7 +4,6 @@ import com.github.uiopak.lstcrc.state.TabInfo
 import com.github.uiopak.lstcrc.state.ToolWindowState
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.service
-import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.testFramework.PlatformTestUtil
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 
@@ -19,10 +18,10 @@ class ProjectActiveDiffDataServiceTest : BasePlatformTestCase() {
         diffDataService.updateActiveDiff(
             "HEAD",
             listOf(headFile),
-            emptyList<VirtualFile>(),
-            emptyList<VirtualFile>(),
-            emptyList<VirtualFile>(),
-            emptyMap<String, String>()
+            emptyList(),
+            emptyList(),
+            emptyList(),
+            emptyMap()
         )
         flushEdt()
 
@@ -47,20 +46,20 @@ class ProjectActiveDiffDataServiceTest : BasePlatformTestCase() {
         diffDataService.updateActiveDiff(
             "selected-branch",
             listOf(selectedFile),
-            emptyList<VirtualFile>(),
-            emptyList<VirtualFile>(),
-            emptyList<VirtualFile>(),
-            emptyMap<String, String>()
+            emptyList(),
+            emptyList(),
+            emptyList(),
+            emptyMap()
         )
         flushEdt()
 
         diffDataService.updateActiveDiff(
             "other-branch",
             listOf(staleFile),
-            emptyList<VirtualFile>(),
-            emptyList<VirtualFile>(),
-            emptyList<VirtualFile>(),
-            emptyMap<String, String>()
+            emptyList(),
+            emptyList(),
+            emptyList(),
+            emptyMap()
         )
         flushEdt()
 
@@ -89,20 +88,20 @@ class ProjectActiveDiffDataServiceTest : BasePlatformTestCase() {
         diffDataService.updateActiveDiff(
             "selected-branch",
             listOf(selectedFile),
-            emptyList<VirtualFile>(),
-            emptyList<VirtualFile>(),
-            emptyList<VirtualFile>(),
-            emptyMap<String, String>()
+            emptyList(),
+            emptyList(),
+            emptyList(),
+            emptyMap()
         )
         flushEdt()
 
         diffDataService.updateActiveDiff(
             "HEAD",
             listOf(headFile),
-            emptyList<VirtualFile>(),
-            emptyList<VirtualFile>(),
-            emptyList<VirtualFile>(),
-            emptyMap<String, String>()
+            emptyList(),
+            emptyList(),
+            emptyList(),
+            emptyMap()
         )
         flushEdt()
 
@@ -118,8 +117,6 @@ class ProjectActiveDiffDataServiceTest : BasePlatformTestCase() {
 
     private fun flushEdt() {
         PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
-        ApplicationManager.getApplication().invokeAndWait(object : Runnable {
-            override fun run() = Unit
-        })
+        ApplicationManager.getApplication().invokeAndWait { }
     }
 }

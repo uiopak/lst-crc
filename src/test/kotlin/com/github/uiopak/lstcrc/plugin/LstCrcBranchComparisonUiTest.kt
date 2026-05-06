@@ -9,7 +9,8 @@ import com.intellij.remoterobot.RemoteRobot
 import com.intellij.remoterobot.stepsProcessing.step
 import com.intellij.remoterobot.utils.keyboard
 import com.intellij.remoterobot.utils.waitFor
-import org.junit.jupiter.api.Assertions
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertNotEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import java.awt.event.KeyEvent
@@ -61,7 +62,7 @@ class LstCrcBranchComparisonUiTest : LstCrcUiTestSupport() {
 
             var scopeDebug = ""
             waitFor(Duration.ofSeconds(10), interval = Duration.ofMillis(500)) {
-                scopeDebug = callJs<String>(
+                scopeDebug = callJs(
                     """
                     (function() {
                         const result = new java.util.concurrent.atomic.AtomicReference("projectMissing=true");
@@ -215,7 +216,7 @@ class LstCrcBranchComparisonUiTest : LstCrcUiTestSupport() {
 
             var scopesDebug = ""
             waitFor(Duration.ofSeconds(10), interval = Duration.ofSeconds(1)) {
-                scopesDebug = callJs<String>(
+                scopesDebug = callJs(
                     """
                     const project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
                     const namedScopeManager = com.intellij.psi.search.scope.packageSet.NamedScopeManager.getInstance(project);
@@ -238,7 +239,7 @@ class LstCrcBranchComparisonUiTest : LstCrcUiTestSupport() {
             }
 
             if (scopesDebug.contains("scopeFound=true")) {
-                Assertions.assertTrue(scopesDebug.contains("result=true"), "Custom scopes should be updated with modified files: $scopesDebug")
+                assertTrue(scopesDebug.contains("result=true"), "Custom scopes should be updated with modified files: $scopesDebug")
             }
         }
     }
@@ -961,9 +962,9 @@ class LstCrcBranchComparisonUiTest : LstCrcUiTestSupport() {
             val untrackedStatus = fileStatusForTreeItem("UntrackedStatus.txt")
             val addedStatus = fileStatusForTreeItem("TrackedAdded.txt")
 
-            Assertions.assertEquals("UNKNOWN", untrackedStatus,
+            assertEquals("UNKNOWN", untrackedStatus,
                 "Untracked file should have UNKNOWN file status for native text coloring")
-            Assertions.assertNotEquals(untrackedStatus, addedStatus,
+            assertNotEquals(untrackedStatus, addedStatus,
                 "Untracked and added files should have different file statuses")
         }
     }
@@ -1014,18 +1015,19 @@ class LstCrcBranchComparisonUiTest : LstCrcUiTestSupport() {
                 }
             }
 
-            Assertions.assertEquals("DELETED", fileStatusForTreeItem("NewFile.txt"),
+            assertEquals("DELETED", fileStatusForTreeItem("NewFile.txt"),
                 "File only in comparison branch should have DELETED file status (not present in working dir)")
-            Assertions.assertEquals("MODIFIED", fileStatusForTreeItem("ToModify.txt"),
+            assertEquals("MODIFIED", fileStatusForTreeItem("ToModify.txt"),
                 "Modified file should have MODIFIED file status")
-            Assertions.assertEquals("ADDED", fileStatusForTreeItem("ToDelete.txt"),
+            assertEquals("ADDED", fileStatusForTreeItem("ToDelete.txt"),
                 "File only in working dir should have ADDED file status (deleted in comparison branch)")
-            Assertions.assertEquals("MODIFIED", fileStatusForTreeItem("ToRename.txt"),
+            assertEquals("MODIFIED", fileStatusForTreeItem("ToRename.txt"),
                 "Renamed file should have MODIFIED file status (rename detected)")
         }
     }
 
 
+    @Suppress("SameParameterValue")
     private fun RemoteRobot.setChangesTreeNodeExpanded(nodeText: String, expanded: Boolean) {
         step("${if (expanded) "Expand" else "Collapse"} tree node '$nodeText'") {
             val success = callJs<Boolean>(
@@ -1121,6 +1123,7 @@ class LstCrcBranchComparisonUiTest : LstCrcUiTestSupport() {
         }
     }
 
+    @Suppress("SameParameterValue")
     private fun RemoteRobot.fileStatusDebug(fileName: String): String = callJs(
         """
         (function() {

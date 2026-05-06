@@ -1,4 +1,4 @@
-//package com.github.uiopak.lstcrc.services
+package com.github.uiopak.lstcrc.services
 //
 //import com.intellij.testFramework.fixtures.BasePlatformTestCase
 //import git4idea.repo.GitRepository

@@ -16,7 +16,7 @@ import com.intellij.openapi.vfs.newvfs.events.VFileEvent
 import com.intellij.openapi.vfs.newvfs.events.VFileMoveEvent
 
 /**
- * Marks VCS dirty after relevant VFS file events so ChangeList updates are emitted
+ * Marks VCS dirty after relevant VFS file events, so ChangeList updates are emitted
  * quickly and UI consumers can refresh from the latest working-tree state.
  */
 @Service(Service.Level.PROJECT)

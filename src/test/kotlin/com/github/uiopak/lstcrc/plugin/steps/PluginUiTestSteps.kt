@@ -7,12 +7,9 @@ import com.intellij.remoterobot.stepsProcessing.step
 import com.intellij.remoterobot.utils.component
 import com.intellij.remoterobot.utils.waitFor
 import java.nio.file.AccessDeniedException
-import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.FileSystemException
 import java.nio.file.Path
-import java.nio.file.StandardCopyOption
-import java.nio.file.StandardOpenOption
 import java.time.Duration
 
 /**
@@ -143,7 +140,7 @@ class PluginUiTestSteps(private val remoteRobot: RemoteRobot) {
     /**
      * Deletes a file
      */
-    fun deleteFile(fileName: String) = with(remoteRobot) {
+    fun deleteFile(fileName: String) {
         step("Delete file: $fileName") {
             val path = resolveProjectPath(fileName)
             Files.deleteIfExists(path)
@@ -218,8 +215,8 @@ class PluginUiTestSteps(private val remoteRobot: RemoteRobot) {
         }
     }
 
-    private fun currentBranchName(): String = with(remoteRobot) {
-        runGitCommand("rev-parse", "--abbrev-ref", "HEAD")
+    private fun currentBranchName(): String {
+        return runGitCommand("rev-parse", "--abbrev-ref", "HEAD")
     }
 
     private fun enableGitVcsIntegration() = with(remoteRobot) {
@@ -252,7 +249,7 @@ class PluginUiTestSteps(private val remoteRobot: RemoteRobot) {
         )
     }
 
-    private fun configureGitIdentity() = with(remoteRobot) {
+    private fun configureGitIdentity() {
         runGitCommand("config", "user.name", "LST-CRC UI Tests")
         runGitCommand("config", "user.email", "lst-crc-ui-tests@example.invalid")
     }
@@ -295,11 +292,11 @@ class PluginUiTestSteps(private val remoteRobot: RemoteRobot) {
             output = result.substringAfter('\n', "").trim()
             val retriedExitCode = result.substringBefore('\n').toIntOrNull()
                 ?: error("Could not parse git command exit code from retry result: $result")
-            check(retriedExitCode == 0) { if (output.isNotBlank()) output else "git ${args.joinToString(" ")} failed with exit code $retriedExitCode" }
+        check(retriedExitCode == 0) { output.ifBlank { "git ${args.joinToString(" ")} failed with exit code $retriedExitCode" } }
             return@with output
         }
 
-        check(exitCode == 0) { if (output.isNotBlank()) output else "git ${args.joinToString(" ")} failed with exit code $exitCode" }
+        check(exitCode == 0) { output.ifBlank { "git ${args.joinToString(" ")} failed with exit code $exitCode" } }
         output
     }
 
@@ -363,27 +360,6 @@ class PluginUiTestSteps(private val remoteRobot: RemoteRobot) {
         )
     }
 
-    private fun gitPath(relativePath: String): String = relativePath.replace('\\', '/')
-
-    private fun waitForGitChange(vararg relativePaths: String) {
-        val normalizedPaths = relativePaths
-            .map(::gitPath)
-            .distinct()
-
-        waitFor(Duration.ofSeconds(30), interval = Duration.ofMillis(500)) {
-            runCatching {
-                val statusOutput = runGitCommand("status", "--porcelain")
-                normalizedPaths.any { path ->
-                    statusOutput.lineSequence().any { line ->
-                        val trimmedLine = line.trim()
-                        trimmedLine.endsWith(path) ||
-                            trimmedLine.contains(" -> $path") ||
-                            trimmedLine.contains("$path -> ")
-                    }
-                }
-            }.getOrDefault(false)
-        }
-    }
 
     private fun handleAddFileToGitDialogIfPresent() = with(remoteRobot) {
         val dialogXpath = "//div[@class='MyDialog' and (@title='Add File to Git' or .//div[@accessiblename='Add File to Git'])]"
@@ -558,7 +534,7 @@ class PluginUiTestSteps(private val remoteRobot: RemoteRobot) {
 
     private fun resetProjectFiles() {
         val basePath = projectBasePath()
-        val projectFileName = "$${'$'}{basePath.fileName}.iml"
+        val projectFileName = $$"${basePath.fileName}.iml"
         Files.list(basePath).use { children ->
             children.forEach { child ->
                 val childName = child.fileName.toString()
@@ -587,13 +563,13 @@ class PluginUiTestSteps(private val remoteRobot: RemoteRobot) {
         var lastFailure: Exception? = null
 
         repeat(20) { attempt ->
-            try {
+            lastFailure = try {
                 Files.deleteIfExists(path)
                 return
             } catch (exception: AccessDeniedException) {
-                lastFailure = exception
+                exception
             } catch (exception: FileSystemException) {
-                lastFailure = exception
+                exception
             }
 
             if (attempt < 19) {

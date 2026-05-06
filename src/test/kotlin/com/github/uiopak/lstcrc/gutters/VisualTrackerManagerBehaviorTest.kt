@@ -64,9 +64,10 @@ class VisualTrackerManagerBehaviorTest : BasePlatformTestCase() {
     private fun createTracker(file: LightVirtualFile, baseText: String): SimpleLocalLineStatusTracker {
         val document = fileDocument(file)
 
+        @Suppress("UnstableApiUsage")
         val tracker = ApplicationManager.getApplication().runWriteAction<SimpleLocalLineStatusTracker> {
             SimpleLocalLineStatusTracker.createTracker(project, document, file).also {
-                it.mode = Mode(true, true, true)
+                it.mode = Mode(isVisible = true, showErrorStripeMarkers = true, detectWhitespaceChangedLines = true)
                 it.setBaseRevision(baseText)
             }
         }

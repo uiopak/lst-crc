@@ -267,10 +267,6 @@ class LstCrcStarterContext(
         ui.deleteProjectFile(relativePath)
     }
 
-    fun deleteFileInRepo(repoRelativePath: String, relativePath: String) {
-        project.deleteFileInRepo(repoRelativePath, relativePath)
-        ui.refreshProjectAfterExternalChange()
-    }
 
     fun commitChanges(message: String) {
         project.commitAll(message)
@@ -307,10 +303,6 @@ class LstCrcStarterContext(
         ui.refreshProjectAfterExternalChange()
     }
 
-    fun deleteBranchInRepo(repoRelativePath: String, branchName: String) {
-        project.deleteBranchInRepo(repoRelativePath, branchName)
-        ui.refreshProjectAfterExternalChange()
-    }
 
     fun defaultBranchName(): String = project.defaultBranchName()
 
@@ -318,7 +310,6 @@ class LstCrcStarterContext(
 
     fun gitRevision(reference: String): String = project.gitRevision(reference)
 
-    fun gitRevisionInRepo(repoRelativePath: String, reference: String): String = project.gitRevisionInRepo(repoRelativePath, reference)
 
     fun waitForSmartMode(timeout: Duration = 5.minutes) {
         waitUntil(timeout) { !ui.isDumbMode() }
@@ -347,6 +338,7 @@ class LstCrcStarterContext(
         }
     }
 
+    @Suppress("SameParameterValue")
     fun waitForTreeNotContains(vararg texts: String, timeout: Duration = 20.seconds) {
         waitUntil(timeout) {
             val snapshot = ui.selectedChangesTreeSnapshot()

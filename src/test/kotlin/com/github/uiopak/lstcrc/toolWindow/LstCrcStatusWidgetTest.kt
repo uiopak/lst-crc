@@ -66,6 +66,7 @@ class LstCrcStatusWidgetTest : BasePlatformTestCase() {
         assertEquals(LstCrcBundle.message("plugin.name.short"), widget.getText())
     }
 
+    @Suppress("SameParameterValue")
     private fun setShowWidgetContext(show: Boolean) {
         PropertiesComponent.getInstance().setValue(
             ToolWindowSettingsProvider.APP_SHOW_WIDGET_CONTEXT_KEY,

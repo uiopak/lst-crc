@@ -10,6 +10,8 @@ import com.intellij.diff.editor.DiffEditorTabFilesManager
 import com.intellij.openapi.ListSelection
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.actionSystem.*
+import com.intellij.openapi.actionSystem.UiDataProvider
+import com.intellij.openapi.actionSystem.DataSink
 import com.intellij.openapi.application.EDT
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.service
@@ -70,7 +72,11 @@ class LstCrcChangesBrowser(
     private val project: Project,
     private val targetBranchToCompare: String,
     parentDisposable: Disposable
-) : AsyncChangesBrowserBase(project, false, true), Disposable, GitRepositoryChangeListener {
+) : AsyncChangesBrowserBase(project, false, true), Disposable, GitRepositoryChangeListener, UiDataProvider {
+
+    override fun uiDataSnapshot(sink: DataSink) {
+        DataSink.uiDataSnapshot(sink, this)
+    }
 
     private companion object {
         const val OPEN_SOURCE_ERROR_TITLE_KEY = "changes.browser.open.source.error.title"
@@ -148,7 +154,7 @@ class LstCrcChangesBrowser(
         // init() in its constructor, so we must do it to build the component layout.
         init()
 
-        // Preserve user expansion/collapse state while still revealing newly-added nodes.
+        // Preserve user expansion/collapse state while still revealing newly added nodes.
         viewer.treeStateStrategy = ExpandNewNodesStateStrategy()
 
         debounceScope.launch {
@@ -226,7 +232,11 @@ class LstCrcChangesBrowser(
         project: Project,
         showCheckboxes: Boolean,
         highlightProblems: Boolean
-    ) : AsyncChangesTree(project, showCheckboxes, highlightProblems) {
+    ) : AsyncChangesTree(project, showCheckboxes, highlightProblems), UiDataProvider {
+
+        override fun uiDataSnapshot(sink: DataSink) {
+            DataSink.uiDataSnapshot(sink, this)
+        }
 
         override val changesTreeModel: AsyncChangesTreeModel
             get() = this@LstCrcChangesBrowser.changesTreeModel
@@ -309,7 +319,7 @@ class LstCrcChangesBrowser(
 
     /**
      * Routes a click event to the correct [handleGenericClick] call based on the mouse button.
-     * Shared by the real [MouseAdapter] listener and the test-bridge [invokeConfiguredActionForFile].
+     * Shared by the real [MouseAdapter] listener and the test-bridge triggerConfiguredChangeInteraction.
      */
     private fun dispatchClickAction(e: MouseEvent, change: Change, path: javax.swing.tree.TreePath) {
         when {

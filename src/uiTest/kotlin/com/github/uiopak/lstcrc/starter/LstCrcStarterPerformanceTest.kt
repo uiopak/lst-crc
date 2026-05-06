@@ -3,7 +3,6 @@ package com.github.uiopak.lstcrc.starter
 import com.github.uiopak.lstcrc.starter.remote.LstCrcUiTestBridgeRemote
 import com.intellij.driver.client.service
 import com.intellij.driver.sdk.waitForIndicators
-import com.intellij.ide.starter.driver.engine.runIdeWithDriver
 import com.intellij.ide.starter.junit5.hyphenateWithClass
 import com.intellij.ide.starter.runner.CurrentTestMethod
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -60,7 +59,7 @@ class LstCrcStarterPerformanceTest : LstCrcStarterUiTestBase() {
                 starterContext.waitUntil(60.seconds) {
                     bridge.selectedTabName() == "perf-branch"
                 }
-                // Wait for the full tree to settle: all 21 files (Main.txt + file1..file20)
+                // Wait for the full tree to settle: all 21 files (Main.txt + file1...file20)
                 starterContext.waitUntil(60.seconds) {
                     val snapshot = bridge.selectedChangesTreeSnapshot()
                     snapshot.contains("Main.txt") &&
@@ -68,7 +67,7 @@ class LstCrcStarterPerformanceTest : LstCrcStarterUiTestBase() {
                 }
             }
             // Sanity threshold — catches hangs, not subtle regressions.
-            // For real perf budgets, calibrate from observed CI p95 + margin.
+            // For real perf budgets, calibrate from observed CI P95 + margin.
             assertTrue(
                 createTabTime < 60.seconds,
                 "Creating branch tab and loading 21 changes took $createTabTime (expected < 60s)"

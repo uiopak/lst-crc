@@ -106,7 +106,7 @@ class GitChangesViewFixture(remoteRobot: RemoteRobot, remoteComponent: RemoteCom
         true
     )
 
-    private fun selectedContentTabName(): String? = remoteRobot.callJs(
+    private fun selectedContentTabName(): String = remoteRobot.callJs(
         """
         const project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
         if (!project) {
@@ -120,9 +120,6 @@ class GitChangesViewFixture(remoteRobot: RemoteRobot, remoteComponent: RemoteCom
         """.trimIndent(),
         true
     )
-
-    val tabContents: List<ComponentFixture>
-        get() = remoteRobot.findAll(byXpath("//div[@class='ContentTabLabel']"))
 
     fun hasTab(tabName: String): Boolean {
         return hasContentTab(tabName)
@@ -334,7 +331,7 @@ class GitChangesViewFixture(remoteRobot: RemoteRobot, remoteComponent: RemoteCom
             )
 
             waitFor(Duration.ofSeconds(10), interval = Duration.ofMillis(250)) {
-                remoteRobot.callJs<Boolean>(
+                remoteRobot.callJs(
                     """
                     (function() {
                         const focusOwner = java.awt.KeyboardFocusManager.getCurrentKeyboardFocusManager().getFocusOwner();

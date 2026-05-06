@@ -2,13 +2,13 @@
 
 package com.github.uiopak.lstcrc.plugin.pages
 
+import com.github.uiopak.lstcrc.toolWindow.LstCrcSettingsService
 import com.intellij.remoterobot.RemoteRobot
 import com.intellij.remoterobot.data.RemoteComponent
 import com.intellij.remoterobot.fixtures.*
 import com.intellij.remoterobot.search.locators.byXpath
 import com.intellij.remoterobot.stepsProcessing.step
 import com.intellij.remoterobot.utils.waitFor
-import org.assertj.swing.core.MouseButton
 import java.time.Duration
 
 fun RemoteRobot.idea(function: IdeaFrame.() -> Unit) {
@@ -41,16 +41,6 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
         private const val SHOW_UNTRACKED_FILES_AS_NEW_KEY = "com.github.uiopak.lstcrc.app.showUntrackedFilesAsNew"
     }
 
-    val projectViewTree
-        get() = find<ContainerFixture>(byXpath("MyProjectViewTree", "//div[@class='MyProjectViewTree']"))
-
-    val projectName
-        get() = step("Get project name") { return@step callJs<String>("component.getProject().getName()") }
-
-    val menuBar: JMenuBarFixture
-        get() = step("Menu...") {
-            return@step remoteRobot.find(JMenuBarFixture::class.java, JMenuBarFixture.byType())
-        }
 
     @JvmOverloads
     fun dumbAware(timeout: Duration = Duration.ofMinutes(5), function: () -> Unit) {
@@ -89,7 +79,7 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
 
     fun waitForFocusedTextInput(timeout: Duration = Duration.ofSeconds(10)) {
         waitFor(timeout, interval = Duration.ofMillis(250)) {
-            callJs<Boolean>(
+            callJs(
                 """
                 (function() {
                     const focusOwner = java.awt.KeyboardFocusManager.getCurrentKeyboardFocusManager().getFocusOwner();
@@ -364,7 +354,7 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
 
     fun clickSettingsSnapshot(): String {
         return step("Read LST-CRC click settings") {
-            callJs<String>(
+            callJs(
                 """
                 (function() {
                     const pluginId = com.intellij.openapi.extensions.PluginId.getId("com.github.uiopak.lstcrc");
@@ -405,7 +395,7 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
 
     fun selectedEditorDescriptor(): String {
         return step("Read selected editor descriptor") {
-            callJs<String>(
+            callJs(
                 """
                 (function() {
                     const project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
@@ -439,41 +429,10 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
         }
     }
 
-    fun selectedProjectViewDescriptor(): String {
-        return step("Read selected project view item") {
-            callJs<String>(
-                """
-                (function() {
-                    const project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
-                    if (!project) return "";
-
-                    const projectView = com.intellij.ide.projectView.ProjectView.getInstance(project);
-                    const pane = projectView ? projectView.getCurrentProjectViewPane() : null;
-                    if (!pane) return "";
-
-                    const selected = pane.getSelectedElements ? pane.getSelectedElements() : null;
-                    if (selected && selected.length > 0) {
-                        const first = selected[0];
-                        if (first && first.getName) return String(first.getName());
-                        return String(first);
-                    }
-
-                    const tree = pane.getTree ? pane.getTree() : null;
-                    const path = tree ? tree.getSelectionPath() : null;
-                    if (!path) return "";
-
-                    const node = path.getLastPathComponent();
-                    return node == null ? "" : String(node);
-                })();
-                """.trimIndent(),
-                true
-            )
-        }
-    }
 
     fun hasDiffEditorOpen(): Boolean {
         return step("Check whether a diff editor is open") {
-            callJs<Boolean>(
+            callJs(
                 """
                 (function() {
                     const project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
@@ -517,7 +476,7 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
 
     fun diffEditorCount(): Int {
         return step("Count open diff editors") {
-            callJs<Int>(
+            callJs(
                 """
                 (function() {
                     const project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
@@ -545,192 +504,10 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
     }
 
 
-    fun contextMenuActionsForFile(fileName: String): List<String> {
-        return step("Read context menu actions for '$fileName'") {
-            val actions = callJs<String>(
-                """
-                (function() {
-                    const project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
-                    if (!project) return "";
 
-                    const toolWindow = com.intellij.openapi.wm.ToolWindowManager.getInstance(project).getToolWindow("GitChangesView");
-                    const contentManager = toolWindow ? toolWindow.getContentManager() : null;
-                    const content = contentManager ? contentManager.getSelectedContent() : null;
-                    const root = content ? content.getComponent() : null;
-
-                    function findBrowser(component) {
-                        if (!component) return null;
-                        if (String(component.getClass().getName()) === "com.github.uiopak.lstcrc.toolWindow.LstCrcChangesBrowser") {
-                            return component;
-                        }
-                        if (!(component instanceof java.awt.Container)) {
-                            return null;
-                        }
-                        const children = component.getComponents();
-                        for (let i = 0; i < children.length; i++) {
-                            const browser = findBrowser(children[i]);
-                            if (browser) return browser;
-                        }
-                        return null;
-                    }
-
-                    const browser = findBrowser(root);
-                    if (!browser) return "";
-
-                    let currentClass = browser.getClass();
-                    let currentChangesField = null;
-                    while (currentClass && !currentChangesField) {
-                        try {
-                            currentChangesField = currentClass.getDeclaredField("currentChanges");
-                        } catch (ignored) {
-                            currentClass = currentClass.getSuperclass();
-                        }
-                    }
-                    if (!currentChangesField) return "";
-
-                    currentChangesField.setAccessible(true);
-                    const categorized = currentChangesField.get(browser);
-                    const allChanges = categorized ? categorized.getAllChanges() : java.util.Collections.emptyList();
-                    const targetFileName = ${toJsStringLiteral(fileName)};
-
-                    const change = java.util.Arrays.stream(allChanges.toArray())
-                        .filter(candidate => {
-                            const afterRevision = candidate.getAfterRevision();
-                            const beforeRevision = candidate.getBeforeRevision();
-                            const afterName = afterRevision ? afterRevision.getFile().getName() : null;
-                            const beforeName = beforeRevision ? beforeRevision.getFile().getName() : null;
-                            return targetFileName === afterName || targetFileName === beforeName;
-                        })
-                        .findFirst()
-                        .orElse(null);
-                    if (!change) return "";
-
-                    const actions = ["Show Diff", "Open Source"];
-                    if (change.getType() !== com.intellij.openapi.vcs.changes.Change.Type.DELETED) {
-                        actions.push("Show in Project Tree");
-                    }
-                    return actions.join("|");
-                })();
-                """.trimIndent(),
-                true
-            )
-
-            actions.split('|').filter { it.isNotBlank() }
-        }
-    }
-
-    fun invokeContextMenuActionForFile(fileName: String, actionTitle: String) {
-        step("Invoke context menu action '$actionTitle' for '$fileName'") {
-            runJs(
-                """
-                (function() {
-                    const project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
-                    if (!project) return;
-
-                    const toolWindow = com.intellij.openapi.wm.ToolWindowManager.getInstance(project).getToolWindow("GitChangesView");
-                    const contentManager = toolWindow ? toolWindow.getContentManager() : null;
-                    const content = contentManager ? contentManager.getSelectedContent() : null;
-                    const root = content ? content.getComponent() : null;
-
-                    function findBrowser(component) {
-                        if (!component) return null;
-                        if (String(component.getClass().getName()) === "com.github.uiopak.lstcrc.toolWindow.LstCrcChangesBrowser") {
-                            return component;
-                        }
-                        if (!(component instanceof java.awt.Container)) {
-                            return null;
-                        }
-                        const children = component.getComponents();
-                        for (let i = 0; i < children.length; i++) {
-                            const browser = findBrowser(children[i]);
-                            if (browser) return browser;
-                        }
-                        return null;
-                    }
-
-                    const browser = findBrowser(root);
-                    if (!browser) return;
-
-                    const browserClass = browser.getClass();
-                    const action = ${toJsStringLiteral(actionTitle)};
-                    let currentClass = browserClass;
-                    let currentChangesField = null;
-                    while (currentClass && !currentChangesField) {
-                        try {
-                            currentChangesField = currentClass.getDeclaredField("currentChanges");
-                        } catch (ignored) {
-                            currentClass = currentClass.getSuperclass();
-                        }
-                    }
-                    if (!currentChangesField) return;
-
-                    currentChangesField.setAccessible(true);
-                    const categorized = currentChangesField.get(browser);
-                    const allChanges = categorized ? categorized.getAllChanges() : java.util.Collections.emptyList();
-                    const targetFileName = ${toJsStringLiteral(fileName)};
-                    let change = null;
-                    const iterator = allChanges.iterator();
-                    while (iterator.hasNext() && !change) {
-                        const candidate = iterator.next();
-                        const afterRevision = candidate.getAfterRevision();
-                        const beforeRevision = candidate.getBeforeRevision();
-                        const afterName = afterRevision ? afterRevision.getFile().getName() : null;
-                        const beforeName = beforeRevision ? beforeRevision.getFile().getName() : null;
-                        if (targetFileName === afterName || targetFileName === beforeName) {
-                            change = candidate;
-                        }
-                    }
-                    if (!change) return;
-
-                    const app = com.intellij.openapi.application.ApplicationManager.getApplication();
-                    app.invokeAndWait(new java.lang.Runnable({
-                        run: function() {
-                            let actionMethod = null;
-                            const declaredMethods = browserClass.getDeclaredMethods();
-
-                            function findMethod(name, parameterCount) {
-                                for (let i = 0; i < declaredMethods.length; i++) {
-                                    const candidate = declaredMethods[i];
-                                    if (candidate.getName() === name && candidate.getParameterCount() === parameterCount) {
-                                        return candidate;
-                                    }
-                                }
-                                return null;
-                            }
-
-                            if (action === "Show Diff") {
-                                actionMethod = findMethod("openDiff", 1);
-                                if (!actionMethod) return;
-                                actionMethod.setAccessible(true);
-                                actionMethod.invoke(browser, java.util.Collections.singletonList(change));
-                                return;
-                            }
-
-                            if (action === "Open Source") {
-                                actionMethod = findMethod("openSource", 1);
-                                if (!actionMethod) return;
-                                actionMethod.setAccessible(true);
-                                actionMethod.invoke(browser, change);
-                                return;
-                            }
-
-                            if (action === "Show in Project Tree") {
-                                actionMethod = findMethod("showInProjectTree", 1);
-                                if (!actionMethod) return;
-                                actionMethod.setAccessible(true);
-                                actionMethod.invoke(browser, change);
-                            }
-                        }
-                    }));
-                })();
-                """.trimIndent(),
-                true
-            )
-        }
-    }
     fun statusWidgetText(): String {
         return step("Read LST-CRC widget text") {
-            callJs<String>(
+            callJs(
                 """
                 (function() {
                     const project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
@@ -905,7 +682,7 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
 
     fun isToolWindowTitleVisible(): Boolean {
         return step("Read tool window title visibility") {
-            callJs<Boolean>(
+            callJs(
                 """
                 (function() {
                     const project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
@@ -1011,7 +788,7 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
 
     fun treeContextSettingsSnapshot(): String {
         return step("Read tree context settings") {
-            callJs<String>(
+            callJs(
                 """
                 (function() {
                     const properties = com.intellij.ide.util.PropertiesComponent.getInstance();
@@ -1026,7 +803,7 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
 
     fun gutterSettingsSnapshot(): String {
         return step("Read gutter settings") {
-            callJs<String>(
+            callJs(
                 """
                 (function() {
                     const properties = com.intellij.ide.util.PropertiesComponent.getInstance();
@@ -1040,67 +817,10 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
         }
     }
 
-    fun selectedChangesTreeSnapshot(): String {
-        return step("Read selected changes tree snapshot") {
-            callJs<String>(
-                """
-                (function() {
-                    const project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
-                    if (!project) return "";
-
-                    const toolWindow = com.intellij.openapi.wm.ToolWindowManager.getInstance(project).getToolWindow("GitChangesView");
-                    const browser = toolWindow && toolWindow.getContentManager().getSelectedContent()
-                        ? toolWindow.getContentManager().getSelectedContent().getComponent()
-                        : null;
-                    if (!browser || !browser.getViewer) return "";
-
-                    const viewer = browser.getViewer();
-                    const renderer = viewer.getCellRenderer();
-                    const model = viewer.getModel();
-                    const rows = [];
-
-                    for (let row = 0; row < viewer.getRowCount(); row++) {
-                        const path = viewer.getPathForRow(row);
-                        if (!path) continue;
-
-                        const node = path.getLastPathComponent();
-                        const rendered = renderer.getTreeCellRendererComponent(
-                            viewer,
-                            node,
-                            viewer.isRowSelected(row),
-                            viewer.isExpanded(row),
-                            model.isLeaf(node),
-                            row,
-                            false
-                        );
-
-                        let text = "";
-                        const context = rendered.getAccessibleContext ? rendered.getAccessibleContext() : null;
-                        if (context) {
-                            text = context.getAccessibleName() || "";
-                        }
-                        if ((!text || text.length === 0) && rendered.getText) {
-                            text = String(rendered.getText());
-                        }
-                        if ((!text || text.length === 0) && rendered.getCharSequence) {
-                            text = String(rendered.getCharSequence(false));
-                        }
-                        if (text && text.length > 0) {
-                            rows.push(text);
-                        }
-                    }
-
-                    return rows.join("\n");
-                })();
-                """.trimIndent(),
-                true
-            )
-        }
-    }
 
     fun activeDiffSnapshot(): String {
         return step("Read active diff snapshot") {
-            callJs<String>(
+            callJs(
                 """
                 (function() {
                     const project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
@@ -1114,19 +834,6 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
                     const serviceClass = classLoader.loadClass("com.github.uiopak.lstcrc.services.ProjectActiveDiffDataService");
                     const diffDataService = project.getService(serviceClass);
                     if (!diffDataService) return "diff=missing";
-
-                    function namesOf(files) {
-                        if (!files) return "";
-                        const items = [];
-                        const iterator = files.iterator();
-                        while (iterator.hasNext()) {
-                            const file = iterator.next();
-                            const p = String(file.getPath());
-                            items.push(p.split('/').pop() + "(" + p.substring(Math.max(0, p.length - 60)) + ")");
-                        }
-                        items.sort();
-                        return items.join(",");
-                    }
 
                     const compCtx = diffDataService.getActiveComparisonContext ? diffDataService.getActiveComparisonContext() : null;
                     const ctxValues = [];
@@ -1165,7 +872,7 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
 
     fun fileStatusForTreeItem(fileName: String): String {
         return step("Read file status for '$fileName' in changes tree") {
-            callJs<String>(
+            callJs(
                 """
                 (function() {
                     var result = new java.util.concurrent.atomic.AtomicReference("");
@@ -1222,7 +929,7 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
 
     fun selectedLstCrcTabName(): String {
         return step("Read selected LST-CRC tab") {
-            callJs<String>(
+            callJs(
                 """
                 (function() {
                     const project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
@@ -1251,7 +958,7 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
 
     fun selectedTabComparisonMap(): String {
         return step("Read selected tab comparison map") {
-            callJs<String>(
+            callJs(
                 """
                 (function() {
                     const project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
@@ -1533,7 +1240,7 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
 
     fun visualGutterSummaryForSelectedEditor(): String {
         return step("Read visual gutter summary for selected editor") {
-            callJs<String>(
+            callJs(
                 """
                 (function() {
                     const project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
@@ -1666,6 +1373,7 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
         )
     }
 
+    @Suppress("SameParameterValue")
     private fun setPluginIntSetting(key: String, value: Int, default: Int) {
         runJs(
             """
@@ -1677,7 +1385,7 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
                 try {
                     const settingsClass = cl.loadClass("com.github.uiopak.lstcrc.toolWindow.LstCrcSettingsService");
                     const appService = com.intellij.openapi.application.ApplicationManager.getApplication().getService(settingsClass);
-                    if (appService) appService.setInt(${toJsStringLiteral(key)}, $value, $default);
+                    if (appService) appService.setInt(${toJsStringLiteral(key)}, $value, $default)
                 } catch(e) {}
             })();
             """.trimIndent(),

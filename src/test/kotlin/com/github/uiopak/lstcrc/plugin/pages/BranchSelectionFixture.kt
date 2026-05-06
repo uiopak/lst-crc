@@ -84,12 +84,11 @@ class BranchSelectionFixture(remoteRobot: RemoteRobot, remoteComponent: RemoteCo
             )
 
             val timeout = if (System.getenv("GITHUB_ACTIONS") == "true") Duration.ofSeconds(60) else Duration.ofSeconds(20)
-            var tree = waitForBranchTree()
             waitFor(timeout, interval = Duration.ofMillis(500)) {
-                tree = findShowingBranchTree() ?: return@waitFor false
+                val tree = findShowingBranchTree() ?: return@waitFor false
                 runCatching { tree.findAllText(branchName).isNotEmpty() }.getOrDefault(false)
             }
-            tree = waitForBranchTree()
+            val tree = waitForBranchTree()
             tree.findText(branchName).doubleClick()
 
             waitForPanelToClose()

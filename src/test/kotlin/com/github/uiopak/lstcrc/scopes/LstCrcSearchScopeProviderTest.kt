@@ -5,7 +5,6 @@ import com.github.uiopak.lstcrc.services.ProjectActiveDiffDataService
 import com.github.uiopak.lstcrc.services.ToolWindowStateService
 import com.github.uiopak.lstcrc.state.TabInfo
 import com.github.uiopak.lstcrc.state.ToolWindowState
-import com.intellij.openapi.actionSystem.DataContext
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.service
 import com.intellij.psi.search.SearchScope
@@ -19,7 +18,7 @@ class LstCrcSearchScopeProviderTest : BasePlatformTestCase() {
 
         assertEquals(LstCrcBundle.message("scope.provider.display.name"), provider.displayName)
 
-        val scopes = provider.getSearchScopes(project, DataContext { null })
+        val scopes = provider.getSearchScopes(project) { null }
 
         assertSize(4, scopes)
 
@@ -60,7 +59,7 @@ class LstCrcSearchScopeProviderTest : BasePlatformTestCase() {
         flushEdt()
 
         val scopesByName = LstCrcSearchScopeProvider()
-            .getSearchScopes(project, DataContext { null })
+            .getSearchScopes(project) { null }
             .associateBy(SearchScope::getDisplayName)
 
         val createdScope = scopesByName.getValue(LstCrcProvidedScopes.CREATED_FILES_SCOPE.presentableName)
@@ -85,8 +84,6 @@ class LstCrcSearchScopeProviderTest : BasePlatformTestCase() {
 
     private fun flushEdt() {
         PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
-        ApplicationManager.getApplication().invokeAndWait(object : Runnable {
-            override fun run() = Unit
-        })
+        ApplicationManager.getApplication().invokeAndWait { }
     }
 }

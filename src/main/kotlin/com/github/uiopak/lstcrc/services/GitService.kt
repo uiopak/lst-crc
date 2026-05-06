@@ -7,6 +7,7 @@ import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.platform.ide.progress.withBackgroundProgress
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import com.intellij.openapi.util.text.StringUtil
@@ -156,7 +157,10 @@ class GitService(private val project: Project) {
         return snapshot
     }
 
-    suspend fun getChanges(tabInfo: TabInfo?): GetChangesResult {
+    suspend fun getChanges(
+        tabInfo: TabInfo?,
+        dispatcher: CoroutineDispatcher = Dispatchers.IO
+    ): GetChangesResult {
         val repositories = getRepositories()
         val profileName = tabInfo?.branchName ?: "HEAD"
 
@@ -170,7 +174,7 @@ class GitService(private val project: Project) {
         }
 
         return withBackgroundProgress(project, LstCrcBundle.message("git.task.loading.changes")) {
-            withContext(Dispatchers.IO) {
+            withContext(dispatcher) {
                 loadChangesResult(repositories, tabInfo)
             }
         }
@@ -221,7 +225,7 @@ class GitService(private val project: Project) {
                 loadChangesAgainstWorkingTree(repo, target)
             } catch (e: VcsException) {
                 logger.warn(
-                    "git diff failed for repo '${repo.root.name}' against target '$target'. " +
+                    "git diff (working tree) failed for repo '${repo.root.name}' against target '$target'. " +
                         "Assuming revision is invalid. Error: ${e.message}"
                 )
                 failures[repo] = target
@@ -233,7 +237,7 @@ class GitService(private val project: Project) {
             loadTrackedChangesBetweenRevisions(repo, primaryRevision, target)
         } catch (e: VcsException) {
             logger.warn(
-                "git diff failed for repo '${repo.root.name}' against target '$target'. " +
+                "git diff (between revisions) failed for repo '${repo.root.name}' against target '$target'. " +
                     "Assuming revision is invalid. Error: ${e.message}"
             )
             failures[repo] = target
@@ -390,36 +394,30 @@ class GitService(private val project: Project) {
         allChanges: List<Change>,
         comparisonContext: Map<String, String>
     ): CategorizedChanges {
-        val created = mutableListOf<VirtualFile>()
-        val modified = mutableListOf<VirtualFile>()
-        val moved = mutableListOf<VirtualFile>()
-        val deleted = mutableListOf<VirtualFile>()
+        val created = allChanges.filter { it.beforeRevision == null && it.afterRevision != null }
+            .mapNotNull { createComparisonVirtualFile(it.afterRevision!!) }
+            .distinct()
 
-        allChanges.forEach { change ->
-            val beforeRevision = change.beforeRevision
-            val afterRevision = change.afterRevision
-            when {
-                beforeRevision == null && afterRevision != null -> {
-                    createComparisonVirtualFile(afterRevision)?.let(created::add)
-                }
-                beforeRevision != null && afterRevision == null -> {
-                    createDeletedVirtualFile(beforeRevision)?.let(deleted::add)
-                }
-                beforeRevision != null && afterRevision != null -> {
-                    val beforePath = beforeRevision.file.path
-                    val afterPath = afterRevision.file.path
-                    val targetCollection = if (beforePath != afterPath) moved else modified
-                    createComparisonVirtualFile(afterRevision)?.let(targetCollection::add)
-                }
-            }
-        }
+        val deleted = allChanges.filter { it.beforeRevision != null && it.afterRevision == null }
+            .mapNotNull { createDeletedVirtualFile(it.beforeRevision!!) }
+            .distinct()
+
+        val movedAndModified = allChanges.filter { it.beforeRevision != null && it.afterRevision != null }
+
+        val moved = movedAndModified.filter { it.beforeRevision!!.file.path != it.afterRevision!!.file.path }
+            .mapNotNull { createComparisonVirtualFile(it.afterRevision!!) }
+            .distinct()
+
+        val modified = movedAndModified.filter { it.beforeRevision!!.file.path == it.afterRevision!!.file.path }
+            .mapNotNull { createComparisonVirtualFile(it.afterRevision!!) }
+            .distinct()
 
         return CategorizedChanges(
             allChanges = allChanges.distinct(),
-            createdFiles = created.distinct(),
-            modifiedFiles = modified.distinct(),
-            movedFiles = moved.distinct(),
-            deletedFiles = deleted.distinct(),
+            createdFiles = created,
+            modifiedFiles = modified,
+            movedFiles = moved,
+            deletedFiles = deleted,
             comparisonContext = comparisonContext
         )
     }

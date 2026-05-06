@@ -52,7 +52,7 @@ class LstCrcFileScopeUiTest : LstCrcUiTestSupport() {
 
             var scopesDebug = ""
             waitFor(Duration.ofSeconds(20), interval = Duration.ofMillis(500)) {
-                scopesDebug = callJs<String>(
+                scopesDebug = callJs(
                     """
                     (function() {
                         const result = new java.util.concurrent.atomic.AtomicReference("projectMissing=true");

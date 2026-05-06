@@ -71,7 +71,7 @@ class MyToolWindowFactory : ToolWindowFactory {
         subscribeToStateChanges(project, toolWindow)
         val headContent = createHeadTab(project, toolWindow)
         val selectedContentRestored = restoreOrCreateInitialTabs(
-            project, toolWindow, stateService, persistedState, currentActualBranchName
+            project, toolWindow, persistedState, currentActualBranchName
         )
         if (!selectedContentRestored) {
             contentManager.setSelectedContent(headContent, true)
@@ -132,7 +132,6 @@ class MyToolWindowFactory : ToolWindowFactory {
     private fun restoreOrCreateInitialTabs(
         project: Project,
         toolWindow: ToolWindow,
-        stateService: ToolWindowStateService,
         persistedState: ToolWindowState,
         currentActualBranchName: String?
     ): Boolean {

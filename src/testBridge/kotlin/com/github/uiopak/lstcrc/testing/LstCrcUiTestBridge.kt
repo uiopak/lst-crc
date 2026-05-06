@@ -85,6 +85,10 @@ import java.util.concurrent.atomic.AtomicReference
 @Service(Service.Level.APP)
 class LstCrcUiTestBridge {
 
+    private companion object {
+        private const val PROJECT_BASE_PATH_NOT_AVAILABLE = "Project base path is not available"
+    }
+
     private data class SyntheticRepoComparisonDialog(
         val title: String,
         val repositoryRootPath: String,
@@ -120,7 +124,7 @@ class LstCrcUiTestBridge {
     fun activateGitVcsIntegrationFor(relativePath: String) {
         val project = project()
         val rootPath = projectDir(project).findFileByRelativePath(relativePath)?.path
-            ?: File(project.basePath ?: error("Project base path is not available"), relativePath).path
+            ?: File(project.basePath ?: error(PROJECT_BASE_PATH_NOT_AVAILABLE), relativePath).path
         onEdt {
             addGitDirectoryMapping(project, rootPath)
             ProjectLevelVcsManagerEx.getInstanceEx(project).scheduleMappedRootsUpdate()
@@ -312,7 +316,7 @@ class LstCrcUiTestBridge {
                 ?: error("No selected LST-CRC tab available for repo comparison update")
             val repoRootPath = project.guessProjectDir()?.path
                 ?: project.basePath?.replace('\\', '/')
-                ?: error("Project base path is not available")
+                ?: error(PROJECT_BASE_PATH_NOT_AVAILABLE)
             val newMap = selectedTabInfo.comparisonMap.toMutableMap()
             newMap[repoRootPath] = targetRevision
             stateService.updateTabComparisonMap(selectedTabInfo.branchName, newMap, true)
@@ -443,39 +447,26 @@ class LstCrcUiTestBridge {
             val tree = selectedChangesTree()
                 ?: error("No selected LST-CRC changes tree is available.")
 
-            var targetRow = -1
-            for (row in 0 until tree.rowCount) {
-                val path = tree.getPathForRow(row) ?: continue
-                val node = path.lastPathComponent as? DefaultMutableTreeNode ?: continue
-                val change = node.userObject as? Change ?: continue
-                val file = change.afterRevision?.file ?: change.beforeRevision?.file ?: continue
-                if (file.name == fileName || file.path.endsWith("/$fileName") || file.path.endsWith("\\$fileName")) {
-                    targetRow = row
-                    break
-                }
-            }
-            if (targetRow < 0) {
-                error("Could not find change for file '$fileName' in selected LST-CRC browser.")
-            }
+            val targetRow = findTargetRow(tree, fileName)
+                ?: error("Could not find change for file '$fileName' in selected LST-CRC browser.")
 
-            if (button.equals("RIGHT", ignoreCase = true) && ToolWindowSettingsProvider.isContextMenuEnabled()) {
+            val upperButton = button.uppercase()
+            if (upperButton == "RIGHT" && ToolWindowSettingsProvider.isContextMenuEnabled()) {
                 error("Context menu is enabled for right click. Query contextMenuActionsForFile() instead of invoking a configured action.")
             }
 
-            val awtButton = when {
-                button.equals("LEFT", ignoreCase = true) -> MouseEvent.BUTTON1
-                button.equals("MIDDLE", ignoreCase = true) -> MouseEvent.BUTTON2
-                button.equals("RIGHT", ignoreCase = true) -> MouseEvent.BUTTON3
+            val awtButton = when (upperButton) {
+                "LEFT" -> MouseEvent.BUTTON1
+                "MIDDLE" -> MouseEvent.BUTTON2
+                "RIGHT" -> MouseEvent.BUTTON3
                 else -> error("Unsupported mouse button '$button'.")
             }
 
             val bounds = tree.getRowBounds(targetRow)
-            val x = if (bounds != null) (bounds.x + bounds.width / 2) else 1
-            val y = if (bounds != null) (bounds.y + bounds.height / 2) else 1
-            val path = tree.getPathForRow(targetRow)
-            if (path != null) {
-                tree.selectionPath = path
-            }
+            val x = bounds?.let { it.x + it.width / 2 } ?: 1
+            val y = bounds?.let { it.y + it.height / 2 } ?: 1
+            
+            tree.getPathForRow(targetRow)?.let { tree.selectionPath = it }
 
             val now = System.currentTimeMillis()
             listOf(MouseEvent.MOUSE_PRESSED, MouseEvent.MOUSE_RELEASED, MouseEvent.MOUSE_CLICKED).forEach { eventId ->
@@ -483,6 +474,19 @@ class LstCrcUiTestBridge {
                 tree.dispatchEvent(event)
             }
         }
+    }
+
+    private fun findTargetRow(tree: JTree, fileName: String): Int? {
+        for (row in 0 until tree.rowCount) {
+            val path = tree.getPathForRow(row) ?: continue
+            val node = path.lastPathComponent as? DefaultMutableTreeNode ?: continue
+            val change = node.userObject as? Change ?: continue
+            val file = change.afterRevision?.file ?: change.beforeRevision?.file ?: continue
+            if (file.name == fileName || file.path.endsWith("/$fileName") || file.path.endsWith("\\$fileName")) {
+                return row
+            }
+        }
+        return null
     }
 
     fun contextMenuActionsForFile(fileName: String): String = onEdtResult {
@@ -568,7 +572,7 @@ class LstCrcUiTestBridge {
     fun openFile(relativePath: String) {
         val project = project()
         onEdt {
-            val basePath = project.basePath ?: error("Project base path is not available")
+            val basePath = project.basePath ?: error(PROJECT_BASE_PATH_NOT_AVAILABLE)
             val file = LocalFileSystem.getInstance().refreshAndFindFileByPath(File(basePath, relativePath).path.replace('\\', '/'))
                 ?: error("Could not find file '$relativePath' under project base path '$basePath'.")
             FileEditorManager.getInstance(project).openTextEditor(OpenFileDescriptor(project, file), true)
@@ -830,7 +834,12 @@ class LstCrcUiTestBridge {
         onEdt {
             syntheticRepoComparisonDialog.set(null)
             val focusOwner = KeyboardFocusManager.getCurrentKeyboardFocusManager().focusOwner
-            val target = focusOwner ?: visibleDialogs().firstOrNull() ?: toolWindow().component
+            val dialog = visibleDialogs().firstOrNull()
+            val target = when {
+                focusOwner != null -> focusOwner
+                dialog != null -> dialog
+                else -> toolWindow().component
+            }
             dispatchEscape(target)
             visibleDialogs().forEach { dialog ->
                 if (dialog.isShowing) {
@@ -893,7 +902,7 @@ class LstCrcUiTestBridge {
     fun setRepoComparisonForRoot(relativePath: String, targetRevision: String) {
         val project = project()
         val repoRootPath = projectDir(project).findFileByRelativePath(relativePath)?.path
-            ?: File(project.basePath ?: error("Project base path is not available"), relativePath).path.replace('\\', '/')
+            ?: File(project.basePath ?: error(PROJECT_BASE_PATH_NOT_AVAILABLE), relativePath).path.replace('\\', '/')
         onEdt {
             val stateService = project.service<ToolWindowStateService>()
             val selectedTabInfo = resolveSelectedTabInfo(stateService)
