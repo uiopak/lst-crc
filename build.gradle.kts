@@ -535,6 +535,13 @@ tasks {
         dependsOn(patchChangelog)
     }
 
+    named<org.gradle.api.tasks.JavaExec>("verifyPlugin") {
+        if (System.getProperty("intellij.plugin.verifier.concurrency.level") == null) {
+            val defaultVerifierConcurrency = if (isCi) "1" else "2"
+            systemProperty("intellij.plugin.verifier.concurrency.level", defaultVerifierConcurrency)
+        }
+    }
+
     // Configure the test task to use JUnit Platform (JUnit 5)
     test {
         useJUnitPlatform {
