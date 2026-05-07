@@ -314,8 +314,12 @@ tasks {
         systemProperty("path.to.build.plugin", buildPlugin.get().archiveFile.get().asFile.absolutePath)
         systemProperty("idea.home.path", prepareTestSandbox.get().getDestinationDir().parentFile.absolutePath)
         systemProperty("local.ide.path", preparedSharedUiIdeDir.get().asFile.absolutePath)
-        systemProperty("lstcrc.starter.driver.jmx.port", System.getProperty("lstcrc.starter.driver.jmx.port") ?: "17777")
-        systemProperty("lstcrc.starter.driver.rpc.port", System.getProperty("lstcrc.starter.driver.rpc.port") ?: "24000")
+        System.getProperty("lstcrc.starter.driver.jmx.port")?.let {
+            systemProperty("lstcrc.starter.driver.jmx.port", it)
+        }
+        System.getProperty("lstcrc.starter.driver.rpc.port")?.let {
+            systemProperty("lstcrc.starter.driver.rpc.port", it)
+        }
         systemProperty(
             "allure.results.directory",
             project.layout.buildDirectory.get().asFile.absolutePath + "/allure-results/$allureSubdirectory"

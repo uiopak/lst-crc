@@ -37,6 +37,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import java.security.MessageDigest
 import kotlin.io.path.Path
+import kotlin.io.path.createDirectories
 import kotlin.io.path.exists
 import kotlin.io.path.readText
 import kotlin.time.Duration
@@ -63,10 +64,10 @@ abstract class LstCrcStarterUiTestBase {
      * The locally resolved IDE is IntelliJ IDEA Ultimate (`IU`) because that is what
      * the IntelliJ Platform Gradle Plugin resolves via `intellijIdea(platformVersion)`.
      */
-    private fun resolveIdeInfo() =
+    private fun resolveIdeInfo(testName: String) =
         System.getProperty("local.ide.path")?.let { localIdePath ->
             IdeProductProvider.IU.copy(
-                getInstaller = { SharedLocalIdeInstaller(Path(localIdePath)) }
+                getInstaller = { SharedLocalIdeInstaller(Path(localIdePath), testName) }
             )
         } ?: IdeProductProvider.IC
 
@@ -92,7 +93,7 @@ abstract class LstCrcStarterUiTestBase {
         return Starter
             .newContext(
                 testName,
-                TestCase(resolveIdeInfo(), LocalProjectInfo(project.path))
+                TestCase(resolveIdeInfo(testName), LocalProjectInfo(project.path))
             )
             .apply {
                 PluginConfigurator(this).installPluginFromPath(pluginPath)
@@ -102,6 +103,7 @@ abstract class LstCrcStarterUiTestBase {
                 addSystemProperty("jb.consents.confirmation.enabled", false)
                 addSystemProperty("jb.privacy.policy.text", "<!--999.999-->")
                 addSystemProperty("ide.show.tips.on.startup.default.value", false)
+                addSystemProperty("intellij.startup.wizard", false)
                 addSystemProperty("junit.jupiter.extensions.autodetection.enabled", true)
                 addSystemProperty("shared.indexes.download.auto.consent", true)
                 addSystemProperty("ide.experimental.ui", true)
@@ -124,7 +126,9 @@ abstract class LstCrcStarterUiTestBase {
         collectNativeThreads: Boolean = false,
         configure: suspend IDERunContext.() -> Unit = {}
     ): BackgroundRun {
+        val testName = CurrentTestMethod.hyphenateWithClass()
         val driverOptions = createDriverOptions()
+        preparePerTestVmOptions(testName, driverOptions)
         val driver = Driver.create(JmxHost(address = driverOptions.address))
         val process = CompletableDeferred<IDEHandle>()
 
@@ -143,16 +147,24 @@ abstract class LstCrcStarterUiTestBase {
                 expectedExitCode = expectedExitCode,
                 collectNativeThreads = collectNativeThreads,
             ) {
-                addVMOptionsPatch {
-                    driverOptions.systemProperties.forEach { (key, value) ->
-                        addSystemProperty(key, value)
-                    }
-                }
                 configure()
             }
         }
 
         return BackgroundRun(runResult, driver, kotlinx.coroutines.runBlocking { process.await() })
+    }
+
+    private fun IDETestContext.preparePerTestVmOptions(testName: String, driverOptions: DriverOptions) {
+        val vmOptionsDirectory = Path(System.getProperty("java.io.tmpdir"), "lstcrc-starter-ui-vmoptions")
+            .createDirectories()
+        val vmOptionsFile = vmOptionsDirectory.resolve("$testName.vmoptions")
+        vmOptionsFile.parent.createDirectories()
+
+        ide.vmOptions.withEnv("IDEA_VM_OPTIONS", vmOptionsFile.toAbsolutePath().toString())
+        driverOptions.systemProperties.forEach { (key, value) ->
+            ide.vmOptions.addSystemProperty(key, value)
+        }
+        ide.vmOptions.writeIntelliJVmOptionFile(vmOptionsFile)
     }
 
     private fun createDriverOptions(): DriverOptions {
@@ -200,12 +212,13 @@ abstract class LstCrcStarterUiTestBase {
      * Reuses the already installed local IDE directly instead of copying it into
      * `build/starter-ui-ides/`.
      *
-     * The returned `installId` is stable across runs for the same IDE build, which keeps
-     * the `out/ide-tests/` output paths stable while still invalidating them automatically
-     * when the underlying IDE changes.
+     * The returned `installId` is stable for the same IDE build and test name, which keeps
+     * a deterministic per-test `out/ide-tests/` workspace while isolating concurrent Starter
+     * forks from one another.
      */
     private class SharedLocalIdeInstaller(
-        private val installedIdePath: java.nio.file.Path
+        private val installedIdePath: java.nio.file.Path,
+        private val testName: String
     ) : IdeInstaller {
         override suspend fun install(ideInfo: IdeInfo): Pair<String, InstalledIde> {
             val sourceProductInfo = installedIdePath.resolve("product-info.json")
@@ -216,7 +229,7 @@ abstract class LstCrcStarterUiTestBase {
             } else {
                 "unknown"
             }
-            val installId = "shared-local-ide-$fingerprint"
+            val installId = "shared-local-ide-$fingerprint-$testName"
             return installId to DefaultIdeDistributionFactory.installIDE(
                 installedIdePath.parent.toFile(),
                 ideInfo.executableFileName,
