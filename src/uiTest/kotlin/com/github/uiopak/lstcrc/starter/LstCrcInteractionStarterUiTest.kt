@@ -1,9 +1,5 @@
 package com.github.uiopak.lstcrc.starter
 
-import com.intellij.driver.sdk.ui.components.common.ideFrame
-import com.intellij.driver.sdk.ui.components.elements.actionButton
-import com.intellij.driver.sdk.ui.components.elements.dialog
-import com.intellij.driver.sdk.ui.components.elements.tree
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -336,56 +332,23 @@ class LstCrcInteractionStarterUiTest : LstCrcStarterUiTestBase() {
 
         val dialogTitle = "Select Branch for ${project.path.fileName}"
 
-        driver.ideFrame {
-            actionButton { byAccessibleName("Comparison Context") }.click()
-        }
+        ui.openRepoComparisonDialog()
         waitUntil {
-            runCatching {
-                var branches = emptyList<String>()
-                driver.ideFrame {
-                    dialog(title = dialogTitle) {
-                        val branchesTree = tree()
-                        branchesTree.expandAll()
-                        branches = branchesTree.collectExpandedPathsAsStrings()
-                    }
-                }
-                branches.any { it.contains("override-target") }
-            }.getOrDefault(false)
+            ui.visibleRepoComparisonDialogTitle() == dialogTitle &&
+                ui.visibleRepoComparisonDialogBranchesSnapshot().contains("override-target")
         }
 
-        driver.ideFrame {
-            dialog(title = dialogTitle) {
-                val branchesTree = tree()
-                branchesTree.expandAll()
-                branchesTree.clickPath("Local", "override-target")
-            }
-        }
+        ui.selectBranchInVisibleRepoComparisonDialog("override-target")
         waitUntil(15.seconds) {
             ui.selectedTabComparisonMap().contains("=override-target") &&
                 ui.selectedRenderedRowsSnapshot().contains("(vs override-target)")
         }
 
-        driver.ideFrame {
-            actionButton { byAccessibleName("Comparison Context") }.click()
-        }
+        ui.openRepoComparisonDialog()
         waitUntil {
-            runCatching {
-                var dialogOpened = false
-                driver.ideFrame {
-                    dialog(title = dialogTitle) {
-                        dialogOpened = true
-                    }
-                }
-                dialogOpened
-            }.getOrDefault(false)
+            ui.visibleRepoComparisonDialogTitle() == dialogTitle
         }
-        driver.ideFrame {
-            dialog(title = dialogTitle) {
-                val branchesTree = tree()
-                branchesTree.expandAll()
-                branchesTree.clickPath("Local", "feature-repo-dialog")
-            }
-        }
+        ui.selectBranchInVisibleRepoComparisonDialog("feature-repo-dialog")
         waitUntil(15.seconds) { ui.selectedTabComparisonMap().isBlank() }
     }
 }

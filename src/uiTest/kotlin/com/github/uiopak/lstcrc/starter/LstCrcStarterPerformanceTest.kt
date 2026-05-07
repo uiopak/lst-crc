@@ -37,7 +37,7 @@ class LstCrcStarterPerformanceTest : LstCrcStarterUiTestBase() {
         context.runLstCrcIdeWithDriver().useDriverAndCloseIde {
             waitForIndicators(5.minutes)
             val bridge = service<LstCrcUiTestBridgeRemote>()
-            val starterContext = LstCrcStarterContext(project, bridge, this)
+            val starterContext = LstCrcStarterContext(project, bridge)
             starterContext.waitForSmartMode()
             bridge.activateGitVcsIntegration()
             starterContext.waitUntil(30.seconds) { bridge.isGitVcsActive() }

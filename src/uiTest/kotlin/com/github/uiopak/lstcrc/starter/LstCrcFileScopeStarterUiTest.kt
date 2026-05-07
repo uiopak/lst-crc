@@ -1,8 +1,5 @@
 package com.github.uiopak.lstcrc.starter
 
-import com.intellij.driver.sdk.invokeAction
-import com.intellij.driver.sdk.ui.components.common.ideFrame
-import com.intellij.driver.sdk.ui.components.common.popups.findInPathPopup
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotEquals
@@ -179,32 +176,19 @@ class LstCrcFileScopeStarterUiTest : LstCrcStarterUiTestBase() {
         ui.createAndSelectTab("feature-find-scopes")
         waitForSelectedTab("feature-find-scopes")
 
-        driver.invokeAction("FindInPath", now = false)
+        ui.openFindInFilesDialog()
 
-        var scopes = emptyList<String>()
+        var scopes: String
         waitUntil {
-            runCatching {
-                driver.ideFrame {
-                    findInPathPopup {
-                        focus()
-                        scopeActionButton.click()
-                        scopes = scopeChooserComboBox.listValues()
-                    }
-                }
-                true
-            }.getOrDefault(false) &&
-                scopes.contains("LSTCRC: Created Files") &&
+            scopes = ui.findDialogScopeOptionsSnapshot()
+            scopes.contains("LSTCRC: Created Files") &&
                 scopes.contains("LSTCRC: Modified Files") &&
                 scopes.contains("LSTCRC: Moved Files") &&
                 scopes.contains("LSTCRC: Changed Files") &&
                 !scopes.contains("LSTCRC: Deleted Files")
         }
 
-        driver.ideFrame {
-            findInPathPopup {
-                close()
-            }
-        }
+        ui.dismissTransientUi()
     }
 
     @Test

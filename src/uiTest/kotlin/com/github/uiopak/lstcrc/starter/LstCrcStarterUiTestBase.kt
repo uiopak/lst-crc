@@ -23,10 +23,12 @@ import com.intellij.ide.starter.runner.IDERunContext
 import com.intellij.ide.starter.runner.CurrentTestMethod
 import com.intellij.ide.starter.runner.Starter
 import com.intellij.ide.starter.runner.events.IdeLaunchEvent
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.ide.starter.utils.PortUtil.getAvailablePort
 import com.intellij.tools.ide.performanceTesting.commands.CommandChain
 import com.intellij.tools.ide.performanceTesting.commands.MarshallableCommand
 import com.intellij.tools.ide.starter.bus.EventsBus
+import com.intellij.util.ui.UIUtil
 import org.junit.jupiter.api.Assertions.assertTrue
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -76,7 +78,7 @@ abstract class LstCrcStarterUiTestBase {
         context.runLstCrcIdeWithDriver().useDriverAndCloseIde {
             waitForIndicators(5.minutes)
             val bridge = service<LstCrcUiTestBridgeRemote>()
-            val starterContext = LstCrcStarterContext(project, bridge, this)
+            val starterContext = LstCrcStarterContext(project, bridge)
             starterContext.waitForSmartMode()
             block(starterContext)
         }
@@ -154,8 +156,13 @@ abstract class LstCrcStarterUiTestBase {
     }
 
     private fun createDriverOptions(): DriverOptions {
-        val jmxPort = getAvailablePort(proposedPort = configuredPort("lstcrc.starter.driver.jmx.port", 17777))
-        val rpcPort = getAvailablePort(proposedPort = configuredPort("lstcrc.starter.driver.rpc.port", 24000))
+        val testName = CurrentTestMethod.hyphenateWithClass()
+        val jmxPort = getAvailablePort(
+            proposedPort = configuredPort("lstcrc.starter.driver.jmx.port", derivedPort(testName, 17777))
+        )
+        val rpcPort = getAvailablePort(
+            proposedPort = configuredPort("lstcrc.starter.driver.rpc.port", derivedPort(testName, 24000))
+        )
         return DriverOptions(port = jmxPort, webServerPort = rpcPort)
     }
 
@@ -163,13 +170,28 @@ abstract class LstCrcStarterUiTestBase {
         return System.getProperty(propertyName)?.toIntOrNull() ?: defaultValue
     }
 
+    private fun derivedPort(testName: String, basePort: Int): Int {
+        val offset = (testName.hashCode().toUInt().toLong() % 10_000L).toInt()
+        return basePort + offset
+    }
+
     private companion object {
         val starterDriverScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
         private fun initializeTestApplicationManager() {
             runCatching {
-                val managerClass = Class.forName("com.intellij.testFramework.TestApplicationManager")
-                managerClass.getMethod("getInstance").invoke(null)
+                Class.forName("com.intellij.testFramework.common.TestEnvironmentKt")
+                    .getMethod("initializeTestEnvironment")
+                    .invoke(null)
+                Class.forName("com.intellij.testFramework.common.TestApplicationKt")
+                    .getMethod("initTestApplication")
+                    .invoke(null)
+                val application = ApplicationManager.getApplication()
+                if (application.isDispatchThread) {
+                    UIUtil.getRegularPanelInsets()
+                } else {
+                    application.invokeAndWait { UIUtil.getRegularPanelInsets() }
+                }
             }
         }
     }
@@ -205,8 +227,7 @@ abstract class LstCrcStarterUiTestBase {
 
 class LstCrcStarterContext(
     val project: LstCrcStarterProject,
-    val ui: LstCrcUiTestBridgeRemote,
-    val driver: Driver
+    val ui: LstCrcUiTestBridgeRemote
 ) {
 
     fun prepareLstCrc() {

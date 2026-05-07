@@ -267,6 +267,7 @@ tasks {
     val uiTestTimeoutProvider = providers.systemProperty("ui.test.timeout").orElse(if (isCi) "900" else "600")
     val uiTestTaskTimeoutMinutesProvider = providers.systemProperty("ui.test.task.timeout.minutes").orElse(if (isCi) "45" else "30")
     val starterUiTestTaskTimeoutMinutesProvider = providers.systemProperty("starter.ui.test.task.timeout.minutes").orElse(if (isCi) "75" else "40")
+    val starterUiTestMaxParallelForksProvider = providers.systemProperty("starter.ui.test.max.parallel.forks").orElse("1")
 
     fun Test.configureCommonTestTask() {
         useJUnitPlatform()
@@ -304,9 +305,11 @@ tasks {
 
         notCompatibleWithConfigurationCache("Starter UI test discovery is unstable when this task is restored from configuration cache.")
 
-        maxParallelForks = 1
+        maxParallelForks = starterUiTestMaxParallelForksProvider.get().toInt()
         minHeapSize = "1g"
         maxHeapSize = "4g"
+
+        systemProperty("junit.jupiter.extensions.autodetection.enabled", "false")
 
         systemProperty("path.to.build.plugin", buildPlugin.get().archiveFile.get().asFile.absolutePath)
         systemProperty("idea.home.path", prepareTestSandbox.get().getDestinationDir().parentFile.absolutePath)

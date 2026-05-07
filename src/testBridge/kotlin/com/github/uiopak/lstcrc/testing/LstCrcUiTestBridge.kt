@@ -851,6 +851,33 @@ class LstCrcUiTestBridge {
     }
 
     fun openRepoComparisonDialog() {
+        val project = project()
+        val gitService = project.service<GitService>()
+        val stateService = project.service<ToolWindowStateService>()
+        val selectedTabInfo = stateService.getSelectedTabInfo()
+            ?: error("No selected LST-CRC tab available for repository comparison dialog")
+        val repositories = gitService.getRepositories()
+
+        if (repositories.size == 1) {
+            val repository = repositories.first()
+            onBackground {
+                refreshBaseDir(project)
+                repository.root.refresh(false, true)
+                repository.update()
+                ChangeListManagerEx.getInstanceEx(project).waitForUpdate()
+            }
+            val snapshot = gitService.getBranchSnapshot(repository)
+            syntheticRepoComparisonDialog.set(
+                SyntheticRepoComparisonDialog(
+                    title = "Select Branch for ${repository.root.name}",
+                    repositoryRootPath = repository.root.path,
+                    defaultTarget = selectedTabInfo.branchName,
+                    branches = (snapshot.localBranches + snapshot.remoteBranches).distinct().sorted()
+                )
+            )
+            return
+        }
+
         ApplicationManager.getApplication().invokeLater {
             performAction(ShowRepoComparisonInfoAction())
         }
@@ -1247,9 +1274,14 @@ class LstCrcUiTestBridge {
         if (item is String) {
             return item
         }
-        val displayName = item.javaClass.methods.firstOrNull {
-            it.name == "getDisplayName" && it.parameterCount == 0
-        }?.invoke(item)?.toString()
+        val displayName = (item.javaClass.methods.asSequence() + item.javaClass.declaredMethods.asSequence())
+            .firstOrNull { method -> method.name == "getDisplayName" && method.parameterCount == 0 }
+            ?.let { method ->
+                runCatching {
+                    method.isAccessible = true
+                    method.invoke(item)?.toString()
+                }.getOrNull()
+            }
         if (!displayName.isNullOrBlank()) {
             return displayName
         }

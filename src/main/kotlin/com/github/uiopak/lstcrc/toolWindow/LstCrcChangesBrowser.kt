@@ -75,7 +75,7 @@ class LstCrcChangesBrowser(
 ) : AsyncChangesBrowserBase(project, false, true), Disposable, GitRepositoryChangeListener, UiDataProvider {
 
     override fun uiDataSnapshot(sink: DataSink) {
-        DataSink.uiDataSnapshot(sink, this)
+        super.uiDataSnapshot(sink)
     }
 
     private companion object {
@@ -235,7 +235,7 @@ class LstCrcChangesBrowser(
     ) : AsyncChangesTree(project, showCheckboxes, highlightProblems), UiDataProvider {
 
         override fun uiDataSnapshot(sink: DataSink) {
-            DataSink.uiDataSnapshot(sink, this)
+            super.uiDataSnapshot(sink)
         }
 
         override val changesTreeModel: AsyncChangesTreeModel
