@@ -192,6 +192,7 @@ class LstCrcUiTestBridge {
             settings.setBoolean(ToolWindowSettingsProvider.APP_SHOW_CONTEXT_SINGLE_REPO_KEY, ToolWindowSettingsProvider.DEFAULT_SHOW_CONTEXT_SINGLE_REPO, true)
             settings.setBoolean(ToolWindowSettingsProvider.APP_SHOW_CONTEXT_MULTI_REPO_KEY, ToolWindowSettingsProvider.DEFAULT_SHOW_CONTEXT_MULTI_REPO, true)
             settings.setBoolean(ToolWindowSettingsProvider.APP_SHOW_CONTEXT_FOR_COMMITS_KEY, ToolWindowSettingsProvider.DEFAULT_SHOW_CONTEXT_FOR_COMMITS, false)
+            settings.setBoolean(ToolWindowSettingsProvider.APP_SHOW_LINE_STATS_IN_TREE_KEY, ToolWindowSettingsProvider.DEFAULT_SHOW_LINE_STATS_IN_TREE, false)
             settings.setBoolean(ToolWindowSettingsProvider.APP_EXPAND_NEW_FILES_IN_COLLAPSED_DIRS_KEY, ToolWindowSettingsProvider.DEFAULT_EXPAND_NEW_FILES_IN_COLLAPSED_DIRS, true)
             settings.setBoolean(ToolWindowSettingsProvider.APP_SHOW_UNTRACKED_FILES_AS_NEW_KEY, ToolWindowSettingsProvider.DEFAULT_SHOW_UNTRACKED_FILES_AS_NEW, false)
 
@@ -703,7 +704,7 @@ class LstCrcUiTestBridge {
         awaitCurrentSelectionRefresh(project)
     }
 
-    fun setTreeContextSettings(showSingleRepo: Boolean?, showCommits: Boolean?) {
+    fun setTreeContextSettings(showSingleRepo: Boolean?, showCommits: Boolean?, showLineStats: Boolean?) {
         val project = project()
         onEdt {
             val settings = settingsService()
@@ -712,6 +713,9 @@ class LstCrcUiTestBridge {
             }
             showCommits?.let {
                 settings.setBoolean(ToolWindowSettingsProvider.APP_SHOW_CONTEXT_FOR_COMMITS_KEY, it, ToolWindowSettingsProvider.DEFAULT_SHOW_CONTEXT_FOR_COMMITS)
+            }
+            showLineStats?.let {
+                settings.setBoolean(ToolWindowSettingsProvider.APP_SHOW_LINE_STATS_IN_TREE_KEY, it, ToolWindowSettingsProvider.DEFAULT_SHOW_LINE_STATS_IN_TREE)
             }
             selectedBrowser()?.rebuildView()
         }
@@ -741,7 +745,8 @@ class LstCrcUiTestBridge {
     fun treeContextSettingsSnapshot(): String = onEdtResult {
         val settings = settingsService()
         "${settings.getBoolean(ToolWindowSettingsProvider.APP_SHOW_CONTEXT_SINGLE_REPO_KEY, ToolWindowSettingsProvider.DEFAULT_SHOW_CONTEXT_SINGLE_REPO)}|" +
-            settings.getBoolean(ToolWindowSettingsProvider.APP_SHOW_CONTEXT_FOR_COMMITS_KEY, ToolWindowSettingsProvider.DEFAULT_SHOW_CONTEXT_FOR_COMMITS)
+            "${settings.getBoolean(ToolWindowSettingsProvider.APP_SHOW_CONTEXT_FOR_COMMITS_KEY, ToolWindowSettingsProvider.DEFAULT_SHOW_CONTEXT_FOR_COMMITS)}|" +
+            settings.getBoolean(ToolWindowSettingsProvider.APP_SHOW_LINE_STATS_IN_TREE_KEY, ToolWindowSettingsProvider.DEFAULT_SHOW_LINE_STATS_IN_TREE)
     }
 
     fun gutterSettingsSnapshot(): String = onEdtResult {
@@ -1317,12 +1322,112 @@ class LstCrcUiTestBridge {
             row,
             false
         )
+        renderedComponentText(component)?.let { return it }
+
         val accessibleName = component.accessibleContext?.accessibleName.orEmpty()
         if (accessibleName.isNotBlank()) {
             return accessibleName
         }
         val textMethod = component.javaClass.methods.firstOrNull { it.name == "getText" && it.parameterCount == 0 }
         return textMethod?.invoke(component)?.toString().orEmpty()
+    }
+
+    private fun renderedComponentText(component: Component): String? {
+        return renderedComponentText(component, visited = mutableSetOf())
+    }
+
+    private fun renderedComponentText(component: Component, visited: MutableSet<Component>): String? {
+        if (!visited.add(component)) {
+            return null
+        }
+
+        val fragments = linkedSetOf<String>()
+
+        delegateTextRenderer(component)?.let { delegate ->
+            renderedComponentText(delegate, visited)?.takeIf(String::isNotBlank)?.let(fragments::add)
+        }
+        invokeRenderedTextMethod(component, "getCharSequence")?.takeIf(String::isNotBlank)?.let(fragments::add)
+        reflectColoredFragments(component)?.takeIf(String::isNotBlank)?.let(fragments::add)
+
+        if (component is Container) {
+            component.components.forEach { child ->
+                renderedComponentText(child, visited)?.takeIf(String::isNotBlank)?.let(fragments::add)
+            }
+        }
+
+        return fragments.joinToString(separator = " ").trim().ifBlank { null }
+    }
+
+    private fun delegateTextRenderer(component: Component): Component? {
+        val rendererField = classHierarchy(component.javaClass)
+            .flatMap { it.declaredFields.asSequence() }
+            .firstOrNull {
+                Component::class.java.isAssignableFrom(it.type) &&
+                    (it.name == "textRenderer" || it.name == "myTextRenderer")
+            } ?: return null
+
+        return runCatching {
+            rendererField.isAccessible = true
+            rendererField.get(component) as? Component
+        }.getOrNull()
+    }
+
+    private fun invokeRenderedTextMethod(component: Component, methodName: String): String? {
+        val method = component.javaClass.methods.firstOrNull {
+            it.name == methodName &&
+                (it.parameterCount == 0 ||
+                    (it.parameterCount == 1 && it.parameterTypes.singleOrNull() == Boolean::class.javaPrimitiveType))
+        } ?: return null
+
+        val value = runCatching {
+            when (method.parameterCount) {
+                0 -> method.invoke(component)
+                1 -> method.invoke(component, false)
+                else -> null
+            }
+        }.getOrNull() ?: return null
+
+        return value.toString()
+    }
+
+    private fun reflectColoredFragments(component: Component): String? {
+        val fragmentsField = classHierarchy(component.javaClass)
+            .flatMap { it.declaredFields.asSequence() }
+            .firstOrNull { it.name == "myFragments" } ?: return null
+
+        val fragments = runCatching {
+            fragmentsField.isAccessible = true
+            fragmentsField.get(component) as? Iterable<*>
+        }.getOrNull() ?: return null
+
+        val text = fragments.mapNotNull(::fragmentText)
+            .joinToString(separator = "")
+            .trim()
+
+        return text.ifBlank { null }
+    }
+
+    private fun fragmentText(fragment: Any?): String? {
+        fragment ?: return null
+        val textField = classHierarchy(fragment.javaClass)
+            .flatMap { it.declaredFields.asSequence() }
+            .firstOrNull {
+                CharSequence::class.java.isAssignableFrom(it.type) &&
+                    (it.name == "fragmentText" || it.name == "myText" || it.name == "text")
+            } ?: return null
+
+        return runCatching {
+            textField.isAccessible = true
+            (textField.get(fragment) as? CharSequence)?.toString()
+        }.getOrNull()
+    }
+
+    private fun classHierarchy(startClass: Class<*>): Sequence<Class<*>> = sequence {
+        var current: Class<*>? = startClass
+        while (current != null) {
+            yield(current)
+            current = current.superclass
+        }
     }
 
     private fun findTreePathByLeafText(tree: JTree, text: String): TreePath? {

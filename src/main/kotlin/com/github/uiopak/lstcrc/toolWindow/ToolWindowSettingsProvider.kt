@@ -74,6 +74,9 @@ object ToolWindowSettingsProvider {
     const val APP_SHOW_UNTRACKED_FILES_AS_NEW_KEY = "com.github.uiopak.lstcrc.app.showUntrackedFilesAsNew"
     const val DEFAULT_SHOW_UNTRACKED_FILES_AS_NEW = false
 
+    const val APP_SHOW_LINE_STATS_IN_TREE_KEY = "com.github.uiopak.lstcrc.app.showLineStatsInTree"
+    const val DEFAULT_SHOW_LINE_STATS_IN_TREE = false
+
     const val APP_SHOW_CONTEXT_SINGLE_REPO_KEY = "com.github.uiopak.lstcrc.app.showContextSingleRepo"
     const val DEFAULT_SHOW_CONTEXT_SINGLE_REPO = true
     const val APP_SHOW_CONTEXT_MULTI_REPO_KEY = "com.github.uiopak.lstcrc.app.showContextMultiRepo"
@@ -99,6 +102,7 @@ object ToolWindowSettingsProvider {
     fun isShowWidgetContext(): Boolean = settingsService().getBoolean(APP_SHOW_WIDGET_CONTEXT_KEY, DEFAULT_SHOW_WIDGET_CONTEXT)
     fun isExpandNewFilesInCollapsedDirs(): Boolean = settingsService().getBoolean(APP_EXPAND_NEW_FILES_IN_COLLAPSED_DIRS_KEY, DEFAULT_EXPAND_NEW_FILES_IN_COLLAPSED_DIRS)
     fun isShowUntrackedFilesAsNew(): Boolean = settingsService().getBoolean(APP_SHOW_UNTRACKED_FILES_AS_NEW_KEY, DEFAULT_SHOW_UNTRACKED_FILES_AS_NEW)
+    fun isShowLineStatsInTree(): Boolean = settingsService().getBoolean(APP_SHOW_LINE_STATS_IN_TREE_KEY, DEFAULT_SHOW_LINE_STATS_IN_TREE)
 
 
     fun getUserDoubleClickDelayMs(): Int {
@@ -184,6 +188,12 @@ object ToolWindowSettingsProvider {
                 LstCrcBundle.message("settings.tree.view.show.untracked.files.as.new"),
                 APP_SHOW_UNTRACKED_FILES_AS_NEW_KEY, DEFAULT_SHOW_UNTRACKED_FILES_AS_NEW,
                 onChanged = { e, _ -> e.project?.service<ToolWindowStateService>()?.refreshDataForCurrentSelection() }
+            ))
+
+            add(createBooleanSettingToggle(
+                LstCrcBundle.message("settings.tree.view.show.line.stats"),
+                APP_SHOW_LINE_STATS_IN_TREE_KEY, DEFAULT_SHOW_LINE_STATS_IN_TREE,
+                onChanged = { e, _ -> rebuildActiveView(e) }
             ))
         }
         rootSettingsGroup.add(treeViewSettingsGroup)

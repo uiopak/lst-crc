@@ -159,8 +159,11 @@ abstract class LstCrcStarterUiTestBase {
             .createDirectories()
         val vmOptionsFile = vmOptionsDirectory.resolve("$testName.vmoptions")
         vmOptionsFile.parent.createDirectories()
+        val ideaLogDirectory = Path(System.getProperty("user.dir"), "out", "ide-tests", "logs", testName)
+            .createDirectories()
 
         ide.vmOptions.withEnv("IDEA_VM_OPTIONS", vmOptionsFile.toAbsolutePath().toString())
+        ide.vmOptions.addSystemProperty("idea.log.path", ideaLogDirectory.toAbsolutePath().toString())
         driverOptions.systemProperties.forEach { (key, value) ->
             ide.vmOptions.addSystemProperty(key, value)
         }

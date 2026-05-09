@@ -50,16 +50,16 @@ class LstCrcSettingsUiTest : LstCrcUiTestSupport() {
                 searchAndSelect("feature-tree")
             }
 
-            assertTrue(treeContextSettingsSnapshot().startsWith("true|false"), "Unexpected initial tree context settings")
+            assertTrue(treeContextSettingsSnapshot() == "true|false|false", "Unexpected initial tree context settings")
 
             setTreeContextSettings(showSingleRepo = false)
             waitFor(Duration.ofSeconds(10)) {
-                treeContextSettingsSnapshot() == "false|false"
+                treeContextSettingsSnapshot() == "false|false|false"
             }
 
             setTreeContextSettings(showSingleRepo = true)
             waitFor(Duration.ofSeconds(10)) {
-                treeContextSettingsSnapshot() == "true|false"
+                treeContextSettingsSnapshot() == "true|false|false"
             }
 
             assertFalse(isToolWindowTitleVisible(), "Tool window title should be hidden by default")
@@ -79,12 +79,12 @@ class LstCrcSettingsUiTest : LstCrcUiTestSupport() {
 
             setTreeContextSettings(showCommits = false)
             waitFor(Duration.ofSeconds(10)) {
-                treeContextSettingsSnapshot() == "true|false"
+                treeContextSettingsSnapshot() == "true|false|false"
             }
 
             setTreeContextSettings(showCommits = true)
             waitFor(Duration.ofSeconds(10)) {
-                treeContextSettingsSnapshot() == "true|true"
+                treeContextSettingsSnapshot() == "true|true|false"
             }
         }
     }
@@ -254,6 +254,16 @@ class LstCrcSettingsUiTest : LstCrcUiTestSupport() {
 
             waitFor(treeSnapshotTimeout) {
                 selectedChangesTreeContains("(vs feature-tree-labels)")
+            }
+
+            setTreeContextSettings(showLineStats = true)
+            waitFor(treeSnapshotTimeout) {
+                selectedChangesTreeContains("+1") && selectedChangesTreeContains("-1")
+            }
+
+            setTreeContextSettings(showLineStats = false)
+            waitFor(treeSnapshotTimeout) {
+                treeContextSettingsSnapshot() == "true|false|false"
             }
 
             setTreeContextSettings(showSingleRepo = false)

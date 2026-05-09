@@ -2,8 +2,12 @@ package com.github.uiopak.lstcrc.services
 
 import com.github.uiopak.lstcrc.resources.LstCrcBundle
 import com.github.uiopak.lstcrc.state.TabInfo
+import com.intellij.diff.comparison.ComparisonManager
+import com.intellij.diff.comparison.ComparisonPolicy
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.diagnostic.thisLogger
+import com.intellij.openapi.progress.DumbProgressIndicator
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.platform.ide.progress.withBackgroundProgress
@@ -15,7 +19,7 @@ import com.intellij.openapi.vcs.FileStatus
 import com.intellij.openapi.vcs.VcsException
 import com.intellij.openapi.vcs.changes.Change
 import com.intellij.openapi.vcs.changes.ContentRevision
-import com.intellij.openapi.vcs.changes.CurrentContentRevision
+import com.intellij.openapi.vcs.history.VcsRevisionNumber
 import com.intellij.openapi.vcs.vfs.ContentRevisionVirtualFile
 import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.openapi.vfs.VfsUtilCore
@@ -31,6 +35,7 @@ import git4idea.commands.GitLineHandler
 import git4idea.repo.GitRepository
 import git4idea.repo.GitRepositoryManager
 import git4idea.util.GitFileUtils
+import java.nio.charset.Charset
 
 
 /**
@@ -49,8 +54,33 @@ data class CategorizedChanges(
     val modifiedFiles: List<VirtualFile>,
     val movedFiles: List<VirtualFile>,
     val deletedFiles: List<VirtualFile>,
-    val comparisonContext: Map<String, String>
+    val comparisonContext: Map<String, String>,
+    val lineStatsByChange: Map<ChangeLineStatsKey, ChangeLineStats>
 )
+
+data class ChangeLineStats(
+    val addedLines: Int,
+    val removedLines: Int
+)
+
+data class ChangeLineStatsKey(
+    val beforePath: String?,
+    val afterPath: String?
+) {
+    companion object {
+        fun from(change: Change): ChangeLineStatsKey = ChangeLineStatsKey(
+            beforePath = normalizePath(change.beforeRevision?.file?.path),
+            afterPath = normalizePath(change.afterRevision?.file?.path)
+        )
+
+        fun fromPaths(beforePath: String?, afterPath: String?): ChangeLineStatsKey = ChangeLineStatsKey(
+            beforePath = normalizePath(beforePath),
+            afterPath = normalizePath(afterPath)
+        )
+
+        private fun normalizePath(path: String?): String? = path?.replace('\\', '/')
+    }
+}
 
 data class BranchSnapshot(
     val localBranches: List<String>,
@@ -79,6 +109,7 @@ class GitService(private val project: Project) {
 
     private companion object {
         private val COMMIT_HASH_REGEX = Regex("^[0-9a-fA-F]{7,40}$")
+        private const val DIFF_FILTER_PARAM = "--diff-filter=ADCMRUXT"
     }
 
     private val logger = thisLogger()
@@ -91,7 +122,13 @@ class GitService(private val project: Project) {
     private data class ChangeLoadContext(
         val allChanges: MutableList<Change> = mutableListOf(),
         val comparisonContext: MutableMap<String, String> = mutableMapOf(),
+        val lineStatsByChange: MutableMap<ChangeLineStatsKey, ChangeLineStats> = linkedMapOf(),
         val failures: MutableMap<GitRepository, String> = mutableMapOf()
+    )
+
+    private data class LoadedChanges(
+        val changes: List<Change>,
+        val lineStatsByChange: Map<ChangeLineStatsKey, ChangeLineStats>
     )
 
     internal fun getRepositoryForFile(file: VirtualFile): GitRepository? {
@@ -168,7 +205,7 @@ class GitService(private val project: Project) {
 
         if (repositories.isEmpty()) {
             return GetChangesResult(
-                CategorizedChanges(emptyList(), emptyList(), emptyList(), emptyList(), emptyList(), emptyMap()),
+                CategorizedChanges(emptyList(), emptyList(), emptyList(), emptyList(), emptyList(), emptyMap(), emptyMap()),
                 emptyMap()
             )
         }
@@ -188,7 +225,9 @@ class GitService(private val project: Project) {
         if (tabInfo == null) {
             logger.debug("Using direct Git status for HEAD across all repositories.")
             for (repo in repositories) {
-                context.allChanges.addAll(loadLocalChanges(repo))
+                val loadedChanges = loadLocalChanges(repo)
+                context.allChanges.addAll(loadedChanges.changes)
+                context.lineStatsByChange.putAll(loadedChanges.lineStatsByChange)
                 context.comparisonContext[repo.root.path] = "HEAD"
             }
         } else {
@@ -197,10 +236,12 @@ class GitService(private val project: Project) {
                 val target = tabInfo.comparisonMap[repo.root.path] ?: primaryRevision
                 context.comparisonContext[repo.root.path] = target
                 logger.debug("Repo '${repo.root.path}': using target '$target'")
-                context.allChanges.addAll(loadChangesForTarget(repo, primaryRevision, target, context.failures))
+                val loadedChanges = loadChangesForTarget(repo, primaryRevision, target, context.failures)
+                context.allChanges.addAll(loadedChanges.changes)
+                context.lineStatsByChange.putAll(loadedChanges.lineStatsByChange)
             }
         }
-        return GetChangesResult(buildCategorizedChanges(context.allChanges, context.comparisonContext), context.failures)
+        return GetChangesResult(buildCategorizedChanges(context.allChanges, context.comparisonContext, context.lineStatsByChange), context.failures)
     }
 
     private fun loadChangesForTarget(
@@ -208,7 +249,7 @@ class GitService(private val project: Project) {
         primaryRevision: String,
         target: String,
         failures: MutableMap<GitRepository, String>
-    ): List<Change> {
+    ): LoadedChanges {
         repo.update()
 
         if (repo.isFresh) {
@@ -229,7 +270,7 @@ class GitService(private val project: Project) {
                         "Assuming revision is invalid. Error: ${e.message}"
                 )
                 failures[repo] = target
-                emptyList()
+                LoadedChanges(emptyList(), emptyMap())
             }
         }
 
@@ -241,7 +282,7 @@ class GitService(private val project: Project) {
                     "Assuming revision is invalid. Error: ${e.message}"
             )
             failures[repo] = target
-            emptyList()
+            LoadedChanges(emptyList(), emptyMap())
         }
     }
 
@@ -266,25 +307,39 @@ class GitService(private val project: Project) {
         return Git.getInstance().runCommand(handler).exitCode == 0
     }
 
-    private fun loadChangesAgainstWorkingTree(repo: GitRepository, target: String): List<Change> {
+    private fun loadChangesAgainstWorkingTree(repo: GitRepository, target: String): LoadedChanges {
         val trackedChanges = loadTrackedChangesAgainstWorkingTree(repo, target)
         val untrackedChanges = loadOptionalUntrackedChanges(repo)
-        return overlayUnsavedDocumentChanges(repo, target, trackedChanges + untrackedChanges)
+        val unsavedChanges = collectUnsavedDocumentChanges(repo, target)
+        val allChanges = overlayUnsavedDocumentChanges(trackedChanges.changes + untrackedChanges, unsavedChanges)
+        return LoadedChanges(
+            changes = allChanges,
+            lineStatsByChange = buildLineStats(
+                changes = allChanges,
+                trackedLineStats = trackedChanges.lineStatsByChange,
+                forceRecompute = unsavedChanges.mapTo(linkedSetOf()) { ChangeLineStatsKey.from(it) }
+            )
+        )
     }
 
     @Suppress("UsePropertyAccessSyntax")
-    private fun loadTrackedChangesAgainstWorkingTree(repo: GitRepository, target: String): List<Change> {
+    private fun loadTrackedChangesAgainstWorkingTree(repo: GitRepository, target: String): LoadedChanges {
         val handler = GitLineHandler(project, repo.root, GitCommand.DIFF)
         handler.setSilent(true)
         handler.setStdoutSuppressed(true)
-        handler.addParameters("--name-status", "--diff-filter=ADCMRUXT", "-M", target)
+        handler.addParameters("--name-status", DIFF_FILTER_PARAM, "-M", target)
 
         val output = Git.getInstance().runCommand(handler).getOutputOrThrow()
         val targetRevision = GitRevisionNumber(target)
 
-        return output.lineSequence()
+        val changes = output.lineSequence()
             .mapNotNull { parseWorkingTreeDiffLine(repo, targetRevision, it) }
             .toList()
+
+        return LoadedChanges(
+            changes = changes,
+            lineStatsByChange = loadTrackedLineStatsAgainstWorkingTree(repo, target, changes)
+        )
     }
 
     @Suppress("UsePropertyAccessSyntax")
@@ -292,19 +347,110 @@ class GitService(private val project: Project) {
         repo: GitRepository,
         baseRevision: String,
         targetRevision: String
-    ): List<Change> {
+    ): LoadedChanges {
         val handler = GitLineHandler(project, repo.root, GitCommand.DIFF)
         handler.setSilent(true)
         handler.setStdoutSuppressed(true)
-        handler.addParameters("--name-status", "--diff-filter=ADCMRUXT", "-M", baseRevision, targetRevision)
+        handler.addParameters("--name-status", DIFF_FILTER_PARAM, "-M", baseRevision, targetRevision)
 
         val output = Git.getInstance().runCommand(handler).getOutputOrThrow()
         val beforeRevision = GitRevisionNumber(baseRevision)
         val afterRevision = GitRevisionNumber(targetRevision)
 
-        return output.lineSequence()
+        val changes = output.lineSequence()
             .mapNotNull { parseRevisionDiffLine(repo, beforeRevision, afterRevision, it) }
             .toList()
+
+        return LoadedChanges(
+            changes = changes,
+            lineStatsByChange = loadTrackedLineStatsBetweenRevisions(repo, baseRevision, targetRevision, changes)
+        )
+    }
+
+    @Suppress("UsePropertyAccessSyntax")
+    private fun loadTrackedLineStatsAgainstWorkingTree(
+        repo: GitRepository,
+        target: String,
+        changes: List<Change>
+    ): Map<ChangeLineStatsKey, ChangeLineStats> {
+        val handler = GitLineHandler(project, repo.root, GitCommand.DIFF)
+        handler.setSilent(true)
+        handler.setStdoutSuppressed(true)
+        handler.addParameters("--numstat", DIFF_FILTER_PARAM, "-M", target)
+
+        val output = Git.getInstance().runCommand(handler).getOutputOrThrow()
+        return parseTrackedLineStats(repo, changes, output.lineSequence())
+    }
+
+    @Suppress("UsePropertyAccessSyntax")
+    private fun loadTrackedLineStatsBetweenRevisions(
+        repo: GitRepository,
+        baseRevision: String,
+        targetRevision: String,
+        changes: List<Change>
+    ): Map<ChangeLineStatsKey, ChangeLineStats> {
+        val handler = GitLineHandler(project, repo.root, GitCommand.DIFF)
+        handler.setSilent(true)
+        handler.setStdoutSuppressed(true)
+        handler.addParameters("--numstat", DIFF_FILTER_PARAM, "-M", baseRevision, targetRevision)
+
+        val output = Git.getInstance().runCommand(handler).getOutputOrThrow()
+        return parseTrackedLineStats(repo, changes, output.lineSequence())
+    }
+
+    private fun parseTrackedLineStats(
+        repo: GitRepository,
+        changes: List<Change>,
+        lines: Sequence<String>
+    ): Map<ChangeLineStatsKey, ChangeLineStats> {
+        if (changes.isEmpty()) return emptyMap()
+
+        val renameLookup = changes.associate { change ->
+            val key = ChangeLineStatsKey.from(change)
+            key to key
+        }
+        val afterPathLookup = changes
+            .mapNotNull { change ->
+                val afterPath = ChangeLineStatsKey.from(change).afterPath ?: return@mapNotNull null
+                afterPath to ChangeLineStatsKey.from(change)
+            }
+            .toMap()
+        val beforePathLookup = changes
+            .mapNotNull { change ->
+                val beforePath = ChangeLineStatsKey.from(change).beforePath ?: return@mapNotNull null
+                beforePath to ChangeLineStatsKey.from(change)
+            }
+            .toMap()
+
+        return lines.mapNotNull { line ->
+            parseTrackedLineStat(repo, line, renameLookup, afterPathLookup, beforePathLookup)
+        }.toMap(linkedMapOf())
+    }
+
+    private fun parseTrackedLineStat(
+        repo: GitRepository,
+        line: String,
+        renameLookup: Map<ChangeLineStatsKey, ChangeLineStatsKey>,
+        afterPathLookup: Map<String, ChangeLineStatsKey>,
+        beforePathLookup: Map<String, ChangeLineStatsKey>
+    ): Pair<ChangeLineStatsKey, ChangeLineStats>? {
+        if (line.isBlank()) return null
+
+        val tokens = line.split('\t')
+        if (tokens.size < 3) return null
+
+        val addedLines = tokens[0].toIntOrNull() ?: return null
+        val removedLines = tokens[1].toIntOrNull() ?: return null
+        val key = if (tokens.size >= 4) {
+            val beforePath = GitContentRevision.createPathFromEscaped(repo.root, tokens[2]).path
+            val afterPath = GitContentRevision.createPathFromEscaped(repo.root, tokens[3]).path
+            renameLookup[ChangeLineStatsKey.fromPaths(beforePath, afterPath)]
+        } else {
+            val path = GitContentRevision.createPathFromEscaped(repo.root, tokens[2]).path
+            afterPathLookup[path.replace('\\', '/')] ?: beforePathLookup[path.replace('\\', '/')]
+        } ?: return null
+
+        return key to ChangeLineStats(addedLines = addedLines, removedLines = removedLines)
     }
 
     private fun parseWorkingTreeDiffLine(
@@ -392,7 +538,8 @@ class GitService(private val project: Project) {
 
     private fun buildCategorizedChanges(
         allChanges: List<Change>,
-        comparisonContext: Map<String, String>
+        comparisonContext: Map<String, String>,
+        lineStatsByChange: Map<ChangeLineStatsKey, ChangeLineStats>
     ): CategorizedChanges {
         val created = allChanges.filter { it.beforeRevision == null && it.afterRevision != null }
             .mapNotNull { createComparisonVirtualFile(it.afterRevision!!) }
@@ -418,14 +565,24 @@ class GitService(private val project: Project) {
             modifiedFiles = modified,
             movedFiles = moved,
             deletedFiles = deleted,
-            comparisonContext = comparisonContext
+            comparisonContext = comparisonContext,
+            lineStatsByChange = lineStatsByChange
         )
     }
 
-    private fun loadLocalChanges(repo: GitRepository): List<Change> {
+    private fun loadLocalChanges(repo: GitRepository): LoadedChanges {
         val trackedChanges = loadTrackedChangesAgainstHead(repo)
         val untrackedChanges = loadOptionalUntrackedChanges(repo)
-        return overlayUnsavedDocumentChanges(repo, "HEAD", trackedChanges + untrackedChanges)
+        val unsavedChanges = collectUnsavedDocumentChanges(repo, "HEAD")
+        val allChanges = overlayUnsavedDocumentChanges(trackedChanges.changes + untrackedChanges, unsavedChanges)
+        return LoadedChanges(
+            changes = allChanges,
+            lineStatsByChange = buildLineStats(
+                changes = allChanges,
+                trackedLineStats = trackedChanges.lineStatsByChange,
+                forceRecompute = unsavedChanges.mapTo(linkedSetOf()) { ChangeLineStatsKey.from(it) }
+            )
+        )
     }
 
     private fun loadOptionalUntrackedChanges(repo: GitRepository): List<Change> {
@@ -436,18 +593,22 @@ class GitService(private val project: Project) {
         }
     }
 
-    private fun loadTrackedChangesAgainstHead(repo: GitRepository): List<Change> {
+    private fun loadTrackedChangesAgainstHead(repo: GitRepository): LoadedChanges {
         repo.update()
 
         if (repo.isFresh) {
-            return emptyList()
+            return LoadedChanges(emptyList(), emptyMap())
         }
 
         return try {
-            GitChangeUtils.getDiffWithWorkingDir(project, repo.root, "HEAD", null, false, true).toList()
+            val changes = GitChangeUtils.getDiffWithWorkingDir(project, repo.root, "HEAD", null, false, true).toList()
+            LoadedChanges(
+                changes = changes,
+                lineStatsByChange = loadTrackedLineStatsAgainstWorkingTree(repo, "HEAD", changes)
+            )
         } catch (e: VcsException) {
             logger.warn("Failed to load tracked local changes for repo '${repo.root.name}' against HEAD: ${e.message}")
-            emptyList()
+            LoadedChanges(emptyList(), emptyMap())
         }
     }
 
@@ -484,16 +645,15 @@ class GitService(private val project: Project) {
     }
 
     private fun overlayUnsavedDocumentChanges(
-        repo: GitRepository,
-        targetRevision: String,
-        baseChanges: List<Change>
+        baseChanges: List<Change>,
+        unsavedChanges: List<Change>
     ): List<Change> {
         val mergedChanges = LinkedHashMap<String, Change>()
         baseChanges.forEach { change ->
             mergedChanges[unsavedOverlayKey(change.afterRevision?.file?.path ?: change.beforeRevision?.file?.path.orEmpty())] = change
         }
 
-        collectUnsavedDocumentChanges(repo, targetRevision).forEach { change ->
+        unsavedChanges.forEach { change ->
             val path = change.afterRevision?.file?.path ?: change.beforeRevision?.file?.path.orEmpty()
             val key = unsavedOverlayKey(path)
             mergedChanges[key] = mergeUnsavedOverlayChange(mergedChanges[key], change)
@@ -502,25 +662,64 @@ class GitService(private val project: Project) {
         return mergedChanges.values.toList()
     }
 
+    private fun buildLineStats(
+        changes: List<Change>,
+        trackedLineStats: Map<ChangeLineStatsKey, ChangeLineStats>,
+        forceRecompute: Set<ChangeLineStatsKey>
+    ): Map<ChangeLineStatsKey, ChangeLineStats> {
+        val lineStats = linkedMapOf<ChangeLineStatsKey, ChangeLineStats>()
+        val keys = changes.map(ChangeLineStatsKey::from).toSet()
+
+        trackedLineStats.forEach { (key, stats) ->
+            if (key in keys && key !in forceRecompute) {
+                lineStats[key] = stats
+            }
+        }
+
+        changes.forEach { change ->
+            val key = ChangeLineStatsKey.from(change)
+            if (key in forceRecompute || key !in lineStats) {
+                computeFallbackLineStats(change)?.let { lineStats[key] = it }
+            }
+        }
+
+        return lineStats
+    }
+
+    private fun computeFallbackLineStats(change: Change): ChangeLineStats? {
+        val beforeContent = change.beforeRevision?.content ?: ""
+        val afterContent = change.afterRevision?.content ?: ""
+
+        return runCatching {
+            calculateLineStats(beforeContent, afterContent)
+        }.getOrElse { error ->
+            logger.debug("Failed to compute fallback line stats for '${change.afterRevision?.file?.path ?: change.beforeRevision?.file?.path}'.", error)
+            null
+        }
+    }
+
     private fun collectUnsavedDocumentChanges(repo: GitRepository, targetRevision: String): List<Change> {
         val fileDocumentManager = FileDocumentManager.getInstance()
+        val unsavedFiles = ApplicationManager.getApplication().runReadAction<List<VirtualFile>> {
+            fileDocumentManager.unsavedDocuments.asSequence()
+                .mapNotNull { document -> fileDocumentManager.getFile(document) }
+                .filter { file ->
+                    file.isValid &&
+                        VfsUtilCore.isAncestor(repo.root, file, false) &&
+                        fileDocumentManager.isFileModified(file)
+                }
+                .toList()
+        }
 
-        return fileDocumentManager.unsavedDocuments.asSequence()
-            .mapNotNull { document -> fileDocumentManager.getFile(document) }
-            .filter { file ->
-                file.isValid &&
-                    VfsUtilCore.isAncestor(repo.root, file, false) &&
-                    fileDocumentManager.isFileModified(file)
-            }
-            .mapNotNull { file -> createUnsavedDocumentChange(file, targetRevision) }
+        return unsavedFiles.asSequence()
+            .mapNotNull { file -> createUnsavedDocumentChange(repo, file, targetRevision) }
             .toList()
     }
 
-    private fun createUnsavedDocumentChange(file: VirtualFile, targetRevision: String): Change? {
+    private fun createUnsavedDocumentChange(repo: GitRepository, file: VirtualFile, targetRevision: String): Change? {
         return try {
-            val filePath = VcsUtil.getFilePath(file)
-            val beforeRevision = GitContentRevision.createRevision(filePath, GitRevisionNumber(targetRevision), project)
-            val afterRevision = CurrentContentRevision.create(filePath)
+            val beforeRevision = createTargetContentRevision(project, repo, file, targetRevision) ?: return null
+            val afterRevision = createLiveDocumentContentRevision(file)
             Change(beforeRevision, afterRevision, FileStatus.MODIFIED)
         } catch (e: Exception) {
             logger.warn("Failed to create unsaved document change for '${file.path}' against '$targetRevision'", e)
@@ -563,27 +762,93 @@ class GitService(private val project: Project) {
         val relativePath = VfsUtilCore.getRelativePath(file, repository.root, '/')
             ?: throw IllegalStateException("Could not calculate relative path for file '${file.path}' against repo root '${repository.root.path}'.")
 
-        val revisionContentBytes = GitFileUtils.getFileContent(project, repository.root, revision, relativePath)
-        val rawContent = org.apache.commons.io.input.BOMInputStream.builder()
-            .setInputStream(java.io.ByteArrayInputStream(revisionContentBytes))
-            .setByteOrderMarks(
-                org.apache.commons.io.ByteOrderMark.UTF_8,
-                org.apache.commons.io.ByteOrderMark.UTF_16LE,
-                org.apache.commons.io.ByteOrderMark.UTF_16BE,
-                org.apache.commons.io.ByteOrderMark.UTF_32LE,
-                org.apache.commons.io.ByteOrderMark.UTF_32BE
-            )
-            .get()
-            .use {
-                it.reader(file.charset).readText()
-            }
-
-        // The IntelliJ Document model requires LF ('\n') line endings, but Git on Windows might return CRLF ('\r\n').
-        val normalizedContent = StringUtil.convertLineSeparators(rawContent)
+        val normalizedContent = loadRevisionTextContent(project, repository.root, revision, relativePath, file.charset)
 
         logger.info("GUTTER_GIT_SERVICE: Successfully fetched content for '${relativePath}' in revision '${revision}'.")
         return normalizedContent
     }
+}
+
+internal fun calculateLineStats(beforeContent: String, afterContent: String): ChangeLineStats {
+    val fragments = ComparisonManager.getInstance().compareLines(
+        beforeContent,
+        afterContent,
+        ComparisonPolicy.DEFAULT,
+        DumbProgressIndicator.INSTANCE
+    ).toList()
+    return ChangeLineStats(
+        addedLines = fragments.sumOf { it.endLine2 - it.startLine2 },
+        removedLines = fragments.sumOf { it.endLine1 - it.startLine1 }
+    )
+}
+
+internal fun createLiveDocumentContentRevision(file: VirtualFile): ContentRevision {
+    val filePath = VcsUtil.getFilePath(file)
+    val content = ApplicationManager.getApplication().runReadAction<String> {
+        FileDocumentManager.getInstance().getDocument(file)?.immutableCharSequence?.toString()
+            ?: VfsUtilCore.loadText(file)
+    }
+
+    return object : ContentRevision {
+        override fun getFile(): com.intellij.openapi.vcs.FilePath = filePath
+
+        override fun getContent(): String = content
+
+        override fun getRevisionNumber(): VcsRevisionNumber = object : VcsRevisionNumber {
+            override fun asString(): String = "LOCAL"
+
+            override fun compareTo(other: VcsRevisionNumber): Int = 0
+        }
+    }
+}
+
+internal fun createTargetContentRevision(
+    project: Project,
+    repo: GitRepository,
+    file: VirtualFile,
+    revision: String
+): ContentRevision? {
+    val filePath = VcsUtil.getFilePath(file)
+    val relativePath = VfsUtilCore.getRelativePath(file, repo.root, '/') ?: return null
+    val content = runCatching {
+        loadRevisionTextContent(project, repo.root, revision, relativePath, file.charset)
+    }.getOrElse {
+        return null
+    }
+
+    return object : ContentRevision {
+        override fun getFile(): com.intellij.openapi.vcs.FilePath = filePath
+
+        override fun getContent(): String = content
+
+        override fun getRevisionNumber(): VcsRevisionNumber = GitRevisionNumber(revision)
+    }
+}
+
+internal fun loadRevisionTextContent(
+    project: Project,
+    repoRoot: VirtualFile,
+    revision: String,
+    relativePath: String,
+    charset: Charset
+): String {
+    val revisionContentBytes = GitFileUtils.getFileContent(project, repoRoot, revision, relativePath)
+    val rawContent = org.apache.commons.io.input.BOMInputStream.builder()
+        .setInputStream(java.io.ByteArrayInputStream(revisionContentBytes))
+        .setByteOrderMarks(
+            org.apache.commons.io.ByteOrderMark.UTF_8,
+            org.apache.commons.io.ByteOrderMark.UTF_16LE,
+            org.apache.commons.io.ByteOrderMark.UTF_16BE,
+            org.apache.commons.io.ByteOrderMark.UTF_32LE,
+            org.apache.commons.io.ByteOrderMark.UTF_32BE
+        )
+        .get()
+        .use {
+            it.reader(charset).readText()
+        }
+
+    // The IntelliJ Document model requires LF ('\n') line endings, but Git on Windows might return CRLF ('\r\n').
+    return StringUtil.convertLineSeparators(rawContent)
 }
 
 internal fun mergeUnsavedOverlayChange(existingChange: Change?, unsavedChange: Change): Change {

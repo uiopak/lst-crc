@@ -37,6 +37,7 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
         private const val SHOW_WIDGET_CONTEXT_KEY = "com.github.uiopak.lstcrc.app.showWidgetContext"
         private const val SHOW_CONTEXT_SINGLE_REPO_KEY = "com.github.uiopak.lstcrc.app.showContextSingleRepo"
         private const val SHOW_CONTEXT_FOR_COMMITS_KEY = "com.github.uiopak.lstcrc.app.showContextForCommits"
+        private const val SHOW_LINE_STATS_IN_TREE_KEY = "com.github.uiopak.lstcrc.app.showLineStatsInTree"
         private const val EXPAND_NEW_FILES_IN_COLLAPSED_DIRS_KEY = "com.github.uiopak.lstcrc.app.expandNewFilesInCollapsedDirs"
         private const val SHOW_UNTRACKED_FILES_AS_NEW_KEY = "com.github.uiopak.lstcrc.app.showUntrackedFilesAsNew"
     }
@@ -732,11 +733,12 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
         }
     }
 
-    fun setTreeContextSettings(showSingleRepo: Boolean? = null, showCommits: Boolean? = null) {
+    fun setTreeContextSettings(showSingleRepo: Boolean? = null, showCommits: Boolean? = null, showLineStats: Boolean? = null) {
         step("Update tree context settings") {
-            check(showSingleRepo != null || showCommits != null) { "At least one tree context setting must be provided" }
+            check(showSingleRepo != null || showCommits != null || showLineStats != null) { "At least one tree context setting must be provided" }
             showSingleRepo?.let { setPluginBooleanSetting(SHOW_CONTEXT_SINGLE_REPO_KEY, it, true) }
             showCommits?.let { setPluginBooleanSetting(SHOW_CONTEXT_FOR_COMMITS_KEY, it, false) }
+            showLineStats?.let { setPluginBooleanSetting(SHOW_LINE_STATS_IN_TREE_KEY, it, false) }
             runJs(
                 """
                 (function() {
@@ -793,7 +795,8 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
                 (function() {
                     const properties = com.intellij.ide.util.PropertiesComponent.getInstance();
                     return String(properties.getBoolean('$SHOW_CONTEXT_SINGLE_REPO_KEY', true)) + "|" +
-                        String(properties.getBoolean('$SHOW_CONTEXT_FOR_COMMITS_KEY', false));
+                        String(properties.getBoolean('$SHOW_CONTEXT_FOR_COMMITS_KEY', false)) + "|" +
+                        String(properties.getBoolean('$SHOW_LINE_STATS_IN_TREE_KEY', false));
                 })();
                 """.trimIndent(),
                 true

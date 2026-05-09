@@ -28,6 +28,7 @@ class ProjectActiveDiffDataService(private val project: Project) : Disposable {
         val movedFiles: List<VirtualFile>,
         val deletedFiles: List<VirtualFile>,
         val activeComparisonContext: Map<String, String>,
+        val lineStatsByChange: Map<ChangeLineStatsKey, ChangeLineStats>,
         val createdFilesSet: Set<VirtualFile>,
         val createdFilePaths: Set<String>,
         val modifiedFilesSet: Set<VirtualFile>,
@@ -48,7 +49,8 @@ class ProjectActiveDiffDataService(private val project: Project) : Disposable {
                 modifiedFiles: List<VirtualFile>,
                 movedFiles: List<VirtualFile>,
                 deletedFiles: List<VirtualFile>,
-                activeComparisonContext: Map<String, String>
+                activeComparisonContext: Map<String, String>,
+                lineStatsByChange: Map<ChangeLineStatsKey, ChangeLineStats>
             ): ActiveDiffSnapshot {
                 val createdSet = createdFiles.toSet()
                 val modifiedSet = modifiedFiles.toSet()
@@ -64,6 +66,7 @@ class ProjectActiveDiffDataService(private val project: Project) : Disposable {
                     movedFiles = movedFiles,
                     deletedFiles = deletedFiles,
                     activeComparisonContext = activeComparisonContext,
+                    lineStatsByChange = lineStatsByChange,
                     createdFilesSet = createdSet,
                     createdFilePaths = createdPaths,
                     modifiedFilesSet = modifiedSet,
@@ -82,7 +85,8 @@ class ProjectActiveDiffDataService(private val project: Project) : Disposable {
                 modifiedFiles = emptyList(),
                 movedFiles = emptyList(),
                 deletedFiles = emptyList(),
-                activeComparisonContext = emptyMap()
+                activeComparisonContext = emptyMap(),
+                lineStatsByChange = emptyMap()
             )
         }
     }
@@ -104,6 +108,8 @@ class ProjectActiveDiffDataService(private val project: Project) : Disposable {
         get() = snapshot.deletedFiles
     val activeComparisonContext: Map<String, String>
         get() = snapshot.activeComparisonContext
+    val lineStatsByChange: Map<ChangeLineStatsKey, ChangeLineStats>
+        get() = snapshot.lineStatsByChange
     val createdFilesSet: Set<VirtualFile>
         get() = snapshot.createdFilesSet
     val createdFilePaths: Set<String>
@@ -129,7 +135,8 @@ class ProjectActiveDiffDataService(private val project: Project) : Disposable {
         modifiedFilesFromEvent: List<VirtualFile>,
         movedFilesFromEvent: List<VirtualFile>,
         deletedFilesFromEvent: List<VirtualFile>,
-        comparisonContextFromEvent: Map<String, String>
+        comparisonContextFromEvent: Map<String, String>,
+        lineStatsByChangeFromEvent: Map<ChangeLineStatsKey, ChangeLineStats> = emptyMap()
     ) {
         val currentToolWindowBranch = project.service<ToolWindowStateService>().getSelectedTabBranchName()
         logger.debug("updateActiveDiff called. Event branch: '$branchNameFromEvent'. Current tool window branch: '$currentToolWindowBranch'.")
@@ -151,7 +158,8 @@ class ProjectActiveDiffDataService(private val project: Project) : Disposable {
                     modifiedFiles = modifiedFilesFromEvent,
                     movedFiles = movedFilesFromEvent,
                     deletedFiles = deletedFilesFromEvent,
-                    activeComparisonContext = comparisonContextFromEvent
+                    activeComparisonContext = comparisonContextFromEvent,
+                    lineStatsByChange = lineStatsByChangeFromEvent
                 )
 
                 notifyAffectedFiles(previousFiles + snapshot.allFiles)

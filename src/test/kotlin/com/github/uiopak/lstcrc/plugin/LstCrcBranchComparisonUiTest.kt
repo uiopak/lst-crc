@@ -1,12 +1,14 @@
 package com.github.uiopak.lstcrc.plugin
 
 import com.automation.remarks.junit5.Video
+import com.github.uiopak.lstcrc.plugin.pages.IdeaFrame
 import com.github.uiopak.lstcrc.plugin.pages.gitChangesView
 import com.github.uiopak.lstcrc.plugin.pages.branchSelection
 import com.github.uiopak.lstcrc.plugin.pages.idea
 import com.github.uiopak.lstcrc.plugin.steps.PluginUiTestSteps
 import com.intellij.remoterobot.RemoteRobot
 import com.intellij.remoterobot.stepsProcessing.step
+import com.intellij.remoterobot.utils.WaitForConditionTimeoutException
 import com.intellij.remoterobot.utils.keyboard
 import com.intellij.remoterobot.utils.waitFor
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -292,6 +294,69 @@ class LstCrcBranchComparisonUiTest : LstCrcUiTestSupport() {
                         changesTree.findAllText("Main.txt").isNotEmpty()
                     }
                 }
+            }
+        }
+    }
+
+    @Test
+    @Video
+    fun testUnsavedSingleCharacterEditsUpdateLineStatsImmediatelyAcrossMultipleLines(remoteRobot: RemoteRobot) = with(remoteRobot) {
+        val uiSteps = PluginUiTestSteps(remoteRobot)
+
+        prepareFreshProject()
+
+        idea {
+            step("Wait for smart mode") {
+                dumbAware(Duration.ofMinutes(5)) {}
+            }
+
+            uiSteps.initializeGitRepository()
+            resetGitChangesViewState()
+
+            val initialContent = (1..10).joinToString(separator = "\n", postfix = "\n") { index ->
+                "line $index"
+            }
+            uiSteps.createNewFile("Main.txt", initialContent)
+            uiSteps.commitChanges("Initial commit")
+
+            openGitChangesView()
+            setTreeContextSettings(showLineStats = true)
+
+            focusEditorFile("Main.txt")
+
+            step("Type once on line 2 and show one changed line") {
+                moveCaretToLineEnd(1)
+                insertSingleCharacterAtCaretWithoutSave()
+                waitForMainFileLineStats(1)
+            }
+
+            step("Type once on line 4 and show two changed lines") {
+                moveCaretToLineEnd(3)
+                insertSingleCharacterAtCaretWithoutSave()
+                waitForMainFileLineStats(2)
+            }
+
+            step("Type once on line 5 and show three changed lines") {
+                moveCaretToLineEnd(4)
+                insertSingleCharacterAtCaretWithoutSave()
+                waitForMainFileLineStats(3)
+            }
+
+            step("Type once on line 6 and show four changed lines") {
+                moveCaretToLineEnd(5)
+                insertSingleCharacterAtCaretWithoutSave()
+                waitForMainFileLineStats(4)
+            }
+
+            step("Type once on line 7 and show five changed lines") {
+                moveCaretToLineEnd(6)
+                insertSingleCharacterAtCaretWithoutSave()
+                waitForMainFileLineStats(5)
+            }
+
+            step("Type again on line 7 and keep five changed lines") {
+                insertSingleCharacterAtCaretWithoutSave()
+                waitForMainFileLineStats(5)
             }
         }
     }
@@ -1096,6 +1161,15 @@ class LstCrcBranchComparisonUiTest : LstCrcUiTestSupport() {
     private fun RemoteRobot.modifyFileWithoutSave(fileName: String, content: String) {
         val typedContent = content.trimEnd('\r', '\n')
 
+        focusEditorFile(fileName)
+
+        keyboard {
+            hotKey(KeyEvent.VK_CONTROL, KeyEvent.VK_A)
+            enterText(typedContent)
+        }
+    }
+
+    private fun RemoteRobot.focusEditorFile(fileName: String) {
         idea {
             openFile(fileName)
         }
@@ -1116,11 +1190,243 @@ class LstCrcBranchComparisonUiTest : LstCrcUiTestSupport() {
             """.trimIndent(),
             false
         )
+    }
 
-        keyboard {
-            hotKey(KeyEvent.VK_CONTROL, KeyEvent.VK_A)
-            enterText(typedContent)
+    private fun RemoteRobot.moveCaretToLineEnd(lineIndex: Int) {
+        runJs(
+            """
+            const project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
+            if (project) {
+                com.intellij.openapi.application.ApplicationManager.getApplication().invokeAndWait(new java.lang.Runnable({
+                    run: function() {
+                        const editor = com.intellij.openapi.fileEditor.FileEditorManager.getInstance(project).getSelectedTextEditor();
+                        if (!editor) {
+                            return;
+                        }
+
+                        const document = editor.getDocument();
+                        const safeLine = Math.max(0, Math.min($lineIndex, document.getLineCount() - 1));
+                        const offset = document.getLineEndOffset(safeLine);
+                        editor.getCaretModel().moveToOffset(offset);
+                        editor.getScrollingModel().scrollToCaret(com.intellij.openapi.editor.ScrollType.CENTER);
+                        editor.getContentComponent().requestFocusInWindow();
+                    }
+                }));
+            }
+            """.trimIndent(),
+            false
+        )
+    }
+
+    private fun RemoteRobot.insertSingleCharacterAtCaretWithoutSave() {
+        val textLiteral = toJsStringLiteral("a")
+        runJs(
+            """
+            const project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
+            if (project) {
+                com.intellij.openapi.application.ApplicationManager.getApplication().invokeAndWait(new java.lang.Runnable({
+                    run: function() {
+                        const editor = com.intellij.openapi.fileEditor.FileEditorManager.getInstance(project).getSelectedTextEditor();
+                        if (!editor) {
+                            return;
+                        }
+
+                        const document = editor.getDocument();
+                        const caretModel = editor.getCaretModel();
+                        const offset = caretModel.getOffset();
+                        const text = $textLiteral;
+
+                        com.intellij.openapi.command.WriteCommandAction.runWriteCommandAction(project, new java.lang.Runnable({
+                            run: function() {
+                                document.insertString(offset, text);
+                                caretModel.moveToOffset(offset + text.length);
+                            }
+                        }));
+
+                        editor.getScrollingModel().scrollToCaret(com.intellij.openapi.editor.ScrollType.CENTER);
+                        editor.getContentComponent().requestFocusInWindow();
+                    }
+                }));
+            }
+            """.trimIndent(),
+            false
+        )
+    }
+
+    private fun RemoteRobot.currentBrowserLineStatsSnapshot(): String = callJs(
+        """
+        (function() {
+            const project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
+            if (!project) return "project=missing";
+
+            const toolWindow = com.intellij.openapi.wm.ToolWindowManager.getInstance(project).getToolWindow("GitChangesView");
+            const browser = toolWindow && toolWindow.getContentManager().getSelectedContent()
+                ? toolWindow.getContentManager().getSelectedContent().getComponent()
+                : null;
+            if (!browser) return "browser=missing";
+
+            const browserClass = browser.getClass();
+            const field = browserClass.getDeclaredField("currentChanges");
+            field.setAccessible(true);
+            const currentChanges = field.get(browser);
+            if (!currentChanges) return "currentChanges=null";
+
+            const lineStatsByChange = currentChanges.getLineStatsByChange();
+            const entries = [];
+            const it = lineStatsByChange.entrySet().iterator();
+            while (it.hasNext()) {
+                const entry = it.next();
+                const key = entry.getKey();
+                const stats = entry.getValue();
+                const path = String(key.getAfterPath() || key.getBeforePath() || "");
+                entries.push(path + ":+" + String(stats.getAddedLines()) + "/-" + String(stats.getRemovedLines()));
+            }
+            entries.sort();
+            return entries.join(",");
+        })();
+        """.trimIndent(),
+        true
+    )
+
+    private fun IdeaFrame.waitForMainFileLineStats(changedLineCount: Int) {
+        val fileName = "Main.txt"
+        val expectedAdded = "+$changedLineCount"
+        val expectedRemoved = "-$changedLineCount"
+
+        try {
+            var renderedMetadata: String
+            waitFor(Duration.ofSeconds(10), interval = Duration.ofMillis(100)) {
+                renderedMetadata = remoteRobot.renderedMainFileMetadata()
+                selectedChangesTreeContains(fileName) &&
+                    renderedMetadata.contains(expectedAdded) &&
+                    renderedMetadata.contains(expectedRemoved)
+            }
+        } catch (_: WaitForConditionTimeoutException) {
+            val debugSnapshot = "settings=${treeContextSettingsSnapshot()} diff=${activeDiffSnapshot()} browserStats=${remoteRobot.currentBrowserLineStatsSnapshot()} rendered=${remoteRobot.renderedMainFileMetadata()}"
+            assertTrue(
+                false,
+                "Expected $fileName to render $expectedAdded/$expectedRemoved immediately after the edit. $debugSnapshot"
+            )
         }
+    }
+
+    private fun RemoteRobot.renderedMainFileMetadata(): String {
+        val fileNameLiteral = toJsStringLiteral("Main.txt")
+        return callJs(
+            """
+            (function() {
+                var result = new java.util.concurrent.atomic.AtomicReference("");
+                function findTree() {
+                    var windows = java.awt.Window.getWindows();
+                    for (var w = 0; w < windows.length; w++) {
+                        var queue = new java.util.LinkedList();
+                        queue.add(windows[w]);
+                        while (!queue.isEmpty()) {
+                            var component = queue.poll();
+                            if (component && component.getClass().getName().endsWith("LstCrcAsyncChangesTree") && component.isShowing()) {
+                                return component;
+                            }
+                            if (!component) continue;
+                            try {
+                                var children = component.getComponents();
+                                if (children) {
+                                    for (var ci = 0; ci < children.length; ci++) {
+                                        queue.add(children[ci]);
+                                    }
+                                }
+                            } catch (ignored) {}
+                        }
+                    }
+                    return null;
+                }
+
+                function findDeclaredField(instance, fieldName) {
+                    var cls = instance.getClass();
+                    while (cls) {
+                        try {
+                            var field = cls.getDeclaredField(fieldName);
+                            field.setAccessible(true);
+                            return field;
+                        } catch (ignored) {
+                            cls = cls.getSuperclass();
+                        }
+                    }
+                    return null;
+                }
+
+                function fragmentText(component) {
+                    if (!component) return "";
+                    var fragmentsField = findDeclaredField(component, "myFragments");
+                    if (!fragmentsField) return "";
+                    var fragments = fragmentsField.get(component);
+                    if (!fragments) return "";
+
+                    var values = [];
+                    var iterator = fragments.iterator();
+                    while (iterator.hasNext()) {
+                        var fragment = iterator.next();
+                        var textField = findDeclaredField(fragment, "myText") || findDeclaredField(fragment, "text");
+                        if (textField) {
+                            values.push(String(textField.get(fragment)));
+                        }
+                    }
+                    return values.join("");
+                }
+
+                com.intellij.openapi.application.ApplicationManager.getApplication().invokeAndWait(new java.lang.Runnable({
+                    run: function() {
+                        var tree = findTree();
+                        if (!tree) {
+                            result.set("tree=missing");
+                            return;
+                        }
+                        var renderer = tree.getCellRenderer();
+                        if (!renderer) {
+                            result.set("renderer=missing");
+                            return;
+                        }
+
+                        for (var row = 0; row < tree.getRowCount(); row++) {
+                            var path = tree.getPathForRow(row);
+                            if (!path) continue;
+                            var node = path.getLastPathComponent();
+                            if (!node) continue;
+                            var userObject = node.getUserObject ? node.getUserObject() : null;
+                            var change = userObject instanceof com.intellij.openapi.vcs.changes.Change ? userObject : null;
+                            if (!change) continue;
+
+                            var candidate = change.getAfterRevision() ? change.getAfterRevision().getFile().getName() : null;
+                            if (!candidate && change.getBeforeRevision()) {
+                                candidate = change.getBeforeRevision().getFile().getName();
+                            }
+                            if (String(candidate || "") !== $fileNameLiteral) continue;
+
+                            renderer.getTreeCellRendererComponent(tree, node, false, tree.isExpanded(row), tree.getModel().isLeaf(node), row, false);
+                            var trailingField = findDeclaredField(renderer, "trailingRenderer");
+                            if (!trailingField) {
+                                result.set("trailing=missing");
+                                return;
+                            }
+                            var trailingRenderer = trailingField.get(renderer);
+                            var fragmentCount = "";
+                            try {
+                                fragmentCount = String(trailingRenderer.getFragmentCount());
+                            } catch (ignored) {
+                                fragmentCount = "unknown";
+                            }
+                            result.set("count=" + fragmentCount + "|text=" + fragmentText(trailingRenderer));
+                            return;
+                        }
+
+                        result.set("row=missing");
+                    }
+                }));
+
+                return result.get();
+            })();
+            """.trimIndent(),
+            true
+        )
     }
 
     @Suppress("SameParameterValue")

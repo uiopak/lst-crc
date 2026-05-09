@@ -9,7 +9,12 @@ import com.intellij.diff.editor.ChainDiffVirtualFile
 import com.intellij.diff.editor.DiffEditorTabFilesManager
 import com.intellij.openapi.ListSelection
 import com.intellij.openapi.Disposable
-import com.intellij.openapi.actionSystem.*
+import com.intellij.openapi.actionSystem.ActionManager
+import com.intellij.openapi.actionSystem.ActionPlaces
+import com.intellij.openapi.actionSystem.ActionUpdateThread
+import com.intellij.openapi.actionSystem.AnAction
+import com.intellij.openapi.actionSystem.AnActionEvent
+import com.intellij.openapi.actionSystem.DefaultActionGroup
 import com.intellij.openapi.actionSystem.UiDataProvider
 import com.intellij.openapi.actionSystem.DataSink
 import com.intellij.openapi.application.EDT
@@ -38,7 +43,9 @@ import com.intellij.openapi.wm.ToolWindowManager
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.psi.PsiManager
 import com.intellij.ui.PopupHandler
+import com.intellij.ui.render.RenderingHelper
 import com.intellij.util.ui.JBUI
+import javax.swing.plaf.basic.BasicTreeUI
 import com.intellij.util.Alarm
 import git4idea.repo.GitRepository
 import git4idea.repo.GitRepositoryChangeListener
@@ -67,6 +74,7 @@ import javax.swing.SwingUtilities
  * It extends [AsyncChangesBrowserBase] to provide a fully custom asynchronous tree model, and
  * highly customized mouse click handling based on user settings.
  */
+@Suppress("JComponentDataProvider")
 @OptIn(FlowPreview::class)
 class LstCrcChangesBrowser(
     private val project: Project,
@@ -174,6 +182,7 @@ class LstCrcChangesBrowser(
         viewer.setCellRenderer(
             RepoNodeRenderer(
                 project,
+                { currentChanges },
                 { viewer.isShowFlatten },
                 viewer.isHighlightProblems
             )
@@ -192,6 +201,7 @@ class LstCrcChangesBrowser(
 
         removeDefaultPopupHandlers()
         installViewerMouseHandling()
+        configureRendererWidthCacheReset()
         configureDynamicToolbarBorder()
     }
 
@@ -228,11 +238,17 @@ class LstCrcChangesBrowser(
      * Extends the standard tree to provide custom colors for deleted files while
      * preserving all native coloring for other file types.
      */
+    @Suppress("JComponentDataProvider")
     private inner class LstCrcAsyncChangesTree(
         project: Project,
         showCheckboxes: Boolean,
         highlightProblems: Boolean
     ) : AsyncChangesTree(project, showCheckboxes, highlightProblems), UiDataProvider {
+
+        init {
+            putClientProperty(RenderingHelper.SHRINK_LONG_RENDERER, true)
+            putClientProperty(RenderingHelper.SHRINK_LONG_SELECTION, true)
+        }
 
         override fun uiDataSnapshot(sink: DataSink) {
             super.uiDataSnapshot(sink)
@@ -664,6 +680,34 @@ class LstCrcChangesBrowser(
         scrollPane.addComponentListener(object : ComponentAdapter() {
             override fun componentResized(e: ComponentEvent?) {
                 updateToolbarBorder()
+            }
+        })
+    }
+
+    private fun configureRendererWidthCacheReset() {
+        val scrollPane = viewerScrollPane
+        val resetRendererWidthCache = {
+            val treeUI = viewer.ui
+            if (treeUI is BasicTreeUI) {
+                treeUI.setLeftChildIndent(treeUI.leftChildIndent)
+            }
+            viewer.revalidate()
+            viewer.repaint()
+        }
+
+        ApplicationManager.getApplication().invokeLater {
+            if (!project.isDisposed) {
+                resetRendererWidthCache()
+            }
+        }
+
+        scrollPane.viewport.addComponentListener(object : ComponentAdapter() {
+            override fun componentResized(e: ComponentEvent?) {
+                resetRendererWidthCache()
+            }
+
+            override fun componentShown(e: ComponentEvent?) {
+                resetRendererWidthCache()
             }
         })
     }

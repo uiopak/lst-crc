@@ -184,7 +184,8 @@ class ToolWindowStateService(private val project: Project, val coroutineScope: C
                 categorizedChanges.modifiedFiles,
                 categorizedChanges.movedFiles,
                 categorizedChanges.deletedFiles,
-                categorizedChanges.comparisonContext
+                categorizedChanges.comparisonContext,
+                categorizedChanges.lineStatsByChange
             )
             return
         }

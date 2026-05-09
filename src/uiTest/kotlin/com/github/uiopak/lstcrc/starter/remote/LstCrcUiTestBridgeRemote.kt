@@ -58,7 +58,7 @@ interface LstCrcUiTestBridgeRemote {
     fun setGutterSettings(enableMarkers: Boolean?, enableForNewFiles: Boolean?)
     fun setExpandNewFilesInCollapsedDirs(enabled: Boolean)
     fun setShowUntrackedFilesAsNew(enabled: Boolean)
-    fun setTreeContextSettings(showSingleRepo: Boolean?, showCommits: Boolean?)
+    fun setTreeContextSettings(showSingleRepo: Boolean? = null, showCommits: Boolean? = null, showLineStats: Boolean? = null)
     fun setMultiRepoTreeContextSetting(show: Boolean)
     fun isMultiRepoTreeContextEnabled(): Boolean
     fun treeContextSettingsSnapshot(): String
