@@ -320,6 +320,9 @@ class LstCrcBranchComparisonUiTest : LstCrcUiTestSupport() {
             uiSteps.commitChanges("Initial commit")
 
             openGitChangesView()
+            gitChangesView {
+                selectTab("HEAD")
+            }
             setTreeContextSettings(showLineStats = true)
 
             focusEditorFile("Main.txt")
@@ -1230,7 +1233,6 @@ class LstCrcBranchComparisonUiTest : LstCrcUiTestSupport() {
                         if (!editor) {
                             return;
                         }
-
                         const document = editor.getDocument();
                         const caretModel = editor.getCaretModel();
                         const offset = caretModel.getOffset();

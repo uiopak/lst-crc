@@ -453,9 +453,53 @@ jobs:
         if: always()
         shell: bash
         run: |
-          echo "## UI Test Results for ${{ matrix.os }}" >> $GITHUB_STEP_SUMMARY
-          if [ "${{ job.status }}" = "success" ]; then
-            echo "✅ All tests passed" >> $GITHUB_STEP_SUMMARY
+          echo "## UI Test Results for ${{ matrix.os }}" >> "$GITHUB_STEP_SUMMARY"
+
+          mapfile -d '' junit_files < <(find build/test-results -type f -name 'TEST-*.xml' -print0 2>/dev/null)
+
+          if [ "${#junit_files[@]}" -eq 0 ]; then
+            echo "No JUnit XML files found under build/test-results." >> "$GITHUB_STEP_SUMMARY"
+            if [ "${{ job.status }}" = "success" ]; then
+              echo "✅ Job status: success" >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "❌ Job status: failure" >> "$GITHUB_STEP_SUMMARY"
+            fi
+            exit 0
+          fi
+
+          total_tests=0
+          total_failures=0
+          total_errors=0
+          total_skipped=0
+
+          for file in "${junit_files[@]}"; do
+            tests=$(grep -Eo 'tests="[0-9]+"' "$file" | head -n1 | grep -Eo '[0-9]+' || echo 0)
+            failures=$(grep -Eo 'failures="[0-9]+"' "$file" | head -n1 | grep -Eo '[0-9]+' || echo 0)
+            errors=$(grep -Eo 'errors="[0-9]+"' "$file" | head -n1 | grep -Eo '[0-9]+' || echo 0)
+            skipped=$(grep -Eo 'skipped="[0-9]+"' "$file" | head -n1 | grep -Eo '[0-9]+' || echo 0)
+
+            total_tests=$((total_tests + tests))
+            total_failures=$((total_failures + failures))
+            total_errors=$((total_errors + errors))
+            total_skipped=$((total_skipped + skipped))
+          done
+
+          total_failed=$((total_failures + total_errors))
+          total_passed=$((total_tests - total_failed - total_skipped))
+
+          if [ "$total_passed" -lt 0 ]; then
+            total_passed=0
+          fi
+
+          echo "| Metric | Count |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|---|---:|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Passed | $total_passed |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Failed | $total_failed |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Skipped | $total_skipped |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Total | $total_tests |" >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$total_failed" -eq 0 ] && [ "${{ job.status }}" = "success" ]; then
+            echo "✅ All tests passed" >> "$GITHUB_STEP_SUMMARY"
           else
-            echo "❌ Tests failed — see job logs for details" >> $GITHUB_STEP_SUMMARY
+            echo "❌ Tests failed — see job logs for details" >> "$GITHUB_STEP_SUMMARY"
           fi
