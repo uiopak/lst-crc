@@ -29,18 +29,16 @@ import javax.swing.JPanel
 
 /**
  * A context menu action (right-click on a tab) for renaming a closable comparison tab.
- * Resolves the [Content] for the right-clicked tab using [BaseLabel.getContent],
- * matching how the platform itself resolves Content from tab components.
+ * Resolves the [Content] for the right-clicked tab through [ToolWindowUiCompatibility],
+ * keeping the action independent from internal tool-window label classes.
  */
 class RenameTabAction : AnAction() {
 
     private val logger = thisLogger()
 
     /**
-     * Finds the [Content] associated with the right-clicked tab label by walking up
-     * the component hierarchy to find a [BaseLabel], then calling its public
-     * [BaseLabel.getContent] method. This mirrors the platform's own approach
-     * in `ToolWindowContentUi`.
+     * Finds the [Content] associated with the right-clicked tab label by delegating
+     * the component lookup to [ToolWindowUiCompatibility].
      */
     private fun findContent(source: Component?): Content? {
         val content = ToolWindowUiCompatibility.findContentFromContextComponent(source)

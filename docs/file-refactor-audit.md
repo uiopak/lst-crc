@@ -159,7 +159,7 @@ This document correlates each production file with the JetBrains Platform APIs a
 ### ToolWindowSettingsProvider.kt
 - JetBrains correlation: Typed app-level settings storage via `LstCrcSettingsService` plus toggle-action menu building, with one contained use of internal tool-window UI classes.
 - Keep assessment: Keep it; centralized settings are the right design.
-- Simplify or remove: The strongest cleanup targets are repetitive toggle factories and direct access from tests. The internal `ToolWindowContentUi` coupling should be watched during IDE upgrades.
+- Simplify or remove: The strongest cleanup targets are repetitive toggle factories and direct access from tests. The remaining internal tool-window UI coupling is now isolated behind `ToolWindowUiCompatibility` and should be watched during IDE upgrades.
 
 ### OpenBranchSelectionTabAction.kt
 - JetBrains correlation: Straightforward `DumbAwareAction` used in a tool-window toolbar.
@@ -192,9 +192,9 @@ This document correlates each production file with the JetBrains Platform APIs a
 - Simplify or remove: No significant simplification stood out. The current branching mostly reflects genuine single-repo versus multi-repo behavior.
 
 ### RenameTabAction.kt
-- JetBrains correlation: Standard action plus popup balloon usage, but it also reaches into an internal tab-label class.
+- JetBrains correlation: Standard action plus popup balloon usage, with internal tab-label lookup delegated through `ToolWindowUiCompatibility`.
 - Keep assessment: Keep the feature, not necessarily the exact implementation.
-- Simplify or remove: This is one of the clearer cleanup candidates. Replacing the custom inline balloon with a more standard input flow would reduce reliance on `BaseLabel` and internal component traversal.
+- Simplify or remove: This is one of the clearer cleanup candidates. Replacing the custom inline balloon with a more standard input flow would further reduce reliance on internal tab-label traversal.
 
 ## Test Support
 

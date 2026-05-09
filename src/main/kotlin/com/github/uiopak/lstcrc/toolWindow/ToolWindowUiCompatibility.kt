@@ -9,7 +9,7 @@ import com.intellij.ui.content.impl.ContentManagerImpl
 import java.awt.Component
 
 /**
- * Centralizes unavoidable dependencies on ToolWindow impl UI classes in one place.
+ * Centralizes the plugin's unavoidable dependencies on internal tool-window UI classes.
  */
 internal object ToolWindowUiCompatibility {
 

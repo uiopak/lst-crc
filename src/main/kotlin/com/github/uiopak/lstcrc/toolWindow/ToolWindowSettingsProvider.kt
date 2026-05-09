@@ -5,7 +5,6 @@ import com.github.uiopak.lstcrc.resources.LstCrcBundle
 import com.github.uiopak.lstcrc.services.GitService
 import com.github.uiopak.lstcrc.gutters.VisualTrackerManager
 import com.github.uiopak.lstcrc.services.ToolWindowStateService
-import com.intellij.ide.util.PropertiesComponent
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.actionSystem.ActionGroup
 import com.intellij.openapi.actionSystem.ActionUpdateThread
@@ -18,7 +17,9 @@ import javax.swing.UIManager
 
 /**
  * Provides the actions for the tool window's "gear" (options) menu. This class centralizes
- * all user-configurable settings, which are stored at the application level in [PropertiesComponent].
+ * all user-configurable settings. Values are read and written through [LstCrcSettingsService],
+ * which persists them in application-level state and mirrors legacy PropertiesComponent keys
+ * during the staged migration.
  */
 object ToolWindowSettingsProvider {
 
@@ -344,8 +345,8 @@ object ToolWindowSettingsProvider {
 
     /**
      * Updates the tool window's ID label visibility and refreshes the header UI.
-     * Wraps usage of impl-package APIs ([ToolWindowContentUi], [ContentManagerImpl])
-     * in one place for easier maintenance if public alternatives become available.
+     * Delegates the impl-package details to ToolWindowUiCompatibility so this
+     * settings provider stays isolated from internal tool-window UI classes.
      */
     private fun updateToolWindowTitleVisibility(e: AnActionEvent, showTitle: Boolean) {
         val toolWindow = e.getData(PlatformDataKeys.TOOL_WINDOW) ?: return

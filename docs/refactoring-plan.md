@@ -21,7 +21,7 @@ Already completed in this branch (do not re-plan):
 1. Test-only hooks removed from production browser, bridge moved to src/testBridge.
 2. NamedScopeWrapper deleted, search scopes use GlobalSearchScopesCore.filterScope.
 3. BranchSelectionPanel keeps the explicit search field and custom branch filter flow; native tree speed search is not an acceptable replacement for this UI.
-4. VfsListenerService removed; refresh pipeline consolidated on VcsChangeListener + ToolWindowStateService.
+4. Refresh orchestration is centered on VcsChangeListener + ToolWindowStateService, while VfsListenerService remains as the file-system bridge that marks VCS state dirty.
 5. Settings migrated to typed LstCrcSettingsService with compatibility mirror.
 6. Startup flow consolidated to one refresh path plus one final sync.
 7. Existing unavoidable impl references isolated in ToolWindowUiCompatibility.
