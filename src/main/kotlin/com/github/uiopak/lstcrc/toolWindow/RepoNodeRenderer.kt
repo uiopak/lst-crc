@@ -53,7 +53,14 @@ class RepoNodeRenderer(
         return targetRevision.takeUnless { GitUtil.isHashString(it, false) && !showForCommits }
     }
 
-    private fun configureTrailingRenderer(lineStats: ChangeLineStats?, targetRevision: String?) {
+    private fun appendContextToTextRenderer(targetRevision: String?) {
+        targetRevision?.let {
+            textRenderer.append(FontUtil.spaceAndThinSpace())
+            textRenderer.append("(vs $it)", SimpleTextAttributes.GRAYED_ATTRIBUTES)
+        }
+    }
+
+    private fun configureTrailingRenderer(lineStats: ChangeLineStats?) {
         trailingRenderer.clear()
 
         if (ToolWindowSettingsProvider.isShowLineStatsInTree() && lineStats != null) {
@@ -72,13 +79,6 @@ class RepoNodeRenderer(
                     REMOVED_LINE_STATS_ATTRIBUTES
                 )
             }
-        }
-
-        targetRevision?.let {
-            if (trailingRenderer.fragmentCount > 0) {
-                trailingRenderer.append(FontUtil.spaceAndThinSpace())
-            }
-            trailingRenderer.append("(vs $it)", SimpleTextAttributes.GRAYED_ATTRIBUTES)
         }
 
         trailingRenderer.isVisible = trailingRenderer.fragmentCount > 0
@@ -115,7 +115,8 @@ class RepoNodeRenderer(
         val lineStats = (node.userObject as? Change)?.let { lineStatsByChange[ChangeLineStatsKey.from(it)] }
             ?: aggregateLineStatsForNode(node, lineStatsByChange)
 
-        configureTrailingRenderer(lineStats, targetRevision)
+        appendContextToTextRenderer(targetRevision)
+        configureTrailingRenderer(lineStats)
         updateRendererInsets(trailingRenderer.isVisible)
 
         trailingRenderer.background = textRenderer.background
@@ -200,6 +201,7 @@ internal fun buildTrailingMetadataText(
     showLineStats: Boolean
 ): String? {
     val fragments = mutableListOf<String>()
+    targetRevision?.let { fragments += "(vs $it)" }
     if (showLineStats && lineStats != null) {
         if (lineStats.addedLines > 0) {
             fragments += "+${lineStats.addedLines}"
@@ -208,7 +210,6 @@ internal fun buildTrailingMetadataText(
             fragments += "-${lineStats.removedLines}"
         }
     }
-    targetRevision?.let { fragments += "(vs $it)" }
     return fragments.takeIf { it.isNotEmpty() }?.joinToString(FontUtil.spaceAndThinSpace())
 }
 

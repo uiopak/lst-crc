@@ -28,7 +28,7 @@ class RepoNodeRendererTest : BasePlatformTestCase() {
     fun testBuildTrailingMetadataTextIncludesVisibleLineStatsAndRevision() {
         val text = buildTrailingMetadataText(ChangeLineStats(addedLines = 3, removedLines = 2), "feature", showLineStats = true)
 
-        assertEquals("+3${FontUtil.spaceAndThinSpace()}-2${FontUtil.spaceAndThinSpace()}(vs feature)", text)
+        assertEquals("(vs feature)${FontUtil.spaceAndThinSpace()}+3${FontUtil.spaceAndThinSpace()}-2", text)
     }
 
     fun testBuildTrailingMetadataTextOmitsLineStatsWhenDisabled() {
