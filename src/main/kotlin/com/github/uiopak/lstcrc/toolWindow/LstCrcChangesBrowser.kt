@@ -19,7 +19,6 @@ import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.DefaultActionGroup
 import com.intellij.openapi.actionSystem.UiDataProvider
-import com.intellij.openapi.actionSystem.DataSink
 import com.intellij.openapi.application.EDT
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.service
@@ -544,7 +543,7 @@ class LstCrcChangesBrowser(
             val delayMs = ToolWindowSettingsProvider.getUserDoubleClickDelayMs().toLong()
             pendingClickJob?.cancel()
             pendingClickJob = debounceScope.launch {
-                kotlinx.coroutines.delay(delayMs)
+                kotlinx.coroutines.delay(delayMs.milliseconds)
                 withContext(Dispatchers.EDT) {
                     performConfiguredAction(change, singleAction)
                 }

@@ -1,12 +1,8 @@
 package com.github.uiopak.lstcrc.toolWindow
 
 import com.intellij.openapi.wm.ToolWindow
-import com.intellij.openapi.wm.impl.content.BaseLabel
 import com.intellij.openapi.wm.impl.content.ToolWindowContentUi
-import com.intellij.ui.ComponentUtil
-import com.intellij.ui.content.Content
 import com.intellij.ui.content.impl.ContentManagerImpl
-import java.awt.Component
 
 /**
  * Centralizes the plugin's unavoidable dependencies on internal tool-window UI classes.

@@ -32,7 +32,7 @@ import javax.swing.JPanel
 /**
  * A context menu action (right-click on a tab) for renaming a closable comparison tab.
  * Resolves the [Content] for the right-clicked tab through [ToolWindowUiCompatibility],
- * keeping the action independent from internal tool-window label classes.
+ * keeping the action independent of internal tool-window label classes.
  */
 class RenameTabAction : AnAction() {
 

@@ -19,7 +19,6 @@ import com.intellij.openapi.components.Storage
 import com.intellij.openapi.components.service
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.wm.ToolWindowManager
 import git4idea.repo.GitRepository
 import com.intellij.openapi.application.EDT
 import kotlinx.coroutines.CoroutineScope
