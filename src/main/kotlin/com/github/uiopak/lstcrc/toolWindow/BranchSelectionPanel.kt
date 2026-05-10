@@ -3,7 +3,6 @@ package com.github.uiopak.lstcrc.toolWindow
 import com.github.uiopak.lstcrc.resources.LstCrcBundle
 import com.github.uiopak.lstcrc.services.BranchSnapshot
 import com.github.uiopak.lstcrc.services.GitService
-import com.github.uiopak.lstcrc.utils.getTreePathForMouseCoordinates
 import com.intellij.icons.AllIcons
 import com.intellij.ui.ColoredTreeCellRenderer
 import com.intellij.ui.SearchTextField
@@ -26,6 +25,13 @@ import javax.swing.event.DocumentEvent
 import javax.swing.event.DocumentListener
 import javax.swing.tree.DefaultMutableTreeNode
 import javax.swing.tree.DefaultTreeModel
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import com.intellij.openapi.application.EDT
 
 /**
  * A UI panel that displays Git branches in a filterable, hierarchical tree, allowing the user to select one.
@@ -45,6 +51,9 @@ class BranchSelectionPanel(
     private val searchTextField = SearchTextField(false)
     private val tree: Tree
     private val fullTreeModel: DefaultTreeModel
+    
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private var filterJob: Job? = null
 
     // Data classes to represent nodes in the tree clearly.
     private data class BranchCategory(val type: BranchCategoryType, val displayName: String)
@@ -73,14 +82,20 @@ class BranchSelectionPanel(
         val searchTerm = searchTextField.text
         tree.putClientProperty("search.term", searchTerm)
 
-        val newModel = if (searchTerm.isBlank()) {
-            fullTreeModel
-        } else {
-            DefaultTreeModel(buildFilteredRoot(searchTerm))
+        filterJob?.cancel()
+        filterJob = scope.launch {
+            val newModel = if (searchTerm.isBlank()) {
+                fullTreeModel
+            } else {
+                DefaultTreeModel(buildFilteredRoot(searchTerm))
+            }
+            
+            withContext(Dispatchers.EDT) {
+                tree.model = newModel
+                TreeUtil.expandAll(tree)
+                refreshSearchSelection(searchTerm)
+            }
         }
-        tree.model = newModel
-        TreeUtil.expandAll(tree)
-        refreshSearchSelection(searchTerm)
     }
 
     private fun buildFilteredRoot(searchTerm: String): DefaultMutableTreeNode {
@@ -252,7 +267,7 @@ class BranchSelectionPanel(
             override fun mouseClicked(e: MouseEvent) {
                 if (e.clickCount < 1) return
 
-                val path = tree.getTreePathForMouseCoordinates(e) ?: return
+                val path = TreeUtil.getPathForLocation(tree, e.x, e.y) ?: return
                 val node = path.lastPathComponent as? DefaultMutableTreeNode ?: return
                 selectBranchNode(node)
             }

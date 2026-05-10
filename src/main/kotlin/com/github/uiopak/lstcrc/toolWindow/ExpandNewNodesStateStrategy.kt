@@ -5,9 +5,10 @@ import com.intellij.openapi.vcs.changes.Change
 import com.intellij.openapi.vcs.changes.ui.ChangesTree
 import com.intellij.openapi.vcs.changes.ui.VcsTreeModelData
 import com.intellij.util.ui.tree.TreeUtil
-import java.lang.reflect.Method
+import com.intellij.openapi.vcs.FilePath
+import com.intellij.openapi.vfs.VirtualFile
+import java.io.File
 import java.util.Comparator
-import java.util.concurrent.ConcurrentHashMap
 import javax.swing.tree.DefaultMutableTreeNode
 import javax.swing.tree.TreePath
 
@@ -26,12 +27,7 @@ class ExpandNewNodesStateStrategy(
     }
 ) : ChangesTree.TreeStateStrategy<ExpandNewNodesStateStrategy.State> {
 
-    private data class UserObjectAccessors(
-        val pathAccessor: Method?,
-        val nameAccessor: Method?
-    )
 
-    private val userObjectAccessorCache = ConcurrentHashMap<Class<*>, UserObjectAccessors>()
 
     data class ChangeKey(
         val firstPath: String?,
@@ -57,26 +53,6 @@ class ExpandNewNodesStateStrategy(
         val collapsedPaths: Set<String>
     )
 
-    private fun resolveUserObjectAccessors(userObject: Any): UserObjectAccessors {
-        return userObjectAccessorCache.computeIfAbsent(userObject.javaClass) { userObjectClass ->
-            val zeroArgMethods = userObjectClass.methods.filter { method -> method.parameterCount == 0 }
-            UserObjectAccessors(
-                pathAccessor = zeroArgMethods.firstOrNull { method ->
-                    method.name == "getPath" || method.name == "path"
-                },
-                nameAccessor = zeroArgMethods.firstOrNull { method ->
-                    method.name == "getName" || method.name == "name"
-                }
-            )
-        }
-    }
-
-    private fun invokeAccessor(userObject: Any, accessor: Method?): String? {
-        return accessor
-            ?.let { method -> runCatching { method.invoke(userObject)?.toString() }.getOrNull() }
-            ?.takeIf(String::isNotBlank)
-    }
-
     private fun userObjectKey(userObject: Any?): String {
         return when (userObject) {
             null -> "null"
@@ -84,22 +60,19 @@ class ExpandNewNodesStateStrategy(
                 val key = userObject.asChangeKey()
                 "change:${key.firstPath}|${key.secondPath}"
             }
+            is VirtualFile -> "${userObject.javaClass.name}:path=${userObject.path}"
+            is FilePath -> "${userObject.javaClass.name}:path=${userObject.path}"
+            is File -> "${userObject.javaClass.name}:path=${userObject.path}"
             is String -> "string:$userObject"
             else -> {
-                val accessors = resolveUserObjectAccessors(userObject)
-                val pathValue = invokeAccessor(userObject, accessors.pathAccessor)
-
-                if (!pathValue.isNullOrBlank()) {
-                    return "${userObject.javaClass.name}:path=$pathValue"
+                // If it's a known IntelliJ class with a name, we can extract it if needed,
+                // but for general directory nodes, FilePath/VirtualFile covers it.
+                val stringRep = runCatching { userObject.toString() }.getOrNull()
+                if (!stringRep.isNullOrBlank() && stringRep != "${userObject.javaClass.name}@${Integer.toHexString(userObject.hashCode())}") {
+                     "${userObject.javaClass.name}:toString=$stringRep"
+                } else {
+                     userObject.javaClass.name
                 }
-
-                val nameValue = invokeAccessor(userObject, accessors.nameAccessor)
-
-                if (!nameValue.isNullOrBlank()) {
-                    return "${userObject.javaClass.name}:name=$nameValue"
-                }
-
-                userObject.javaClass.name
             }
         }
     }

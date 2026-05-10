@@ -41,16 +41,6 @@ This document correlates each production file with the JetBrains Platform APIs a
 - Keep assessment: Keep it; the indirection is valuable despite the file being small.
 - Simplify or remove: No worthwhile change.
 
-### RevisionUtils.kt
-- JetBrains correlation: Lightweight Git-specific heuristic that does not need a heavier platform dependency.
-- Keep assessment: Keep it; both failure handling and UI rendering depend on consistent commit-hash detection.
-- Simplify or remove: No meaningful simplification.
-
-### TreeUtils.kt
-- JetBrains correlation: Small Swing helper filling a gap left by `getClosestRowForLocation()` semantics.
-- Keep assessment: Keep it; it prevents false-positive tree interactions.
-- Simplify or remove: No meaningful simplification.
-
 ## Listeners And State
 
 ### PluginStartupActivity.kt
@@ -88,7 +78,7 @@ This document correlates each production file with the JetBrains Platform APIs a
 ### ToolWindowStateService.kt
 - JetBrains correlation: Standard project-level `PersistentStateComponent`, message-bus publishing, tool-window lookup, notifications, and background refresh orchestration.
 - Keep assessment: Keep it; it is the plugin's real coordination layer and should stay authoritative.
-- Simplify or remove: Extract dense branches such as failure handling, refresh queue management, and some guard logic into smaller helpers. A coroutine channel or clearer queue abstraction could replace part of the manual CAS-based refresh coordination if the team wants a larger cleanup.
+- Simplify or remove: The service was simplified to act as a pure data pipeline that always pushes real changes into `ProjectActiveDiffDataService`. The previous `includeHeadInScopes` branching that cleared the diff cache was removed, with scope gating moved to `FileStatusScopes` and `VisualTrackerManager`. Remaining cleanup targets include extracting dense branches such as failure handling and refresh queue management into smaller helpers.
 
 ### VfsListenerService.kt
 - JetBrains correlation: Correctly uses `BulkFileListener` plus `VcsDirtyScopeManager` to bridge raw file events into VCS refreshes.
@@ -98,7 +88,7 @@ This document correlates each production file with the JetBrains Platform APIs a
 ## Scope And Search Integration
 
 ### FileStatusScopes.kt
-- JetBrains correlation: Standard `PackageSetBase`, `NamedScope`, and `VcsVirtualFile` integration, with plugin-specific handling for deleted-file edge cases.
+- JetBrains correlation: Standard `PackageSetBase`, `NamedScope`, and `VcsVirtualFile` integration, with plugin-specific handling for deleted-file edge cases. Now independently checks `ToolWindowSettingsProvider.isIncludeHeadInScopes()` to gate HEAD data from scopes.
 - Keep assessment: Keep it; these scopes are a core capability and are implemented against the right platform abstractions.
 - Simplify or remove: The main cleanup candidates are path-handling asymmetry, the special-case deleted-file logic shape, and verifying whether the current `VcsVirtualFile` fallback can be pushed deeper into the data source. Do not remove `LSTCRC.Deleted`; it also supports non-search UI behavior such as deleted-file coloring.
 
@@ -142,9 +132,9 @@ This document correlates each production file with the JetBrains Platform APIs a
 - Simplify or remove: Search currently rebuilds cloned tree structures on each keystroke. If performance becomes noticeable, that filtering algorithm is the best refactor candidate.
 
 ### LstCrcChangesBrowser.kt
-- JetBrains correlation: Properly extends `AsyncChangesBrowserBase` and related changes-tree infrastructure instead of reinventing the whole browser.
+- JetBrains correlation: Properly extends `AsyncChangesBrowserBase` and related changes-tree infrastructure. Reactively subscribes to `DIFF_DATA_CHANGED_TOPIC` for display updates. Uses coroutine-based debouncing for configurable click handling and standard `PopupHandler` for context menus.
 - Keep assessment: Keep it; this is the core user-facing comparison surface.
-- Simplify or remove: Good cleanup candidates exist inside the file only: collapse duplicated click-state handling, separate some test-only helper methods, and revisit manual toolbar-border/layout work.
+- Simplify or remove: The previous click-state handling using `Alarm`/`ClickState` has been replaced with coroutine-based debouncing. The browser is now decoupled from `ToolWindowStateService` through the message bus. Remaining cleanup candidates are limited to internal test-only helper methods and toolbar layout work.
 
 ### MyToolWindowFactory.kt
 - JetBrains correlation: Standard `ToolWindowFactory` plus `ContentManagerListener` wiring and restored content creation.

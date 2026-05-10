@@ -79,7 +79,7 @@
 | `C4.6` | Single-repo context-label setting path | `LstCrcSettingsUiTest.testTreePresentationAndTitleSettings`, `LstCrcSettingsStarterUiTest.testTreePresentationAndTitleSettings` |
 | `C4.6` | Multi-repo context-label setting path | `LstCrcMultiRootStarterUiTest.testMultiRootComparisonOverrideAppliesOnlyToSelectedRepository` |
 | `C4.6` | Commit/revision context-label setting path | `LstCrcSettingsUiTest.testTreePresentationAndTitleSettings`, `LstCrcSettingsStarterUiTest.testTreePresentationAndTitleSettings` |
-| `C4.7` | `HEAD` named/search scopes stay empty until enabled | `LstCrcFileScopeStarterUiTest.testPermanentHeadTabScopesStayEmptyUntilIncludeHeadIsEnabled` |
+| `C4.7` | `HEAD` named/search scopes stay empty until enabled | `LstCrcFileScopeStarterUiTest.testPermanentHeadTabScopesStayEmptyUntilIncludeHeadIsEnabled`, `LstCrcFileStatusScopesTest.testScopesExcludeHeadChangesWhenIncludeHeadInScopesIsDisabled` |
 | `C4.7` | `Include HEAD in scopes` does not affect non-`HEAD` comparison tabs | `LstCrcFileScopeStarterUiTest.testIncludeHeadInScopesDoesNotAffectBranchTabScopes` |
 | `C4.8` | Main gutter toggle path | `LstCrcSettingsUiTest.testGutterSettingsAndIncludeHead`, `LstCrcSettingsStarterUiTest.testGutterSettingsAndIncludeHead` |
 | `C4.8` | New-file gutter setting path | `LstCrcSettingsUiTest.testGutterSettingsAndIncludeHead`, `LstCrcSettingsStarterUiTest.testGutterSettingsAndIncludeHead` |

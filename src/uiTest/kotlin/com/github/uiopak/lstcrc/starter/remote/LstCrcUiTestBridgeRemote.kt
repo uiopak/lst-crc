@@ -29,6 +29,7 @@ interface LstCrcUiTestBridgeRemote {
     fun triggerBranchErrorNotificationAction(actionText: String)
     fun selectStatusWidgetEntry(displayName: String)
     fun statusWidgetText(): String
+    fun setContextMenuEnabled(enabled: Boolean)
     fun configureClickActions(
         singleClickAction: String?,
         doubleClickAction: String?,

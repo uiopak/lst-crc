@@ -402,6 +402,12 @@ class LstCrcUiTestBridge {
         (widget as? com.intellij.openapi.wm.StatusBarWidget.TextPresentation)?.getText().orEmpty()
     }
 
+    fun setContextMenuEnabled(enabled: Boolean) {
+        onEdt {
+            settingsService().setBoolean(ToolWindowSettingsProvider.APP_SHOW_CONTEXT_MENU_KEY, enabled, ToolWindowSettingsProvider.DEFAULT_SHOW_CONTEXT_MENU)
+        }
+    }
+
     fun configureClickActions(
         singleClickAction: String?,
         doubleClickAction: String?,
@@ -466,7 +472,7 @@ class LstCrcUiTestBridge {
             val bounds = tree.getRowBounds(targetRow)
             val x = bounds?.let { it.x + it.width / 2 } ?: 1
             val y = bounds?.let { it.y + it.height / 2 } ?: 1
-            
+
             tree.getPathForRow(targetRow)?.let { tree.selectionPath = it }
 
             val now = System.currentTimeMillis()

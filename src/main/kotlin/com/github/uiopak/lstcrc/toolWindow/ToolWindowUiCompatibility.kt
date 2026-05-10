@@ -13,13 +13,6 @@ import java.awt.Component
  */
 internal object ToolWindowUiCompatibility {
 
-    fun findContentFromContextComponent(source: Component?): Content? {
-        if (source == null) return null
-        val label = (source as? BaseLabel)
-            ?: ComponentUtil.getParentOfType(BaseLabel::class.java, source)
-        return label?.content
-    }
-
     fun setToolWindowTitleVisible(toolWindow: ToolWindow, showTitle: Boolean) {
         toolWindow.component.putClientProperty(ToolWindowContentUi.HIDE_ID_LABEL, if (showTitle) null else "true")
         val contentManager = toolWindow.contentManager as? ContentManagerImpl

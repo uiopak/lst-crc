@@ -17,11 +17,15 @@ class ProjectActiveDiffDataServiceTest : BasePlatformTestCase() {
 
         diffDataService.updateActiveDiff(
             "HEAD",
-            listOf(headFile),
-            emptyList(),
-            emptyList(),
-            emptyList(),
-            emptyMap()
+            CategorizedChanges(
+                allChanges = emptyList(),
+                createdFiles = listOf(headFile),
+                modifiedFiles = emptyList(),
+                movedFiles = emptyList(),
+                deletedFiles = emptyList(),
+                comparisonContext = emptyMap(),
+                lineStatsByChange = emptyMap()
+            )
         )
         flushEdt()
 
@@ -45,21 +49,29 @@ class ProjectActiveDiffDataServiceTest : BasePlatformTestCase() {
 
         diffDataService.updateActiveDiff(
             "selected-branch",
-            listOf(selectedFile),
-            emptyList(),
-            emptyList(),
-            emptyList(),
-            emptyMap()
+            CategorizedChanges(
+                allChanges = emptyList(),
+                createdFiles = listOf(selectedFile),
+                modifiedFiles = emptyList(),
+                movedFiles = emptyList(),
+                deletedFiles = emptyList(),
+                comparisonContext = emptyMap(),
+                lineStatsByChange = emptyMap()
+            )
         )
         flushEdt()
 
         diffDataService.updateActiveDiff(
             "other-branch",
-            listOf(staleFile),
-            emptyList(),
-            emptyList(),
-            emptyList(),
-            emptyMap()
+            CategorizedChanges(
+                allChanges = emptyList(),
+                createdFiles = listOf(staleFile),
+                modifiedFiles = emptyList(),
+                movedFiles = emptyList(),
+                deletedFiles = emptyList(),
+                comparisonContext = emptyMap(),
+                lineStatsByChange = emptyMap()
+            )
         )
         flushEdt()
 
@@ -87,21 +99,29 @@ class ProjectActiveDiffDataServiceTest : BasePlatformTestCase() {
 
         diffDataService.updateActiveDiff(
             "selected-branch",
-            listOf(selectedFile),
-            emptyList(),
-            emptyList(),
-            emptyList(),
-            emptyMap()
+            CategorizedChanges(
+                allChanges = emptyList(),
+                createdFiles = listOf(selectedFile),
+                modifiedFiles = emptyList(),
+                movedFiles = emptyList(),
+                deletedFiles = emptyList(),
+                comparisonContext = emptyMap(),
+                lineStatsByChange = emptyMap()
+            )
         )
         flushEdt()
 
         diffDataService.updateActiveDiff(
             "HEAD",
-            listOf(headFile),
-            emptyList(),
-            emptyList(),
-            emptyList(),
-            emptyMap()
+            CategorizedChanges(
+                allChanges = emptyList(),
+                createdFiles = listOf(headFile),
+                modifiedFiles = emptyList(),
+                movedFiles = emptyList(),
+                deletedFiles = emptyList(),
+                comparisonContext = emptyMap(),
+                lineStatsByChange = emptyMap()
+            )
         )
         flushEdt()
 

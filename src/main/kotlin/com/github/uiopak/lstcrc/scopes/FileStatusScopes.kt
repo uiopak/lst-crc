@@ -2,6 +2,7 @@ package com.github.uiopak.lstcrc.scopes
 
 import com.github.uiopak.lstcrc.resources.LstCrcBundle
 import com.github.uiopak.lstcrc.services.ProjectActiveDiffDataService
+import com.github.uiopak.lstcrc.toolWindow.ToolWindowSettingsProvider
 import com.intellij.icons.AllIcons
 import com.intellij.openapi.components.service
 import com.intellij.openapi.project.Project
@@ -27,7 +28,11 @@ private class LstCrcPackageSet(
 
         // If activeBranchName is null, it means diff data is intentionally cleared,
         // so no files should be included in any LSTCRC scope.
-        if (diffDataService.activeBranchName == null) {
+        val branchName = diffDataService.activeBranchName ?: return false
+
+        // When comparing against the current branch (HEAD) and the user has disabled
+        // "Include HEAD tab changes in file scopes", scopes should not match.
+        if (branchName == "HEAD" && !ToolWindowSettingsProvider.isIncludeHeadInScopes()) {
             return false
         }
 

@@ -3,7 +3,6 @@ package com.github.uiopak.lstcrc.listeners
 import com.github.uiopak.lstcrc.services.GitService
 import com.github.uiopak.lstcrc.services.ProjectActiveDiffDataService
 import com.github.uiopak.lstcrc.services.ToolWindowStateService
-import com.github.uiopak.lstcrc.services.VfsListenerService
 import com.github.uiopak.lstcrc.toolWindow.LstCrcStatusWidget
 import com.intellij.openapi.application.EDT
 import com.intellij.openapi.components.service
@@ -51,9 +50,6 @@ class PluginStartupActivity : ProjectActivity {
     override suspend fun execute(project: Project) {
         logger.info("STARTUP_LOGIC: ProjectActivity executing for project: ${project.name}")
 
-        // Eagerly initialize services that need to listen to events from the start to ensure
-        // features like gutter markers and VFS-triggered refreshes work correctly.
-        project.service<VfsListenerService>()
         project.service<VcsChangeListener>()
         project.service<com.github.uiopak.lstcrc.gutters.VisualTrackerManager>().init()
         logger.info("STARTUP_LOGIC: Background services initialized.")

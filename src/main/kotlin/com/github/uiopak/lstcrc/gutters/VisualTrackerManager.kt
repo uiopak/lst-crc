@@ -81,6 +81,15 @@ class VisualTrackerManager(
                 if (tracker !is LocalLineStatusTracker<*>) return
                 maybeInterceptTracker(tracker)
             }
+
+            override fun onTrackerRemoved(tracker: LineStatusTracker<*>) {
+                val document = tracker.document
+                val visualTracker = visualTrackers.remove(document)
+                if (visualTracker != null) {
+                    logger.debug("VISUAL_TRACKER: Native tracker removed for ${tracker.virtualFile.name}. Releasing visual tracker.")
+                    visualTracker.release()
+                }
+            }
         })
 
         // Listen for Diff Data changes (Tab switching)
@@ -359,6 +368,13 @@ class VisualTrackerManager(
     }
 
     override fun dispose() {
+        visualTrackers.values.forEach { tracker ->
+            try {
+                tracker.release()
+            } catch (e: Exception) {
+                logger.warn("VISUAL_TRACKER: Failed to release tracker during dispose.", e)
+            }
+        }
         visualTrackers.clear()
     }
 }

@@ -1,14 +1,12 @@
 package com.github.uiopak.lstcrc.services
 
-import com.github.uiopak.lstcrc.LstCrcConstants
+
 import com.github.uiopak.lstcrc.messaging.TOOL_WINDOW_STATE_TOPIC
 import com.github.uiopak.lstcrc.resources.LstCrcBundle
 import com.github.uiopak.lstcrc.state.TabInfo
 import com.github.uiopak.lstcrc.state.ToolWindowState
-import com.github.uiopak.lstcrc.toolWindow.LstCrcChangesBrowser
 import com.github.uiopak.lstcrc.toolWindow.SingleRepoBranchSelectionDialog
-import com.github.uiopak.lstcrc.toolWindow.ToolWindowSettingsProvider
-import com.github.uiopak.lstcrc.utils.RevisionUtils
+import git4idea.GitUtil
 import com.intellij.notification.NotificationGroupManager
 import com.intellij.notification.NotificationType
 import com.intellij.openapi.actionSystem.AnAction
@@ -128,7 +126,6 @@ class ToolWindowStateService(private val project: Project, val coroutineScope: C
     private suspend fun loadDataForTab(tabInfo: TabInfo?) {
         val profileName = tabInfo?.branchName ?: "HEAD"
         logger.info("DATA_FLOW: Initiating data load for profile: '$profileName'")
-        val includeHeadInScopes = ToolWindowSettingsProvider.isIncludeHeadInScopes()
         val gitService = project.service<GitService>()
         val diffDataService = project.service<ProjectActiveDiffDataService>()
 
@@ -136,16 +133,13 @@ class ToolWindowStateService(private val project: Project, val coroutineScope: C
             val getChangesResult = gitService.getChanges(tabInfo)
             withContext(Dispatchers.EDT) {
                 if (project.isDisposed) return@withContext
-                val activeBrowser = getActiveChangesBrowser(project)
-                applyLoadedChanges(tabInfo, profileName, includeHeadInScopes, diffDataService, activeBrowser, getChangesResult)
+                applyLoadedChanges(tabInfo, profileName, diffDataService, getChangesResult)
             }
         } catch (e: Exception) {
             withContext(Dispatchers.EDT) {
                 if (project.isDisposed) return@withContext
-                val activeBrowser = getActiveChangesBrowser(project)
                 logger.error("DATA_FLOW: Error loading changes for '$profileName': ${e.message}", e)
                 diffDataService.clearActiveDiff()
-                activeBrowser?.displayChanges(null, profileName)
             }
         }
     }
@@ -153,9 +147,7 @@ class ToolWindowStateService(private val project: Project, val coroutineScope: C
     private fun applyLoadedChanges(
         tabInfo: TabInfo?,
         profileName: String,
-        includeHeadInScopes: Boolean,
         diffDataService: ProjectActiveDiffDataService,
-        activeBrowser: LstCrcChangesBrowser?,
         getChangesResult: GetChangesResult
     ) {
         val categorizedChanges = getChangesResult.categorizedChanges
@@ -165,33 +157,19 @@ class ToolWindowStateService(private val project: Project, val coroutineScope: C
             handleBranchFailures(tabInfo, getChangesResult.failures)
         }
 
-        updateActiveDiffData(tabInfo, profileName, includeHeadInScopes, diffDataService, categorizedChanges)
-        activeBrowser?.displayChanges(categorizedChanges, profileName)
+        updateActiveDiffData(profileName, diffDataService, categorizedChanges)
     }
 
     private fun updateActiveDiffData(
-        tabInfo: TabInfo?,
         profileName: String,
-        includeHeadInScopes: Boolean,
         diffDataService: ProjectActiveDiffDataService,
         categorizedChanges: CategorizedChanges
     ) {
-        if (tabInfo != null || includeHeadInScopes) {
-            logger.debug("DATA_FLOW: Updating ProjectActiveDiffDataService for '$profileName'.")
-            diffDataService.updateActiveDiff(
-                profileName,
-                categorizedChanges.createdFiles,
-                categorizedChanges.modifiedFiles,
-                categorizedChanges.movedFiles,
-                categorizedChanges.deletedFiles,
-                categorizedChanges.comparisonContext,
-                categorizedChanges.lineStatsByChange
-            )
-            return
-        }
-
-        logger.debug("DATA_FLOW: On HEAD tab with 'Include HEAD in Scopes' disabled. Clearing ProjectActiveDiffDataService.")
-        diffDataService.clearActiveDiff()
+        logger.debug("DATA_FLOW: Updating ProjectActiveDiffDataService for '$profileName'.")
+        diffDataService.updateActiveDiff(
+            profileName,
+            categorizedChanges
+        )
     }
 
     /**
@@ -204,7 +182,7 @@ class ToolWindowStateService(private val project: Project, val coroutineScope: C
         // Filter out failures that are likely commit hashes, as they are not "errors" in the same
         // way a missing branch name is. It's expected a commit hash might not exist in all repos.
         val actualBranchFailures = failures.filter { (_, failedRevision) ->
-            !RevisionUtils.isCommitHash(failedRevision)
+            !GitUtil.isHashString(failedRevision, false)
         }
 
         if (actualBranchFailures.isEmpty()) {
@@ -359,12 +337,6 @@ class ToolWindowStateService(private val project: Project, val coroutineScope: C
 
     fun getSelectedTabBranchName(): String? {
         return getSelectedTabInfo()?.branchName
-    }
-
-    private fun getActiveChangesBrowser(project: Project): LstCrcChangesBrowser? {
-        val toolWindow = ToolWindowManager.getInstance(project).getToolWindow(LstCrcConstants.TOOL_WINDOW_ID)
-        val selectedContent = toolWindow?.contentManager?.selectedContent
-        return selectedContent?.component as? LstCrcChangesBrowser
     }
 
     fun updateTabAlias(branchName: String, newAlias: String?) {

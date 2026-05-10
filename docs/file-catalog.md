@@ -48,18 +48,6 @@ This document lists each current `src/main` file separately and explains why it 
 - Connected to: `ToolWindowHelper`, `MyToolWindowFactory`, `LstCrcStatusWidget`, and `RenameTabAction`.
 - Why it exists: It keeps tab metadata type-safe and avoids ad-hoc string keys.
 
-### RevisionUtils.kt
-- Role: Small utility for deciding whether a revision string looks like a Git commit hash.
-- Depends on: Kotlin string logic only.
-- Connected to: `ToolWindowStateService` branch-failure handling and `RepoNodeRenderer` context-display logic.
-- Why it exists: The plugin needs one consistent definition of commit-like revisions to avoid wrong failure handling and noisy UI labels.
-
-### TreeUtils.kt
-- Role: Tree-click helper that resolves a `TreePath` only when the mouse is actually over a visible row.
-- Depends on: Swing tree APIs.
-- Connected to: `LstCrcChangesBrowser` and `BranchSelectionPanel` mouse handling.
-- Why it exists: It prevents clicks on whitespace from being treated like clicks on tree nodes.
-
 ## Listeners And State
 
 ### PluginStartupActivity.kt
@@ -101,9 +89,9 @@ This document lists each current `src/main` file separately and explains why it 
 - Why it exists: The plugin needs one shared cache so every surface reads the same active diff instead of recomputing Git state.
 
 ### ToolWindowStateService.kt
-- Role: Main orchestration service for tab state, refresh sequencing, persistence, notifications, and active-browser updates.
-- Depends on: `PersistentStateComponent`, `GitService`, `ProjectActiveDiffDataService`, notifications, settings, and tool-window APIs.
-- Connected to: Almost every runtime surface, especially the factory, widget, actions, and active-diff consumers.
+- Role: Main orchestration service for tab state, refresh sequencing, persistence, and notifications. Acts as a pure data pipeline that always pushes real changes into `ProjectActiveDiffDataService`, regardless of the `Include HEAD in scopes` setting.
+- Depends on: `PersistentStateComponent`, `GitService`, `ProjectActiveDiffDataService`, notifications, and tool-window APIs.
+- Connected to: Almost every runtime surface, especially the factory, widget, actions, and active-diff consumers. The browser is no longer updated directly; it reacts to `DIFF_DATA_CHANGED_TOPIC`.
 - Why it exists: The plugin needs one authoritative owner for tab lifecycle and refresh ordering.
 
 ### VfsListenerService.kt
@@ -115,8 +103,8 @@ This document lists each current `src/main` file separately and explains why it 
 ## Scope And Search Integration
 
 ### FileStatusScopes.kt
-- Role: Definitions for created, modified, moved, deleted, and changed scopes backed by the active-diff cache.
-- Depends on: `ProjectActiveDiffDataService`, `LstCrcBundle`, `NamedScope`, `PackageSetBase`, and `VcsVirtualFile` handling.
+- Role: Definitions for created, modified, moved, deleted, and changed scopes backed by the active-diff cache. Independently checks `ToolWindowSettingsProvider.isIncludeHeadInScopes()` to exclude HEAD data from scopes when the setting is disabled.
+- Depends on: `ProjectActiveDiffDataService`, `ToolWindowSettingsProvider`, `LstCrcBundle`, `NamedScope`, `PackageSetBase`, and `VcsVirtualFile` handling.
 - Connected to: `LstCrcScopeProvider`, `LstCrcSearchScopeProvider` for the non-deleted search scopes, `LstCrcChangesBrowser` for deleted-file coloring, and IDE scope consumers.
 - Why it exists: The plugin exposes the active comparison as reusable IDE named scopes, not just as a custom tree. The `Changed` scope intentionally excludes deleted files.
 
@@ -150,7 +138,7 @@ This document lists each current `src/main` file separately and explains why it 
 
 ### ExpandNewNodesStateStrategy.kt
 - Role: Tree-state strategy that preserves user expansion state while auto-expanding parents of newly added changes.
-- Depends on: Changes-tree state APIs and `TreeUtil`.
+- Depends on: Changes-tree state APIs, `TreeUtil`, `VirtualFile`, `FilePath`, and `File` for typed node identity resolution.
 - Connected to: `LstCrcChangesBrowser` tree rebuilding.
 - Why it exists: The browser needs to surface newly introduced files without discarding the user's manual tree state.
 
@@ -161,9 +149,9 @@ This document lists each current `src/main` file separately and explains why it 
 - Why it exists: Branch selection is a real workflow of its own and needs a reusable, testable UI component.
 
 ### LstCrcChangesBrowser.kt
-- Role: Main per-tab changes browser that renders categorized changes, configures gestures, and integrates toolbars, renderers, and repository refresh handling.
-- Depends on: `AsyncChangesBrowserBase`, tree models, `ToolWindowSettingsProvider`, diff actions, `RepoNodeRenderer`, and `ExpandNewNodesStateStrategy`.
-- Connected to: `ToolWindowStateService`, `ToolWindowHelper`, test bridge helpers, and active repository refreshes.
+- Role: Main per-tab changes browser that renders categorized changes, configures gestures, and integrates toolbars, renderers, and repository refresh handling. Reactively subscribes to `DIFF_DATA_CHANGED_TOPIC` to update its display instead of being called directly by `ToolWindowStateService`.
+- Depends on: `AsyncChangesBrowserBase`, tree models, `ToolWindowSettingsProvider`, `ProjectActiveDiffDataService`, `DIFF_DATA_CHANGED_TOPIC`, diff actions, `RepoNodeRenderer`, and `ExpandNewNodesStateStrategy`. Uses coroutine-based debouncing for configurable click handling.
+- Connected to: `ToolWindowHelper`, test bridge helpers, and active repository refreshes.
 - Why it exists: It is the primary user-facing comparison UI and the place where active diff data becomes an interactive tree.
 
 ### MyToolWindowFactory.kt

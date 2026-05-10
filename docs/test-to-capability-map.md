@@ -7,6 +7,7 @@ This file maps each active test method to the capability IDs defined in [plugin-
 | Test | Capability IDs | Notes |
 | --- | --- | --- |
 | `LstCrcFileStatusScopesTest.testDeletedScopeMatchesDeletedPathsWhileChangedExcludesThem` | `C3.4` | Validates deleted-file scope partitioning. |
+| `LstCrcFileStatusScopesTest.testScopesExcludeHeadChangesWhenIncludeHeadInScopesIsDisabled` | `C4.7` | Validates that scopes independently reject HEAD data when `Include HEAD in scopes` is disabled. |
 | `LstCrcSearchScopeProviderTest.testGetDisplayNameAndSearchScopesReturnExpectedLstCrcWrappers` | `C3.3` | Verifies search-scope publishing shape. |
 | `LstCrcSearchScopeProviderTest.testNamedScopeWrapperDelegatesPackageSetBaseContainsAndSearchFlags` | `C3.3` | Verifies wrapper delegation behavior. |
 | `LstCrcSearchScopeProviderTest.testSearchScopesReflectDetailedFileStateMembership` | `C3.3` | Verifies detailed created/modified/moved/changed search-scope membership and deleted omission. |

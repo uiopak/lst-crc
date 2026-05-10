@@ -13,6 +13,8 @@ import com.intellij.openapi.components.service
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.popup.Balloon
+import com.intellij.openapi.wm.impl.content.BaseLabel
+import com.intellij.ui.ComponentUtil
 import com.intellij.openapi.ui.popup.JBPopupFactory
 import com.intellij.ui.awt.RelativePoint
 import com.intellij.ui.components.JBLabel
@@ -36,19 +38,14 @@ class RenameTabAction : AnAction() {
 
     private val logger = thisLogger()
 
-    /**
-     * Finds the [Content] associated with the right-clicked tab label by delegating
-     * the component lookup to [ToolWindowUiCompatibility].
-     */
     private fun findContent(source: Component?): Content? {
-        val content = ToolWindowUiCompatibility.findContentFromContextComponent(source)
-        if (content == null) {
-            if (source != null) {
+        if (source == null) return null
+        val label = (source as? BaseLabel) ?: ComponentUtil.getParentOfType(BaseLabel::class.java, source)
+        if (label == null) {
             logger.warn("RenameTabAction: No BaseLabel found in component hierarchy for ${source.javaClass.name}")
-            }
             return null
         }
-        return content
+        return label.content
     }
 
     override fun update(e: AnActionEvent) {

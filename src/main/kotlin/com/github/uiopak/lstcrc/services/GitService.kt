@@ -34,6 +34,7 @@ import git4idea.commands.GitCommand
 import git4idea.commands.GitLineHandler
 import git4idea.repo.GitRepository
 import git4idea.repo.GitRepositoryManager
+import git4idea.GitUtil
 import git4idea.util.GitFileUtils
 import java.nio.charset.Charset
 
@@ -108,7 +109,6 @@ data class GetChangesResult(
 class GitService(private val project: Project) {
 
     private companion object {
-        private val COMMIT_HASH_REGEX = Regex("^[0-9a-fA-F]{7,40}$")
         private const val DIFF_FILTER_PARAM = "--diff-filter=ADCMRUXT"
     }
 
@@ -295,7 +295,7 @@ class GitService(private val project: Project) {
     }
 
     internal fun isExplicitRevisionTarget(target: String): Boolean {
-        return COMMIT_HASH_REGEX.matches(target)
+        return GitUtil.isHashString(target, false)
     }
 
     @Suppress("UsePropertyAccessSyntax")
@@ -338,7 +338,7 @@ class GitService(private val project: Project) {
 
         return LoadedChanges(
             changes = changes,
-            lineStatsByChange = loadTrackedLineStatsAgainstWorkingTree(repo, target, changes)
+            lineStatsByChange = loadTrackedLineStats(repo, changes, target)
         )
     }
 
@@ -363,36 +363,21 @@ class GitService(private val project: Project) {
 
         return LoadedChanges(
             changes = changes,
-            lineStatsByChange = loadTrackedLineStatsBetweenRevisions(repo, baseRevision, targetRevision, changes)
+            lineStatsByChange = loadTrackedLineStats(repo, changes, baseRevision, targetRevision)
         )
     }
 
     @Suppress("UsePropertyAccessSyntax")
-    private fun loadTrackedLineStatsAgainstWorkingTree(
+    private fun loadTrackedLineStats(
         repo: GitRepository,
-        target: String,
-        changes: List<Change>
+        changes: List<Change>,
+        vararg revisions: String
     ): Map<ChangeLineStatsKey, ChangeLineStats> {
         val handler = GitLineHandler(project, repo.root, GitCommand.DIFF)
         handler.setSilent(true)
         handler.setStdoutSuppressed(true)
-        handler.addParameters("--numstat", DIFF_FILTER_PARAM, "-M", target)
-
-        val output = Git.getInstance().runCommand(handler).getOutputOrThrow()
-        return parseTrackedLineStats(repo, changes, output.lineSequence())
-    }
-
-    @Suppress("UsePropertyAccessSyntax")
-    private fun loadTrackedLineStatsBetweenRevisions(
-        repo: GitRepository,
-        baseRevision: String,
-        targetRevision: String,
-        changes: List<Change>
-    ): Map<ChangeLineStatsKey, ChangeLineStats> {
-        val handler = GitLineHandler(project, repo.root, GitCommand.DIFF)
-        handler.setSilent(true)
-        handler.setStdoutSuppressed(true)
-        handler.addParameters("--numstat", DIFF_FILTER_PARAM, "-M", baseRevision, targetRevision)
+        handler.addParameters("--numstat", DIFF_FILTER_PARAM, "-M")
+        handler.addParameters(*revisions)
 
         val output = Git.getInstance().runCommand(handler).getOutputOrThrow()
         return parseTrackedLineStats(repo, changes, output.lineSequence())
@@ -604,7 +589,7 @@ class GitService(private val project: Project) {
             val changes = GitChangeUtils.getDiffWithWorkingDir(project, repo.root, "HEAD", null, false, true).toList()
             LoadedChanges(
                 changes = changes,
-                lineStatsByChange = loadTrackedLineStatsAgainstWorkingTree(repo, "HEAD", changes)
+                lineStatsByChange = buildLineStats(changes, emptyMap(), emptySet())
             )
         } catch (e: VcsException) {
             logger.warn("Failed to load tracked local changes for repo '${repo.root.name}' against HEAD: ${e.message}")

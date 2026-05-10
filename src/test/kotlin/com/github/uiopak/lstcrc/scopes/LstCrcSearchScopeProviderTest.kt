@@ -2,6 +2,7 @@ package com.github.uiopak.lstcrc.scopes
 
 import com.github.uiopak.lstcrc.resources.LstCrcBundle
 import com.github.uiopak.lstcrc.services.ProjectActiveDiffDataService
+import com.github.uiopak.lstcrc.services.CategorizedChanges
 import com.github.uiopak.lstcrc.services.ToolWindowStateService
 import com.github.uiopak.lstcrc.state.TabInfo
 import com.github.uiopak.lstcrc.state.ToolWindowState
@@ -50,11 +51,15 @@ class LstCrcSearchScopeProviderTest : BasePlatformTestCase() {
 
         project.service<ProjectActiveDiffDataService>().updateActiveDiff(
             "feature-search-scopes",
-            listOf(createdFile),
-            listOf(modifiedFile),
-            listOf(movedFile),
-            listOf(deletedFile),
-            emptyMap()
+            CategorizedChanges(
+                allChanges = emptyList(),
+                createdFiles = listOf(createdFile),
+                modifiedFiles = listOf(modifiedFile),
+                movedFiles = listOf(movedFile),
+                deletedFiles = listOf(deletedFile),
+                comparisonContext = emptyMap(),
+                lineStatsByChange = emptyMap()
+            )
         )
         flushEdt()
 

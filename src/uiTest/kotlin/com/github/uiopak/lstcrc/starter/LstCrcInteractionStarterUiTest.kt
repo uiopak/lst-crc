@@ -77,7 +77,7 @@ class LstCrcInteractionStarterUiTest : LstCrcStarterUiTestBase() {
         waitForSelectedTab("feature-context")
         waitForTreeContains("Main.txt")
 
-        ui.configureClickActions(null, null, null, null, null, null, true)
+        ui.setContextMenuEnabled(true)
         val actions = ui.contextMenuActionsForFile("Main.txt")
         assertTrue(actions.contains("Show Diff"))
         assertTrue(actions.contains("Open Source"))
@@ -103,7 +103,7 @@ class LstCrcInteractionStarterUiTest : LstCrcStarterUiTestBase() {
         waitForSelectedTab("feature-context-focus")
         waitForTreeContains("Main.txt")
 
-        ui.configureClickActions(null, null, null, null, null, null, true)
+        ui.setContextMenuEnabled(true)
 
         ui.invokeContextMenuActionForFile("Main.txt", "Show Diff")
         waitUntil(15.seconds) { ui.diffEditorCount() > 0 }
