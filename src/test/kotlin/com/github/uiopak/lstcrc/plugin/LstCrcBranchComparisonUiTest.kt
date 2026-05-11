@@ -658,7 +658,7 @@ class LstCrcBranchComparisonUiTest : LstCrcUiTestSupport() {
                 selectTab("feature-tree-a")
                 step("Wait for tree to stabilize on tab A after switch") {
                     waitFor(Duration.ofSeconds(10)) {
-                        changesTree.findAllText("(vs feature-tree-a)").isNotEmpty()
+                        changesTree.findAllText("OnlyB.txt").isEmpty()
                     }
                 }
             }

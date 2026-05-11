@@ -251,14 +251,15 @@ class LstCrcSettingsUiTest : LstCrcUiTestSupport() {
             }
 
             val treeSnapshotTimeout = if (System.getenv("GITHUB_ACTIONS") == "true") Duration.ofSeconds(60) else Duration.ofSeconds(10)
+            fun renderedTreeContains(text: String): Boolean = selectedChangesTreeRenderedTextSnapshot().contains(text)
 
             waitFor(treeSnapshotTimeout) {
-                selectedChangesTreeContains("(vs feature-tree-labels)")
+                renderedTreeContains("(vs feature-tree-labels)")
             }
 
             setTreeContextSettings(showLineStats = true)
             waitFor(treeSnapshotTimeout) {
-                selectedChangesTreeContains("+1") && selectedChangesTreeContains("-1")
+                renderedTreeContains("+1") && renderedTreeContains("-1")
             }
 
             setTreeContextSettings(showLineStats = false)
@@ -268,12 +269,12 @@ class LstCrcSettingsUiTest : LstCrcUiTestSupport() {
 
             setTreeContextSettings(showSingleRepo = false)
             waitFor(treeSnapshotTimeout) {
-                !selectedChangesTreeContains("(vs feature-tree-labels)")
+                !renderedTreeContains("(vs feature-tree-labels)")
             }
 
             setTreeContextSettings(showSingleRepo = true)
             waitFor(treeSnapshotTimeout) {
-                selectedChangesTreeContains("(vs feature-tree-labels)")
+                renderedTreeContains("(vs feature-tree-labels)")
             }
 
             invokeCreateTabFromRevisionAction(featureRevision, "feature-tree-revision")
@@ -283,12 +284,12 @@ class LstCrcSettingsUiTest : LstCrcUiTestSupport() {
 
             setTreeContextSettings(showCommits = false)
             waitFor(treeSnapshotTimeout) {
-                !selectedChangesTreeContains("(vs $featureRevision)")
+                !renderedTreeContains("(vs $featureRevision)")
             }
 
             setTreeContextSettings(showCommits = true)
             waitFor(treeSnapshotTimeout) {
-                selectedChangesTreeContains("(vs $featureRevision)")
+                renderedTreeContains("(vs $featureRevision)")
             }
         }
     }

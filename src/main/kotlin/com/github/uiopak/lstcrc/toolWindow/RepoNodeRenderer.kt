@@ -37,6 +37,7 @@ class RepoNodeRenderer(
 
     private val gitService = project.service<GitService>()
     private val diffDataService = project.service<ProjectActiveDiffDataService>()
+    private val stateService = project.service<com.github.uiopak.lstcrc.services.ToolWindowStateService>()
     private val trailingRenderer = SimpleColoredComponent().apply {
         border = JBUI.Borders.emptyLeft(TRAILING_METADATA_LEFT_GAP)
         isOpaque = false
@@ -53,17 +54,17 @@ class RepoNodeRenderer(
         return targetRevision.takeUnless { GitUtil.isHashString(it, false) && !showForCommits }
     }
 
-    private fun appendContextToTextRenderer(targetRevision: String?) {
-        targetRevision?.let {
-            textRenderer.append(FontUtil.spaceAndThinSpace())
-            textRenderer.append("(vs $it)", SimpleTextAttributes.GRAYED_ATTRIBUTES)
-        }
-    }
-
-    private fun configureTrailingRenderer(lineStats: ChangeLineStats?) {
+    private fun configureTrailingRenderer(targetRevision: String?, lineStats: ChangeLineStats?) {
         trailingRenderer.clear()
 
+        targetRevision?.let {
+            trailingRenderer.append("(vs $it)", SimpleTextAttributes.GRAYED_ATTRIBUTES)
+        }
+
         if (ToolWindowSettingsProvider.isShowLineStatsInTree() && lineStats != null) {
+            if (trailingRenderer.fragmentCount > 0) {
+                trailingRenderer.append(FontUtil.spaceAndThinSpace())
+            }
             if (lineStats.addedLines > 0) {
                 trailingRenderer.append(
                     "+${lineStats.addedLines}",
@@ -115,8 +116,7 @@ class RepoNodeRenderer(
         val lineStats = (node.userObject as? Change)?.let { lineStatsByChange[ChangeLineStatsKey.from(it)] }
             ?: aggregateLineStatsForNode(node, lineStatsByChange)
 
-        appendContextToTextRenderer(targetRevision)
-        configureTrailingRenderer(lineStats)
+        configureTrailingRenderer(targetRevision, lineStats)
         updateRendererInsets(trailingRenderer.isVisible)
 
         trailingRenderer.background = textRenderer.background
@@ -148,7 +148,7 @@ class RepoNodeRenderer(
     private fun resolveMultiRepoTargetRevision(node: ChangesBrowserNode<*>): String? {
         val repositoryNode = node as? RepositoryChangesBrowserNode ?: return null
         val repository = repositoryNode.userObject as? GitRepository ?: return null
-        return currentComparisonContext()[repository.root.path]
+        return resolveTargetRevisionForRepository(repository)
     }
 
     private fun resolveSingleRepoTargetRevision(tree: JTree, node: ChangesBrowserNode<*>): String? {
@@ -156,8 +156,15 @@ class RepoNodeRenderer(
             return null
         }
 
-        val repository = gitService.getPrimaryRepository() ?: return null
+        return currentComparisonContext().values.firstOrNull()
+            ?: diffDataService.activeBranchName
+            ?: stateService.getSelectedTabBranchName()
+    }
+
+    private fun resolveTargetRevisionForRepository(repository: GitRepository): String? {
         return currentComparisonContext()[repository.root.path]
+            ?: diffDataService.activeBranchName
+            ?: stateService.getSelectedTabBranchName()
     }
 
     private fun currentComparisonContext(): Map<String, String> {
@@ -170,19 +177,25 @@ class RepoNodeRenderer(
 
     private fun shouldAnnotateSingleRepoNode(tree: JTree, node: ChangesBrowserNode<*>): Boolean {
         val changesTree = tree as? ChangesTree ?: return false
-        val groupingSupport = changesTree.groupingSupport
-        val parentNode = node.parent ?: return false
-        val rootNode = tree.model.root
-        if (parentNode != rootNode || parentNode.childCount != 1) {
+        val rootNode = tree.model.root as? DefaultMutableTreeNode ?: return false
+        val topLevelNodes = TreeUtil.listChildren(rootNode)
+            .filterIsInstance<ChangesBrowserNode<*>>()
+        if (topLevelNodes.isEmpty()) {
             return false
         }
 
-        return when (node) {
-            is ChangesBrowserModuleNode -> groupingSupport[ChangesGroupingSupport.MODULE_GROUPING]
-            is ChangesBrowserFilePathNode -> groupingSupport.isDirectory && !groupingSupport[ChangesGroupingSupport.MODULE_GROUPING]
-            is ChangesBrowserChangeListNode -> groupingSupport.isNone
-            else -> false
-        }
+        val groupingSupport = changesTree.groupingSupport
+        val annotationNode = topLevelNodes.firstOrNull { candidate ->
+            when (candidate) {
+                is ChangesBrowserModuleNode -> groupingSupport[ChangesGroupingSupport.MODULE_GROUPING]
+                is ChangesBrowserFilePathNode -> groupingSupport.isDirectory && !groupingSupport[ChangesGroupingSupport.MODULE_GROUPING]
+                is ChangesBrowserChangeListNode -> groupingSupport.isNone
+                else -> false
+            }
+        } ?: topLevelNodes.firstOrNull { it.childCount > 0 }
+            ?: topLevelNodes.first()
+
+        return node === annotationNode
     }
 }
 

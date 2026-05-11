@@ -247,6 +247,7 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
                     properties.setValue("com.github.uiopak.lstcrc.app.showContextSingleRepo", true, true);
                     properties.setValue("com.github.uiopak.lstcrc.app.showContextMultiRepo", true, true);
                     properties.setValue("com.github.uiopak.lstcrc.app.showContextForCommits", false, false);
+                    properties.setValue("com.github.uiopak.lstcrc.app.showLineStatsInTree", false, false);
                     properties.setValue("com.github.uiopak.lstcrc.app.expandNewFilesInCollapsedDirs", true, true);
                     properties.setValue("com.github.uiopak.lstcrc.app.showUntrackedFilesAsNew", false, false);
 
@@ -275,6 +276,7 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
                                 svc.setBoolean("com.github.uiopak.lstcrc.app.showContextSingleRepo", true, true);
                                 svc.setBoolean("com.github.uiopak.lstcrc.app.showContextMultiRepo", true, true);
                                 svc.setBoolean("com.github.uiopak.lstcrc.app.showContextForCommits", false, false);
+                                svc.setBoolean("com.github.uiopak.lstcrc.app.showLineStatsInTree", false, false);
                                 svc.setBoolean("com.github.uiopak.lstcrc.app.expandNewFilesInCollapsedDirs", true, true);
                                 svc.setBoolean("com.github.uiopak.lstcrc.app.showUntrackedFilesAsNew", false, false);
                             }
@@ -871,6 +873,225 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
         return findAll<ComponentFixture>(
             byXpath("LstCrcAsyncChangesTree with '$text'", "//div[@class='LstCrcAsyncChangesTree' and contains(@visible_text,'$text')]")
         ).isNotEmpty()
+    }
+
+    fun selectedChangesTreeItemMetadata(fileName: String): String {
+        return callJs(
+            """
+            (function() {
+                var result = new java.util.concurrent.atomic.AtomicReference("");
+                var targetFileName = ${toJsStringLiteral(fileName)};
+
+                function findTree() {
+                    var windows = java.awt.Window.getWindows();
+                    for (var w = 0; w < windows.length; w++) {
+                        var queue = new java.util.LinkedList();
+                        queue.add(windows[w]);
+                        while (!queue.isEmpty()) {
+                            var component = queue.poll();
+                            if (component && component.getClass().getName().endsWith("LstCrcAsyncChangesTree") && component.isShowing()) {
+                                return component;
+                            }
+                            if (!component) continue;
+                            try {
+                                var children = component.getComponents();
+                                if (children) {
+                                    for (var ci = 0; ci < children.length; ci++) {
+                                        queue.add(children[ci]);
+                                    }
+                                }
+                            } catch (ignored) {}
+                        }
+                    }
+                    return null;
+                }
+
+                function findDeclaredField(instance, fieldName) {
+                    var cls = instance.getClass();
+                    while (cls) {
+                        try {
+                            var field = cls.getDeclaredField(fieldName);
+                            field.setAccessible(true);
+                            return field;
+                        } catch (ignored) {
+                            cls = cls.getSuperclass();
+                        }
+                    }
+                    return null;
+                }
+
+                function fragmentText(component) {
+                    if (!component) return "";
+                    var fragmentsField = findDeclaredField(component, "myFragments");
+                    if (!fragmentsField) return "";
+                    var fragments = fragmentsField.get(component);
+                    if (!fragments) return "";
+
+                    var values = [];
+                    var iterator = fragments.iterator();
+                    while (iterator.hasNext()) {
+                        var fragment = iterator.next();
+                        var textField = findDeclaredField(fragment, "myText") || findDeclaredField(fragment, "text");
+                        if (textField) {
+                            values.push(String(textField.get(fragment)));
+                        }
+                    }
+                    return values.join("");
+                }
+
+                com.intellij.openapi.application.ApplicationManager.getApplication().invokeAndWait(new java.lang.Runnable({
+                    run: function() {
+                        var tree = findTree();
+                        if (!tree) {
+                            result.set("");
+                            return;
+                        }
+                        var renderer = tree.getCellRenderer();
+                        if (!renderer) {
+                            result.set("");
+                            return;
+                        }
+
+                        for (var row = 0; row < tree.getRowCount(); row++) {
+                            var path = tree.getPathForRow(row);
+                            if (!path) continue;
+                            var node = path.getLastPathComponent();
+                            if (!node) continue;
+                            var userObject = node.getUserObject ? node.getUserObject() : null;
+                            var change = userObject instanceof com.intellij.openapi.vcs.changes.Change ? userObject : null;
+                            if (!change) continue;
+
+                            var candidate = change.getAfterRevision() ? change.getAfterRevision().getFile().getName() : null;
+                            if (!candidate && change.getBeforeRevision()) {
+                                candidate = change.getBeforeRevision().getFile().getName();
+                            }
+                            if (String(candidate || "") !== targetFileName) continue;
+
+                            renderer.getTreeCellRendererComponent(tree, node, false, tree.isExpanded(row), tree.getModel().isLeaf(node), row, false);
+                            var textRendererField = findDeclaredField(renderer, "textRenderer");
+                            var trailingRendererField = findDeclaredField(renderer, "trailingRenderer");
+                            result.set([
+                                textRendererField ? fragmentText(textRendererField.get(renderer)) : "",
+                                trailingRendererField ? fragmentText(trailingRendererField.get(renderer)) : ""
+                            ].join(" "));
+                            return;
+                        }
+
+                        result.set("");
+                    }
+                }));
+
+                return result.get();
+            })();
+            """.trimIndent(),
+            true
+        )
+    }
+
+    fun selectedChangesTreeRenderedTextSnapshot(): String {
+        return callJs(
+            """
+            (function() {
+                var result = new java.util.concurrent.atomic.AtomicReference("");
+
+                function findTree() {
+                    var windows = java.awt.Window.getWindows();
+                    for (var w = 0; w < windows.length; w++) {
+                        var queue = new java.util.LinkedList();
+                        queue.add(windows[w]);
+                        while (!queue.isEmpty()) {
+                            var component = queue.poll();
+                            if (component && component.getClass().getName().endsWith("LstCrcAsyncChangesTree") && component.isShowing()) {
+                                return component;
+                            }
+                            if (!component) continue;
+                            try {
+                                var children = component.getComponents();
+                                if (children) {
+                                    for (var ci = 0; ci < children.length; ci++) {
+                                        queue.add(children[ci]);
+                                    }
+                                }
+                            } catch (ignored) {}
+                        }
+                    }
+                    return null;
+                }
+
+                function findDeclaredField(instance, fieldName) {
+                    var cls = instance.getClass();
+                    while (cls) {
+                        try {
+                            var field = cls.getDeclaredField(fieldName);
+                            field.setAccessible(true);
+                            return field;
+                        } catch (ignored) {
+                            cls = cls.getSuperclass();
+                        }
+                    }
+                    return null;
+                }
+
+                function fragmentText(component) {
+                    if (!component) return "";
+                    var fragmentsField = findDeclaredField(component, "myFragments");
+                    if (!fragmentsField) return "";
+                    var fragments = fragmentsField.get(component);
+                    if (!fragments) return "";
+
+                    var values = [];
+                    var iterator = fragments.iterator();
+                    while (iterator.hasNext()) {
+                        var fragment = iterator.next();
+                        var textField = findDeclaredField(fragment, "myText") || findDeclaredField(fragment, "text");
+                        if (textField) {
+                            values.push(String(textField.get(fragment)));
+                        }
+                    }
+                    return values.join("");
+                }
+
+                com.intellij.openapi.application.ApplicationManager.getApplication().invokeAndWait(new java.lang.Runnable({
+                    run: function() {
+                        var tree = findTree();
+                        if (!tree) {
+                            result.set("");
+                            return;
+                        }
+                        var renderer = tree.getCellRenderer();
+                        if (!renderer) {
+                            result.set("");
+                            return;
+                        }
+
+                        var rows = [];
+                        for (var row = 0; row < tree.getRowCount(); row++) {
+                            var path = tree.getPathForRow(row);
+                            if (!path) continue;
+                            var node = path.getLastPathComponent();
+                            if (!node) continue;
+
+                            renderer.getTreeCellRendererComponent(tree, node, false, tree.isExpanded(row), tree.getModel().isLeaf(node), row, false);
+                            var textRendererField = findDeclaredField(renderer, "textRenderer");
+                            var trailingRendererField = findDeclaredField(renderer, "trailingRenderer");
+                            var rowText = [
+                                textRendererField ? fragmentText(textRendererField.get(renderer)) : "",
+                                trailingRendererField ? fragmentText(trailingRendererField.get(renderer)) : ""
+                            ].join(" ").trim();
+                            if (rowText.length > 0) {
+                                rows.push(rowText);
+                            }
+                        }
+
+                        result.set(rows.join(" || "));
+                    }
+                }));
+
+                return result.get();
+            })();
+            """.trimIndent(),
+            true
+        )
     }
 
     fun fileStatusForTreeItem(fileName: String): String {
