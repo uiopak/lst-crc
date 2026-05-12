@@ -720,12 +720,8 @@ class LstCrcBranchComparisonUiTest : LstCrcUiTestSupport() {
             branchSelection { searchAndSelect("feature-expand-initial") }
             gitChangesView {
                 selectTab("feature-expand-initial")
-                step("Wait for initial nested file to appear") {
-                    waitFor(Duration.ofSeconds(10)) {
-                        changesTree.findAllText("ExistingA.txt").isNotEmpty()
-                    }
-                }
             }
+            waitForInitialNestedFile("ExistingA.txt")
 
             step("Collapse 'nested' before introducing a new file") {
                 setChangesTreeNodeExpanded("nested", false)
@@ -807,12 +803,8 @@ class LstCrcBranchComparisonUiTest : LstCrcUiTestSupport() {
             branchSelection { searchAndSelect("feature-collapse-initial") }
             gitChangesView {
                 selectTab("feature-collapse-initial")
-                step("Wait for initial nested file to appear") {
-                    waitFor(Duration.ofSeconds(10)) {
-                        changesTree.findAllText("ExistingB.txt").isNotEmpty()
-                    }
-                }
             }
+            waitForInitialNestedFile("ExistingB.txt")
 
             step("Collapse 'nested' before introducing a new file") {
                 setChangesTreeNodeExpanded("nested", false)
@@ -860,6 +852,30 @@ class LstCrcBranchComparisonUiTest : LstCrcUiTestSupport() {
                         "NewB.txt should stay hidden when the setting is disabled and a new file appears in a collapsed directory"
                     )
                 }
+            }
+        }
+    }
+
+    private fun IdeaFrame.waitForInitialNestedFile(fileName: String) {
+        var lastSnapshot = ""
+
+        step("Wait for initial nested file to appear") {
+            waitFor(Duration.ofSeconds(20), interval = Duration.ofMillis(500)) {
+                lastSnapshot = activeDiffSnapshot()
+                lastSnapshot.contains(fileName)
+            }
+
+            gitChangesView {
+                waitFor(Duration.ofSeconds(10), interval = Duration.ofMillis(200)) {
+                    changesTree.findAllText(fileName).isNotEmpty()
+                }
+            }
+
+            gitChangesView {
+                assertTrue(
+                    changesTree.findAllText(fileName).isNotEmpty(),
+                    "Expected initial comparison tree to show $fileName. Last diff snapshot: '$lastSnapshot'"
+                )
             }
         }
     }

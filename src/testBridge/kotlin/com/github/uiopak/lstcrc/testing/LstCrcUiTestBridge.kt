@@ -22,6 +22,7 @@ import com.intellij.openapi.actionSystem.ActionPlaces
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.CommonDataKeys
 import com.intellij.openapi.actionSystem.DataContext
+import com.intellij.openapi.actionSystem.ex.ActionUtil
 import com.intellij.notification.Notification
 import com.intellij.notification.NotificationsManager
 import com.intellij.openapi.application.ApplicationManager
@@ -1212,7 +1213,7 @@ class LstCrcUiTestBridge {
             ActionUiKind.NONE,
             null
         )
-        action.actionPerformed(event)
+        ActionUtil.performAction(action, event)
     }
 
     private fun visibleWindows(): Sequence<Window> = Window.getWindows().asSequence().filter(Window::isShowing)

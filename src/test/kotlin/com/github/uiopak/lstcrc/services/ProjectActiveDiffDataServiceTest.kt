@@ -1,10 +1,10 @@
 package com.github.uiopak.lstcrc.services
 
-import com.github.uiopak.lstcrc.state.TabInfo
-import com.github.uiopak.lstcrc.state.ToolWindowState
-import com.intellij.openapi.application.ApplicationManager
+import com.github.uiopak.lstcrc.testsupport.categorizedChanges
+import com.github.uiopak.lstcrc.testsupport.flushEdt
+import com.github.uiopak.lstcrc.testsupport.selectComparisonTab
+import com.github.uiopak.lstcrc.testsupport.selectHeadTab
 import com.intellij.openapi.components.service
-import com.intellij.testFramework.PlatformTestUtil
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 
 class ProjectActiveDiffDataServiceTest : BasePlatformTestCase() {
@@ -13,19 +13,11 @@ class ProjectActiveDiffDataServiceTest : BasePlatformTestCase() {
         val diffDataService = project.service<ProjectActiveDiffDataService>()
         val headFile = myFixture.addFileToProject("diff/HeadOnly.txt", "head\n").virtualFile
 
-        project.service<ToolWindowStateService>().noStateLoaded()
+        selectHeadTab(project)
 
         diffDataService.updateActiveDiff(
             "HEAD",
-            CategorizedChanges(
-                allChanges = emptyList(),
-                createdFiles = listOf(headFile),
-                modifiedFiles = emptyList(),
-                movedFiles = emptyList(),
-                deletedFiles = emptyList(),
-                comparisonContext = emptyMap(),
-                lineStatsByChange = emptyMap()
-            )
+            categorizedChanges(createdFiles = listOf(headFile))
         )
         flushEdt()
 
@@ -40,38 +32,17 @@ class ProjectActiveDiffDataServiceTest : BasePlatformTestCase() {
         val selectedFile = myFixture.addFileToProject("diff/Selected.txt", "selected\n").virtualFile
         val staleFile = myFixture.addFileToProject("diff/Stale.txt", "stale\n").virtualFile
 
-        project.service<ToolWindowStateService>().loadState(
-            ToolWindowState(
-                openTabs = listOf(TabInfo(branchName = "selected-branch")),
-                selectedTabIndex = 0
-            )
-        )
+        selectComparisonTab(project, "selected-branch")
 
         diffDataService.updateActiveDiff(
             "selected-branch",
-            CategorizedChanges(
-                allChanges = emptyList(),
-                createdFiles = listOf(selectedFile),
-                modifiedFiles = emptyList(),
-                movedFiles = emptyList(),
-                deletedFiles = emptyList(),
-                comparisonContext = emptyMap(),
-                lineStatsByChange = emptyMap()
-            )
+            categorizedChanges(createdFiles = listOf(selectedFile))
         )
         flushEdt()
 
         diffDataService.updateActiveDiff(
             "other-branch",
-            CategorizedChanges(
-                allChanges = emptyList(),
-                createdFiles = listOf(staleFile),
-                modifiedFiles = emptyList(),
-                movedFiles = emptyList(),
-                deletedFiles = emptyList(),
-                comparisonContext = emptyMap(),
-                lineStatsByChange = emptyMap()
-            )
+            categorizedChanges(createdFiles = listOf(staleFile))
         )
         flushEdt()
 
@@ -90,38 +61,17 @@ class ProjectActiveDiffDataServiceTest : BasePlatformTestCase() {
         val selectedFile = myFixture.addFileToProject("diff/BranchSelected.txt", "branch selected\n").virtualFile
         val headFile = myFixture.addFileToProject("diff/HeadShouldBeRejected.txt", "head\n").virtualFile
 
-        project.service<ToolWindowStateService>().loadState(
-            ToolWindowState(
-                openTabs = listOf(TabInfo(branchName = "selected-branch")),
-                selectedTabIndex = 0
-            )
-        )
+        selectComparisonTab(project, "selected-branch")
 
         diffDataService.updateActiveDiff(
             "selected-branch",
-            CategorizedChanges(
-                allChanges = emptyList(),
-                createdFiles = listOf(selectedFile),
-                modifiedFiles = emptyList(),
-                movedFiles = emptyList(),
-                deletedFiles = emptyList(),
-                comparisonContext = emptyMap(),
-                lineStatsByChange = emptyMap()
-            )
+            categorizedChanges(createdFiles = listOf(selectedFile))
         )
         flushEdt()
 
         diffDataService.updateActiveDiff(
             "HEAD",
-            CategorizedChanges(
-                allChanges = emptyList(),
-                createdFiles = listOf(headFile),
-                modifiedFiles = emptyList(),
-                movedFiles = emptyList(),
-                deletedFiles = emptyList(),
-                comparisonContext = emptyMap(),
-                lineStatsByChange = emptyMap()
-            )
+            categorizedChanges(createdFiles = listOf(headFile))
         )
         flushEdt()
 
@@ -133,10 +83,5 @@ class ProjectActiveDiffDataServiceTest : BasePlatformTestCase() {
         assertFalse(diffDataService.changedFilesSet.contains(headFile))
         assertTrue(diffDataService.createdFilePaths.contains(selectedFile.path))
         assertFalse(diffDataService.createdFilePaths.contains(headFile.path))
-    }
-
-    private fun flushEdt() {
-        PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
-        ApplicationManager.getApplication().invokeAndWait { }
     }
 }

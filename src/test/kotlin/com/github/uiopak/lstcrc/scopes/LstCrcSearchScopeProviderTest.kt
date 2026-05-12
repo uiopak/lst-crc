@@ -1,15 +1,11 @@
 package com.github.uiopak.lstcrc.scopes
 
 import com.github.uiopak.lstcrc.resources.LstCrcBundle
-import com.github.uiopak.lstcrc.services.ProjectActiveDiffDataService
-import com.github.uiopak.lstcrc.services.CategorizedChanges
-import com.github.uiopak.lstcrc.services.ToolWindowStateService
-import com.github.uiopak.lstcrc.state.TabInfo
-import com.github.uiopak.lstcrc.state.ToolWindowState
-import com.intellij.openapi.application.ApplicationManager
+import com.github.uiopak.lstcrc.testsupport.categorizedChanges
+import com.github.uiopak.lstcrc.testsupport.flushEdt
+import com.github.uiopak.lstcrc.testsupport.selectComparisonTab
 import com.intellij.openapi.components.service
 import com.intellij.psi.search.SearchScope
-import com.intellij.testFramework.PlatformTestUtil
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 
 class LstCrcSearchScopeProviderTest : BasePlatformTestCase() {
@@ -42,23 +38,15 @@ class LstCrcSearchScopeProviderTest : BasePlatformTestCase() {
         val movedFile = myFixture.addFileToProject("scopes/Moved.txt", "moved\n").virtualFile
         val deletedFile = myFixture.addFileToProject("scopes/Deleted.txt", "deleted\n").virtualFile
 
-        project.service<ToolWindowStateService>().loadState(
-            ToolWindowState(
-                openTabs = listOf(TabInfo(branchName = "feature-search-scopes")),
-                selectedTabIndex = 0
-            )
-        )
+        selectComparisonTab(project, "feature-search-scopes")
 
-        project.service<ProjectActiveDiffDataService>().updateActiveDiff(
+        project.service<com.github.uiopak.lstcrc.services.ProjectActiveDiffDataService>().updateActiveDiff(
             "feature-search-scopes",
-            CategorizedChanges(
-                allChanges = emptyList(),
+            categorizedChanges(
                 createdFiles = listOf(createdFile),
                 modifiedFiles = listOf(modifiedFile),
                 movedFiles = listOf(movedFile),
-                deletedFiles = listOf(deletedFile),
-                comparisonContext = emptyMap(),
-                lineStatsByChange = emptyMap()
+                deletedFiles = listOf(deletedFile)
             )
         )
         flushEdt()
@@ -85,10 +73,5 @@ class LstCrcSearchScopeProviderTest : BasePlatformTestCase() {
         assertTrue(changedScope.contains(modifiedFile))
         assertTrue(changedScope.contains(movedFile))
         assertFalse(changedScope.contains(deletedFile))
-    }
-
-    private fun flushEdt() {
-        PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
-        ApplicationManager.getApplication().invokeAndWait { }
     }
 }

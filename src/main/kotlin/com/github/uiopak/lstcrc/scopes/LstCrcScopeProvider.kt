@@ -25,13 +25,5 @@ object LstCrcProvidedScopes {
  */
 class LstCrcScopeProvider : CustomScopesProvider {
 
-    override fun getCustomScopes(): List<NamedScope> {
-        return listOf(
-            LstCrcProvidedScopes.CREATED_FILES_SCOPE,
-            LstCrcProvidedScopes.MODIFIED_FILES_SCOPE,
-            LstCrcProvidedScopes.MOVED_FILES_SCOPE,
-            LstCrcProvidedScopes.DELETED_FILES_SCOPE,
-            LstCrcProvidedScopes.CHANGED_FILES_SCOPE
-        )
-    }
+    override fun getCustomScopes(): List<NamedScope> = LstCrcScopeCollections.customScopes
 }

@@ -18,17 +18,8 @@ class LstCrcSearchScopeProvider : SearchScopeProvider {
         return LstCrcBundle.message("scope.provider.display.name")
     }
 
-    override fun getSearchScopes(project: Project, dataContext: DataContext): List<SearchScope> {
-        val createdScope = LstCrcProvidedScopes.CREATED_FILES_SCOPE
-        val modifiedScope = LstCrcProvidedScopes.MODIFIED_FILES_SCOPE
-        val movedScope = LstCrcProvidedScopes.MOVED_FILES_SCOPE
-        val changedScope = LstCrcProvidedScopes.CHANGED_FILES_SCOPE
-
-        return listOf(
-            GlobalSearchScopesCore.filterScope(project, createdScope),
-            GlobalSearchScopesCore.filterScope(project, modifiedScope),
-            GlobalSearchScopesCore.filterScope(project, movedScope),
-            GlobalSearchScopesCore.filterScope(project, changedScope)
-        )
-    }
+    override fun getSearchScopes(project: Project, dataContext: DataContext): List<SearchScope> =
+        LstCrcScopeCollections.searchableScopes.map { scope ->
+            GlobalSearchScopesCore.filterScope(project, scope)
+        }
 }
