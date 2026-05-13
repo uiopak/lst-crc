@@ -93,7 +93,6 @@ class PluginUiTestSteps(private val remoteRobot: RemoteRobot) {
 
             repeat(3) { attempt ->
                 val initialized = runCatching {
-                    saveAllDocuments()
                     closeAllEditors()
                     waitForGitIdle()
                     resetProjectFiles()
@@ -483,24 +482,6 @@ class PluginUiTestSteps(private val remoteRobot: RemoteRobot) {
             if (project) {
                 com.intellij.openapi.fileEditor.FileEditorManager.getInstance(project).closeAllFiles();
             }
-            """.trimIndent(),
-            true
-        )
-    }
-
-    private fun saveAllDocuments() = with(remoteRobot) {
-        runJs(
-            """
-            const project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
-            com.intellij.openapi.application.ApplicationManager.getApplication().invokeAndWait(new java.lang.Runnable({
-                run: function() {
-                    com.intellij.openapi.command.WriteCommandAction.runWriteCommandAction(project, new java.lang.Runnable({
-                        run: function() {
-                            com.intellij.openapi.fileEditor.FileDocumentManager.getInstance().saveAllDocuments();
-                        }
-                    }));
-                }
-            }));
             """.trimIndent(),
             true
         )

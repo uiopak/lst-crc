@@ -16,13 +16,13 @@ import com.github.uiopak.lstcrc.toolWindow.LstCrcSettingsService
 import com.github.uiopak.lstcrc.toolWindow.ShowRepoComparisonInfoAction
 import com.github.uiopak.lstcrc.toolWindow.ToolWindowHelper
 import com.github.uiopak.lstcrc.toolWindow.ToolWindowSettingsProvider
+import com.github.uiopak.lstcrc.toolWindow.ToolWindowUiCompatibility
 import com.intellij.openapi.actionSystem.ActionUiKind
 import com.intellij.openapi.actionSystem.ActionManager
 import com.intellij.openapi.actionSystem.ActionPlaces
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.CommonDataKeys
 import com.intellij.openapi.actionSystem.DataContext
-import com.intellij.openapi.actionSystem.ex.ActionUtil
 import com.intellij.notification.Notification
 import com.intellij.notification.NotificationsManager
 import com.intellij.openapi.application.ApplicationManager
@@ -54,7 +54,6 @@ import com.intellij.openapi.vfs.VfsUtil
 import com.intellij.openapi.wm.ToolWindow
 import com.intellij.openapi.wm.ToolWindowManager
 import com.intellij.openapi.wm.WindowManager
-import com.intellij.openapi.wm.impl.content.ToolWindowContentUi
 import com.intellij.psi.PsiManager
 import com.intellij.psi.search.scope.packageSet.PackageSetBase
 import com.intellij.psi.search.scope.packageSet.CustomScopesProvider
@@ -62,7 +61,6 @@ import com.intellij.psi.search.scope.packageSet.NamedScopeManager
 import com.intellij.psi.search.scope.packageSet.NamedScopesHolder
 import com.intellij.ui.FileColorManager
 import com.intellij.ui.content.Content
-import com.intellij.ui.content.impl.ContentManagerImpl
 import com.intellij.ui.treeStructure.Tree
 import com.intellij.util.ui.tree.TreeUtil
 import git4idea.repo.GitRepositoryManager
@@ -104,7 +102,7 @@ class LstCrcUiTestBridge {
     fun isDumbMode(): Boolean = project().service<com.intellij.openapi.project.DumbService>().isDumb
 
     fun isGitVcsActive(): Boolean = onEdtResult {
-        vcsManager(project()).allActiveVcss.any { it.name == "Git" }
+        vcsManager(project()).getAllActiveVcss().any { it.name == "Git" }
     }
 
     fun activateGitVcsIntegration() {
@@ -177,28 +175,10 @@ class LstCrcUiTestBridge {
         val project = project()
         onEdt {
             val settings = settingsService()
-            settings.setSingleClickAction(ToolWindowSettingsProvider.ACTION_OPEN_SOURCE)
-            settings.setDoubleClickAction(ToolWindowSettingsProvider.ACTION_NONE)
-            settings.setMiddleClickAction(ToolWindowSettingsProvider.ACTION_SHOW_IN_PROJECT_TREE)
-            settings.setDoubleMiddleClickAction(ToolWindowSettingsProvider.ACTION_NONE)
-            settings.setRightClickAction(ToolWindowSettingsProvider.ACTION_OPEN_DIFF)
-            settings.setDoubleRightClickAction(ToolWindowSettingsProvider.ACTION_NONE)
-            settings.setBoolean(ToolWindowSettingsProvider.APP_SHOW_CONTEXT_MENU_KEY, ToolWindowSettingsProvider.DEFAULT_SHOW_CONTEXT_MENU, false)
-            settings.setInt(ToolWindowSettingsProvider.APP_USER_DOUBLE_CLICK_DELAY_KEY, ToolWindowSettingsProvider.DELAY_OPTION_SYSTEM_DEFAULT, ToolWindowSettingsProvider.DELAY_OPTION_SYSTEM_DEFAULT)
-            settings.setBoolean(ToolWindowSettingsProvider.APP_INCLUDE_HEAD_IN_SCOPES_KEY, ToolWindowSettingsProvider.DEFAULT_INCLUDE_HEAD_IN_SCOPES, false)
-            settings.setBoolean(ToolWindowSettingsProvider.APP_ENABLE_GUTTER_MARKERS_KEY, ToolWindowSettingsProvider.DEFAULT_ENABLE_GUTTER_MARKERS, true)
-            settings.setBoolean(ToolWindowSettingsProvider.APP_ENABLE_GUTTER_FOR_NEW_FILES_KEY, ToolWindowSettingsProvider.DEFAULT_ENABLE_GUTTER_FOR_NEW_FILES, false)
-            settings.setBoolean(ToolWindowSettingsProvider.APP_SHOW_TOOL_WINDOW_TITLE_KEY, ToolWindowSettingsProvider.DEFAULT_SHOW_TOOL_WINDOW_TITLE, false)
-            settings.setBoolean(ToolWindowSettingsProvider.APP_SHOW_WIDGET_CONTEXT_KEY, ToolWindowSettingsProvider.DEFAULT_SHOW_WIDGET_CONTEXT, false)
-            settings.setBoolean(ToolWindowSettingsProvider.APP_SHOW_CONTEXT_SINGLE_REPO_KEY, ToolWindowSettingsProvider.DEFAULT_SHOW_CONTEXT_SINGLE_REPO, true)
-            settings.setBoolean(ToolWindowSettingsProvider.APP_SHOW_CONTEXT_MULTI_REPO_KEY, ToolWindowSettingsProvider.DEFAULT_SHOW_CONTEXT_MULTI_REPO, true)
-            settings.setBoolean(ToolWindowSettingsProvider.APP_SHOW_CONTEXT_FOR_COMMITS_KEY, ToolWindowSettingsProvider.DEFAULT_SHOW_CONTEXT_FOR_COMMITS, false)
-            settings.setBoolean(ToolWindowSettingsProvider.APP_SHOW_LINE_STATS_IN_TREE_KEY, ToolWindowSettingsProvider.DEFAULT_SHOW_LINE_STATS_IN_TREE, false)
-            settings.setBoolean(ToolWindowSettingsProvider.APP_EXPAND_NEW_FILES_IN_COLLAPSED_DIRS_KEY, ToolWindowSettingsProvider.DEFAULT_EXPAND_NEW_FILES_IN_COLLAPSED_DIRS, true)
-            settings.setBoolean(ToolWindowSettingsProvider.APP_SHOW_UNTRACKED_FILES_AS_NEW_KEY, ToolWindowSettingsProvider.DEFAULT_SHOW_UNTRACKED_FILES_AS_NEW, false)
+            settings.resetToDefaults()
 
             val toolWindow = toolWindowOrNull(project) ?: return@onEdt
-            toolWindow.component.putClientProperty(ToolWindowContentUi.HIDE_ID_LABEL, "true")
+            ToolWindowUiCompatibility.setToolWindowTitleVisible(toolWindow, false)
 
             val contentManager = toolWindow.contentManager
             contentManager.contents
@@ -387,7 +367,7 @@ class LstCrcUiTestBridge {
             }
 
             val stateService = project.service<ToolWindowStateService>()
-            val openTab = stateService.state.openTabs.firstOrNull { it.branchName == displayName || it.alias == displayName }
+            val openTab = stateService.findTabByDisplayName(displayName)
                 ?: error("Could not find state entry for widget selection '$displayName'.")
             val content = toolWindow.contentManager.contents.firstOrNull { candidate ->
                 candidate.displayName == (openTab.alias ?: openTab.branchName)
@@ -515,25 +495,7 @@ class LstCrcUiTestBridge {
             val browser = selectedBrowser() ?: error("No selected LST-CRC browser is available.")
             val change = findChangeByFileName(fileName)
                 ?: error("Could not find change for file '$fileName' in selected LST-CRC browser.")
-
-            when (actionTitle) {
-                LstCrcBundle.message("context.menu.show.diff") -> {
-                    val method = browser.javaClass.getDeclaredMethod("openDiff", List::class.java)
-                    method.isAccessible = true
-                    method.invoke(browser, listOf(change))
-                }
-                LstCrcBundle.message("context.menu.open.source") -> {
-                    val method = browser.javaClass.getDeclaredMethod("openSource", Change::class.java)
-                    method.isAccessible = true
-                    method.invoke(browser, change)
-                }
-                LstCrcBundle.message("context.menu.show.project.tree") -> {
-                    val method = browser.javaClass.getDeclaredMethod("showInProjectTree", Change::class.java)
-                    method.isAccessible = true
-                    method.invoke(browser, change)
-                }
-                else -> error("Unsupported context menu action '$actionTitle'.")
-            }
+            browser.invokeTestContextMenuAction(change, actionTitle)
         }
     }
 
@@ -655,16 +617,12 @@ class LstCrcUiTestBridge {
     fun setShowToolWindowTitle(show: Boolean) {
         onEdt {
             settingsService().setBoolean(ToolWindowSettingsProvider.APP_SHOW_TOOL_WINDOW_TITLE_KEY, show, ToolWindowSettingsProvider.DEFAULT_SHOW_TOOL_WINDOW_TITLE)
-            val toolWindow = toolWindow()
-            toolWindow.component.putClientProperty(ToolWindowContentUi.HIDE_ID_LABEL, if (show) null else "true")
-            (toolWindow.contentManager as? ContentManagerImpl)?.let { manager ->
-                (manager.ui as? ToolWindowContentUi)?.update()
-            }
+            ToolWindowUiCompatibility.setToolWindowTitleVisible(toolWindow(), show)
         }
     }
 
     fun isToolWindowTitleVisible(): Boolean = onEdtResult {
-        toolWindow().component.getClientProperty(ToolWindowContentUi.HIDE_ID_LABEL) == null
+        ToolWindowUiCompatibility.isToolWindowTitleVisible(toolWindow())
     }
 
     fun setIncludeHeadInScopes(include: Boolean) {
@@ -1093,24 +1051,8 @@ class LstCrcUiTestBridge {
 
     private fun allChangeFileNamesSnapshotFromBrowser(): String {
         val browser = selectedBrowser() ?: return ""
-        val changes = runCatching {
-            val currentChangesField = browser.javaClass.getDeclaredField("currentChanges")
-            currentChangesField.isAccessible = true
-            val currentChanges = currentChangesField.get(browser) ?: return ""
-
-            val allChangesMethod = currentChanges.javaClass.methods.firstOrNull {
-                it.name == "getAllChanges" && it.parameterCount == 0
-            } ?: return ""
-            allChangesMethod.invoke(currentChanges) as? Collection<*>
-        }.getOrNull() ?: return ""
-
-        return changes.asSequence()
-            .mapNotNull { it as? Change }
-            .mapNotNull { change ->
-                val file = change.afterRevision?.file ?: change.beforeRevision?.file
-                file?.name
-            }
-            .distinct()
+        return browser.currentChangeFileNamesSnapshot()
+            .asSequence()
             .joinToString("\n")
     }
 
@@ -1149,12 +1091,7 @@ class LstCrcUiTestBridge {
         project: Project,
         document: com.intellij.openapi.editor.Document
     ): LocalLineStatusTracker<*>? {
-        val manager = project.service<VisualTrackerManager>()
-        val field = VisualTrackerManager::class.java.getDeclaredField("visualTrackers")
-        field.isAccessible = true
-        @Suppress("UNCHECKED_CAST")
-        val trackers = field.get(manager) as? Map<com.intellij.openapi.editor.Document, *>
-        return trackers?.get(document) as? LocalLineStatusTracker<*>
+        return project.service<VisualTrackerManager>().findStandaloneTracker(document)
     }
 
     private fun extractTrackerRangeParts(tracker: Any): List<String> {
@@ -1213,7 +1150,7 @@ class LstCrcUiTestBridge {
             ActionUiKind.NONE,
             null
         )
-        ActionUtil.performAction(action, event)
+        action.actionPerformed(event)
     }
 
     private fun visibleWindows(): Sequence<Window> = Window.getWindows().asSequence().filter(Window::isShowing)
@@ -1539,33 +1476,28 @@ class LstCrcUiTestBridge {
     private fun addGitDirectoryMapping(project: Project, rootPath: String) {
         val vcsManager = vcsManager(project)
         val normalizedRoot = rootPath.replace('\\', '/')
-        val existing = vcsManager.directoryMappings
+        val existing = vcsManager.getDirectoryMappings()
             .filterNot { it.vcs == "Git" && it.directory.replace('\\', '/') == normalizedRoot }
             .toMutableList()
         existing.add(VcsDirectoryMapping(normalizedRoot, "Git"))
-        vcsManager.directoryMappings = existing
+        vcsManager.setDirectoryMappings(existing)
     }
 
     private fun refreshBaseDir(project: Project) {
         val basePath = project.basePath ?: return
-        val fileSystem = LocalFileSystem.getInstance()
-        val baseDir = fileSystem.refreshAndFindFileByPath(basePath.replace('\\', '/')) ?: return
-        baseDir.refresh(false, true)
-        baseDir.findChild(".git")?.refresh(false, true)
+        VfsUtil.markDirtyAndRefresh(false, true, true, File(basePath))
     }
 
     private fun resolveSelectedTabInfo(stateService: ToolWindowStateService): TabInfo? {
         val selectedContentName = contentManager().selectedContent?.displayName.orEmpty()
         return stateService.getSelectedTabInfo()
-            ?: stateService.state.openTabs.firstOrNull { it.branchName == selectedContentName || it.alias == selectedContentName }
+            ?: stateService.findTabByDisplayName(selectedContentName)
     }
 
     private fun syncSelectedTabState(project: Project) {
         val stateService = project.service<ToolWindowStateService>()
         val selectedContentName = contentManager().selectedContent?.displayName.orEmpty()
-        val selectedIndex = stateService.state.openTabs.indexOfFirst {
-            it.branchName == selectedContentName || it.alias == selectedContentName
-        }
+        val selectedIndex = stateService.findTabIndexByDisplayName(selectedContentName)
         stateService.setSelectedTab(selectedIndex)
     }
 

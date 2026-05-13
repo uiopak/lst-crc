@@ -15,4 +15,8 @@ internal object ToolWindowUiCompatibility {
         val ui = contentManager?.ui as? ToolWindowContentUi
         ui?.update()
     }
+
+    fun isToolWindowTitleVisible(toolWindow: ToolWindow): Boolean {
+        return toolWindow.component.getClientProperty(ToolWindowContentUi.HIDE_ID_LABEL) == null
+    }
 }

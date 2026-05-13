@@ -4,7 +4,7 @@ import com.github.uiopak.lstcrc.resources.LstCrcBundle
 import com.github.uiopak.lstcrc.services.ToolWindowStateService
 import com.github.uiopak.lstcrc.state.TabInfo
 import com.github.uiopak.lstcrc.state.ToolWindowState
-import com.intellij.ide.util.PropertiesComponent
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.service
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 
@@ -12,7 +12,7 @@ class LstCrcStatusWidgetTest : BasePlatformTestCase() {
 
     override fun tearDown() {
         try {
-            PropertiesComponent.getInstance().setValue(
+            ApplicationManager.getApplication().service<LstCrcSettingsService>().setBoolean(
                 ToolWindowSettingsProvider.APP_SHOW_WIDGET_CONTEXT_KEY,
                 ToolWindowSettingsProvider.DEFAULT_SHOW_WIDGET_CONTEXT,
                 ToolWindowSettingsProvider.DEFAULT_SHOW_WIDGET_CONTEXT
@@ -68,7 +68,7 @@ class LstCrcStatusWidgetTest : BasePlatformTestCase() {
 
     @Suppress("SameParameterValue")
     private fun setShowWidgetContext(show: Boolean) {
-        PropertiesComponent.getInstance().setValue(
+        ApplicationManager.getApplication().service<LstCrcSettingsService>().setBoolean(
             ToolWindowSettingsProvider.APP_SHOW_WIDGET_CONTEXT_KEY,
             show,
             ToolWindowSettingsProvider.DEFAULT_SHOW_WIDGET_CONTEXT

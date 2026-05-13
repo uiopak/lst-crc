@@ -8,6 +8,7 @@ import com.github.uiopak.lstcrc.utils.LstCrcKeys
 import com.intellij.openapi.application.EDT
 import com.intellij.openapi.components.service
 import com.intellij.openapi.diagnostic.thisLogger
+import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.wm.ToolWindow
 import com.intellij.platform.ide.progress.withBackgroundProgress
@@ -38,20 +39,26 @@ object ToolWindowHelper {
      */
     internal fun createBranchContent(
         project: Project,
-        toolWindow: ToolWindow,
         branchName: String,
         displayName: String,
-        contentManager: ContentManager
+        contentManager: ContentManager,
+        order: Int? = null
     ): Content {
-        val newContentView = LstCrcChangesBrowser(project, branchName, toolWindow.disposable)
+        val contentDisposable = Disposer.newDisposable("LST-CRC branch tab: $branchName")
+        val newContentView = LstCrcChangesBrowser(project, branchName, contentDisposable)
 
         val contentFactory = ContentFactory.getInstance()
         val newContent = contentFactory.createContent(newContentView, displayName, false).apply {
             isCloseable = true
+            setDisposer(contentDisposable)
             putUserData(LstCrcKeys.BRANCH_NAME_KEY, branchName)
         }
 
-        contentManager.addContent(newContent)
+        if (order != null && order >= 0) {
+            contentManager.addContent(newContent, order)
+        } else {
+            contentManager.addContent(newContent)
+        }
         return newContent
     }
 
@@ -75,7 +82,7 @@ object ToolWindowHelper {
             contentManager.setSelectedContent(existingContent, true)
         } else {
             logger.info("HELPER: Creating new tab for '$branchName'")
-            val newContent = createBranchContent(project, toolWindow, branchName, branchName, contentManager)
+            val newContent = createBranchContent(project, branchName, branchName, contentManager)
             contentManager.setSelectedContent(newContent, true)
             addAndSelectTabInState(stateService, branchName, newContent.component as? LstCrcChangesBrowser)
         }
@@ -92,7 +99,7 @@ object ToolWindowHelper {
         browser: LstCrcChangesBrowser?
     ) {
         stateService.addTab(branchName)
-        val newIndex = stateService.state.openTabs.indexOfFirst { it.branchName == branchName }
+        val newIndex = stateService.findTabIndex(branchName)
         if (newIndex != -1) {
             stateService.setSelectedTab(newIndex)
         } else {
@@ -134,6 +141,11 @@ object ToolWindowHelper {
 
                 withContext(Dispatchers.EDT) {
                     if (project.isDisposed || toolWindow.isDisposed) return@withContext
+                    contentManager.findContent(selectionTabName)?.let { existingSelection ->
+                        contentManager.setSelectedContent(existingSelection, true)
+                        (existingSelection.component as? BranchSelectionPanel)?.requestFocusOnSearchField()
+                        return@withContext
+                    }
                     addBranchSelectionContent(project, toolWindow, selectionTabName, contentManager, stateService, primaryRepo, branchSnapshot)
                 }
             }
@@ -155,8 +167,9 @@ object ToolWindowHelper {
             handleBranchSelected(project, toolWindow, selectionTabName, stateService, selectedBranchName)
         }
         logger.info("HELPER: Creating and adding new '$selectionTabName' tab to UI.")
-        val newContent = ContentFactory.getInstance().createContent(branchSelectionUi.getPanel(), selectionTabName, true).apply {
+        val newContent = ContentFactory.getInstance().createContent(branchSelectionUi, selectionTabName, true).apply {
             isCloseable = true
+            setDisposer(branchSelectionUi)
         }
         contentManager.addContent(newContent)
         contentManager.setSelectedContent(newContent, true)
@@ -186,10 +199,10 @@ object ToolWindowHelper {
             return
         }
 
-        repurposeSelectionTab(project, toolWindow, stateService, manager, selectionTabContent, selectedBranchName)
+        replaceSelectionTab(project, toolWindow, stateService, manager, selectionTabContent, selectedBranchName)
     }
 
-    private fun repurposeSelectionTab(
+    private fun replaceSelectionTab(
         project: Project,
         toolWindow: ToolWindow,
         stateService: ToolWindowStateService,
@@ -197,12 +210,12 @@ object ToolWindowHelper {
         selectionTabContent: Content,
         selectedBranchName: String
     ) {
-        logger.info("HELPER (Callback): Repurposing selection tab to '$selectedBranchName'.")
-        val newBranchContentView = LstCrcChangesBrowser(project, selectedBranchName, toolWindow.disposable)
-        selectionTabContent.displayName = selectedBranchName
-        selectionTabContent.component = newBranchContentView
-        selectionTabContent.putUserData(LstCrcKeys.BRANCH_NAME_KEY, selectedBranchName)
-        manager.setSelectedContent(selectionTabContent, true)
-        addAndSelectTabInState(stateService, selectedBranchName, newBranchContentView)
+        logger.info("HELPER (Callback): Replacing selection tab with '$selectedBranchName'.")
+        val selectionIndex = manager.getIndexOfContent(selectionTabContent)
+        manager.removeContent(selectionTabContent, true)
+
+        val newBranchContent = createBranchContent(project, selectedBranchName, selectedBranchName, manager, selectionIndex)
+        manager.setSelectedContent(newBranchContent, true)
+        addAndSelectTabInState(stateService, selectedBranchName, newBranchContent.component as? LstCrcChangesBrowser)
     }
 }

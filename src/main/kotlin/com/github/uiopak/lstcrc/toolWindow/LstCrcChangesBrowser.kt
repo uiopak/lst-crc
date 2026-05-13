@@ -432,6 +432,38 @@ class LstCrcChangesBrowser(
 
     private fun openSourceErrorTitle(): String = LstCrcBundle.message(OPEN_SOURCE_ERROR_TITLE_KEY)
 
+    internal fun currentChangeFileNamesSnapshot(): List<String> {
+        return currentChanges?.allChanges
+            ?.asSequence()
+            ?.mapNotNull { change -> change.afterRevision?.file ?: change.beforeRevision?.file }
+            ?.map { it.name }
+            ?.distinct()
+            ?.toList()
+            ?: emptyList()
+    }
+
+    internal fun currentLineStatsSnapshot(): List<String> {
+        return currentChanges?.lineStatsByChange
+            ?.entries
+            ?.asSequence()
+            ?.map { (key, stats) ->
+                val path = key.afterPath ?: key.beforePath ?: ""
+                "$path:+${stats.addedLines}/-${stats.removedLines}"
+            }
+            ?.sorted()
+            ?.toList()
+            ?: emptyList()
+    }
+
+    internal fun invokeTestContextMenuAction(change: Change, actionTitle: String) {
+        when (actionTitle) {
+            LstCrcBundle.message("context.menu.show.diff") -> openDiff(listOf(change))
+            LstCrcBundle.message("context.menu.open.source") -> openSource(change)
+            LstCrcBundle.message("context.menu.show.project.tree") -> showInProjectTree(change)
+            else -> error("Unsupported context menu action '$actionTitle'.")
+        }
+    }
+
     /**
      * Updates the browser with a new set of changes, preserving the user's scroll and expansion state.
      */

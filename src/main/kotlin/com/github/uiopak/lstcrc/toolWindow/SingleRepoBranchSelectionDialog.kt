@@ -38,7 +38,7 @@ class SingleRepoBranchSelectionDialog(
             this.doOKAction()
         }
         panel.requestFocusOnSearchField()
-        return panel.getPanel()
+        return panel
     }
 
     /**

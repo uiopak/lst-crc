@@ -15,6 +15,18 @@ object LstCrcProvidedScopes {
     val MOVED_FILES_SCOPE by lazy { MovedFilesScope() }
     val DELETED_FILES_SCOPE by lazy { DeletedFilesScope() }
     val CHANGED_FILES_SCOPE by lazy { ChangedFilesScope() }
+
+    val allScopes: List<NamedScope>
+        get() = listOf(
+            CREATED_FILES_SCOPE,
+            MODIFIED_FILES_SCOPE,
+            MOVED_FILES_SCOPE,
+            DELETED_FILES_SCOPE,
+            CHANGED_FILES_SCOPE
+        )
+
+    val searchableScopes: List<NamedScope>
+        get() = allScopes.filterNot { it === DELETED_FILES_SCOPE }
 }
 
 /**

@@ -121,6 +121,8 @@ class VisualTrackerManager(
         refreshFileStatuses()
     }
 
+    fun findStandaloneTracker(document: Document): LocalLineStatusTracker<*>? = visualTrackers[document]
+
     private fun refreshFileStatuses() {
         if (project.isDisposed) return
         ApplicationManager.getApplication().invokeLater {

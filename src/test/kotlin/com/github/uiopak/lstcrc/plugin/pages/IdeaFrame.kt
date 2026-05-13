@@ -230,28 +230,6 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
                 const frameHelper = com.intellij.openapi.wm.impl.ProjectFrameHelper.getFrameHelper(component);
                 const project = frameHelper ? frameHelper.getProject() : null;
                 if (project) {
-                    const properties = com.intellij.ide.util.PropertiesComponent.getInstance();
-                    properties.setValue("com.github.uiopak.lstcrc.app.singleClickAction", "OPEN_SOURCE");
-                    properties.setValue("com.github.uiopak.lstcrc.app.doubleClickAction", "NONE");
-                    properties.setValue("com.github.uiopak.lstcrc.app.middleClickAction", "SHOW_IN_PROJECT_TREE");
-                    properties.setValue("com.github.uiopak.lstcrc.app.doubleMiddleClickAction", "NONE");
-                    properties.setValue("com.github.uiopak.lstcrc.app.rightClickAction", "OPEN_DIFF");
-                    properties.setValue("com.github.uiopak.lstcrc.app.doubleRightClickAction", "NONE");
-                    properties.setValue("com.github.uiopak.lstcrc.app.showContextMenu", false, false);
-                    properties.setValue("com.github.uiopak.lstcrc.app.userDoubleClickDelay", "-1");
-                    properties.setValue("com.github.uiopak.lstcrc.app.includeHeadInScopes", false, false);
-                    properties.setValue("com.github.uiopak.lstcrc.app.enableGutterMarkers", true, true);
-                    properties.setValue("com.github.uiopak.lstcrc.app.enableGutterForNewFiles", false, false);
-                    properties.setValue("com.github.uiopak.lstcrc.app.showToolWindowTitle", false, false);
-                    properties.setValue("com.github.uiopak.lstcrc.app.showWidgetContext", false, false);
-                    properties.setValue("com.github.uiopak.lstcrc.app.showContextSingleRepo", true, true);
-                    properties.setValue("com.github.uiopak.lstcrc.app.showContextMultiRepo", true, true);
-                    properties.setValue("com.github.uiopak.lstcrc.app.showContextForCommits", false, false);
-                    properties.setValue("com.github.uiopak.lstcrc.app.showLineStatsInTree", false, false);
-                    properties.setValue("com.github.uiopak.lstcrc.app.expandNewFilesInCollapsedDirs", true, true);
-                    properties.setValue("com.github.uiopak.lstcrc.app.showUntrackedFilesAsNew", false, false);
-
-                    // Also update LstCrcSettingsService in-memory cache, which takes priority over PropertiesComponent.
                     const pluginId = com.intellij.openapi.extensions.PluginId.getId("com.github.uiopak.lstcrc");
                     const plugin = com.intellij.ide.plugins.PluginManagerCore.getPlugin(pluginId);
                     const cl = plugin ? plugin.getPluginClassLoader() : null;
@@ -260,25 +238,7 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
                             const settingsClass = cl.loadClass("com.github.uiopak.lstcrc.toolWindow.LstCrcSettingsService");
                             const svc = com.intellij.openapi.application.ApplicationManager.getApplication().getService(settingsClass);
                             if (svc) {
-                                svc.setSingleClickAction("OPEN_SOURCE");
-                                svc.setDoubleClickAction("NONE");
-                                svc.setMiddleClickAction("SHOW_IN_PROJECT_TREE");
-                                svc.setDoubleMiddleClickAction("NONE");
-                                svc.setRightClickAction("OPEN_DIFF");
-                                svc.setDoubleRightClickAction("NONE");
-                                svc.setBoolean("com.github.uiopak.lstcrc.app.showContextMenu", false, false);
-                                svc.setInt("com.github.uiopak.lstcrc.app.userDoubleClickDelay", -1, -1);
-                                svc.setBoolean("com.github.uiopak.lstcrc.app.includeHeadInScopes", false, false);
-                                svc.setBoolean("com.github.uiopak.lstcrc.app.enableGutterMarkers", true, true);
-                                svc.setBoolean("com.github.uiopak.lstcrc.app.enableGutterForNewFiles", false, false);
-                                svc.setBoolean("com.github.uiopak.lstcrc.app.showToolWindowTitle", false, false);
-                                svc.setBoolean("com.github.uiopak.lstcrc.app.showWidgetContext", false, false);
-                                svc.setBoolean("com.github.uiopak.lstcrc.app.showContextSingleRepo", true, true);
-                                svc.setBoolean("com.github.uiopak.lstcrc.app.showContextMultiRepo", true, true);
-                                svc.setBoolean("com.github.uiopak.lstcrc.app.showContextForCommits", false, false);
-                                svc.setBoolean("com.github.uiopak.lstcrc.app.showLineStatsInTree", false, false);
-                                svc.setBoolean("com.github.uiopak.lstcrc.app.expandNewFilesInCollapsedDirs", true, true);
-                                svc.setBoolean("com.github.uiopak.lstcrc.app.showUntrackedFilesAsNew", false, false);
+                                svc.resetToDefaults();
                             }
 
                             const toolWindowStateClass = cl.loadClass("com.github.uiopak.lstcrc.state.ToolWindowState");
@@ -1505,12 +1465,7 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
                                 .loadClass("com.github.uiopak.lstcrc.gutters.VisualTrackerManager");
                             const manager = project.getService(managerClass);
                             if (manager != null) {
-                                const trackersField = managerClass.getDeclaredField("visualTrackers");
-                                trackersField.setAccessible(true);
-                                const trackers = trackersField.get(manager);
-                                if (trackers != null) {
-                                    tracker = trackers.get(document);
-                                }
+                                tracker = manager.findStandaloneTracker(document);
                             }
                         }
                     }

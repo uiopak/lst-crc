@@ -7,12 +7,12 @@ import com.github.uiopak.lstcrc.services.GitService
 import com.github.uiopak.lstcrc.services.ToolWindowStateService
 import com.github.uiopak.lstcrc.state.ToolWindowState
 import com.github.uiopak.lstcrc.utils.LstCrcKeys
-import com.intellij.ide.util.PropertiesComponent
 import com.intellij.openapi.actionSystem.ActionGroup
 import com.intellij.openapi.actionSystem.DefaultActionGroup
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.service
 import com.intellij.openapi.diagnostic.thisLogger
+import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.wm.ToolWindow
 import com.intellij.openapi.wm.ToolWindowFactory
@@ -84,10 +84,7 @@ class MyToolWindowFactory : ToolWindowFactory {
     }
 
     private fun applyToolWindowTitleSetting(toolWindow: ToolWindow) {
-        val showTitle = PropertiesComponent.getInstance().getBoolean(
-            ToolWindowSettingsProvider.APP_SHOW_TOOL_WINDOW_TITLE_KEY,
-            ToolWindowSettingsProvider.DEFAULT_SHOW_TOOL_WINDOW_TITLE
-        )
+        val showTitle = ToolWindowSettingsProvider.isShowToolWindowTitleEnabled()
         ToolWindowUiCompatibility.setToolWindowTitleVisible(toolWindow, showTitle)
     }
 
@@ -116,10 +113,13 @@ class MyToolWindowFactory : ToolWindowFactory {
 
     private fun createHeadTab(project: Project, toolWindow: ToolWindow): com.intellij.ui.content.Content {
         val contentFactory = ContentFactory.getInstance()
-        val headView = LstCrcChangesBrowser(project, "HEAD", toolWindow.disposable)
+        val headDisposable = Disposer.newDisposable("LST-CRC HEAD tab")
+        Disposer.register(toolWindow.disposable, headDisposable)
+        val headView = LstCrcChangesBrowser(project, "HEAD", headDisposable)
         val headContent = contentFactory.createContent(headView, LstCrcBundle.message("tab.name.head"), false).apply {
             isCloseable = false
             isPinned = true
+            setDisposer(headDisposable)
         }
         toolWindow.contentManager.addContent(headContent)
         return headContent
@@ -140,7 +140,7 @@ class MyToolWindowFactory : ToolWindowFactory {
         if (persistedState.openTabs.isNotEmpty()) {
             persistedState.openTabs.forEach { tabInfo ->
                 val displayName = tabInfo.alias ?: tabInfo.branchName
-                ToolWindowHelper.createBranchContent(project, toolWindow, tabInfo.branchName, displayName, contentManager)
+                ToolWindowHelper.createBranchContent(project, tabInfo.branchName, displayName, contentManager)
             }
             if (persistedState.selectedTabIndex >= 0 && persistedState.selectedTabIndex < persistedState.openTabs.size) {
                 val selectedTabInfo = persistedState.openTabs[persistedState.selectedTabIndex]
@@ -180,7 +180,7 @@ class MyToolWindowFactory : ToolWindowFactory {
 
                 val branchName = selectedContent.getUserData(LstCrcKeys.BRANCH_NAME_KEY)
                 if (branchName != null) {
-                    val indexInPersistedList = stateService.state.openTabs.indexOfFirst { it.branchName == branchName }
+                    val indexInPersistedList = stateService.findTabIndex(branchName)
                     if (indexInPersistedList != -1) {
                         stateService.setSelectedTab(indexInPersistedList)
                     }

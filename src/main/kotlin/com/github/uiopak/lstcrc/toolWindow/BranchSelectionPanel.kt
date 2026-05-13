@@ -3,6 +3,7 @@ package com.github.uiopak.lstcrc.toolWindow
 import com.github.uiopak.lstcrc.resources.LstCrcBundle
 import com.github.uiopak.lstcrc.services.BranchSnapshot
 import com.github.uiopak.lstcrc.services.GitService
+import com.intellij.openapi.Disposable
 import com.intellij.icons.AllIcons
 import com.intellij.ui.ColoredTreeCellRenderer
 import com.intellij.ui.SearchTextField
@@ -19,7 +20,6 @@ import java.awt.event.KeyAdapter
 import java.awt.event.KeyEvent
 import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
-import javax.swing.JComponent
 import javax.swing.JTree
 import javax.swing.event.DocumentEvent
 import javax.swing.event.DocumentListener
@@ -29,6 +29,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import com.intellij.openapi.application.EDT
@@ -46,7 +47,7 @@ class BranchSelectionPanel(
     private val repository: GitRepository?,
     private val branchSnapshot: BranchSnapshot? = null,
     private val onBranchSelected: (branchName: String) -> Unit
-) : JBPanel<BranchSelectionPanel>(BorderLayout()) {
+) : JBPanel<BranchSelectionPanel>(BorderLayout()), Disposable {
 
     private val searchTextField = SearchTextField(false)
     private val tree: Tree
@@ -365,5 +366,8 @@ class BranchSelectionPanel(
         }
     }
 
-    fun getPanel(): JComponent = this
+    override fun dispose() {
+        filterJob?.cancel()
+        scope.cancel()
+    }
 }

@@ -210,19 +210,8 @@ class ChangedFilesScope : ColoredLstCrcScope(
 
 internal object LstCrcScopeCollections {
     val customScopes: List<NamedScope>
-        get() = listOf(
-            LstCrcProvidedScopes.CREATED_FILES_SCOPE,
-            LstCrcProvidedScopes.MODIFIED_FILES_SCOPE,
-            LstCrcProvidedScopes.MOVED_FILES_SCOPE,
-            LstCrcProvidedScopes.DELETED_FILES_SCOPE,
-            LstCrcProvidedScopes.CHANGED_FILES_SCOPE
-        )
+        get() = LstCrcProvidedScopes.allScopes
 
     val searchableScopes: List<NamedScope>
-        get() = customScopes.filter { scope ->
-            when (scope.scopeId) {
-                ScopeDescriptors.DELETED.scopeId -> false
-                else -> true
-            }
-        }
+        get() = LstCrcProvidedScopes.searchableScopes
 }

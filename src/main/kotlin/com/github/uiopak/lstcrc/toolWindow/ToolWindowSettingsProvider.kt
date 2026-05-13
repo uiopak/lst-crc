@@ -100,6 +100,7 @@ object ToolWindowSettingsProvider {
     fun isGutterMarkersEnabled(): Boolean = settingsService().getBoolean(APP_ENABLE_GUTTER_MARKERS_KEY, DEFAULT_ENABLE_GUTTER_MARKERS)
     fun isGutterForNewFilesEnabled(): Boolean = settingsService().getBoolean(APP_ENABLE_GUTTER_FOR_NEW_FILES_KEY, DEFAULT_ENABLE_GUTTER_FOR_NEW_FILES)
     fun isIncludeHeadInScopes(): Boolean = settingsService().getBoolean(APP_INCLUDE_HEAD_IN_SCOPES_KEY, DEFAULT_INCLUDE_HEAD_IN_SCOPES)
+    fun isShowToolWindowTitleEnabled(): Boolean = settingsService().getBoolean(APP_SHOW_TOOL_WINDOW_TITLE_KEY, DEFAULT_SHOW_TOOL_WINDOW_TITLE)
     fun isShowWidgetContext(): Boolean = settingsService().getBoolean(APP_SHOW_WIDGET_CONTEXT_KEY, DEFAULT_SHOW_WIDGET_CONTEXT)
     fun isExpandNewFilesInCollapsedDirs(): Boolean = settingsService().getBoolean(APP_EXPAND_NEW_FILES_IN_COLLAPSED_DIRS_KEY, DEFAULT_EXPAND_NEW_FILES_IN_COLLAPSED_DIRS)
     fun isShowUntrackedFilesAsNew(): Boolean = settingsService().getBoolean(APP_SHOW_UNTRACKED_FILES_AS_NEW_KEY, DEFAULT_SHOW_UNTRACKED_FILES_AS_NEW)

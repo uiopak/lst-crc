@@ -23,23 +23,59 @@ class ToolWindowStateServicePersistenceTest : BasePlatformTestCase() {
         assertEquals(listOf("feature-b"), state.openTabs.map { it.branchName })
     }
 
+    fun testRemoveTabClampsSelectedIndexWhenSelectedTabIsRemoved() {
+        val service = project.service<ToolWindowStateService>()
+        service.loadState(
+            ToolWindowState(
+                openTabs = listOf(
+                    TabInfo(branchName = "feature-a", alias = "Feature A"),
+                    TabInfo(branchName = "feature-b", alias = "Feature B")
+                ),
+                selectedTabIndex = 1
+            )
+        )
+
+        service.removeTab("feature-b")
+
+        assertEquals(0, service.state.selectedTabIndex)
+        assertEquals("feature-a", service.getSelectedTabInfo()?.branchName)
+    }
+
+    fun testRemoveTabShiftsSelectedIndexWhenEarlierTabIsRemoved() {
+        val service = project.service<ToolWindowStateService>()
+        service.loadState(
+            ToolWindowState(
+                openTabs = listOf(
+                    TabInfo(branchName = "feature-a", alias = "Feature A"),
+                    TabInfo(branchName = "feature-b", alias = "Feature B"),
+                    TabInfo(branchName = "feature-c", alias = "Feature C")
+                ),
+                selectedTabIndex = 2
+            )
+        )
+
+        service.removeTab("feature-a")
+
+        assertEquals(1, service.state.selectedTabIndex)
+        assertEquals("feature-c", service.getSelectedTabInfo()?.branchName)
+    }
+
     fun testLoadStateAndGetStateDefensivelyCopyNestedTabState() {
         val service = project.service<ToolWindowStateService>()
+        val inputComparisonMap = mutableMapOf("C:/repo-a" to "origin/main")
         val inputState = ToolWindowState(
             openTabs = listOf(
                 TabInfo(
                     branchName = "feature-a",
                     alias = "Feature A",
-                    comparisonMap = mutableMapOf("C:/repo-a" to "origin/main")
+                    comparisonMap = inputComparisonMap
                 )
             ),
             selectedTabIndex = 0
         )
 
         service.loadState(inputState)
-        inputState.openTabs.first().branchName = "mutated-branch"
-        inputState.openTabs.first().alias = "Mutated Alias"
-        inputState.openTabs.first().comparisonMap["C:/repo-a"] = "mutated/main"
+        inputComparisonMap["C:/repo-a"] = "mutated/main"
 
         val firstRead = service.state
         assertEquals(1, firstRead.openTabs.size)
@@ -49,9 +85,8 @@ class ToolWindowStateServicePersistenceTest : BasePlatformTestCase() {
         assertEquals(0, firstRead.selectedTabIndex)
         assertEquals("feature-a", service.getSelectedTabInfo()?.branchName)
 
-        firstRead.openTabs.first().branchName = "leaked-branch"
-        firstRead.openTabs.first().alias = "Leaked Alias"
-        firstRead.openTabs.first().comparisonMap["C:/repo-a"] = "leaked/main"
+        val leakedMap = firstRead.openTabs.first().comparisonMap as? MutableMap<String, String>
+        leakedMap?.set("C:/repo-a", "leaked/main")
 
         val secondRead = service.state
         assertEquals("feature-a", secondRead.openTabs.first().branchName)

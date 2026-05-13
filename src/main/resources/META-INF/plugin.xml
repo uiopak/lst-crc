@@ -13,7 +13,7 @@
         <toolWindow factoryClass="com.github.uiopak.lstcrc.toolWindow.MyToolWindowFactory" id="GitChangesView" anchor="left" secondary="true" canCloseContents="true" icon="AllIcons.Actions.ListChanges"/>
         <customScopesProvider implementation="com.github.uiopak.lstcrc.scopes.LstCrcScopeProvider" />
         <searchScopesProvider implementation="com.github.uiopak.lstcrc.scopes.LstCrcSearchScopeProvider"/>
-        <statusBarWidgetFactory implementation="com.github.uiopak.lstcrc.toolWindow.LstCrcStatusWidgetFactory" id="LstCrcStatusWidgetFactory" order="first"/>
+        <statusBarWidgetFactory implementation="com.github.uiopak.lstcrc.toolWindow.LstCrcStatusWidgetFactory" id="LstCrcStatusWidget" order="first"/>
         <postStartupActivity implementation="com.github.uiopak.lstcrc.listeners.PluginStartupActivity"/>
 
         <notificationGroup id="LST-CRC Branch Errors" displayType="BALLOON" bundle="messages.LstCrcMessages" key="notification.group.lst-crc.branch.errors"/>

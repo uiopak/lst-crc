@@ -1283,23 +1283,13 @@ class LstCrcBranchComparisonUiTest : LstCrcUiTestSupport() {
                 : null;
             if (!browser) return "browser=missing";
 
-            const browserClass = browser.getClass();
-            const field = browserClass.getDeclaredField("currentChanges");
-            field.setAccessible(true);
-            const currentChanges = field.get(browser);
-            if (!currentChanges) return "currentChanges=null";
-
-            const lineStatsByChange = currentChanges.getLineStatsByChange();
+            const lineStats = browser.currentLineStatsSnapshot();
+            if (!lineStats) return "currentChanges=null";
             const entries = [];
-            const it = lineStatsByChange.entrySet().iterator();
+            const it = lineStats.iterator();
             while (it.hasNext()) {
-                const entry = it.next();
-                const key = entry.getKey();
-                const stats = entry.getValue();
-                const path = String(key.getAfterPath() || key.getBeforePath() || "");
-                entries.push(path + ":+" + String(stats.getAddedLines()) + "/-" + String(stats.getRemovedLines()));
+                entries.push(String(it.next()));
             }
-            entries.sort();
             return entries.join(",");
         })();
         """.trimIndent(),
