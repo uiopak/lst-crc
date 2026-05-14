@@ -65,12 +65,6 @@ private data class ScopeDescriptor(
     val includeInSearchScopes: Boolean = true
 )
 
-private fun packageSet(descriptor: ScopeDescriptor): PackageSet = LstCrcPackageSet(
-    descriptor.descriptionKey,
-    filesExtractor = descriptor.filesExtractor,
-    pathsExtractor = descriptor.pathsExtractor
-)
-
 open class ColoredLstCrcScope(
     scopeId: String,
     nameKey: String,

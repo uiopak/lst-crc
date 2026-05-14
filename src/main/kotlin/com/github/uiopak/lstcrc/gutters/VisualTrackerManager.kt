@@ -121,6 +121,7 @@ class VisualTrackerManager(
         refreshFileStatuses()
     }
 
+    @Suppress("unused")
     fun findStandaloneTracker(document: Document): LocalLineStatusTracker<*>? = visualTrackers[document]
 
     private fun refreshFileStatuses() {

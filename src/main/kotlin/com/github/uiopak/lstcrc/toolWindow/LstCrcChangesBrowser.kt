@@ -432,7 +432,8 @@ class LstCrcChangesBrowser(
 
     private fun openSourceErrorTitle(): String = LstCrcBundle.message(OPEN_SOURCE_ERROR_TITLE_KEY)
 
-    internal fun currentChangeFileNamesSnapshot(): List<String> {
+    @Suppress("unused")
+    fun currentChangeFileNamesSnapshot(): List<String> {
         return currentChanges?.allChanges
             ?.asSequence()
             ?.mapNotNull { change -> change.afterRevision?.file ?: change.beforeRevision?.file }
@@ -442,7 +443,8 @@ class LstCrcChangesBrowser(
             ?: emptyList()
     }
 
-    internal fun currentLineStatsSnapshot(): List<String> {
+    @Suppress("unused")
+    fun currentLineStatsSnapshot(): List<String> {
         return currentChanges?.lineStatsByChange
             ?.entries
             ?.asSequence()
@@ -455,7 +457,8 @@ class LstCrcChangesBrowser(
             ?: emptyList()
     }
 
-    internal fun invokeTestContextMenuAction(change: Change, actionTitle: String) {
+    @Suppress("unused")
+    fun invokeTestContextMenuAction(change: Change, actionTitle: String) {
         when (actionTitle) {
             LstCrcBundle.message("context.menu.show.diff") -> openDiff(listOf(change))
             LstCrcBundle.message("context.menu.open.source") -> openSource(change)

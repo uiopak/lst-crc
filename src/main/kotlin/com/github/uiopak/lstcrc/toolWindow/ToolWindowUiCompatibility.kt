@@ -16,6 +16,7 @@ internal object ToolWindowUiCompatibility {
         ui?.update()
     }
 
+    @Suppress("unused")
     fun isToolWindowTitleVisible(toolWindow: ToolWindow): Boolean {
         return toolWindow.component.getClientProperty(ToolWindowContentUi.HIDE_ID_LABEL) == null
     }

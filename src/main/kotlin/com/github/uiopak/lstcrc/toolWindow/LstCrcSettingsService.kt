@@ -128,6 +128,7 @@ class LstCrcSettingsService : PersistentStateComponent<LstCrcSettingsService.Set
         properties.setValue(key, value, default)
     }
 
+    @Suppress("unused")
     fun resetToDefaults() {
         setSingleClickAction(ToolWindowSettingsProvider.DEFAULT_SINGLE_CLICK_ACTION)
         setDoubleClickAction(ToolWindowSettingsProvider.DEFAULT_DOUBLE_CLICK_ACTION)

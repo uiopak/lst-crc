@@ -348,10 +348,12 @@ class ToolWindowStateService(private val project: Project, val coroutineScope: C
         return myState.openTabs.indexOfFirst { it.branchName == branchName }
     }
 
+    @Suppress("unused")
     fun findTabByDisplayName(displayName: String): TabInfo? {
         return myState.openTabs.firstOrNull { it.branchName == displayName || it.alias == displayName }
     }
 
+    @Suppress("unused")
     fun findTabIndexByDisplayName(displayName: String): Int {
         return myState.openTabs.indexOfFirst { it.branchName == displayName || it.alias == displayName }
     }

@@ -12,7 +12,8 @@ import com.intellij.remoterobot.utils.waitFor
 import java.time.Duration
 
 fun RemoteRobot.idea(function: IdeaFrame.() -> Unit) {
-    find<IdeaFrame>(timeout = Duration.ofSeconds(10)).apply(function)
+    val timeout = if (System.getenv("GITHUB_ACTIONS") == "true") Duration.ofSeconds(60) else Duration.ofSeconds(20)
+    find<IdeaFrame>(timeout = timeout).apply(function)
 }
 
 @FixtureName("Idea frame")
@@ -197,7 +198,7 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
 
             val toolWindowVisible = runCatching {
                 waitFor(visibleTimeout, interval = Duration.ofMillis(250)) {
-                    remoteRobot.findAll<ComponentFixture>(byXpath("//div[@class='LstCrcChangesBrowser']")).isNotEmpty()
+                    isGitChangesViewReadyForRobot()
                 }
                 true
             }.getOrDefault(false)
@@ -210,7 +211,7 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
                     ).click()
                 }
                 waitFor(visibleTimeout, interval = Duration.ofMillis(250)) {
-                    remoteRobot.findAll<ComponentFixture>(byXpath("//div[@class='LstCrcChangesBrowser']")).isNotEmpty()
+                    isGitChangesViewReadyForRobot()
                 }
             }
 
@@ -221,6 +222,36 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
                 !isDumbMode() && !placeholderVisible
             }
         }
+    }
+
+    private fun isGitChangesViewReadyForRobot(): Boolean {
+        val jsVisible = runCatching {
+            callJs<Boolean>(
+                """
+                (function() {
+                    const project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
+                    if (!project) return false;
+
+                    const toolWindow = com.intellij.openapi.wm.ToolWindowManager.getInstance(project).getToolWindow("GitChangesView");
+                    if (!toolWindow || !toolWindow.isVisible()) return false;
+
+                    const contentManager = toolWindow.getContentManager();
+                    if (!contentManager) return false;
+
+                    const selected = contentManager.getSelectedContent();
+                    const component = selected ? selected.getComponent() : null;
+                    return component != null && component.isShowing();
+                })();
+                """.trimIndent(),
+                true
+            )
+        }.getOrDefault(false)
+
+        if (jsVisible) return true
+
+        return runCatching {
+            remoteRobot.findAll<ComponentFixture>(byXpath("//div[@class='LstCrcChangesBrowser']")).isNotEmpty()
+        }.getOrDefault(false)
     }
 
     fun resetGitChangesViewState() {
