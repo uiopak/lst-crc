@@ -2,6 +2,7 @@ package com.github.uiopak.lstcrc.starter
 
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Test
@@ -11,6 +12,62 @@ import kotlin.time.Duration.Companion.seconds
 
 @Tag("starter")
 class LstCrcBranchComparisonStarterUiTest : LstCrcStarterUiTestBase() {
+
+    @Test
+    fun testBranchComparisonLineStatsIgnoreLineEndingOnlyChanges() = runStarterUiTest {
+        prepareLstCrc()
+        initializeGitRepository()
+
+        createNewFile(".gitattributes", "*.txt -text\n")
+        createNewFile("Main.txt", "alpha\r\nbeta\r\ngamma\r\n")
+        commitChanges("Initial CRLF fixture")
+        val defaultBranch = defaultBranchName()
+
+        createBranch("feature-line-endings")
+        modifyFile("Main.txt", "alpha changed\nbeta\ngamma\n")
+        commitChanges("Feature LF fixture")
+        checkoutBranch(defaultBranch)
+
+        val rawNumstat = project.runGit("diff", "--numstat", "feature-line-endings")
+        assertTrue(
+            rawNumstat.lineSequence().any { it == "3\t3\tMain.txt" },
+            "Expected raw git numstat to still count CRLF/LF churn, got: $rawNumstat"
+        )
+
+        openGitChangesView()
+        waitForSelectedTab("HEAD")
+
+        ui.createAndSelectTab("feature-line-endings")
+        waitForSelectedTab("feature-line-endings")
+        waitForTreeContains("Main.txt")
+
+        ui.setTreeContextSettings(showSingleRepo = null, showCommits = null, showLineStats = true)
+
+        var lastRows = ""
+        waitUntil(20.seconds) {
+            lastRows = ui.selectedRenderedRowsSnapshot()
+            lastRows.lineSequence().any { row ->
+                row.contains("Main.txt") &&
+                    row.contains("+1") &&
+                    row.contains("-1") &&
+                    !row.contains("+3") &&
+                    !row.contains("-3")
+            }
+        }
+
+        assertTrue(
+            lastRows.lineSequence().any { row ->
+                row.contains("Main.txt") && row.contains("+1") && row.contains("-1")
+            },
+            "Expected rendered tree rows to show +1/-1 for Main.txt, got: $lastRows"
+        )
+        assertFalse(
+            lastRows.lineSequence().any { row ->
+                row.contains("Main.txt") && (row.contains("+3") || row.contains("-3"))
+            },
+            "Rendered tree rows should ignore line-ending-only churn, got: $lastRows"
+        )
+    }
 
     @Test
     fun testGitBranchComparison() = runStarterUiTest {

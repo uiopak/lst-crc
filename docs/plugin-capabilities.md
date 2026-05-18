@@ -50,6 +50,7 @@ LST-CRC is an IntelliJ Platform plugin for comparing the current working tree ag
 	- Renames and moves appear as moved entries.
 	- Missing files relative to the selected target appear as deleted entries.
 	- Mixed-state tabs can surface several file states at once across one active comparison.
+	- Displayed added/removed line counters intentionally ignore CRLF/LF-only churn so the browser metadata stays aligned with the visible diff and gutter ranges instead of raw Git `numstat` noise.
 - `C3.2` Custom named scopes.
 	- The plugin publishes named scopes for Created, Modified, Moved, Deleted, and Changed files from the active diff.
 	- `Created` tracks new files.

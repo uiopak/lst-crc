@@ -13,6 +13,7 @@ import com.intellij.remoterobot.utils.keyboard
 import com.intellij.remoterobot.utils.waitFor
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import java.awt.event.KeyEvent
@@ -20,6 +21,64 @@ import java.time.Duration
 
 @LstCrcUiTest
 class LstCrcBranchComparisonUiTest : LstCrcUiTestSupport() {
+
+    @Test
+    @Video
+    fun testBranchComparisonLineStatsIgnoreLineEndingOnlyChanges(remoteRobot: RemoteRobot) = with(remoteRobot) {
+        val uiSteps = PluginUiTestSteps(remoteRobot)
+
+        prepareFreshProject()
+
+        idea {
+            step("Wait for smart mode") {
+                dumbAware(Duration.ofMinutes(5)) {}
+            }
+
+            uiSteps.initializeGitRepository()
+            resetGitChangesViewState()
+
+            uiSteps.createNewFile(".gitattributes", "*.txt -text\n")
+            uiSteps.createNewFile("Main.txt", "alpha\r\nbeta\r\ngamma\r\n")
+            uiSteps.commitChanges("Initial CRLF fixture")
+            val defaultBranch = uiSteps.defaultBranchName()
+
+            uiSteps.createBranch("feature-line-endings")
+            uiSteps.modifyFile("Main.txt", "alpha changed\nbeta\ngamma\n")
+            uiSteps.commitChanges("Feature LF fixture")
+            uiSteps.checkoutBranch(defaultBranch)
+
+            val rawNumstat = uiSteps.runGitCommand("diff", "--numstat", "feature-line-endings")
+            assertTrue(
+                rawNumstat.lineSequence().any { it == "3\t3\tMain.txt" },
+                "Expected raw git numstat to still count CRLF/LF churn, got: $rawNumstat"
+            )
+
+            openGitChangesView()
+            gitChangesView {
+                addTab()
+            }
+            branchSelection {
+                searchAndSelect("feature-line-endings")
+            }
+
+            gitChangesView {
+                selectTab("feature-line-endings")
+            }
+            setTreeContextSettings(showLineStats = true)
+
+            waitForMainFileLineStats(1)
+
+            val renderedMetadata = remoteRobot.renderedMainFileMetadata()
+            assertTrue(
+                renderedMetadata.contains("+1") && renderedMetadata.contains("-1"),
+                "Expected rendered metadata to show +1/-1, got: $renderedMetadata"
+            )
+            assertFalse(
+                renderedMetadata.contains("+3") || renderedMetadata.contains("-3"),
+                "Rendered metadata should ignore line-ending-only churn, got: $renderedMetadata"
+            )
+        }
+    }
 
     @Test
     @Video

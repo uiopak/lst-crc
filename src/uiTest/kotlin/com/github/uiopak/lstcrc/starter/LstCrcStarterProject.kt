@@ -105,6 +105,8 @@ class LstCrcStarterProject private constructor(val path: Path) {
 
     fun gitRevision(reference: String): String = git("rev-parse", reference)
 
+    fun runGit(vararg args: String): String = git(*args)
+
 
     private fun repoPath(relativeRepoPath: String): Path = path.resolve(relativeRepoPath)
 

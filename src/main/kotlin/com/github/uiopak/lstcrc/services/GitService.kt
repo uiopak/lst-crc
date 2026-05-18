@@ -38,6 +38,9 @@ import git4idea.GitUtil
 import git4idea.util.GitFileUtils
 import java.nio.charset.Charset
 
+private const val DIFF_FILTER_PARAM = "--diff-filter=ADCMRUXT"
+private const val IGNORE_CR_AT_EOL_PARAM = "--ignore-cr-at-eol"
+
 
 /**
  * Holds the result of a Git diff, with files categorized by their change type.
@@ -107,10 +110,6 @@ data class GetChangesResult(
  */
 @Service(Service.Level.PROJECT)
 class GitService(private val project: Project) {
-
-    private companion object {
-        private const val DIFF_FILTER_PARAM = "--diff-filter=ADCMRUXT"
-    }
 
     private val logger = thisLogger()
 
@@ -376,8 +375,7 @@ class GitService(private val project: Project) {
         val handler = GitLineHandler(project, repo.root, GitCommand.DIFF)
         handler.setSilent(true)
         handler.setStdoutSuppressed(true)
-        handler.addParameters("--numstat", DIFF_FILTER_PARAM, "-M")
-        handler.addParameters(*revisions)
+        handler.addParameters(*trackedLineStatsDiffArgs(*revisions).toTypedArray())
 
         val output = Git.getInstance().runCommand(handler).getOutputOrThrow()
         return parseTrackedLineStats(repo, changes, output.lineSequence())
@@ -755,9 +753,11 @@ class GitService(private val project: Project) {
 }
 
 internal fun calculateLineStats(beforeContent: String, afterContent: String): ChangeLineStats {
+    val normalizedBeforeContent = StringUtil.convertLineSeparators(beforeContent)
+    val normalizedAfterContent = StringUtil.convertLineSeparators(afterContent)
     val fragments = ComparisonManager.getInstance().compareLines(
-        beforeContent,
-        afterContent,
+        normalizedBeforeContent,
+        normalizedAfterContent,
         ComparisonPolicy.DEFAULT,
         DumbProgressIndicator.INSTANCE
     ).toList()
@@ -765,6 +765,14 @@ internal fun calculateLineStats(beforeContent: String, afterContent: String): Ch
         addedLines = fragments.sumOf { it.endLine2 - it.startLine2 },
         removedLines = fragments.sumOf { it.endLine1 - it.startLine1 }
     )
+}
+
+internal fun trackedLineStatsDiffArgs(vararg revisions: String): List<String> = buildList {
+    add("--numstat")
+    add(DIFF_FILTER_PARAM)
+    add("-M")
+    add(IGNORE_CR_AT_EOL_PARAM)
+    addAll(revisions)
 }
 
 internal fun createLiveDocumentContentRevision(file: VirtualFile): ContentRevision {
