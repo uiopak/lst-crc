@@ -30,6 +30,10 @@ object ToolWindowHelper {
 
     internal fun normalizedTabAlias(alias: String?): String? = alias?.trim()?.ifEmpty { null }
 
+    internal fun updateNormalizedTabAlias(project: Project, branchName: String, alias: String?) {
+        project.service<ToolWindowStateService>().updateTabAlias(branchName, normalizedTabAlias(alias))
+    }
+
     internal fun branchSelectionTabName(): String = LstCrcBundle.message("tab.name.select.branch")
 
     internal fun activateToolWindow(project: Project, onActivated: (ToolWindow) -> Unit): Boolean {

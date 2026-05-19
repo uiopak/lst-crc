@@ -2,15 +2,12 @@ package com.github.uiopak.lstcrc.toolWindow
 
 import com.github.uiopak.lstcrc.LstCrcConstants
 import com.github.uiopak.lstcrc.resources.LstCrcBundle
-import com.github.uiopak.lstcrc.services.ToolWindowStateService
 import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
-import com.intellij.openapi.components.service
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.ui.Messages
-import com.intellij.openapi.vcs.VcsDataKeys
 import com.intellij.openapi.wm.ToolWindow
 
 /**
@@ -24,7 +21,7 @@ class CreateTabFromRevisionAction : AnAction() {
 
     override fun update(e: AnActionEvent) {
         val project = e.project
-        e.presentation.isEnabledAndVisible = project != null && selectedRevisionString(e) != null
+        e.presentation.isEnabledAndVisible = project != null && singleSelectedRevisionString(e) != null
     }
 
     override fun getActionUpdateThread(): ActionUpdateThread {
@@ -33,7 +30,7 @@ class CreateTabFromRevisionAction : AnAction() {
 
     override fun actionPerformed(e: AnActionEvent) {
         val project = e.project ?: return
-        val revisionString = selectedRevisionString(e) ?: return
+        val revisionString = singleSelectedRevisionString(e) ?: return
         logger.info("Action performed: Create tab for revision '$revisionString'")
 
         val newAlias = promptForAlias(project, revisionString)
@@ -60,8 +57,7 @@ class CreateTabFromRevisionAction : AnAction() {
         newAlias: String
     ) {
         ToolWindowHelper.createAndSelectTab(project, toolWindow, revisionString)
-        val finalAlias = ToolWindowHelper.normalizedTabAlias(newAlias)
-        project.service<ToolWindowStateService>().updateTabAlias(revisionString, finalAlias)
+        ToolWindowHelper.updateNormalizedTabAlias(project, revisionString, newAlias)
     }
 
     private fun promptForAlias(project: Project, revisionString: String): String? {
@@ -73,11 +69,5 @@ class CreateTabFromRevisionAction : AnAction() {
             revisionString,
             null
         )
-    }
-
-    private fun selectedRevisionString(e: AnActionEvent): String? {
-        return e.getData(VcsDataKeys.VCS_REVISION_NUMBERS)
-            ?.singleOrNull()
-            ?.asString()
     }
 }

@@ -13,7 +13,9 @@ import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.service
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.editor.Document
+import com.intellij.openapi.editor.ex.MarkupModelEx
 import com.intellij.openapi.editor.EditorFactory
+import com.intellij.openapi.editor.impl.DocumentMarkupModel
 import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.fileEditor.FileEditorManagerEvent
 import com.intellij.openapi.fileEditor.FileEditorManagerListener
@@ -131,6 +133,20 @@ class VisualTrackerManager(
         return "${tracker.javaClass.simpleName}|visible=$visible|ranges=${rangeParts.joinToString(",")}"
     }
 
+    @Suppress("unused")
+    fun debugTrackerSummaryFor(document: Document): String {
+        val tracker = (LineStatusTrackerManager.getInstance(project).getLineStatusTracker(document) as? LocalLineStatusTracker<*>)
+            ?: visualTrackers[document]
+            ?: return "tracker=none"
+        return debugTrackerSummary(tracker)
+    }
+
+    @Suppress("unused")
+    fun debugGutterSummaryFor(document: Document): String {
+        val (highlighterSummary, gutterHighlighterCount) = collectGutterHighlighterSummary(document)
+        return "$highlighterSummary|highlighters=$gutterHighlighterCount|${debugTrackerSummaryFor(document)}"
+    }
+
     private fun refreshFileStatuses() {
         if (project.isDisposed) return
         ApplicationManager.getApplication().invokeLater {
@@ -145,6 +161,29 @@ class VisualTrackerManager(
             val ranges = (getRanges?.invoke(tracker) as? Collection<*>) ?: emptyList<Any?>()
             ranges.mapNotNull { range -> range?.let(::describeTrackerRange) }
         }.getOrDefault(emptyList())
+    }
+
+    private fun collectGutterHighlighterSummary(document: Document): Pair<String, Int> {
+        val markupModel = DocumentMarkupModel.forDocument(document, project, true) as MarkupModelEx
+        val highlighterParts = mutableListOf<String>()
+        var gutterHighlighterCount = 0
+
+        markupModel.allHighlighters.forEach { highlighter ->
+            val renderer = highlighter.gutterIconRenderer ?: highlighter.lineMarkerRenderer ?: return@forEach
+            gutterHighlighterCount += 1
+            val startOffset = highlighter.startOffset
+            val endOffsetExclusive = maxOf(highlighter.endOffset, startOffset + 1)
+            val startLine = document.getLineNumber(startOffset)
+            val endLine = document.getLineNumber(endOffsetExclusive - 1) + 1
+            val rendererName = highlighterRendererName(renderer)
+            highlighterParts.add("$startLine-$endLine:$rendererName")
+        }
+
+        return highlighterParts.joinToString(",") to gutterHighlighterCount
+    }
+
+    private fun highlighterRendererName(renderer: Any): String {
+        return renderer.javaClass.simpleName.ifEmpty { renderer.javaClass.name }
     }
 
     private fun describeTrackerRange(rangeObject: Any): String? {

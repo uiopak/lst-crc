@@ -1741,58 +1741,21 @@ class LstCrcBranchComparisonUiTest : LstCrcUiTestSupport() {
             val success = callJs<Boolean>(
                 """
                 (function() {
-                    var result = new java.util.concurrent.atomic.AtomicBoolean(false);
-                    com.intellij.openapi.application.ApplicationManager.getApplication().invokeAndWait(new java.lang.Runnable({
-                        run: function() {
-                            var targetText = ${toJsStringLiteral(nodeText)};
-                            var expand = ${if (expanded) "true" else "false"};
-                            var tree = null;
-                            var windows = java.awt.Window.getWindows();
-                            for (var w = 0; w < windows.length && !tree; w++) {
-                                var queue = new java.util.LinkedList();
-                                queue.add(windows[w]);
-                                while (!queue.isEmpty()) {
-                                    var c = queue.poll();
-                                    if (c != null && c.getClass().getName().endsWith("LstCrcAsyncChangesTree") && c.isShowing()) {
-                                        tree = c;
-                                        break;
-                                    } else if (c != null) {
-                                        try {
-                                            var children = c.getComponents();
-                                            if (children) {
-                                                for (var ci = 0; ci < children.length; ci++) {
-                                                    queue.add(children[ci]);
-                                                }
-                                            }
-                                        } catch(e2) {}
-                                    }
-                                }
-                            }
-                            if (!tree) return;
-                            for (var row = 0; row < tree.getRowCount(); row++) {
-                                var path = tree.getPathForRow(row);
-                                if (!path) continue;
-                                var node = path.getLastPathComponent();
-                                if (!node) continue;
-                                try { if (node.isLeaf()) continue; } catch(e) {}
-                                var userObject = null;
-                                try { userObject = node.getUserObject(); } catch(e) {}
-                                var text = "";
-                                if (userObject) {
-                                    try { text = String(userObject.getPath()); } catch(e) {}
-                                    if (!text) { try { text = String(userObject.getName()); } catch(e) {} }
-                                    if (!text) { try { text = String(userObject); } catch(e) {} }
-                                }
-                                if (!text) { try { text = String(node); } catch(e) {} }
-                                if (text.indexOf(targetText) >= 0) {
-                                    if (expand) { tree.expandPath(path); } else { tree.collapsePath(path); }
-                                    result.set(true);
-                                    break;
-                                }
-                            }
-                        }
-                    }));
-                    return result.get();
+                    var targetText = ${toJsStringLiteral(nodeText)};
+                    var expand = ${if (expanded) "true" else "false"};
+                    var project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
+                    if (!project) return false;
+
+                    var toolWindow = com.intellij.openapi.wm.ToolWindowManager.getInstance(project).getToolWindow("GitChangesView");
+                    var content = toolWindow ? toolWindow.getContentManager().getSelectedContent() : null;
+                    if (!content) return false;
+
+                    var browser = content.getComponent();
+                    if (!browser || typeof browser.setExpandedForVisibleNodeTextForTest !== "function") {
+                        return false;
+                    }
+
+                    return browser.setExpandedForVisibleNodeTextForTest(targetText, expand);
                 })()
                 """.trimIndent(),
                 true

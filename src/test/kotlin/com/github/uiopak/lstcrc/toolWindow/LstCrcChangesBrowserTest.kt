@@ -1,7 +1,9 @@
 package com.github.uiopak.lstcrc.toolWindow
 
+import com.github.uiopak.lstcrc.resources.LstCrcBundle
 import com.github.uiopak.lstcrc.services.CategorizedChanges
 import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.components.service
 import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.vcs.FilePath
 import com.intellij.openapi.vcs.FileStatus
@@ -11,8 +13,10 @@ import com.intellij.openapi.vcs.history.VcsRevisionNumber
 import com.intellij.testFramework.PlatformTestUtil
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import com.intellij.vcsUtil.VcsUtil
+import java.awt.BorderLayout
+import java.awt.Dimension
 import java.awt.Point
-import javax.swing.JFrame
+import javax.swing.JPanel
 import javax.swing.JScrollPane
 import javax.swing.JTree
 import javax.swing.event.ChangeListener
@@ -23,7 +27,7 @@ class LstCrcChangesBrowserTest : BasePlatformTestCase() {
         val browser: LstCrcChangesBrowser,
         val tree: JTree,
         val scrollPane: JScrollPane,
-        val frame: JFrame
+        val host: JPanel
     )
 
     fun testRefreshPreservesTreeViewportPosition() {
@@ -183,6 +187,74 @@ class LstCrcChangesBrowserTest : BasePlatformTestCase() {
         }
     }
 
+    fun testAvailableContextMenuActionsIncludeProjectTreeForNonDeletedChange() {
+        val browser = createBrowser()
+        val change = change("Main.txt", beforeContent = "base\n", afterContent = "updated\n")
+
+        assertEquals(
+            listOf<String>(
+                LstCrcBundle.message("context.menu.show.diff"),
+                LstCrcBundle.message("context.menu.open.source"),
+                LstCrcBundle.message("context.menu.show.project.tree")
+            ),
+            browser.availableContextMenuActionTitlesForTest(change)
+        )
+    }
+
+    fun testAvailableContextMenuActionsOmitProjectTreeForDeletedChange() {
+        val browser = createBrowser()
+        val change = change("Deleted.txt", beforeContent = "gone\n", afterContent = null)
+
+        assertEquals(
+            listOf<String>(
+                LstCrcBundle.message("context.menu.show.diff"),
+                LstCrcBundle.message("context.menu.open.source")
+            ),
+            browser.availableContextMenuActionTitlesForTest(change)
+        )
+    }
+
+    fun testConfiguredClickActionLookupUsesButtonSpecificSettings() {
+        val browser = createBrowser()
+        val settingsService = ApplicationManager.getApplication().service<LstCrcSettingsService>()
+        settingsService.resetToDefaults()
+
+        settingsService.setSingleClickAction(ToolWindowSettingsProvider.ACTION_OPEN_DIFF)
+        settingsService.setDoubleClickAction(ToolWindowSettingsProvider.ACTION_OPEN_SOURCE)
+        settingsService.setMiddleClickAction(ToolWindowSettingsProvider.ACTION_SHOW_IN_PROJECT_TREE)
+        settingsService.setDoubleMiddleClickAction(ToolWindowSettingsProvider.ACTION_NONE)
+        settingsService.setRightClickAction(ToolWindowSettingsProvider.ACTION_OPEN_SOURCE)
+        settingsService.setDoubleRightClickAction(ToolWindowSettingsProvider.ACTION_OPEN_DIFF)
+
+        assertEquals(ToolWindowSettingsProvider.ACTION_OPEN_DIFF, browser.configuredActionForClickForTest(java.awt.event.MouseEvent.BUTTON1, false))
+        assertEquals(ToolWindowSettingsProvider.ACTION_OPEN_SOURCE, browser.configuredActionForClickForTest(java.awt.event.MouseEvent.BUTTON1, true))
+        assertEquals(ToolWindowSettingsProvider.ACTION_SHOW_IN_PROJECT_TREE, browser.configuredActionForClickForTest(java.awt.event.MouseEvent.BUTTON2, false))
+        assertEquals(ToolWindowSettingsProvider.ACTION_NONE, browser.configuredActionForClickForTest(java.awt.event.MouseEvent.BUTTON2, true))
+        assertEquals(ToolWindowSettingsProvider.ACTION_OPEN_SOURCE, browser.configuredActionForClickForTest(java.awt.event.MouseEvent.BUTTON3, false))
+        assertEquals(ToolWindowSettingsProvider.ACTION_OPEN_DIFF, browser.configuredActionForClickForTest(java.awt.event.MouseEvent.BUTTON3, true))
+    }
+
+    fun testConfiguredClickActionLookupFallsBackToNoneForUnsupportedButtons() {
+        val browser = createBrowser()
+
+        assertEquals(ToolWindowSettingsProvider.ACTION_NONE, browser.configuredActionForClickForTest(99, false))
+    }
+
+    fun testToolbarActionsIncludeRepoComparisonActionImmediatelyAfterGroupByWhenPresent() {
+        val browser = createBrowser()
+
+        val actionNames = browser.toolbarActionSimpleNamesForTest()
+        val groupByActionIndex = actionNames.indexOf("GroupByActionGroup")
+        val repoComparisonActionIndex = actionNames.indexOf(ShowRepoComparisonInfoAction::class.java.simpleName)
+
+        assertTrue("Expected ShowRepoComparisonInfoAction to be present in toolbar actions", repoComparisonActionIndex >= 0)
+        if (groupByActionIndex >= 0) {
+            assertEquals(groupByActionIndex + 1, repoComparisonActionIndex)
+        } else {
+            assertEquals(actionNames.lastIndex, repoComparisonActionIndex)
+        }
+    }
+
     private fun withBrowserFixture(testBody: BrowserFixture.() -> Unit) {
         val parentDisposable = Disposer.newDisposable()
 
@@ -190,26 +262,36 @@ class LstCrcChangesBrowserTest : BasePlatformTestCase() {
             val browser = LstCrcChangesBrowser(project, "feature", parentDisposable)
             val tree = browser.viewerTree()
             val scrollPane = tree.parent.parent as JScrollPane
-            val frame = onEdt {
-                JFrame("LstCrcChangesBrowserTest").apply {
-                    contentPane.add(browser)
-                    setSize(320, 220)
-                    setLocationRelativeTo(null)
-                    isVisible = true
+            val host = onEdt {
+                JPanel(BorderLayout()).apply {
+                    preferredSize = Dimension(320, 220)
+                    size = preferredSize
+                    add(browser, BorderLayout.CENTER)
+                    doLayout()
+                    validate()
+                    browser.setSize(size)
+                    browser.doLayout()
+                    scrollPane.setSize(size)
+                    scrollPane.doLayout()
                 }
             }
 
             try {
-                testBody(BrowserFixture(browser, tree, scrollPane, frame))
+                testBody(BrowserFixture(browser, tree, scrollPane, host))
             } finally {
                 onEdt {
-                    frame.isVisible = false
-                    frame.dispose()
+                    host.remove(browser)
                 }
             }
         } finally {
             Disposer.dispose(parentDisposable)
         }
+    }
+
+    private fun createBrowser(): LstCrcChangesBrowser {
+        val parentDisposable = Disposer.newDisposable()
+        Disposer.register(testRootDisposable, parentDisposable)
+        return LstCrcChangesBrowser(project, "feature", parentDisposable)
     }
 
     private fun categorizedChanges(changeCount: Int): CategorizedChanges {
@@ -269,6 +351,30 @@ class LstCrcChangesBrowserTest : BasePlatformTestCase() {
         )
         method.isAccessible = true
         method.invoke(browser, categorizedChanges, "feature")
+        flushUiEvents()
+
+        onEdt {
+            val tree = browser.viewerTree()
+            val scrollPane = tree.parent.parent as JScrollPane
+            val viewportSize = Dimension(320, 220)
+            val rowHeight = tree.rowHeight.takeIf { it > 0 } ?: 20
+            val contentSize = Dimension(
+                viewportSize.width,
+                maxOf(viewportSize.height * 2, tree.rowCount * rowHeight)
+            )
+
+            tree.preferredSize = contentSize
+            tree.size = contentSize
+            scrollPane.preferredSize = viewportSize
+            scrollPane.size = viewportSize
+            scrollPane.viewport.extentSize = viewportSize
+            browser.preferredSize = viewportSize
+            browser.size = viewportSize
+
+            browser.doLayout()
+            scrollPane.doLayout()
+            scrollPane.viewport.doLayout()
+        }
         flushUiEvents()
     }
 

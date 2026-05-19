@@ -10,113 +10,30 @@ import com.intellij.openapi.components.Storage
 @Service(Service.Level.APP)
 class LstCrcSettingsService : PersistentStateComponent<LstCrcSettingsService.SettingsState> {
 
-    private data class StringSettingDefinition(val key: String, val defaultValue: String)
-    private data class BooleanSettingDefinition(val key: String, val defaultValue: Boolean)
-    private data class IntSettingDefinition(val key: String, val defaultValue: Int)
-
     private companion object {
-        private val SINGLE_CLICK_ACTION = StringSettingDefinition(
-            ToolWindowSettingsProvider.APP_SINGLE_CLICK_ACTION_KEY,
-            ToolWindowSettingsProvider.DEFAULT_SINGLE_CLICK_ACTION
-        )
-        private val DOUBLE_CLICK_ACTION = StringSettingDefinition(
-            ToolWindowSettingsProvider.APP_DOUBLE_CLICK_ACTION_KEY,
-            ToolWindowSettingsProvider.DEFAULT_DOUBLE_CLICK_ACTION
-        )
-        private val MIDDLE_CLICK_ACTION = StringSettingDefinition(
-            ToolWindowSettingsProvider.APP_MIDDLE_CLICK_ACTION_KEY,
-            ToolWindowSettingsProvider.DEFAULT_MIDDLE_CLICK_ACTION
-        )
-        private val DOUBLE_MIDDLE_CLICK_ACTION = StringSettingDefinition(
-            ToolWindowSettingsProvider.APP_DOUBLE_MIDDLE_CLICK_ACTION_KEY,
-            ToolWindowSettingsProvider.DEFAULT_DOUBLE_MIDDLE_CLICK_ACTION
-        )
-        private val RIGHT_CLICK_ACTION = StringSettingDefinition(
-            ToolWindowSettingsProvider.APP_RIGHT_CLICK_ACTION_KEY,
-            ToolWindowSettingsProvider.DEFAULT_RIGHT_CLICK_ACTION
-        )
-        private val DOUBLE_RIGHT_CLICK_ACTION = StringSettingDefinition(
-            ToolWindowSettingsProvider.APP_DOUBLE_RIGHT_CLICK_ACTION_KEY,
-            ToolWindowSettingsProvider.DEFAULT_DOUBLE_RIGHT_CLICK_ACTION
-        )
-        private val SHOW_CONTEXT_MENU = BooleanSettingDefinition(
-            ToolWindowSettingsProvider.APP_SHOW_CONTEXT_MENU_KEY,
-            ToolWindowSettingsProvider.DEFAULT_SHOW_CONTEXT_MENU
-        )
-        private val USER_DOUBLE_CLICK_DELAY = IntSettingDefinition(
-            ToolWindowSettingsProvider.APP_USER_DOUBLE_CLICK_DELAY_KEY,
-            ToolWindowSettingsProvider.DELAY_OPTION_SYSTEM_DEFAULT
-        )
-        private val INCLUDE_HEAD_IN_SCOPES = BooleanSettingDefinition(
-            ToolWindowSettingsProvider.APP_INCLUDE_HEAD_IN_SCOPES_KEY,
-            ToolWindowSettingsProvider.DEFAULT_INCLUDE_HEAD_IN_SCOPES
-        )
-        private val ENABLE_GUTTER_MARKERS = BooleanSettingDefinition(
-            ToolWindowSettingsProvider.APP_ENABLE_GUTTER_MARKERS_KEY,
-            ToolWindowSettingsProvider.DEFAULT_ENABLE_GUTTER_MARKERS
-        )
-        private val ENABLE_GUTTER_FOR_NEW_FILES = BooleanSettingDefinition(
-            ToolWindowSettingsProvider.APP_ENABLE_GUTTER_FOR_NEW_FILES_KEY,
-            ToolWindowSettingsProvider.DEFAULT_ENABLE_GUTTER_FOR_NEW_FILES
-        )
-        private val SHOW_TOOL_WINDOW_TITLE = BooleanSettingDefinition(
-            ToolWindowSettingsProvider.APP_SHOW_TOOL_WINDOW_TITLE_KEY,
-            ToolWindowSettingsProvider.DEFAULT_SHOW_TOOL_WINDOW_TITLE
-        )
-        private val SHOW_WIDGET_CONTEXT = BooleanSettingDefinition(
-            ToolWindowSettingsProvider.APP_SHOW_WIDGET_CONTEXT_KEY,
-            ToolWindowSettingsProvider.DEFAULT_SHOW_WIDGET_CONTEXT
-        )
-        private val SHOW_CONTEXT_SINGLE_REPO = BooleanSettingDefinition(
-            ToolWindowSettingsProvider.APP_SHOW_CONTEXT_SINGLE_REPO_KEY,
-            ToolWindowSettingsProvider.DEFAULT_SHOW_CONTEXT_SINGLE_REPO
-        )
-        private val SHOW_CONTEXT_MULTI_REPO = BooleanSettingDefinition(
-            ToolWindowSettingsProvider.APP_SHOW_CONTEXT_MULTI_REPO_KEY,
-            ToolWindowSettingsProvider.DEFAULT_SHOW_CONTEXT_MULTI_REPO
-        )
-        private val SHOW_CONTEXT_FOR_COMMITS = BooleanSettingDefinition(
-            ToolWindowSettingsProvider.APP_SHOW_CONTEXT_FOR_COMMITS_KEY,
-            ToolWindowSettingsProvider.DEFAULT_SHOW_CONTEXT_FOR_COMMITS
-        )
-        private val SHOW_LINE_STATS_IN_TREE = BooleanSettingDefinition(
-            ToolWindowSettingsProvider.APP_SHOW_LINE_STATS_IN_TREE_KEY,
-            ToolWindowSettingsProvider.DEFAULT_SHOW_LINE_STATS_IN_TREE
-        )
-        private val EXPAND_NEW_FILES_IN_COLLAPSED_DIRS = BooleanSettingDefinition(
-            ToolWindowSettingsProvider.APP_EXPAND_NEW_FILES_IN_COLLAPSED_DIRS_KEY,
-            ToolWindowSettingsProvider.DEFAULT_EXPAND_NEW_FILES_IN_COLLAPSED_DIRS
-        )
-        private val SHOW_UNTRACKED_FILES_AS_NEW = BooleanSettingDefinition(
-            ToolWindowSettingsProvider.APP_SHOW_UNTRACKED_FILES_AS_NEW_KEY,
-            ToolWindowSettingsProvider.DEFAULT_SHOW_UNTRACKED_FILES_AS_NEW
-        )
+        private val SINGLE_CLICK_ACTION = LstCrcSettingDefinitions.SINGLE_CLICK_ACTION
+        private val DOUBLE_CLICK_ACTION = LstCrcSettingDefinitions.DOUBLE_CLICK_ACTION
+        private val MIDDLE_CLICK_ACTION = LstCrcSettingDefinitions.MIDDLE_CLICK_ACTION
+        private val DOUBLE_MIDDLE_CLICK_ACTION = LstCrcSettingDefinitions.DOUBLE_MIDDLE_CLICK_ACTION
+        private val RIGHT_CLICK_ACTION = LstCrcSettingDefinitions.RIGHT_CLICK_ACTION
+        private val DOUBLE_RIGHT_CLICK_ACTION = LstCrcSettingDefinitions.DOUBLE_RIGHT_CLICK_ACTION
+        private val SHOW_CONTEXT_MENU = LstCrcSettingDefinitions.SHOW_CONTEXT_MENU
+        private val USER_DOUBLE_CLICK_DELAY = LstCrcSettingDefinitions.USER_DOUBLE_CLICK_DELAY
+        private val INCLUDE_HEAD_IN_SCOPES = LstCrcSettingDefinitions.INCLUDE_HEAD_IN_SCOPES
+        private val ENABLE_GUTTER_MARKERS = LstCrcSettingDefinitions.ENABLE_GUTTER_MARKERS
+        private val ENABLE_GUTTER_FOR_NEW_FILES = LstCrcSettingDefinitions.ENABLE_GUTTER_FOR_NEW_FILES
+        private val SHOW_TOOL_WINDOW_TITLE = LstCrcSettingDefinitions.SHOW_TOOL_WINDOW_TITLE
+        private val SHOW_WIDGET_CONTEXT = LstCrcSettingDefinitions.SHOW_WIDGET_CONTEXT
+        private val SHOW_CONTEXT_SINGLE_REPO = LstCrcSettingDefinitions.SHOW_CONTEXT_SINGLE_REPO
+        private val SHOW_CONTEXT_MULTI_REPO = LstCrcSettingDefinitions.SHOW_CONTEXT_MULTI_REPO
+        private val SHOW_CONTEXT_FOR_COMMITS = LstCrcSettingDefinitions.SHOW_CONTEXT_FOR_COMMITS
+        private val SHOW_LINE_STATS_IN_TREE = LstCrcSettingDefinitions.SHOW_LINE_STATS_IN_TREE
+        private val EXPAND_NEW_FILES_IN_COLLAPSED_DIRS = LstCrcSettingDefinitions.EXPAND_NEW_FILES_IN_COLLAPSED_DIRS
+        private val SHOW_UNTRACKED_FILES_AS_NEW = LstCrcSettingDefinitions.SHOW_UNTRACKED_FILES_AS_NEW
 
-        private val STRING_SETTINGS = listOf(
-            SINGLE_CLICK_ACTION,
-            DOUBLE_CLICK_ACTION,
-            MIDDLE_CLICK_ACTION,
-            DOUBLE_MIDDLE_CLICK_ACTION,
-            RIGHT_CLICK_ACTION,
-            DOUBLE_RIGHT_CLICK_ACTION
-        )
-
-        private val BOOLEAN_SETTINGS = listOf(
-            SHOW_CONTEXT_MENU,
-            INCLUDE_HEAD_IN_SCOPES,
-            ENABLE_GUTTER_MARKERS,
-            ENABLE_GUTTER_FOR_NEW_FILES,
-            SHOW_TOOL_WINDOW_TITLE,
-            SHOW_WIDGET_CONTEXT,
-            SHOW_CONTEXT_SINGLE_REPO,
-            SHOW_CONTEXT_MULTI_REPO,
-            SHOW_CONTEXT_FOR_COMMITS,
-            SHOW_LINE_STATS_IN_TREE,
-            EXPAND_NEW_FILES_IN_COLLAPSED_DIRS,
-            SHOW_UNTRACKED_FILES_AS_NEW
-        )
-
-        private val INT_SETTINGS = listOf(USER_DOUBLE_CLICK_DELAY)
+        private val STRING_SETTINGS = LstCrcSettingDefinitions.stringSettings
+        private val BOOLEAN_SETTINGS = LstCrcSettingDefinitions.booleanSettings
+        private val INT_SETTINGS = LstCrcSettingDefinitions.intSettings
     }
 
     data class SettingsState(

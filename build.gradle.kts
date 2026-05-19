@@ -261,12 +261,24 @@ tasks {
     val isCi = isCiEnvironment
     val starterPerformanceTag = "starter-performance"
     val defaultRobotServerUrl = "http://127.0.0.1:8082"
-    val robotServerUrlProvider = providers.systemProperty("robot.server.url").orElse(defaultRobotServerUrl)
-    val robotServerWaitTimeoutProvider = providers.systemProperty("ui.test.server.wait.timeout").orElse(if (isCi) "240" else "90")
-    val robotConnectionTimeoutProvider = providers.systemProperty("ui.test.connection.timeout").orElse(if (isCi) "90" else "30")
-    val uiTestTimeoutProvider = providers.systemProperty("ui.test.timeout").orElse(if (isCi) "900" else "600")
-    val uiTestTaskTimeoutMinutesProvider = providers.systemProperty("ui.test.task.timeout.minutes").orElse(if (isCi) "45" else "30")
-    val starterUiTestTaskTimeoutMinutesProvider = providers.systemProperty("starter.ui.test.task.timeout.minutes").orElse(if (isCi) "75" else "40")
+    val robotServerUrlProvider = providers.systemProperty("robot.server.url")
+        .orElse(providers.environmentVariable("ROBOT_SERVER_URL"))
+        .orElse(defaultRobotServerUrl)
+    val robotServerWaitTimeoutProvider = providers.systemProperty("ui.test.server.wait.timeout")
+        .orElse(providers.environmentVariable("UI_TEST_SERVER_WAIT_TIMEOUT"))
+        .orElse(if (isCi) "240" else "90")
+    val robotConnectionTimeoutProvider = providers.systemProperty("ui.test.connection.timeout")
+        .orElse(providers.environmentVariable("UI_TEST_CONNECTION_TIMEOUT"))
+        .orElse(if (isCi) "90" else "30")
+    val uiTestTimeoutProvider = providers.systemProperty("ui.test.timeout")
+        .orElse(providers.environmentVariable("UI_TEST_TIMEOUT"))
+        .orElse(if (isCi) "900" else "600")
+    val uiTestTaskTimeoutMinutesProvider = providers.systemProperty("ui.test.task.timeout.minutes")
+        .orElse(providers.environmentVariable("UI_TEST_TASK_TIMEOUT_MINUTES"))
+        .orElse(if (isCi) "45" else "30")
+    val starterUiTestTaskTimeoutMinutesProvider = providers.systemProperty("starter.ui.test.task.timeout.minutes")
+        .orElse(providers.environmentVariable("STARTER_UI_TEST_TIMEOUT_MINUTES"))
+        .orElse(if (isCi) "75" else "40")
     val starterUiTestMaxParallelForksProvider = providers.systemProperty("starter.ui.test.max.parallel.forks").orElse("1")
 
     fun Test.configureCommonTestTask() {

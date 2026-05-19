@@ -289,10 +289,14 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
 
                     const toolWindow = com.intellij.openapi.wm.ToolWindowManager.getInstance(project).getToolWindow("GitChangesView");
                     if (toolWindow) {
-                        toolWindow.getComponent().putClientProperty(
-                            com.intellij.openapi.wm.impl.content.ToolWindowContentUi.HIDE_ID_LABEL,
-                            "true"
-                        );
+                        if (cl) {
+                            try {
+                                const compatibilityClass = cl.loadClass("com.github.uiopak.lstcrc.toolWindow.ToolWindowUiCompatibility");
+                                const compatibility = compatibilityClass.getField("INSTANCE").get(null);
+                                compatibilityClass.getMethod("setToolWindowTitleVisible", com.intellij.openapi.wm.ToolWindow, java.lang.Boolean.TYPE)
+                                    .invoke(compatibility, toolWindow, false);
+                            } catch (e) {}
+                        }
                         const contentManager = toolWindow.getContentManager();
                         const contents = contentManager.getContents();
                         for (let i = contents.length - 1; i >= 0; i--) {
@@ -676,7 +680,7 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
                     if (!toolWindow) return false;
 
                     const compatibility = com.github.uiopak.lstcrc.toolWindow.ToolWindowUiCompatibility.INSTANCE;
-                    return compatibility.isToolWindowTitleVisible(toolWindow);
+                    return compatibility.toolWindowTitleVisible(toolWindow);
                 })();
                 """.trimIndent(),
                 true
@@ -1348,18 +1352,8 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
                 const stateServiceClass = java.lang.Class.forName("com.github.uiopak.lstcrc.services.ToolWindowStateService", true, classLoader);
                 const stateService = project.getService(stateServiceClass);
                 let selectedTabInfo = stateService ? stateService.getSelectedTabInfo() : null;
-                const state = stateService ? stateService.getState() : null;
-                const openTabs = state ? state.getOpenTabs() : null;
-
-                if (openTabs && displayName.length > 0) {
-                    const iterator = openTabs.iterator();
-                    while (iterator.hasNext()) {
-                        const candidate = iterator.next();
-                        if (candidate.getBranchName() === displayName || candidate.getAlias() === displayName) {
-                            selectedTabInfo = candidate;
-                            break;
-                        }
-                    }
+                if (!selectedTabInfo && displayName.length > 0 && stateService) {
+                    selectedTabInfo = stateService.findTabByDisplayName(displayName);
                 }
 
                 if (!selectedTabInfo) {
@@ -1394,21 +1388,12 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
                 const stateServiceClass = java.lang.Class.forName("com.github.uiopak.lstcrc.services.ToolWindowStateService", true, classLoader);
                 const stateService = project.getService(stateServiceClass);
                 let selectedTabInfo = stateService ? stateService.getSelectedTabInfo() : null;
-                const state = stateService ? stateService.getState() : null;
-                const openTabs = state ? state.getOpenTabs() : null;
                 let selectedTabIndex = -1;
 
-                if (openTabs && displayName.length > 0) {
-                    let index = 0;
-                    const iterator = openTabs.iterator();
-                    while (iterator.hasNext()) {
-                        const candidate = iterator.next();
-                        if (candidate.getBranchName() === displayName || candidate.getAlias() === displayName) {
-                            selectedTabInfo = candidate;
-                            selectedTabIndex = index;
-                            break;
-                        }
-                        index += 1;
+                if (displayName.length > 0 && stateService) {
+                    selectedTabIndex = stateService.findTabIndexByDisplayName(displayName);
+                    if (!selectedTabInfo) {
+                        selectedTabInfo = stateService.findTabByDisplayName(displayName);
                     }
                 }
 
@@ -1450,64 +1435,17 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
                     if (!editor) return "";
 
                     const document = editor.getDocument();
-                    const markupModel = com.intellij.openapi.editor.impl.DocumentMarkupModel.forDocument(document, project, true);
-                    const highlighters = markupModel.getAllHighlighters();
-                    const highlighterParts = [];
-                    let gutterHighlighterCount = 0;
-
-                    for (let i = 0; i < highlighters.length; i++) {
-                        const highlighter = highlighters[i];
-                        const iconRenderer = highlighter.getGutterIconRenderer();
-                        const lineRenderer = highlighter.getLineMarkerRenderer();
-                        const renderer = iconRenderer || lineRenderer;
-                        if (!renderer) continue;
-
-                        gutterHighlighterCount++;
-                        const startOffset = highlighter.getStartOffset();
-                        const endOffsetExclusive = Math.max(highlighter.getEndOffset(), startOffset + 1);
-                        const startLine = document.getLineNumber(startOffset);
-                        const endLine = document.getLineNumber(endOffsetExclusive - 1) + 1;
-                        const rendererClass = renderer.getClass();
-                        const rendererName = String(rendererClass.getSimpleName() || rendererClass.getName());
-                        highlighterParts.push(startLine + "-" + endLine + ":" + rendererName);
-                    }
-
-                    let tracker = com.intellij.openapi.vcs.impl.LineStatusTrackerManager.getInstance(project).getLineStatusTracker(document);
-                    if (!tracker) {
-                        const pluginId = com.intellij.openapi.extensions.PluginId.getId("com.github.uiopak.lstcrc");
-                        const plugin = com.intellij.ide.plugins.PluginManagerCore.getPlugin(pluginId);
-                        if (plugin != null) {
-                            const managerClass = plugin.getPluginClassLoader()
-                                .loadClass("com.github.uiopak.lstcrc.gutters.VisualTrackerManager");
-                            const manager = project.getService(managerClass);
-                            if (manager != null) {
-                                tracker = manager.findStandaloneTracker(document);
-                            }
+                    const pluginId = com.intellij.openapi.extensions.PluginId.getId("com.github.uiopak.lstcrc");
+                    const plugin = com.intellij.ide.plugins.PluginManagerCore.getPlugin(pluginId);
+                    if (plugin != null) {
+                        const managerClass = plugin.getPluginClassLoader()
+                            .loadClass("com.github.uiopak.lstcrc.gutters.VisualTrackerManager");
+                        const manager = project.getService(managerClass);
+                        if (manager != null) {
+                            return String(manager.debugGutterSummaryFor(document));
                         }
                     }
-
-                    let trackerSummary = "tracker=none";
-                    if (tracker) {
-                        const ranges = tracker.getRanges();
-                        const rangeParts = [];
-                        if (ranges != null) {
-                            for (let i = 0; i < ranges.size(); i++) {
-                                const range = ranges.get(i);
-                                let typeName = "UNKNOWN";
-                                const type = range.getType();
-                                if (type === com.intellij.openapi.vcs.ex.Range.MODIFIED) typeName = "MODIFIED";
-                                if (type === com.intellij.openapi.vcs.ex.Range.INSERTED) typeName = "INSERTED";
-                                if (type === com.intellij.openapi.vcs.ex.Range.DELETED) typeName = "DELETED";
-                                rangeParts.push(range.getLine1() + "-" + range.getLine2() + ":" + typeName);
-                            }
-                        }
-
-                        const mode = tracker.getMode ? tracker.getMode() : null;
-                        const visible = mode && mode.isVisible ? mode.isVisible() : "n/a";
-                        trackerSummary = tracker.getClass().getSimpleName() + "|visible=" + visible + "|ranges=" + rangeParts.join(",");
-                    }
-
-                    return highlighterParts.join(",") + "|highlighters=" + gutterHighlighterCount + "|" + trackerSummary;
+                    return "";
                 })();
                 """.trimIndent(),
                 true

@@ -36,68 +36,11 @@ object ToolWindowSettingsProvider {
     private fun settingsService(): LstCrcSettingsService =
         ApplicationManager.getApplication().service()
 
-    private fun setBooleanSetting(key: String, value: Boolean, default: Boolean) {
-        settingsService().setBoolean(key, value, default)
-    }
-
     // --- Keys for Click Actions ---
     internal const val ACTION_NONE = "NONE"
     internal const val ACTION_OPEN_DIFF = "OPEN_DIFF"
     internal const val ACTION_OPEN_SOURCE = "OPEN_SOURCE"
     internal const val ACTION_SHOW_IN_PROJECT_TREE = "SHOW_IN_PROJECT_TREE"
-
-    internal const val APP_SINGLE_CLICK_ACTION_KEY: String = "com.github.uiopak.lstcrc.app.singleClickAction"
-    internal const val APP_DOUBLE_CLICK_ACTION_KEY = "com.github.uiopak.lstcrc.app.doubleClickAction"
-    internal const val DEFAULT_SINGLE_CLICK_ACTION = ACTION_OPEN_SOURCE
-    internal const val DEFAULT_DOUBLE_CLICK_ACTION = ACTION_NONE
-
-    internal const val APP_MIDDLE_CLICK_ACTION_KEY = "com.github.uiopak.lstcrc.app.middleClickAction"
-    internal const val APP_DOUBLE_MIDDLE_CLICK_ACTION_KEY = "com.github.uiopak.lstcrc.app.doubleMiddleClickAction"
-    internal const val DEFAULT_MIDDLE_CLICK_ACTION = ACTION_SHOW_IN_PROJECT_TREE
-    internal const val DEFAULT_DOUBLE_MIDDLE_CLICK_ACTION = ACTION_NONE
-
-    internal const val APP_RIGHT_CLICK_ACTION_KEY = "com.github.uiopak.lstcrc.app.rightClickAction"
-    internal const val APP_DOUBLE_RIGHT_CLICK_ACTION_KEY = "com.github.uiopak.lstcrc.app.doubleRightClickAction"
-    internal const val DEFAULT_RIGHT_CLICK_ACTION = ACTION_OPEN_DIFF
-    internal const val DEFAULT_DOUBLE_RIGHT_CLICK_ACTION = ACTION_NONE
-
-    // --- Keys for General Settings ---
-    internal const val APP_SHOW_CONTEXT_MENU_KEY = "com.github.uiopak.lstcrc.app.showContextMenu"
-    internal const val DEFAULT_SHOW_CONTEXT_MENU = false
-
-    internal const val APP_USER_DOUBLE_CLICK_DELAY_KEY = "com.github.uiopak.lstcrc.app.userDoubleClickDelay"
-    internal const val DELAY_OPTION_SYSTEM_DEFAULT = -1
-
-    internal const val APP_INCLUDE_HEAD_IN_SCOPES_KEY = "com.github.uiopak.lstcrc.app.includeHeadInScopes"
-    internal const val DEFAULT_INCLUDE_HEAD_IN_SCOPES = false
-
-    const val APP_ENABLE_GUTTER_MARKERS_KEY = "com.github.uiopak.lstcrc.app.enableGutterMarkers"
-    const val DEFAULT_ENABLE_GUTTER_MARKERS = true
-
-    const val APP_ENABLE_GUTTER_FOR_NEW_FILES_KEY = "com.github.uiopak.lstcrc.app.enableGutterForNewFiles"
-    const val DEFAULT_ENABLE_GUTTER_FOR_NEW_FILES = false
-
-    const val APP_SHOW_TOOL_WINDOW_TITLE_KEY = "com.github.uiopak.lstcrc.app.showToolWindowTitle"
-    const val DEFAULT_SHOW_TOOL_WINDOW_TITLE = false
-
-    const val APP_SHOW_WIDGET_CONTEXT_KEY = "com.github.uiopak.lstcrc.app.showWidgetContext"
-    const val DEFAULT_SHOW_WIDGET_CONTEXT = false
-
-    const val APP_EXPAND_NEW_FILES_IN_COLLAPSED_DIRS_KEY = "com.github.uiopak.lstcrc.app.expandNewFilesInCollapsedDirs"
-    const val DEFAULT_EXPAND_NEW_FILES_IN_COLLAPSED_DIRS = true
-
-    const val APP_SHOW_UNTRACKED_FILES_AS_NEW_KEY = "com.github.uiopak.lstcrc.app.showUntrackedFilesAsNew"
-    const val DEFAULT_SHOW_UNTRACKED_FILES_AS_NEW = false
-
-    const val APP_SHOW_LINE_STATS_IN_TREE_KEY = "com.github.uiopak.lstcrc.app.showLineStatsInTree"
-    const val DEFAULT_SHOW_LINE_STATS_IN_TREE = false
-
-    const val APP_SHOW_CONTEXT_SINGLE_REPO_KEY = "com.github.uiopak.lstcrc.app.showContextSingleRepo"
-    const val DEFAULT_SHOW_CONTEXT_SINGLE_REPO = true
-    const val APP_SHOW_CONTEXT_MULTI_REPO_KEY = "com.github.uiopak.lstcrc.app.showContextMultiRepo"
-    const val DEFAULT_SHOW_CONTEXT_MULTI_REPO = true
-    const val APP_SHOW_CONTEXT_FOR_COMMITS_KEY = "com.github.uiopak.lstcrc.app.showContextForCommits"
-    const val DEFAULT_SHOW_CONTEXT_FOR_COMMITS = false
 
     private val clickActionChoices = listOf(
         ClickActionChoice("settings.action.none", ACTION_NONE),
@@ -122,7 +65,7 @@ object ToolWindowSettingsProvider {
     )
 
     private val doubleClickDelayChoices = listOf(
-        DelayChoice("settings.speed.default", DELAY_OPTION_SYSTEM_DEFAULT),
+        DelayChoice("settings.speed.default", LstCrcSettingDefinitions.USER_DOUBLE_CLICK_DELAY.defaultValue),
         DelayChoice("settings.speed.faster", 200),
         DelayChoice("settings.speed.fast", 250),
         DelayChoice("settings.speed.medium", 300),
@@ -236,7 +179,8 @@ object ToolWindowSettingsProvider {
         return DefaultActionGroup({ LstCrcBundle.message("settings.tree.view.group.title") }, true).apply {
             add(createBooleanSettingToggle(
                 LstCrcBundle.message("settings.tree.view.show.context.multi.repo"),
-                APP_SHOW_CONTEXT_MULTI_REPO_KEY, DEFAULT_SHOW_CONTEXT_MULTI_REPO,
+                ::isShowContextForMultiRepoEnabled,
+                { settingsService().setShowContextForMultiRepo(it) },
                 onChanged = { e, _ -> rebuildActiveView(e) },
                 updateCheck = { e ->
                     e.presentation.isEnabledAndVisible =
@@ -246,7 +190,8 @@ object ToolWindowSettingsProvider {
 
             add(createBooleanSettingToggle(
                 LstCrcBundle.message("settings.tree.view.show.context.single.repo"),
-                APP_SHOW_CONTEXT_SINGLE_REPO_KEY, DEFAULT_SHOW_CONTEXT_SINGLE_REPO,
+                ::isShowContextForSingleRepoEnabled,
+                { settingsService().setShowContextForSingleRepo(it) },
                 onChanged = { e, _ -> rebuildActiveView(e) },
                 updateCheck = { e ->
                     e.presentation.isEnabledAndVisible =
@@ -256,7 +201,8 @@ object ToolWindowSettingsProvider {
 
             add(createBooleanSettingToggle(
                 LstCrcBundle.message("settings.tree.view.show.context.for.commits"),
-                APP_SHOW_CONTEXT_FOR_COMMITS_KEY, DEFAULT_SHOW_CONTEXT_FOR_COMMITS,
+                ::isShowContextForCommitsEnabled,
+                { settingsService().setShowContextForCommits(it) },
                 onChanged = { e, _ -> rebuildActiveView(e) },
                 updateCheck = { e ->
                     e.presentation.isEnabled = isShowContextForSingleRepoEnabled() || isShowContextForMultiRepoEnabled()
@@ -265,18 +211,21 @@ object ToolWindowSettingsProvider {
 
             add(createBooleanSettingToggle(
                 LstCrcBundle.message("settings.tree.view.expand.new.files.in.collapsed.dirs"),
-                APP_EXPAND_NEW_FILES_IN_COLLAPSED_DIRS_KEY, DEFAULT_EXPAND_NEW_FILES_IN_COLLAPSED_DIRS
+                ::isExpandNewFilesInCollapsedDirs,
+                { settingsService().setExpandNewFilesInCollapsedDirs(it) }
             ))
 
             add(createBooleanSettingToggle(
                 LstCrcBundle.message("settings.tree.view.show.untracked.files.as.new"),
-                APP_SHOW_UNTRACKED_FILES_AS_NEW_KEY, DEFAULT_SHOW_UNTRACKED_FILES_AS_NEW,
+                ::isShowUntrackedFilesAsNew,
+                { settingsService().setShowUntrackedFilesAsNew(it) },
                 onChanged = { e, _ -> e.project?.service<ToolWindowStateService>()?.refreshDataForCurrentSelection() }
             ))
 
             add(createBooleanSettingToggle(
                 LstCrcBundle.message("settings.tree.view.show.line.stats"),
-                APP_SHOW_LINE_STATS_IN_TREE_KEY, DEFAULT_SHOW_LINE_STATS_IN_TREE,
+                ::isShowLineStatsInTree,
+                { settingsService().setShowLineStatsInTree(it) },
                 onChanged = { e, _ -> rebuildActiveView(e) }
             ))
         }
@@ -286,13 +235,15 @@ object ToolWindowSettingsProvider {
         return DefaultActionGroup({ LstCrcBundle.message("settings.gutter.group.title") }, true).apply {
             add(createBooleanSettingToggle(
                 LstCrcBundle.message("settings.gutter.enable"),
-                APP_ENABLE_GUTTER_MARKERS_KEY, DEFAULT_ENABLE_GUTTER_MARKERS,
+                ::isGutterMarkersEnabled,
+                { settingsService().setGutterMarkersEnabled(it) },
                 onChanged = { e, _ -> notifyVisualTrackerSettingsChanged(e) }
             ))
 
             add(createBooleanSettingToggle(
                 LstCrcBundle.message("settings.gutter.for.new.files"),
-                APP_ENABLE_GUTTER_FOR_NEW_FILES_KEY, DEFAULT_ENABLE_GUTTER_FOR_NEW_FILES,
+                ::isGutterForNewFilesEnabled,
+                { settingsService().setGutterForNewFilesEnabled(it) },
                 onChanged = { e, _ -> notifyVisualTrackerSettingsChanged(e) },
                 updateCheck = { e ->
                     e.presentation.isEnabled = settingsService().isGutterMarkersEnabled()
@@ -304,19 +255,22 @@ object ToolWindowSettingsProvider {
     private fun addGeneralSettingsActions(rootSettingsGroup: DefaultActionGroup) {
         rootSettingsGroup.add(createBooleanSettingToggle(
             LstCrcBundle.message("settings.show.tool.window.title"),
-            APP_SHOW_TOOL_WINDOW_TITLE_KEY, DEFAULT_SHOW_TOOL_WINDOW_TITLE,
+            ::isShowToolWindowTitleEnabled,
+            { settingsService().setShowToolWindowTitle(it) },
             onChanged = { e, state -> updateToolWindowTitleVisibility(e, state) }
         ))
 
         rootSettingsGroup.add(createBooleanSettingToggle(
             LstCrcBundle.message("settings.show.widget.context"),
-            APP_SHOW_WIDGET_CONTEXT_KEY, DEFAULT_SHOW_WIDGET_CONTEXT,
+            ::isShowWidgetContext,
+            { settingsService().setShowWidgetContext(it) },
             onChanged = { e, _ -> e.project?.messageBus?.syncPublisher(PLUGIN_SETTINGS_CHANGED_TOPIC)?.onSettingsChanged() }
         ))
 
         rootSettingsGroup.add(createBooleanSettingToggle(
             LstCrcBundle.message("settings.include.head.in.scopes"),
-            APP_INCLUDE_HEAD_IN_SCOPES_KEY, DEFAULT_INCLUDE_HEAD_IN_SCOPES,
+            ::isIncludeHeadInScopes,
+            { settingsService().setIncludeHeadInScopes(it) },
             onChanged = { e, _ ->
                 val project = e.project ?: return@createBooleanSettingToggle
                 if (project.service<ToolWindowStateService>().getSelectedTabBranchName() == null) {
@@ -351,15 +305,15 @@ object ToolWindowSettingsProvider {
      * Helper to create a [ToggleAction] for a boolean setting stored in [LstCrcSettingsService].
      *
      * @param text The display text for the action.
-     * @param key The settings key.
-     * @param default The default value.
+     * @param isSelected Reads the current value from the typed settings service accessor.
+     * @param setSelected Persists the value through the typed settings service accessor.
      * @param onChanged Optional callback invoked after the value changes. Receives the event and new state.
      * @param updateCheck Optional predicate to control enabled/visible state in [ToggleAction.update].
      */
     private fun createBooleanSettingToggle(
         text: String,
-        key: String,
-        default: Boolean,
+        isSelected: () -> Boolean,
+        setSelected: (Boolean) -> Unit,
         onChanged: ((AnActionEvent, Boolean) -> Unit)? = null,
         updateCheck: ((AnActionEvent) -> Unit)? = null
     ): ToggleAction {
@@ -370,10 +324,10 @@ object ToolWindowSettingsProvider {
             }
 
             override fun isSelected(e: AnActionEvent): Boolean =
-                settingsService().getBoolean(key, default)
+                isSelected()
 
             override fun setSelected(e: AnActionEvent, state: Boolean) {
-                setBooleanSetting(key, state, default)
+                setSelected(state)
                 onChanged?.invoke(e, state)
             }
 

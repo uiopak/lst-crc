@@ -58,38 +58,18 @@ class RepoNodeRenderer(
     private fun configureTrailingRenderer(targetRevision: String?, lineStats: ChangeLineStats?) {
         trailingRenderer.clear()
 
-        targetRevision?.let {
-            trailingRenderer.append("(vs $it)", SimpleTextAttributes.GRAYED_ATTRIBUTES)
-        }
-
-        if (ToolWindowSettingsProvider.isShowLineStatsInTree() && lineStats != null) {
-            appendLineStats(lineStats)
+        trailingMetadataFragments(
+            lineStats = lineStats,
+            targetRevision = targetRevision,
+            showLineStats = ToolWindowSettingsProvider.isShowLineStatsInTree()
+        ).forEachIndexed { index, fragment ->
+            if (index > 0) {
+                trailingRenderer.append(FontUtil.spaceAndThinSpace())
+            }
+            trailingRenderer.append(fragment.text, fragment.attributes)
         }
 
         trailingRenderer.isVisible = trailingRenderer.fragmentCount > 0
-    }
-
-    private fun appendLineStats(lineStats: ChangeLineStats) {
-        appendTrailingSeparatorIfNeeded()
-        if (lineStats.addedLines > 0) {
-            trailingRenderer.append(
-                "+${lineStats.addedLines}",
-                ADDED_LINE_STATS_ATTRIBUTES
-            )
-        }
-        if (lineStats.removedLines > 0) {
-            appendTrailingSeparatorIfNeeded()
-            trailingRenderer.append(
-                "-${lineStats.removedLines}",
-                REMOVED_LINE_STATS_ATTRIBUTES
-            )
-        }
-    }
-
-    private fun appendTrailingSeparatorIfNeeded() {
-        if (trailingRenderer.fragmentCount > 0) {
-            trailingRenderer.append(FontUtil.spaceAndThinSpace())
-        }
     }
 
     private fun updateRendererInsets(hasTrailingMetadata: Boolean) {
@@ -129,6 +109,24 @@ class RepoNodeRenderer(
         trailingRenderer.background = textRenderer.background
 
         return this
+    }
+
+    @Suppress("unused")
+    fun renderedTextForTest(
+        tree: JTree,
+        value: Any,
+        selected: Boolean,
+        expanded: Boolean,
+        leaf: Boolean,
+        row: Int,
+        hasFocus: Boolean
+    ): String {
+        getTreeCellRendererComponent(tree, value, selected, expanded, leaf, row, hasFocus)
+        val leadingText = textRenderer.getCharSequence(false).toString().trim()
+        val trailingText = trailingRenderer.getCharSequence(false).toString().trim()
+        return sequenceOf(leadingText, trailingText)
+            .filter(String::isNotBlank)
+            .joinToString(" ")
     }
 
     private fun resolveTargetRevision(tree: JTree, node: ChangesBrowserNode<*>): String? {
@@ -219,22 +217,42 @@ private const val TRAILING_METADATA_LEFT_GAP = 0
 private const val TRAILING_METADATA_RIGHT_GAP = 10
 private const val RENDERER_RIGHT_PADDING = 10
 
+private data class TrailingMetadataFragment(
+    val text: String,
+    val attributes: SimpleTextAttributes
+)
+
+private fun trailingMetadataFragments(
+    lineStats: ChangeLineStats?,
+    targetRevision: String?,
+    showLineStats: Boolean
+): List<TrailingMetadataFragment> {
+    val fragments = mutableListOf<TrailingMetadataFragment>()
+
+    targetRevision?.let {
+        fragments += TrailingMetadataFragment("(vs $it)", SimpleTextAttributes.GRAYED_ATTRIBUTES)
+    }
+
+    if (showLineStats && lineStats != null) {
+        if (lineStats.addedLines > 0) {
+            fragments += TrailingMetadataFragment("+${lineStats.addedLines}", ADDED_LINE_STATS_ATTRIBUTES)
+        }
+        if (lineStats.removedLines > 0) {
+            fragments += TrailingMetadataFragment("-${lineStats.removedLines}", REMOVED_LINE_STATS_ATTRIBUTES)
+        }
+    }
+
+    return fragments
+}
+
 internal fun buildTrailingMetadataText(
     lineStats: ChangeLineStats?,
     targetRevision: String?,
     showLineStats: Boolean
 ): String? {
-    val fragments = mutableListOf<String>()
-    targetRevision?.let { fragments += "(vs $it)" }
-    if (showLineStats && lineStats != null) {
-        if (lineStats.addedLines > 0) {
-            fragments += "+${lineStats.addedLines}"
-        }
-        if (lineStats.removedLines > 0) {
-            fragments += "-${lineStats.removedLines}"
-        }
-    }
-    return fragments.takeIf { it.isNotEmpty() }?.joinToString(FontUtil.spaceAndThinSpace())
+    val fragments = trailingMetadataFragments(lineStats, targetRevision, showLineStats)
+    return fragments.takeIf { it.isNotEmpty() }
+        ?.joinToString(FontUtil.spaceAndThinSpace()) { it.text }
 }
 
 internal fun aggregateLineStatsForNode(

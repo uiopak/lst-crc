@@ -110,10 +110,7 @@ private fun invokeRenamePopup(project: Project, owner: Component, branchName: St
         var balloon: Balloon? = null
 
         val onOk = {
-            val newAlias = ToolWindowHelper.normalizedTabAlias(textField.text)
-            if (tabInfo?.alias != newAlias) {
-                stateService.updateTabAlias(branchName, newAlias)
-            }
+            ToolWindowHelper.updateNormalizedTabAlias(project, branchName, textField.text)
             balloon?.hide()
         }
 

@@ -4,7 +4,6 @@ package com.github.uiopak.lstcrc.toolWindow
 
 import com.github.uiopak.lstcrc.resources.LstCrcBundle
 import com.github.uiopak.lstcrc.services.GitService
-import com.github.uiopak.lstcrc.services.ToolWindowStateService
 import com.github.uiopak.lstcrc.state.TabInfo
 import com.intellij.icons.AllIcons
 import com.intellij.ide.DataManager
@@ -30,7 +29,7 @@ internal class ShowRepoComparisonInfoAction : DumbAwareAction(
             e.presentation.isEnabledAndVisible = false
             return
         }
-        e.presentation.isEnabledAndVisible = selectedTabInfo(project) != null
+        e.presentation.isEnabledAndVisible = selectedLstCrcTab(project) != null
     }
 
     override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
@@ -38,7 +37,7 @@ internal class ShowRepoComparisonInfoAction : DumbAwareAction(
     override fun actionPerformed(e: AnActionEvent) {
         val project = e.project ?: return
         val gitService = project.service<GitService>()
-        val tabInfo = selectedTabInfo(project) ?: return
+        val tabInfo = selectedLstCrcTab(project) ?: return
 
         val repositories = gitService.getRepositories()
 
@@ -102,9 +101,5 @@ internal class ShowRepoComparisonInfoAction : DumbAwareAction(
         tabInfo: TabInfo
     ) {
         SingleRepoBranchSelectionDialog(project, repo, tabInfo).show()
-    }
-
-    private fun selectedTabInfo(project: Project): TabInfo? {
-        return project.service<ToolWindowStateService>().getSelectedTabInfo()
     }
 }

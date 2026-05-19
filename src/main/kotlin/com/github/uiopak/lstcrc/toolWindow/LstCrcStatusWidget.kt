@@ -1,6 +1,5 @@
 package com.github.uiopak.lstcrc.toolWindow
 
-import com.github.uiopak.lstcrc.LstCrcConstants
 import com.github.uiopak.lstcrc.messaging.PLUGIN_SETTINGS_CHANGED_TOPIC
 import com.github.uiopak.lstcrc.messaging.PluginSettingsChangedListener
 import com.github.uiopak.lstcrc.messaging.TOOL_WINDOW_STATE_TOPIC

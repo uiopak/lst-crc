@@ -18,10 +18,10 @@ class LstCrcSettingsServiceTest : BasePlatformTestCase() {
 
             settings.resetToDefaults()
 
-            assertEquals(ToolWindowSettingsProvider.DEFAULT_SINGLE_CLICK_ACTION, settings.getSingleClickAction())
-            assertEquals(ToolWindowSettingsProvider.DEFAULT_DOUBLE_CLICK_ACTION, settings.getDoubleClickAction())
+            assertEquals(LstCrcSettingDefinitions.SINGLE_CLICK_ACTION.defaultValue, settings.getSingleClickAction())
+            assertEquals(LstCrcSettingDefinitions.DOUBLE_CLICK_ACTION.defaultValue, settings.getDoubleClickAction())
             assertFalse(settings.isContextMenuEnabled())
-            assertEquals(ToolWindowSettingsProvider.DELAY_OPTION_SYSTEM_DEFAULT, settings.getUserDoubleClickDelay())
+            assertEquals(LstCrcSettingDefinitions.USER_DOUBLE_CLICK_DELAY.defaultValue, settings.getUserDoubleClickDelay())
             assertFalse(settings.isShowLineStatsInTree())
         } finally {
             settings.resetToDefaults()
@@ -34,10 +34,14 @@ class LstCrcSettingsServiceTest : BasePlatformTestCase() {
         try {
             settings.setRightClickAction(ToolWindowSettingsProvider.ACTION_SHOW_IN_PROJECT_TREE)
             settings.setShowWidgetContext(true)
+            settings.setIncludeHeadInScopes(true)
+            settings.setShowToolWindowTitle(true)
             settings.setUserDoubleClickDelay(300)
 
             assertEquals(ToolWindowSettingsProvider.ACTION_SHOW_IN_PROJECT_TREE, settings.getRightClickAction())
             assertTrue(settings.isShowWidgetContext())
+            assertTrue(settings.isIncludeHeadInScopes())
+            assertTrue(settings.isShowToolWindowTitle())
             assertEquals(300, settings.getUserDoubleClickDelay())
         } finally {
             settings.resetToDefaults()

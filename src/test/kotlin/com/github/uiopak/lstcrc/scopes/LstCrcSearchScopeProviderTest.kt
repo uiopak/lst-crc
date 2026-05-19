@@ -10,6 +10,32 @@ import com.intellij.testFramework.fixtures.BasePlatformTestCase
 
 class LstCrcSearchScopeProviderTest : BasePlatformTestCase() {
 
+    fun testProvidedScopesExposeCanonicalIdsOrderAndSearchableSubset() {
+        val customScopes = LstCrcScopeProvider().customScopes
+
+        assertEquals(
+            listOf(
+                "LSTCRC.Created",
+                "LSTCRC.Modified",
+                "LSTCRC.Moved",
+                "LSTCRC.Deleted",
+                "LSTCRC.Changed"
+            ),
+            customScopes.map { it.scopeId }
+        )
+
+        assertEquals(LstCrcProvidedScopes.allScopes, customScopes)
+        assertEquals(
+            listOf(
+                LstCrcProvidedScopes.CREATED_FILES_SCOPE,
+                LstCrcProvidedScopes.MODIFIED_FILES_SCOPE,
+                LstCrcProvidedScopes.MOVED_FILES_SCOPE,
+                LstCrcProvidedScopes.CHANGED_FILES_SCOPE
+            ),
+            LstCrcProvidedScopes.searchableScopes
+        )
+    }
+
     fun testGetDisplayNameAndSearchScopesReturnExpectedLstCrcScopes() {
         val provider = LstCrcSearchScopeProvider()
 

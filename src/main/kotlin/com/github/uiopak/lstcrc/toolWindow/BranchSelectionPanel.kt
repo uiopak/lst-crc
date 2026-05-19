@@ -25,6 +25,7 @@ import javax.swing.event.DocumentEvent
 import javax.swing.event.DocumentListener
 import javax.swing.tree.DefaultMutableTreeNode
 import javax.swing.tree.DefaultTreeModel
+import javax.swing.tree.TreeNode
 
 /**
  * A UI panel that displays Git branches in a filterable, hierarchical tree, allowing the user to select one.
@@ -187,6 +188,31 @@ class BranchSelectionPanel(
         }
     }
 
+    @Suppress("unused")
+    fun visibleLeafTextsForTest(): List<String> {
+        return (0 until tree.rowCount)
+            .mapNotNull { row -> tree.getPathForRow(row)?.lastPathComponent as? DefaultMutableTreeNode }
+            .filter(DefaultMutableTreeNode::isLeaf)
+            .mapNotNull(::branchLeafText)
+    }
+
+    @Suppress("unused")
+    fun selectVisibleBranchForTest(branchName: String): Boolean {
+        for (row in 0 until tree.rowCount) {
+            val path = tree.getPathForRow(row) ?: continue
+            val node = branchNodeAt(path) ?: continue
+            val branchInfo = node.userObject as? BranchInfo ?: continue
+            if (branchInfo.fullBranchName != branchName) {
+                continue
+            }
+
+            tree.selectionPath = path
+            tree.scrollPathToVisible(path)
+            return selectBranchNode(node)
+        }
+        return false
+    }
+
     private fun createBranchSelectionTree(): Tree {
         return Tree(fullTreeModel).apply {
             isRootVisible = false
@@ -292,6 +318,11 @@ class BranchSelectionPanel(
 
     private fun branchNodeAt(path: javax.swing.tree.TreePath?): DefaultMutableTreeNode? {
         return path?.lastPathComponent as? DefaultMutableTreeNode
+    }
+
+    private fun branchLeafText(node: TreeNode): String? {
+        val treeNode = node as? DefaultMutableTreeNode ?: return null
+        return resolveBranchNodePresentation(treeNode)?.first
     }
 
     private fun selectBranchNode(node: DefaultMutableTreeNode): Boolean {

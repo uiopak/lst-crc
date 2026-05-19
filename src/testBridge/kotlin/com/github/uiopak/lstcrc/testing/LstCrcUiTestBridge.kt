@@ -14,6 +14,7 @@ import com.github.uiopak.lstcrc.toolWindow.LstCrcChangesBrowser
 import com.github.uiopak.lstcrc.toolWindow.BranchSelectionPanel
 import com.github.uiopak.lstcrc.toolWindow.LstCrcSettingsService
 import com.github.uiopak.lstcrc.toolWindow.ShowRepoComparisonInfoAction
+import com.github.uiopak.lstcrc.toolWindow.LstCrcSettingDefinitions
 import com.github.uiopak.lstcrc.toolWindow.ToolWindowHelper
 import com.github.uiopak.lstcrc.toolWindow.ToolWindowSettingsProvider
 import com.github.uiopak.lstcrc.toolWindow.ToolWindowUiCompatibility
@@ -210,14 +211,13 @@ class LstCrcUiTestBridge {
     fun selectedTabName(): String = onEdtResult { selectedContentDisplayName() }
 
     fun selectedRenderedRowsSnapshot(): String = onEdtResult {
-        val tree = selectedChangesTree() ?: return@onEdtResult ""
-        renderedRowsSnapshot(tree)
+        selectedBrowser()?.visibleRowTextsForTest()?.joinToString("\n").orEmpty()
     }
 
     fun selectedChangesTreeSnapshot(): String = onEdtResult {
-        val tree = selectedChangesTree()
-        val renderedRows = tree?.let(::renderedRowsSnapshot).orEmpty()
-        val changeFileNames = allChangeFileNamesSnapshotFromBrowser()
+        val browser = selectedBrowser()
+        val renderedRows = browser?.visibleRowTextsForTest()?.joinToString("\n").orEmpty()
+        val changeFileNames = browser?.currentChangeFileNamesSnapshot()?.joinToString("\n").orEmpty()
 
         sequenceOf(renderedRows, changeFileNames)
             .filter { it.isNotBlank() }
@@ -225,33 +225,14 @@ class LstCrcUiTestBridge {
     }
 
     fun selectedExpandedTreeNodesSnapshot(): String = onEdtResult {
-        val tree = selectedChangesTree() ?: return@onEdtResult ""
-        val renderer = tree.cellRenderer
-        val model = tree.model
-        (0 until tree.rowCount)
-            .mapNotNull { row ->
-                val path = tree.getPathForRow(row) ?: return@mapNotNull null
-                val node = path.lastPathComponent as? DefaultMutableTreeNode ?: return@mapNotNull null
-                if (node.isLeaf || !tree.isExpanded(path)) {
-                    return@mapNotNull null
-                }
-                renderedTreeText(tree, renderer, model, path, row)
-            }
-            .filter(String::isNotBlank)
-            .joinToString(";")
+        selectedBrowser()?.expandedNodeTextsForTest()?.joinToString(";").orEmpty()
     }
 
     fun setSelectedTreeNodeExpanded(nodeText: String, expanded: Boolean) {
         onEdt {
-            val tree = selectedChangesTree()
-                ?: error("No selected LST-CRC changes tree is available.")
-            val path = findTreePathByText(tree, nodeText)
-                ?: error("Could not find tree node '$nodeText' in selected LST-CRC tree.")
-
-            if (expanded) {
-                tree.expandPath(path)
-            } else {
-                tree.collapsePath(path)
+            val browser = requireSelectedBrowser()
+            if (!browser.setExpandedForVisibleNodeTextForTest(nodeText, expanded)) {
+                error("Could not find tree node '$nodeText' in selected LST-CRC tree.")
             }
         }
     }
@@ -285,10 +266,12 @@ class LstCrcUiTestBridge {
         val project = project()
         onEdt {
             val stateService = project.service<ToolWindowStateService>()
-            val selectedTabInfo = resolveSelectedTabInfo(stateService)
-                ?: error("No selected LST-CRC tab available for repo comparison update")
+            val selectedTabInfo = requireResolvedSelectedTabInfo(
+                stateService,
+                "No selected LST-CRC tab available for repo comparison update"
+            )
             val repoRootPath = project.guessProjectDir()?.path
-                ?: project.basePath?.replace('\\', '/')
+                ?: project.basePath?.let(::normalizePath)
                 ?: error(PROJECT_BASE_PATH_NOT_AVAILABLE)
             stateService.updateTabRepoComparison(selectedTabInfo.branchName, repoRootPath, targetRevision, triggerRefresh = true)
         }
@@ -322,16 +305,19 @@ class LstCrcUiTestBridge {
                 .firstOrNull { candidate -> candidate.root.name == repoName }
                 ?: error("Could not find repository '$repoName' for branch error repair fallback")
             val stateService = project.service<ToolWindowStateService>()
-            val selectedTabInfo = resolveSelectedTabInfo(stateService)
-                ?: error("No selected LST-CRC tab available for branch error repair fallback")
+            val selectedTabInfo = requireResolvedSelectedTabInfo(
+                stateService,
+                "No selected LST-CRC tab available for branch error repair fallback"
+            )
             repository to selectedTabInfo
         }
         val project = project()
         onBackground {
-            refreshBaseDir(project)
-            repository.root.refresh(false, true)
-            repository.update()
-            ChangeListManagerEx.getInstanceEx(project).waitForUpdate()
+            refreshGitProjectState(
+                project,
+                waitForChangeListUpdate = true,
+                rootsToRefresh = listOf(repository.root)
+            )
         }
         val snapshot = project.service<GitService>().getBranchSnapshot(repository)
         syntheticRepoComparisonDialog.set(syntheticRepoComparisonDialog(repository, selectedTabInfo.branchName, snapshot))
@@ -366,7 +352,7 @@ class LstCrcUiTestBridge {
 
     fun setContextMenuEnabled(enabled: Boolean) {
         onEdt {
-            settingsService().setBoolean(ToolWindowSettingsProvider.APP_SHOW_CONTEXT_MENU_KEY, enabled, ToolWindowSettingsProvider.DEFAULT_SHOW_CONTEXT_MENU)
+            settingsService().setContextMenuEnabled(enabled)
         }
     }
 
@@ -387,7 +373,7 @@ class LstCrcUiTestBridge {
             doubleMiddleClickAction?.let { settings.setDoubleMiddleClickAction(it) }
             rightClickAction?.let { settings.setRightClickAction(it) }
             doubleRightClickAction?.let { settings.setDoubleRightClickAction(it) }
-            showContextMenu?.let { settings.setBoolean(ToolWindowSettingsProvider.APP_SHOW_CONTEXT_MENU_KEY, it, false) }
+            showContextMenu?.let { settings.setContextMenuEnabled(it) }
         }
     }
 
@@ -400,21 +386,20 @@ class LstCrcUiTestBridge {
             settings.getDoubleMiddleClickAction(),
             settings.getRightClickAction(),
             settings.getDoubleRightClickAction(),
-            settings.getBoolean(ToolWindowSettingsProvider.APP_SHOW_CONTEXT_MENU_KEY, false).toString(),
-            settings.getInt(ToolWindowSettingsProvider.APP_USER_DOUBLE_CLICK_DELAY_KEY, ToolWindowSettingsProvider.DELAY_OPTION_SYSTEM_DEFAULT).toString()
+            settings.isContextMenuEnabled().toString(),
+            settings.getUserDoubleClickDelay().toString()
         ).joinToString("|")
     }
 
     fun setDoubleClickDelayMs(delay: Int) {
         onEdt {
-            settingsService().setInt(ToolWindowSettingsProvider.APP_USER_DOUBLE_CLICK_DELAY_KEY, delay, ToolWindowSettingsProvider.DELAY_OPTION_SYSTEM_DEFAULT)
+            settingsService().setUserDoubleClickDelay(delay)
         }
     }
 
     fun triggerConfiguredChangeInteraction(fileName: String, button: String, clickCount: Int) {
         onEdt {
-            val tree = selectedChangesTree()
-                ?: error("No selected LST-CRC changes tree is available.")
+            val tree = requireSelectedChangesTree()
 
             val targetRow = findTargetRow(tree, fileName)
                 ?: error("Could not find change for file '$fileName' in selected LST-CRC browser.")
@@ -450,21 +435,15 @@ class LstCrcUiTestBridge {
     }
 
     fun contextMenuActionsForFile(fileName: String): String = onEdtResult {
+        val browser = requireSelectedBrowser()
         val change = findChangeByFileName(fileName)
             ?: error("Could not find change for file '$fileName' in selected LST-CRC browser.")
-        val titles = mutableListOf(
-            LstCrcBundle.message("context.menu.show.diff"),
-            LstCrcBundle.message("context.menu.open.source")
-        )
-        if (change.type != Change.Type.DELETED) {
-            titles.add(LstCrcBundle.message("context.menu.show.project.tree"))
-        }
-        titles.joinToString("|")
+        browser.availableContextMenuActionTitlesForTest(change).joinToString("|")
     }
 
     fun invokeContextMenuActionForFile(fileName: String, actionTitle: String) {
         onEdt {
-            val browser = selectedBrowser() ?: error("No selected LST-CRC browser is available.")
+            val browser = requireSelectedBrowser()
             val change = findChangeByFileName(fileName)
                 ?: error("Could not find change for file '$fileName' in selected LST-CRC browser.")
             browser.invokeTestContextMenuAction(change, actionTitle)
@@ -515,7 +494,7 @@ class LstCrcUiTestBridge {
         val project = project()
         onEdt {
             val basePath = project.basePath ?: error(PROJECT_BASE_PATH_NOT_AVAILABLE)
-            val file = LocalFileSystem.getInstance().refreshAndFindFileByPath(File(basePath, relativePath).path.replace('\\', '/'))
+            val file = LocalFileSystem.getInstance().refreshAndFindFileByPath(projectFilePath(basePath, relativePath))
                 ?: error("Could not find file '$relativePath' under project base path '$basePath'.")
             FileEditorManager.getInstance(project).openTextEditor(OpenFileDescriptor(project, file), true)
             project.service<VisualTrackerManager>().settingsChanged()
@@ -527,7 +506,7 @@ class LstCrcUiTestBridge {
         onEdt {
             WriteCommandAction.runWriteCommandAction(project) {
                 val baseDir = projectDir(project)
-                val normalizedPath = relativePath.replace('\\', '/')
+                val normalizedPath = normalizePath(relativePath)
                 val parentPath = normalizedPath.substringBeforeLast('/', "")
                 val fileName = normalizedPath.substringAfterLast('/')
                 val parentDir = ensureRelativeDirectory(baseDir, parentPath)
@@ -544,9 +523,9 @@ class LstCrcUiTestBridge {
         onEdt {
             WriteCommandAction.runWriteCommandAction(project) {
                 val baseDir = projectDir(project)
-                val source = baseDir.findFileByRelativePath(oldPath.replace('\\', '/'))
+                val source = baseDir.findFileByRelativePath(normalizePath(oldPath))
                     ?: error("Could not find file '$oldPath' under project base dir '${project.basePath}'.")
-                val normalizedNewPath = newPath.replace('\\', '/')
+                val normalizedNewPath = normalizePath(newPath)
                 val targetParentPath = normalizedNewPath.substringBeforeLast('/', "")
                 val targetFileName = normalizedNewPath.substringAfterLast('/')
                 val targetParent = ensureRelativeDirectory(baseDir, targetParentPath)
@@ -568,7 +547,7 @@ class LstCrcUiTestBridge {
         onEdt {
             WriteCommandAction.runWriteCommandAction(project) {
                 val baseDir = projectDir(project)
-                baseDir.findFileByRelativePath(relativePath.replace('\\', '/'))
+                baseDir.findFileByRelativePath(normalizePath(relativePath))
                     ?.delete(this)
                     ?: error("Could not find file '$relativePath' under project base dir '${project.basePath}'.")
                 VcsDirtyScopeManager.getInstance(project).markEverythingDirty()
@@ -580,7 +559,7 @@ class LstCrcUiTestBridge {
     fun setShowWidgetContext(show: Boolean) {
         val project = project()
         onEdt {
-            settingsService().setBoolean(ToolWindowSettingsProvider.APP_SHOW_WIDGET_CONTEXT_KEY, show, ToolWindowSettingsProvider.DEFAULT_SHOW_WIDGET_CONTEXT)
+            settingsService().setShowWidgetContext(show)
             project.messageBus.syncPublisher(PLUGIN_SETTINGS_CHANGED_TOPIC).onSettingsChanged()
         }
         awaitCurrentSelectionRefresh(project)
@@ -588,7 +567,7 @@ class LstCrcUiTestBridge {
 
     fun setShowToolWindowTitle(show: Boolean) {
         onEdt {
-            settingsService().setBoolean(ToolWindowSettingsProvider.APP_SHOW_TOOL_WINDOW_TITLE_KEY, show, ToolWindowSettingsProvider.DEFAULT_SHOW_TOOL_WINDOW_TITLE)
+            settingsService().setShowToolWindowTitle(show)
             ToolWindowUiCompatibility.setToolWindowTitleVisible(toolWindow(), show)
         }
     }
@@ -600,7 +579,7 @@ class LstCrcUiTestBridge {
     fun setIncludeHeadInScopes(include: Boolean) {
         val project = project()
         onEdt {
-            settingsService().setBoolean(ToolWindowSettingsProvider.APP_INCLUDE_HEAD_IN_SCOPES_KEY, include, ToolWindowSettingsProvider.DEFAULT_INCLUDE_HEAD_IN_SCOPES)
+            settingsService().setIncludeHeadInScopes(include)
         }
         awaitCurrentSelectionRefresh(project)
     }
@@ -610,10 +589,10 @@ class LstCrcUiTestBridge {
         onEdt {
             val settings = settingsService()
             enableMarkers?.let {
-                settings.setBoolean(ToolWindowSettingsProvider.APP_ENABLE_GUTTER_MARKERS_KEY, it, ToolWindowSettingsProvider.DEFAULT_ENABLE_GUTTER_MARKERS)
+                settings.setGutterMarkersEnabled(it)
             }
             enableForNewFiles?.let {
-                settings.setBoolean(ToolWindowSettingsProvider.APP_ENABLE_GUTTER_FOR_NEW_FILES_KEY, it, ToolWindowSettingsProvider.DEFAULT_ENABLE_GUTTER_FOR_NEW_FILES)
+                settings.setGutterForNewFilesEnabled(it)
             }
         }
         awaitCurrentSelectionRefresh(project)
@@ -621,22 +600,14 @@ class LstCrcUiTestBridge {
 
     fun setExpandNewFilesInCollapsedDirs(enabled: Boolean) {
         onEdt {
-            settingsService().setBoolean(
-                ToolWindowSettingsProvider.APP_EXPAND_NEW_FILES_IN_COLLAPSED_DIRS_KEY,
-                enabled,
-                ToolWindowSettingsProvider.DEFAULT_EXPAND_NEW_FILES_IN_COLLAPSED_DIRS
-            )
+            settingsService().setExpandNewFilesInCollapsedDirs(enabled)
         }
     }
 
     fun setShowUntrackedFilesAsNew(enabled: Boolean) {
         val project = project()
         onEdt {
-            settingsService().setBoolean(
-                ToolWindowSettingsProvider.APP_SHOW_UNTRACKED_FILES_AS_NEW_KEY,
-                enabled,
-                ToolWindowSettingsProvider.DEFAULT_SHOW_UNTRACKED_FILES_AS_NEW
-            )
+            settingsService().setShowUntrackedFilesAsNew(enabled)
         }
         awaitCurrentSelectionRefresh(project)
     }
@@ -646,13 +617,13 @@ class LstCrcUiTestBridge {
         onEdt {
             val settings = settingsService()
             showSingleRepo?.let {
-                settings.setBoolean(ToolWindowSettingsProvider.APP_SHOW_CONTEXT_SINGLE_REPO_KEY, it, ToolWindowSettingsProvider.DEFAULT_SHOW_CONTEXT_SINGLE_REPO)
+                settings.setShowContextForSingleRepo(it)
             }
             showCommits?.let {
-                settings.setBoolean(ToolWindowSettingsProvider.APP_SHOW_CONTEXT_FOR_COMMITS_KEY, it, ToolWindowSettingsProvider.DEFAULT_SHOW_CONTEXT_FOR_COMMITS)
+                settings.setShowContextForCommits(it)
             }
             showLineStats?.let {
-                settings.setBoolean(ToolWindowSettingsProvider.APP_SHOW_LINE_STATS_IN_TREE_KEY, it, ToolWindowSettingsProvider.DEFAULT_SHOW_LINE_STATS_IN_TREE)
+                settings.setShowLineStatsInTree(it)
             }
             selectedBrowser()?.rebuildView()
         }
@@ -662,35 +633,28 @@ class LstCrcUiTestBridge {
     fun setMultiRepoTreeContextSetting(show: Boolean) {
         val project = project()
         onEdt {
-            settingsService().setBoolean(
-                ToolWindowSettingsProvider.APP_SHOW_CONTEXT_MULTI_REPO_KEY,
-                show,
-                ToolWindowSettingsProvider.DEFAULT_SHOW_CONTEXT_MULTI_REPO
-            )
+            settingsService().setShowContextForMultiRepo(show)
             selectedBrowser()?.rebuildView()
         }
         awaitCurrentSelectionRefresh(project)
     }
 
     fun isMultiRepoTreeContextEnabled(): Boolean = onEdtResult {
-        settingsService().getBoolean(
-            ToolWindowSettingsProvider.APP_SHOW_CONTEXT_MULTI_REPO_KEY,
-            ToolWindowSettingsProvider.DEFAULT_SHOW_CONTEXT_MULTI_REPO
-        )
+        settingsService().isShowContextForMultiRepo()
     }
 
     fun treeContextSettingsSnapshot(): String = onEdtResult {
         val settings = settingsService()
-        "${settings.getBoolean(ToolWindowSettingsProvider.APP_SHOW_CONTEXT_SINGLE_REPO_KEY, ToolWindowSettingsProvider.DEFAULT_SHOW_CONTEXT_SINGLE_REPO)}|" +
-            "${settings.getBoolean(ToolWindowSettingsProvider.APP_SHOW_CONTEXT_FOR_COMMITS_KEY, ToolWindowSettingsProvider.DEFAULT_SHOW_CONTEXT_FOR_COMMITS)}|" +
-            settings.getBoolean(ToolWindowSettingsProvider.APP_SHOW_LINE_STATS_IN_TREE_KEY, ToolWindowSettingsProvider.DEFAULT_SHOW_LINE_STATS_IN_TREE)
+        "${settings.isShowContextForSingleRepo()}|" +
+            "${settings.isShowContextForCommits()}|" +
+            settings.isShowLineStatsInTree()
     }
 
     fun gutterSettingsSnapshot(): String = onEdtResult {
         val settings = settingsService()
-        "${settings.getBoolean(ToolWindowSettingsProvider.APP_ENABLE_GUTTER_MARKERS_KEY, ToolWindowSettingsProvider.DEFAULT_ENABLE_GUTTER_MARKERS)}|" +
-            "${settings.getBoolean(ToolWindowSettingsProvider.APP_ENABLE_GUTTER_FOR_NEW_FILES_KEY, ToolWindowSettingsProvider.DEFAULT_ENABLE_GUTTER_FOR_NEW_FILES)}|" +
-            settings.getBoolean(ToolWindowSettingsProvider.APP_INCLUDE_HEAD_IN_SCOPES_KEY, ToolWindowSettingsProvider.DEFAULT_INCLUDE_HEAD_IN_SCOPES)
+        "${settings.isGutterMarkersEnabled()}|" +
+            "${settings.isGutterForNewFilesEnabled()}|" +
+            settings.isIncludeHeadInScopes()
     }
 
     fun selectedTabComparisonMap(): String = onEdtResult {
@@ -716,7 +680,7 @@ class LstCrcUiTestBridge {
             ?: return@onEdtResult false
 
         val basePath = project.basePath ?: return@onEdtResult false
-        val absolutePath = File(basePath, relativePath).path.replace('\\', '/')
+        val absolutePath = projectFilePath(basePath, relativePath)
         val file = LocalFileSystem.getInstance().refreshAndFindFileByPath(absolutePath)
             ?: findActiveDiffFile(project, absolutePath)
             ?: return@onEdtResult false
@@ -737,7 +701,7 @@ class LstCrcUiTestBridge {
     }
 
     fun branchSelectionTabBranchesSnapshot(): String = onEdtResult {
-        branchSelectionPanelTree()?.let(::collectTreeLeafTexts)?.joinToString(";").orEmpty()
+        selectedContentComponent<BranchSelectionPanel>()?.visibleLeafTextsForTest()?.joinToString(";").orEmpty()
     }
 
     fun searchScopeContains(displayName: String, relativePath: String): Boolean = onEdtResult {
@@ -748,7 +712,7 @@ class LstCrcUiTestBridge {
             ?: return@onEdtResult false
 
         val basePath = project.basePath ?: return@onEdtResult false
-        val absolutePath = File(basePath, relativePath).path.replace('\\', '/')
+        val absolutePath = projectFilePath(basePath, relativePath)
         val file = LocalFileSystem.getInstance().refreshAndFindFileByPath(absolutePath)
             ?: findActiveDiffFile(project, absolutePath)
             ?: return@onEdtResult false
@@ -803,10 +767,11 @@ class LstCrcUiTestBridge {
         if (repositories.size == 1) {
             val repository = repositories.first()
             onBackground {
-                refreshBaseDir(project)
-                repository.root.refresh(false, true)
-                repository.update()
-                ChangeListManagerEx.getInstanceEx(project).waitForUpdate()
+                refreshGitProjectState(
+                    project,
+                    waitForChangeListUpdate = true,
+                    rootsToRefresh = listOf(repository.root)
+                )
             }
             val snapshot = gitService.getBranchSnapshot(repository)
             syntheticRepoComparisonDialog.set(syntheticRepoComparisonDialog(repository, selectedTabInfo.branchName, snapshot))
@@ -823,9 +788,9 @@ class LstCrcUiTestBridge {
     }
 
     fun visibleRepoComparisonDialogBranchesSnapshot(): String = onEdtResult {
-        val tree = findBranchSelectionTree()
-        if (tree != null) {
-            return@onEdtResult collectTreeLeafTexts(tree).joinToString(";")
+        val panel = findVisibleBranchSelectionPanel()
+        if (panel != null) {
+            return@onEdtResult panel.visibleLeafTextsForTest().joinToString(";")
         }
         syntheticRepoComparisonDialog.get()?.branches?.joinToString(";").orEmpty()
     }
@@ -843,18 +808,19 @@ class LstCrcUiTestBridge {
             }
 
             val dialog = visibleBranchSelectionDialog() ?: error("Repository comparison dialog is not visible")
-            val tree = findBranchSelectionTree() ?: error("Repository comparison dialog tree is not visible")
-            TreeUtil.expandAll(tree)
-            val path = findTreePathByLeafText(tree, branchName)
-                ?: error("Could not find branch '$branchName' in repository comparison dialog")
-            tree.selectionPath = path
+            val panel = findVisibleBranchSelectionPanel() ?: error("Repository comparison dialog tree is not visible")
+            if (!panel.selectVisibleBranchForTest(branchName)) {
+                error("Could not find branch '$branchName' in repository comparison dialog")
+            }
 
             val repoName = dialog.title.removePrefix("Select Branch for ")
             val repository = GitRepositoryManager.getInstance(project()).repositories
                 .firstOrNull { candidate -> candidate.root.name == repoName }
                 ?: error("Could not find repository '$repoName' for repository comparison dialog")
-            val selectedTabInfo = resolveSelectedTabInfo(project().service<ToolWindowStateService>())
-                ?: error("No selected LST-CRC tab available for repository comparison update")
+            val selectedTabInfo = requireResolvedSelectedTabInfo(
+                project().service<ToolWindowStateService>(),
+                "No selected LST-CRC tab available for repository comparison update"
+            )
             applyRepoComparisonSelection(repository.root.path, selectedTabInfo.branchName, branchName)
             dialog.isVisible = false
             dialog.dispose()
@@ -864,41 +830,36 @@ class LstCrcUiTestBridge {
     fun setRepoComparisonForRoot(relativePath: String, targetRevision: String) {
         val project = project()
         val repoRootPath = projectDir(project).findFileByRelativePath(relativePath)?.path
-            ?: File(project.basePath ?: error(PROJECT_BASE_PATH_NOT_AVAILABLE), relativePath).path.replace('\\', '/')
+            ?: projectFilePath(project.basePath ?: error(PROJECT_BASE_PATH_NOT_AVAILABLE), relativePath)
         onEdt {
             val stateService = project.service<ToolWindowStateService>()
-            val selectedTabInfo = resolveSelectedTabInfo(stateService)
-                ?: error("No selected LST-CRC tab available for repo comparison update")
+            val selectedTabInfo = requireResolvedSelectedTabInfo(
+                stateService,
+                "No selected LST-CRC tab available for repo comparison update"
+            )
             stateService.updateTabRepoComparison(selectedTabInfo.branchName, repoRootPath, targetRevision, triggerRefresh = true)
         }
     }
 
     fun selectedTreeFileColor(fileName: String): String = onEdtResult {
+        val browser = selectedBrowser() ?: return@onEdtResult ""
         val tree = selectedChangesTree() ?: return@onEdtResult ""
+        val targetRow = findTargetRow(tree, fileName) ?: return@onEdtResult ""
         val renderer = tree.cellRenderer ?: return@onEdtResult ""
         val model = tree.model
+        val path = tree.getPathForRow(targetRow) ?: return@onEdtResult ""
 
-        for (row in 0 until tree.rowCount) {
-            val path = tree.getPathForRow(row) ?: continue
-            val text = renderedTreeText(tree, renderer, model, path, row)
-            if (!text.contains(fileName)) {
-                continue
-            }
-
-            val color = invokeTreeFileColor(tree, path)
-                ?: renderer.getTreeCellRendererComponent(
-                    tree,
-                    path.lastPathComponent,
-                    tree.isRowSelected(row),
-                    tree.isExpanded(row),
-                    model.isLeaf(path.lastPathComponent),
-                    row,
-                    false
-                ).background
-            return@onEdtResult color.toRgbSnapshot()
-        }
-
-        ""
+        val color = browser.fileColorForPathForTest(path)
+            ?: renderer.getTreeCellRendererComponent(
+                tree,
+                path.lastPathComponent,
+                tree.isRowSelected(targetRow),
+                tree.isExpanded(targetRow),
+                model.isLeaf(path.lastPathComponent),
+                targetRow,
+                false
+            ).background
+        color.toRgbSnapshot()
     }
 
     fun fileStatusForTreeItem(fileName: String): String = onEdtResult {
@@ -956,10 +917,7 @@ class LstCrcUiTestBridge {
     fun visualGutterSummaryForSelectedEditor(): String = onEdtResult {
         val project = project()
         val editor = FileEditorManager.getInstance(project).selectedTextEditor ?: return@onEdtResult ""
-        val document = editor.document
-        val (highlighterSummary, gutterHighlighterCount) = collectGutterHighlighterSummary(project, document)
-        val trackerSummary = buildTrackerSummary(project, document)
-        "$highlighterSummary|highlighters=$gutterHighlighterCount|$trackerSummary"
+        project.service<VisualTrackerManager>().debugGutterSummaryFor(editor.document)
     }
 
     private fun selectedContent(): Content? = contentManager().selectedContent
@@ -970,6 +928,10 @@ class LstCrcUiTestBridge {
 
     private fun selectedBrowser(): LstCrcChangesBrowser? {
         return selectedContentComponent()
+    }
+
+    private fun requireSelectedBrowser(): LstCrcChangesBrowser {
+        return selectedBrowser() ?: error("No selected LST-CRC browser is available.")
     }
 
     private fun findChangeByFileName(fileName: String): Change? {
@@ -994,14 +956,13 @@ class LstCrcUiTestBridge {
 
     private fun normalizePath(path: String): String = path.replace('\\', '/')
 
+    private fun projectFilePath(basePath: String, relativePath: String): String {
+        return normalizePath(File(basePath, relativePath).path)
+    }
+
     private fun pathMatchesFileName(path: String, actualFileName: String, requestedFileName: String): Boolean {
         val normalizedPath = normalizePath(path)
         return actualFileName == requestedFileName || normalizedPath.endsWith("/$requestedFileName")
-    }
-
-    private fun branchSelectionPanelTree(): JTree? {
-        val panel = selectedContentComponent<BranchSelectionPanel>() ?: return null
-        return descendantComponents(panel).filterIsInstance<JTree>().firstOrNull()
     }
 
     private fun selectedChangesTree(): Tree? {
@@ -1009,59 +970,8 @@ class LstCrcUiTestBridge {
         return browser.viewerTree()
     }
 
-    private fun renderedRowsSnapshot(tree: Tree): String {
-        val renderer = tree.cellRenderer
-        val model = tree.model
-        return (0 until tree.rowCount)
-            .mapNotNull { row ->
-                val path = tree.getPathForRow(row) ?: return@mapNotNull null
-                renderedTreeText(tree, renderer, model, path, row)
-            }
-            .filter(String::isNotBlank)
-            .joinToString("\n")
-    }
-
-    private fun allChangeFileNamesSnapshotFromBrowser(): String {
-        val browser = selectedBrowser() ?: return ""
-        return browser.currentChangeFileNamesSnapshot()
-            .asSequence()
-            .joinToString("\n")
-    }
-
-    private fun collectGutterHighlighterSummary(
-        project: Project,
-        document: Document
-    ): Pair<String, Int> {
-        val markupModel = DocumentMarkupModel.forDocument(document, project, true) as MarkupModelEx
-        val highlighterParts = mutableListOf<String>()
-        var gutterHighlighterCount = 0
-
-        markupModel.allHighlighters.forEach { highlighter ->
-            val renderer = highlighter.gutterIconRenderer ?: highlighter.lineMarkerRenderer ?: return@forEach
-            gutterHighlighterCount += 1
-            val startOffset = highlighter.startOffset
-            val endOffsetExclusive = maxOf(highlighter.endOffset, startOffset + 1)
-            val startLine = document.getLineNumber(startOffset)
-            val endLine = document.getLineNumber(endOffsetExclusive - 1) + 1
-            val rendererName = renderer.javaClass.simpleName.ifEmpty { renderer.javaClass.name }
-            highlighterParts.add("$startLine-$endLine:$rendererName")
-        }
-
-        return highlighterParts.joinToString(",") to gutterHighlighterCount
-    }
-
-    private fun buildTrackerSummary(project: Project, document: Document): String {
-        val tracker = LineStatusTrackerManager.getInstance(project).getLineStatusTracker(document)
-            ?: standaloneVisualTracker(project, document)
-            ?: return "tracker=none"
-        return project.service<VisualTrackerManager>().debugTrackerSummary(tracker)
-    }
-
-    private fun standaloneVisualTracker(
-        project: Project,
-        document: Document
-    ): LocalLineStatusTracker<*>? {
-        return project.service<VisualTrackerManager>().findStandaloneTracker(document)
+    private fun requireSelectedChangesTree(): Tree {
+        return selectedChangesTree() ?: error("No selected LST-CRC changes tree is available.")
     }
 
     private fun performAction(action: AnAction) {
@@ -1087,8 +997,10 @@ class LstCrcUiTestBridge {
 
     private fun applyRepoComparisonSelection(repositoryRootPath: String, defaultTarget: String, branchName: String) {
         val stateService = project().service<ToolWindowStateService>()
-        val selectedTabInfo = resolveSelectedTabInfo(stateService)
-            ?: error("No selected LST-CRC tab available for repository comparison update")
+        val selectedTabInfo = requireResolvedSelectedTabInfo(
+            stateService,
+            "No selected LST-CRC tab available for repository comparison update"
+        )
         stateService.updateTabRepoComparison(selectedTabInfo.branchName, repositoryRootPath, branchName, defaultTarget)
     }
 
@@ -1111,9 +1023,9 @@ class LstCrcUiTestBridge {
         dialog.title.startsWith("Select Branch for ")
     }
 
-    private fun findBranchSelectionTree(): JTree? {
+    private fun findVisibleBranchSelectionPanel(): BranchSelectionPanel? {
         val dialog = visibleBranchSelectionDialog() ?: return null
-        return descendantComponents(dialog).filterIsInstance<JTree>().firstOrNull()
+        return descendantComponents(dialog).filterIsInstance<BranchSelectionPanel>().firstOrNull()
     }
 
     private fun descendantComponents(root: Component?): Sequence<Component> = sequence {
@@ -1138,7 +1050,7 @@ class LstCrcUiTestBridge {
             .firstOrNull()
             ?: return null
         return (0 until combo.itemCount)
-            .mapNotNull { index -> comboItemText(combo.getItemAt(index)) }
+            .mapNotNull { index -> comboItemText(combo, combo.getItemAt(index), index) }
             .filter(String::isNotBlank)
     }
 
@@ -1155,61 +1067,25 @@ class LstCrcUiTestBridge {
         dispatchComponentClick(scopeButton)
     }
 
-    private fun comboItemText(item: Any?): String? {
+    private fun comboItemText(combo: JComboBox<*>, item: Any?, index: Int): String? {
         item ?: return null
         if (item is String) {
             return item
         }
-        val displayName = (item.javaClass.methods.asSequence() + item.javaClass.declaredMethods.asSequence())
-            .firstOrNull { method -> method.name == "getDisplayName" && method.parameterCount == 0 }
-            ?.let { method ->
-                runCatching {
-                    method.isAccessible = true
-                    method.invoke(item)?.toString()
-                }.getOrNull()
-            }
-        if (!displayName.isNullOrBlank()) {
-            return displayName
+        val renderer = combo.renderer
+        if (renderer != null) {
+            @Suppress("UNCHECKED_CAST")
+            val component = (renderer as ListCellRenderer<Any?>).getListCellRendererComponent(
+                JList(),
+                item,
+                index,
+                false,
+                false
+            )
+            renderedComponentText(component)?.takeIf(String::isNotBlank)?.let { return it }
+            component.accessibleContext?.accessibleName?.takeIf(String::isNotBlank)?.let { return it }
         }
         return item.toString()
-    }
-
-    private fun collectTreeLeafTexts(tree: JTree): List<String> {
-        TreeUtil.expandAll(tree)
-        return (0 until tree.rowCount)
-            .mapNotNull { row ->
-                val path = tree.getPathForRow(row) ?: return@mapNotNull null
-                val node = path.lastPathComponent as? DefaultMutableTreeNode ?: return@mapNotNull null
-                if (!node.isLeaf) {
-                    return@mapNotNull null
-                }
-                renderedTreeText(tree, tree.cellRenderer, tree.model, path, row)
-            }
-    }
-
-    private fun renderedTreeText(
-        tree: JTree,
-        renderer: javax.swing.tree.TreeCellRenderer,
-        model: javax.swing.tree.TreeModel,
-        path: TreePath,
-        row: Int
-    ): String {
-        val component = renderer.getTreeCellRendererComponent(
-            tree,
-            path.lastPathComponent,
-            tree.isRowSelected(row),
-            tree.isExpanded(row),
-            model.isLeaf(path.lastPathComponent),
-            row,
-            false
-        )
-        renderedComponentText(component)?.let { return it }
-
-        val accessibleName = component.accessibleContext?.accessibleName.orEmpty()
-        if (accessibleName.isNotBlank()) {
-            return accessibleName
-        }
-        return invokeRenderedTextMethod(component, "getText").orEmpty()
     }
 
     private fun renderedComponentText(component: Component): String? {
@@ -1310,33 +1186,6 @@ class LstCrcUiTestBridge {
         }
     }
 
-    private fun findTreePathByLeafText(tree: JTree, text: String): TreePath? {
-        return findTreePathByText(tree, text, leavesOnly = true)
-    }
-
-    private fun findTreePathByText(tree: JTree, text: String): TreePath? {
-        return findTreePathByText(tree, text, leavesOnly = false)
-    }
-
-    private fun findTreePathByText(tree: JTree, text: String, leavesOnly: Boolean): TreePath? {
-        val renderer = tree.cellRenderer
-        val model = tree.model
-        for (row in 0 until tree.rowCount) {
-            val path = tree.getPathForRow(row) ?: continue
-            val node = path.lastPathComponent as? DefaultMutableTreeNode ?: continue
-            if (leavesOnly && !node.isLeaf) {
-                continue
-            }
-
-            val rendered = renderedTreeText(tree, renderer, model, path, row)
-            val userObjectText = node.userObject?.toString().orEmpty()
-            if (rendered == text || rendered.contains(text) || userObjectText.contains(text)) {
-                return path
-            }
-        }
-        return null
-    }
-
     private fun dispatchComponentClick(component: Component) {
         val centerX = maxOf(1, component.width / 2)
         val centerY = maxOf(1, component.height / 2)
@@ -1360,16 +1209,6 @@ class LstCrcUiTestBridge {
         }
     }
 
-    private fun invokeTreeFileColor(tree: Tree, path: TreePath): Color? {
-        val method = tree.javaClass.methods.firstOrNull {
-            it.name == "getFileColorForPath" &&
-                it.parameterCount == 1 &&
-                TreePath::class.java.isAssignableFrom(it.parameterTypes[0])
-        } ?: return null
-        method.isAccessible = true
-        return method.invoke(tree, path) as? Color
-    }
-
     private fun Color.toRgbSnapshot(): String = "$red,$green,$blue"
 
     private fun projectDir(project: Project) = project.guessProjectDir()
@@ -1378,9 +1217,13 @@ class LstCrcUiTestBridge {
     private fun refreshGitProjectState(
         project: Project,
         waitForChangeListUpdate: Boolean = false,
-        refreshCurrentSelection: Boolean = false
+        refreshCurrentSelection: Boolean = false,
+        rootsToRefresh: Collection<VirtualFile> = emptyList()
     ) {
         refreshBaseDir(project)
+        rootsToRefresh.forEach { root ->
+            root.refresh(false, true)
+        }
         GitRepositoryManager.getInstance(project).repositories.forEach { it.update() }
         VcsDirtyScopeManager.getInstance(project).markEverythingDirty()
         if (waitForChangeListUpdate) {
@@ -1419,9 +1262,9 @@ class LstCrcUiTestBridge {
 
     private fun addGitDirectoryMapping(project: Project, rootPath: String) {
         val vcsManager = vcsManager(project)
-        val normalizedRoot = rootPath.replace('\\', '/')
+        val normalizedRoot = normalizePath(rootPath)
         val existing = vcsManager.getDirectoryMappings()
-            .filterNot { it.vcs == "Git" && it.directory.replace('\\', '/') == normalizedRoot }
+            .filterNot { it.vcs == "Git" && normalizePath(it.directory) == normalizedRoot }
             .toMutableList()
         existing.add(VcsDirectoryMapping(normalizedRoot, "Git"))
         vcsManager.setDirectoryMappings(existing)
@@ -1443,6 +1286,13 @@ class LstCrcUiTestBridge {
         val selectedContentName = selectedContentDisplayName()
         return stateService.getSelectedTabInfo()
             ?: stateService.findTabByDisplayName(selectedContentName)
+    }
+
+    private fun requireResolvedSelectedTabInfo(
+        stateService: ToolWindowStateService,
+        errorMessage: String
+    ): TabInfo {
+        return resolveSelectedTabInfo(stateService) ?: error(errorMessage)
     }
 
     private fun syncSelectedTabState(project: Project) {

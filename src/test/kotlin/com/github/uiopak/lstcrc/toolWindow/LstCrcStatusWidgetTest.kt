@@ -12,9 +12,7 @@ class LstCrcStatusWidgetTest : BasePlatformTestCase() {
 
     override fun tearDown() {
         try {
-            ApplicationManager.getApplication().service<LstCrcSettingsService>().setShowWidgetContext(
-                ToolWindowSettingsProvider.DEFAULT_SHOW_WIDGET_CONTEXT
-            )
+            ApplicationManager.getApplication().service<LstCrcSettingsService>().resetToDefaults()
         } finally {
             super.tearDown()
         }

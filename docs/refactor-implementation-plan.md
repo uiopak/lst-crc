@@ -58,6 +58,25 @@ Plan status:
 	- ToolWindowSettingsProvider now routes repetitive boolean and int setting reads through shared helpers instead of duplicating settingsService access patterns.
 	- Removed the unused duplicate reset-to-default matrix from ToolWindowSettingsProvider so LstCrcSettingsService remains the only reset authority.
 	- LstCrcSettingsService now uses typed setting definitions for click-action strings plus reset-time boolean and int defaults instead of repeating raw key/default pairs.
+	- LstCrcChangesBrowser now drives click-dispatch rules, context-menu titles, and test lookups from one shared action-definition table, with focused unit coverage for action availability and configured click lookup.
+	- Remote Robot resetGitChangesViewState now resolves ToolWindowUiCompatibility through the plugin classloader instead of touching ToolWindowContentUi title internals directly in JS.
+	- ToolWindowSettingsProvider boolean toggle actions now read and write through typed LstCrcSettingsService accessors instead of raw key/default triples, with focused widget regression coverage.
+	- LstCrcSettingDefinitions now centralizes settings keys and defaults so LstCrcSettingsService, ToolWindowSettingsProvider, tests, and the UI test bridge no longer duplicate raw metadata.
+	- LstCrcUiTestBridge now uses typed LstCrcSettingsService accessors for tool-window settings snapshots and mutations instead of raw key/default calls.
+	- Added focused scope coverage for canonical LST-CRC scope ids, ordering, and searchable-scope filtering on top of the descriptor-driven scope registry.
+	- RepoNodeRenderer now builds trailing revision and line-stat fragments through one shared helper used by both rendering and text snapshot helpers, with focused renderer unit coverage.
+	- CreateTabFromRevisionAction, SetRevisionAsRepoComparisonAction, and ShowRepoComparisonInfoAction now reuse shared action-context helpers for selected tab and single-selection resolution instead of repeating those lookups inline.
+	- CreateTabFromRevisionAction and RenameTabAction now share one ToolWindowHelper path for tab-alias normalization and state updates instead of normalizing and dispatching alias writes separately in each action flow.
+	- LstCrcChangesBrowser now routes toolbar action insertion through one helper, with focused unit coverage for placing the repo-comparison action after the group-by action when present and otherwise appending it.
+	- LstCrcChangesBrowser now exposes a minimal file-color test hook so LstCrcUiTestBridge can read deleted-file and scope colors without reflective access to the tree implementation.
+	- VisualTrackerManager now exposes one document-scoped tracker summary accessor used by both LstCrcUiTestBridge and the Remote Robot IdeaFrame fixture instead of duplicating native-or-standalone tracker lookup and summary formatting in each test harness.
+	- VisualTrackerManager now exposes the full document-scoped gutter summary used by both LstCrcUiTestBridge and the Remote Robot IdeaFrame fixture, so Starter and Remote Robot gutter assertions no longer rebuild the same highlighter-summary string independently.
+	- LstCrcUiTestBridge now reads available change context-menu actions through LstCrcChangesBrowser's explicit test hook instead of reconstructing the same titles and deleted-file rule inline.
+	- LstCrcUiTestBridge now shares one required selected-browser accessor and one required selected-tree accessor instead of repeating the same missing-selection error path across bridge helpers.
+	- LstCrcUiTestBridge now routes project-relative file-path construction and slash normalization through shared helpers instead of repeating inline `replace('\\', '/')` path rewriting across bridge file and scope helpers.
+	- LstCrcUiTestBridge now routes repeated repository refresh-and-wait setup through the existing shared Git refresh helper, while still forcing the relevant repository root to refresh before snapshot-dependent dialog flows.
+	- LstCrcChangesBrowser and RepoNodeRenderer now expose minimal row-text snapshot hooks so LstCrcUiTestBridge no longer renders selected browser rows through its generic component-text scraper.
+	- BranchSelectionPanel now exposes visible branch leaf texts for tests so LstCrcUiTestBridge can read branch selection snapshots without rendering panel trees through the generic tree-text scraper.
 	- ToolWindowSettingsProvider now builds mouse click action groups from shared click-setting and action-choice definitions instead of wiring each submenu inline.
 	- ToolWindowSettingsProvider now drives double-click speed options from one shared delay-choice list instead of rebuilding the label/value matrix inline.
 	- ToolWindowSettingsProvider now routes primitive setting writes used by menu actions through shared helpers instead of calling raw service setters inline.
