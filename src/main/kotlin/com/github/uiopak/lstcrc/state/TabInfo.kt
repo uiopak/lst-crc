@@ -11,3 +11,6 @@ data class TabInfo(
     @get:MapAnnotation(sortBeforeSave = false)
     var comparisonMap: Map<String, String> = emptyMap()
 )
+
+val TabInfo.displayName: String
+    get() = alias ?: branchName

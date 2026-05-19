@@ -25,6 +25,7 @@ import com.intellij.openapi.components.service
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.fileEditor.OpenFileDescriptor
+import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.project.DumbAwareAction
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.Messages
@@ -38,6 +39,7 @@ import com.intellij.openapi.vcs.changes.ui.*
 import com.intellij.openapi.vcs.changes.ui.AsyncChangesTreeModel
 import com.intellij.openapi.vcs.vfs.ContentRevisionVirtualFile
 import java.awt.Color
+import java.awt.Point
 import com.intellij.ui.FileColorManager
 import com.intellij.ui.JBColor
 import com.intellij.openapi.wm.ToolWindowId
@@ -46,6 +48,7 @@ import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.psi.PsiManager
 import com.intellij.ui.PopupHandler
 import com.intellij.ui.render.RenderingHelper
+import com.intellij.ui.treeStructure.Tree
 import com.intellij.util.ui.JBUI
 import javax.swing.plaf.basic.BasicTreeUI
 import git4idea.repo.GitRepository
@@ -66,6 +69,9 @@ import java.awt.event.ComponentAdapter
 import java.awt.event.ComponentEvent
 import javax.swing.JComponent
 import javax.swing.JPanel
+import javax.swing.JViewport
+import javax.swing.event.TreeModelEvent
+import javax.swing.event.TreeModelListener
 
 /**
  * The main UI part for displaying the tree of file changes for a specific branch comparison.
@@ -85,6 +91,10 @@ class LstCrcChangesBrowser(
         const val OPEN_SOURCE_ERROR_TITLE_KEY = "changes.browser.open.source.error.title"
         const val OPEN_SOURCE_ERROR_MESSAGE_KEY = "changes.browser.open.source.error.message"
     }
+
+    private data class TreeViewportState(
+        val viewPosition: Point
+    )
 
     private data class DiffChangeKey(
         val type: Change.Type,
@@ -172,7 +182,7 @@ class LstCrcChangesBrowser(
             }
         })
         
-        com.intellij.openapi.util.Disposer.register(parentDisposable, this)
+        Disposer.register(parentDisposable, this)
 
         // The base class adds a border to its scroll pane, and the tool window content manager also adds one,
         // creating a "double border" effect. Removing the inner border lets the tool window manage it correctly.
@@ -433,6 +443,9 @@ class LstCrcChangesBrowser(
     private fun openSourceErrorTitle(): String = LstCrcBundle.message(OPEN_SOURCE_ERROR_TITLE_KEY)
 
     @Suppress("unused")
+    fun viewerTree(): Tree = viewer
+
+    @Suppress("unused")
     fun currentChangeFileNamesSnapshot(): List<String> {
         return currentChanges?.allChanges
             ?.asSequence()
@@ -487,7 +500,7 @@ class LstCrcChangesBrowser(
 
             // Store the changes and trigger an asynchronous rebuild
             currentChanges = categorizedChanges
-            viewer.rebuildTree()
+            rebuildTreePreservingViewport()
         }
     }
 
@@ -505,8 +518,74 @@ class LstCrcChangesBrowser(
     fun rebuildView() {
         ApplicationManager.getApplication().invokeLater {
             if (!project.isDisposed) {
-                viewer.rebuildTree()
+                rebuildTreePreservingViewport()
             }
+        }
+    }
+
+    private fun rebuildTreePreservingViewport() {
+        val viewportState = snapshotTreeViewportState()
+        if (viewportState == null) {
+            rebuildTreeWithoutScrollingSelection()
+            return
+        }
+
+        val model = viewer.model
+        var restoreScheduled = false
+        lateinit var listener: TreeModelListener
+
+        fun restoreViewportOnce() {
+            if (restoreScheduled) return
+            restoreScheduled = true
+            model?.removeTreeModelListener(listener)
+            ApplicationManager.getApplication().invokeLater {
+                if (!project.isDisposed) {
+                    restoreTreeViewport(viewportState)
+                }
+            }
+        }
+
+        listener = object : TreeModelListener {
+            override fun treeNodesChanged(e: TreeModelEvent?) = restoreViewportOnce()
+
+            override fun treeNodesInserted(e: TreeModelEvent?) = restoreViewportOnce()
+
+            override fun treeNodesRemoved(e: TreeModelEvent?) = restoreViewportOnce()
+
+            override fun treeStructureChanged(e: TreeModelEvent?) = restoreViewportOnce()
+        }
+
+        model?.addTreeModelListener(listener)
+        rebuildTreeWithoutScrollingSelection()
+
+        ApplicationManager.getApplication().invokeLater {
+            if (!restoreScheduled) {
+                model?.removeTreeModelListener(listener)
+                restoreViewportOnce()
+            }
+        }
+    }
+
+    private fun rebuildTreeWithoutScrollingSelection() {
+        viewer.rebuildTree()
+    }
+
+    private fun snapshotTreeViewportState(): TreeViewportState? {
+        val viewport = viewer.parent as? JViewport ?: return null
+        return TreeViewportState(Point(viewport.viewPosition))
+    }
+
+    private fun restoreTreeViewport(state: TreeViewportState) {
+        val viewport = viewer.parent as? JViewport ?: return
+        val view = viewport.view ?: return
+        val maxX = (view.width - viewport.extentSize.width).coerceAtLeast(0)
+        val maxY = (view.height - viewport.extentSize.height).coerceAtLeast(0)
+        val clampedPosition = Point(
+            state.viewPosition.x.coerceIn(0, maxX),
+            state.viewPosition.y.coerceIn(0, maxY)
+        )
+        if (viewport.viewPosition != clampedPosition) {
+            viewport.viewPosition = clampedPosition
         }
     }
 
@@ -546,24 +625,13 @@ class LstCrcChangesBrowser(
             return
         }
 
-        val path = TreeUtil.getPathForLocation(viewer, e.x, e.y) ?: return
-        val change = (path.lastPathComponent as? ChangesBrowserNode<*>)?.userObject as? Change ?: return
+        val path = changePathAt(e.x, e.y) ?: return
+        val change = changeAt(path) ?: return
 
         selectPathAndFocus(path)
 
-        val singleAction = when (button) {
-            java.awt.event.MouseEvent.BUTTON1 -> ToolWindowSettingsProvider.getSingleClickAction()
-            java.awt.event.MouseEvent.BUTTON2 -> ToolWindowSettingsProvider.getMiddleClickAction()
-            java.awt.event.MouseEvent.BUTTON3 -> ToolWindowSettingsProvider.getRightClickAction()
-            else -> ToolWindowSettingsProvider.ACTION_NONE
-        }
-
-        val doubleAction = when (button) {
-            java.awt.event.MouseEvent.BUTTON1 -> ToolWindowSettingsProvider.getDoubleClickAction()
-            java.awt.event.MouseEvent.BUTTON2 -> ToolWindowSettingsProvider.getDoubleMiddleClickAction()
-            java.awt.event.MouseEvent.BUTTON3 -> ToolWindowSettingsProvider.getDoubleRightClickAction()
-            else -> ToolWindowSettingsProvider.ACTION_NONE
-        }
+        val singleAction = configuredActionForButton(button, doubleClick = false)
+        val doubleAction = configuredActionForButton(button, doubleClick = true)
 
         if (clickCount == 1) {
             if (singleAction == ToolWindowSettingsProvider.ACTION_NONE) return
@@ -606,6 +674,24 @@ class LstCrcChangesBrowser(
         }
     }
 
+    private fun configuredActionForButton(button: Int, doubleClick: Boolean): String {
+        return when (button) {
+            java.awt.event.MouseEvent.BUTTON1 -> if (doubleClick) ToolWindowSettingsProvider.getDoubleClickAction() else ToolWindowSettingsProvider.getSingleClickAction()
+            java.awt.event.MouseEvent.BUTTON2 -> if (doubleClick) ToolWindowSettingsProvider.getDoubleMiddleClickAction() else ToolWindowSettingsProvider.getMiddleClickAction()
+            java.awt.event.MouseEvent.BUTTON3 -> if (doubleClick) ToolWindowSettingsProvider.getDoubleRightClickAction() else ToolWindowSettingsProvider.getRightClickAction()
+            else -> ToolWindowSettingsProvider.ACTION_NONE
+        }
+    }
+
+    private fun changePathAt(x: Int, y: Int): javax.swing.tree.TreePath? {
+        val path = TreeUtil.getPathForLocation(viewer, x, y) ?: return null
+        return path.takeIf { changeAt(it) != null }
+    }
+
+    private fun changeAt(path: javax.swing.tree.TreePath): Change? {
+        return (path.lastPathComponent as? ChangesBrowserNode<*>)?.userObject as? Change
+    }
+
     private fun createContextMenuAction(
         titleKey: String,
         action: (List<Change>) -> Unit,
@@ -632,8 +718,7 @@ class LstCrcChangesBrowser(
             override fun invokePopup(comp: java.awt.Component?, x: Int, y: Int) {
                     if (!ToolWindowSettingsProvider.isContextMenuEnabled()) return
 
-                    val path = TreeUtil.getPathForLocation(viewer, x, y) ?: return
-                    if ((path.lastPathComponent as? ChangesBrowserNode<*>)?.userObject as? Change == null) return
+                    val path = changePathAt(x, y) ?: return
 
                     selectPathAndFocus(path)
                     val changes = selectedChanges

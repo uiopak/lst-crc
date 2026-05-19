@@ -7,6 +7,8 @@ import com.intellij.icons.AllIcons
 import com.intellij.openapi.components.service
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.VirtualFile
+import com.intellij.psi.search.GlobalSearchScopesCore
+import com.intellij.psi.search.SearchScope
 import com.intellij.psi.search.scope.packageSet.NamedScope
 import com.intellij.psi.search.scope.packageSet.NamedScopesHolder
 import com.intellij.psi.search.scope.packageSet.PackageSet
@@ -61,8 +63,7 @@ private data class ScopeDescriptor(
     val icon: Icon,
     val colorName: String,
     val filesExtractor: (ProjectActiveDiffDataService) -> Set<VirtualFile>,
-    val pathsExtractor: ((ProjectActiveDiffDataService) -> Set<String>)? = null,
-    val includeInSearchScopes: Boolean = true
+    val pathsExtractor: ((ProjectActiveDiffDataService) -> Set<String>)? = null
 )
 
 open class ColoredLstCrcScope(
@@ -120,8 +121,7 @@ private object ScopeDescriptors {
         icon = AllIcons.Actions.Cancel,
         colorName = "Rose",
         filesExtractor = { emptySet() },
-        pathsExtractor = { it.deletedFilePaths },
-        includeInSearchScopes = false
+        pathsExtractor = { it.deletedFilePaths }
     )
 
     val CHANGED = ScopeDescriptor(
@@ -201,11 +201,3 @@ class ChangedFilesScope : ColoredLstCrcScope(
     ScopeDescriptors.CHANGED.filesExtractor,
     ScopeDescriptors.CHANGED.pathsExtractor
 )
-
-internal object LstCrcScopeCollections {
-    val customScopes: List<NamedScope>
-        get() = LstCrcProvidedScopes.allScopes
-
-    val searchableScopes: List<NamedScope>
-        get() = LstCrcProvidedScopes.searchableScopes
-}

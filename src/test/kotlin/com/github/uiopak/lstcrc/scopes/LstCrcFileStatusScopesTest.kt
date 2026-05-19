@@ -74,10 +74,6 @@ class LstCrcFileStatusScopesTest : BasePlatformTestCase() {
 
     private fun enableIncludeHeadInScopes(enabled: Boolean) {
         ApplicationManager.getApplication().service<LstCrcSettingsService>()
-            .setBoolean(
-                ToolWindowSettingsProvider.APP_INCLUDE_HEAD_IN_SCOPES_KEY,
-                enabled,
-                ToolWindowSettingsProvider.DEFAULT_INCLUDE_HEAD_IN_SCOPES
-            )
+            .setIncludeHeadInScopes(enabled)
     }
 }

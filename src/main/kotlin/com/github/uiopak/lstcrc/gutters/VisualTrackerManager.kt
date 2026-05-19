@@ -124,12 +124,59 @@ class VisualTrackerManager(
     @Suppress("unused")
     fun findStandaloneTracker(document: Document): LocalLineStatusTracker<*>? = visualTrackers[document]
 
+    @Suppress("unused")
+    fun debugTrackerSummary(tracker: Any): String {
+        val rangeParts = extractTrackerRangeParts(tracker)
+        val visible = extractTrackerVisibility(tracker)
+        return "${tracker.javaClass.simpleName}|visible=$visible|ranges=${rangeParts.joinToString(",")}"
+    }
+
     private fun refreshFileStatuses() {
         if (project.isDisposed) return
         ApplicationManager.getApplication().invokeLater {
             if (project.isDisposed) return@invokeLater
             FileStatusManager.getInstance(project).fileStatusesChanged()
         }
+    }
+
+    private fun extractTrackerRangeParts(tracker: Any): List<String> {
+        return runCatching {
+            val getRanges = tracker.javaClass.methods.firstOrNull { it.name == "getRanges" && it.parameterCount == 0 }
+            val ranges = (getRanges?.invoke(tracker) as? Collection<*>) ?: emptyList<Any?>()
+            ranges.mapNotNull { range -> range?.let(::describeTrackerRange) }
+        }.getOrDefault(emptyList())
+    }
+
+    private fun describeTrackerRange(rangeObject: Any): String? {
+        val rangeClass = rangeObject::class.java
+        val line1 = (rangeClass.methods.firstOrNull { it.name == "getLine1" }?.invoke(rangeObject) as? Number)?.toInt()
+        val line2 = (rangeClass.methods.firstOrNull { it.name == "getLine2" }?.invoke(rangeObject) as? Number)?.toInt()
+        if (line1 == null || line2 == null) {
+            return null
+        }
+
+        val typeValue = (rangeClass.methods.firstOrNull { it.name == "getType" }?.invoke(rangeObject) as? Number)?.toInt()
+        return "$line1-$line2:${trackerRangeTypeName(typeValue)}"
+    }
+
+    private fun trackerRangeTypeName(typeValue: Int?): String {
+        return when (typeValue) {
+            com.intellij.openapi.vcs.ex.Range.MODIFIED.toInt() -> "MODIFIED"
+            com.intellij.openapi.vcs.ex.Range.INSERTED.toInt() -> "INSERTED"
+            com.intellij.openapi.vcs.ex.Range.DELETED.toInt() -> "DELETED"
+            else -> "UNKNOWN"
+        }
+    }
+
+    private fun extractTrackerVisibility(tracker: Any): String {
+        return runCatching {
+            val mode = tracker.javaClass.methods.firstOrNull { it.name == "getMode" && it.parameterCount == 0 }?.invoke(tracker)
+            if (mode == null) {
+                null
+            } else {
+                mode::class.java.methods.firstOrNull { it.name == "isVisible" && it.parameterCount == 0 }?.invoke(mode)
+            }
+        }.getOrNull()?.toString() ?: "n/a"
     }
 
     /**

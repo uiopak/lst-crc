@@ -12,9 +12,7 @@ class LstCrcStatusWidgetTest : BasePlatformTestCase() {
 
     override fun tearDown() {
         try {
-            ApplicationManager.getApplication().service<LstCrcSettingsService>().setBoolean(
-                ToolWindowSettingsProvider.APP_SHOW_WIDGET_CONTEXT_KEY,
-                ToolWindowSettingsProvider.DEFAULT_SHOW_WIDGET_CONTEXT,
+            ApplicationManager.getApplication().service<LstCrcSettingsService>().setShowWidgetContext(
                 ToolWindowSettingsProvider.DEFAULT_SHOW_WIDGET_CONTEXT
             )
         } finally {
@@ -68,10 +66,6 @@ class LstCrcStatusWidgetTest : BasePlatformTestCase() {
 
     @Suppress("SameParameterValue")
     private fun setShowWidgetContext(show: Boolean) {
-        ApplicationManager.getApplication().service<LstCrcSettingsService>().setBoolean(
-            ToolWindowSettingsProvider.APP_SHOW_WIDGET_CONTEXT_KEY,
-            show,
-            ToolWindowSettingsProvider.DEFAULT_SHOW_WIDGET_CONTEXT
-        )
+        ApplicationManager.getApplication().service<LstCrcSettingsService>().setShowWidgetContext(show)
     }
 }

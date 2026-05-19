@@ -30,6 +30,23 @@ class BranchSelectionFixture(remoteRobot: RemoteRobot, remoteComponent: RemoteCo
         )
     }
 
+    private fun toJsStringLiteral(value: String): String {
+        return buildString {
+            append('"')
+            value.forEach { character ->
+                when (character) {
+                    '\\' -> append("\\\\")
+                    '"' -> append("\\\"")
+                    '\n' -> append("\\n")
+                    '\r' -> append("\\r")
+                    '\t' -> append("\\t")
+                    else -> append(character)
+                }
+            }
+            append('"')
+        }
+    }
+
     private fun ContainerFixture.isShowingOnScreen(): Boolean {
         return runCatching {
             callJs<Boolean>("component.isShowing()", true)
@@ -58,6 +75,39 @@ class BranchSelectionFixture(remoteRobot: RemoteRobot, remoteComponent: RemoteCo
         }
     }
 
+    fun setSearchTerm(searchTerm: String) {
+        step("Set branch search term to '$searchTerm'") {
+            runJs(
+                """
+                (function() {
+                    function findComponent(root, classNameSuffix) {
+                        if (!root) return null;
+                        if (String(root.getClass().getName()).endsWith(classNameSuffix)) return root;
+                        if (!root.getComponents) return null;
+                        const children = root.getComponents();
+                        for (let i = 0; i < children.length; i++) {
+                            const match = findComponent(children[i], classNameSuffix);
+                            if (match != null) return match;
+                        }
+                        return null;
+                    }
+
+                    const searchField = findComponent(component, "SearchTextField");
+                    if (searchField != null) {
+                        searchField.setText(${toJsStringLiteral(searchTerm)});
+                    }
+                })();
+                """.trimIndent(),
+                true
+            )
+        }
+    }
+
+    fun hasVisibleBranchText(text: String): Boolean {
+        val tree = findShowingBranchTree() ?: return false
+        return runCatching { tree.findAllText(text).isNotEmpty() }.getOrDefault(false)
+    }
+
     fun searchAndSelect(branchName: String) {
         step("Search and select branch '$branchName'") {
             remoteRobot.runJs(
@@ -84,12 +134,14 @@ class BranchSelectionFixture(remoteRobot: RemoteRobot, remoteComponent: RemoteCo
             )
 
             val timeout = if (System.getenv("GITHUB_ACTIONS") == "true") Duration.ofSeconds(60) else Duration.ofSeconds(20)
+            val branchLabel = branchName.substringAfterLast('/')
+            setSearchTerm(branchName)
             waitFor(timeout, interval = Duration.ofMillis(500)) {
                 val tree = findShowingBranchTree() ?: return@waitFor false
-                runCatching { tree.findAllText(branchName).isNotEmpty() }.getOrDefault(false)
+                runCatching { tree.findAllText(branchLabel).isNotEmpty() }.getOrDefault(false)
             }
             val tree = waitForBranchTree()
-            tree.findText(branchName).doubleClick()
+            tree.findText(branchLabel).doubleClick()
 
             waitForPanelToClose()
 

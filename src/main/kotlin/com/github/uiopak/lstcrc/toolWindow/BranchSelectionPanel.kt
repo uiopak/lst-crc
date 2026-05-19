@@ -25,14 +25,6 @@ import javax.swing.event.DocumentEvent
 import javax.swing.event.DocumentListener
 import javax.swing.tree.DefaultMutableTreeNode
 import javax.swing.tree.DefaultTreeModel
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import com.intellij.openapi.application.EDT
 
 /**
  * A UI panel that displays Git branches in a filterable, hierarchical tree, allowing the user to select one.
@@ -52,9 +44,13 @@ class BranchSelectionPanel(
     private val searchTextField = SearchTextField(false)
     private val tree: Tree
     private val fullTreeModel: DefaultTreeModel
-    
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-    private var filterJob: Job? = null
+    private val filterDocumentListener = object : DocumentListener {
+        override fun insertUpdate(e: DocumentEvent?) = filterTree()
+
+        override fun removeUpdate(e: DocumentEvent?) = filterTree()
+
+        override fun changedUpdate(e: DocumentEvent?) = filterTree()
+    }
 
     // Data classes to represent nodes in the tree clearly.
     private data class BranchCategory(val type: BranchCategoryType, val displayName: String)
@@ -65,11 +61,7 @@ class BranchSelectionPanel(
         fullTreeModel = buildFullBranchTreeModel()
         tree = createBranchSelectionTree()
 
-        searchTextField.addDocumentListener(object : DocumentListener {
-            override fun insertUpdate(e: DocumentEvent?) = filterTree()
-            override fun removeUpdate(e: DocumentEvent?) = filterTree()
-            override fun changedUpdate(e: DocumentEvent?) = filterTree()
-        })
+        searchTextField.addDocumentListener(filterDocumentListener)
 
         add(searchTextField, BorderLayout.NORTH)
 
@@ -83,19 +75,16 @@ class BranchSelectionPanel(
         val searchTerm = searchTextField.text
         tree.putClientProperty("search.term", searchTerm)
 
-        filterJob?.cancel()
-        filterJob = scope.launch {
-            val newModel = if (searchTerm.isBlank()) {
-                fullTreeModel
-            } else {
-                DefaultTreeModel(buildFilteredRoot(searchTerm))
-            }
-            
-            withContext(Dispatchers.EDT) {
-                tree.model = newModel
-                TreeUtil.expandAll(tree)
-                refreshSearchSelection(searchTerm)
-            }
+        tree.model = buildFilteredModel(searchTerm)
+        TreeUtil.expandAll(tree)
+        refreshSearchSelection(searchTerm)
+    }
+
+    private fun buildFilteredModel(searchTerm: String): DefaultTreeModel {
+        return if (searchTerm.isBlank()) {
+            fullTreeModel
+        } else {
+            DefaultTreeModel(buildFilteredRoot(searchTerm))
         }
     }
 
@@ -115,14 +104,7 @@ class BranchSelectionPanel(
     }
 
     private fun cloneNodeIfMatching(originalNode: DefaultMutableTreeNode, searchTerm: String): DefaultMutableTreeNode? {
-        val textToSearch = when (val userObject = originalNode.userObject) {
-            is BranchInfo -> userObject.fullBranchName
-            is String -> userObject
-            is BranchCategory -> userObject.displayName
-            else -> ""
-        }
-
-        if (textToSearch.contains(searchTerm, ignoreCase = true)) {
+        if (nodeMatchesSearch(originalNode, searchTerm)) {
             return deepCloneNode(originalNode)
         }
 
@@ -172,13 +154,7 @@ class BranchSelectionPanel(
     private fun findFirstMatchingPath(node: DefaultMutableTreeNode?, searchTerm: String): javax.swing.tree.TreePath? {
         if (node == null) return null
 
-        val textToSearch = when (val userObject = node.userObject) {
-            is BranchInfo -> userObject.fullBranchName
-            is String -> userObject
-            is BranchCategory -> userObject.displayName
-            else -> ""
-        }
-        if (textToSearch.contains(searchTerm, ignoreCase = true)) {
+        if (nodeMatchesSearch(node, searchTerm)) {
             return javax.swing.tree.TreePath(node.path)
         }
 
@@ -190,6 +166,19 @@ class BranchSelectionPanel(
         }
 
         return null
+    }
+
+    private fun searchableNodeText(node: DefaultMutableTreeNode): String {
+        return when (val userObject = node.userObject) {
+            is BranchInfo -> userObject.fullBranchName
+            is String -> userObject
+            is BranchCategory -> userObject.displayName
+            else -> ""
+        }
+    }
+
+    private fun nodeMatchesSearch(node: DefaultMutableTreeNode, searchTerm: String): Boolean {
+        return searchableNodeText(node).contains(searchTerm, ignoreCase = true)
     }
 
     fun requestFocusOnSearchField() {
@@ -268,8 +257,7 @@ class BranchSelectionPanel(
             override fun mouseClicked(e: MouseEvent) {
                 if (e.clickCount < 1) return
 
-                val path = TreeUtil.getPathForLocation(tree, e.x, e.y) ?: return
-                val node = path.lastPathComponent as? DefaultMutableTreeNode ?: return
+                val node = branchNodeAt(TreeUtil.getPathForLocation(tree, e.x, e.y)) ?: return
                 selectBranchNode(node)
             }
         }
@@ -288,8 +276,7 @@ class BranchSelectionPanel(
             override fun keyPressed(e: KeyEvent) {
                 if (e.keyCode != KeyEvent.VK_ENTER) return
 
-                val path = tree.selectionPath ?: return
-                val node = path.lastPathComponent as? DefaultMutableTreeNode ?: return
+                val node = branchNodeAt(tree.selectionPath) ?: return
                 if (selectBranchNode(node)) {
                     e.consume()
                 }
@@ -301,6 +288,10 @@ class BranchSelectionPanel(
         if (searchTextField.textEditor.hasFocus()) return false
         if (e.keyChar == KeyEvent.CHAR_UNDEFINED || e.keyChar < ' ') return false
         return !e.isControlDown && !e.isMetaDown && !e.isAltDown
+    }
+
+    private fun branchNodeAt(path: javax.swing.tree.TreePath?): DefaultMutableTreeNode? {
+        return path?.lastPathComponent as? DefaultMutableTreeNode
     }
 
     private fun selectBranchNode(node: DefaultMutableTreeNode): Boolean {
@@ -320,24 +311,30 @@ class BranchSelectionPanel(
         // Git4Idea repository model which is already cached in memory (no I/O).
         // This method may be called on the EDT, so it must never run git commands.
         val targetRepo = repository ?: gitService.getPrimaryRepository()
-        val localBranches = branchSnapshot?.localBranches?.takeIf { it.isNotEmpty() }
-            ?: targetRepo?.branches?.localBranches?.map { it.name }
-            ?: emptyList()
-        val remoteBranches = branchSnapshot?.remoteBranches?.takeIf { it.isNotEmpty() }
-            ?: targetRepo?.branches?.remoteBranches?.map { it.name }
-            ?: emptyList()
+        val localBranches = resolvedBranches(branchSnapshot?.localBranches, targetRepo?.branches?.localBranches?.map { it.name })
+        val remoteBranches = resolvedBranches(branchSnapshot?.remoteBranches, targetRepo?.branches?.remoteBranches?.map { it.name })
 
-        val localBranchesNode = DefaultMutableTreeNode(localCategory)
-        addBranchNodes(localBranchesNode, localBranches)
-        if (localBranchesNode.childCount > 0) {
-            rootNode.add(localBranchesNode)
-        }
-        val remoteBranchesNode = DefaultMutableTreeNode(remoteCategory)
-        addBranchNodes(remoteBranchesNode, remoteBranches)
-        if (remoteBranchesNode.childCount > 0) {
-            rootNode.add(remoteBranchesNode)
-        }
+        addBranchCategoryNode(rootNode, localCategory, localBranches)
+        addBranchCategoryNode(rootNode, remoteCategory, remoteBranches)
         return DefaultTreeModel(rootNode)
+    }
+
+    private fun resolvedBranches(snapshotBranches: List<String>?, repositoryBranches: List<String>?): List<String> {
+        return snapshotBranches?.takeIf { it.isNotEmpty() }
+            ?: repositoryBranches
+            ?: emptyList()
+    }
+
+    private fun addBranchCategoryNode(
+        rootNode: DefaultMutableTreeNode,
+        category: BranchCategory,
+        branches: List<String>
+    ) {
+        val categoryNode = DefaultMutableTreeNode(category)
+        addBranchNodes(categoryNode, branches)
+        if (categoryNode.childCount > 0) {
+            rootNode.add(categoryNode)
+        }
     }
 
     private fun addBranchNodes(parentNode: DefaultMutableTreeNode, branches: List<String>) {
@@ -367,7 +364,6 @@ class BranchSelectionPanel(
     }
 
     override fun dispose() {
-        filterJob?.cancel()
-        scope.cancel()
+        searchTextField.removeDocumentListener(filterDocumentListener)
     }
 }

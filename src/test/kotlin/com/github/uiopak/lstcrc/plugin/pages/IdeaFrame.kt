@@ -655,18 +655,8 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
                     const toolWindow = com.intellij.openapi.wm.ToolWindowManager.getInstance(project).getToolWindow("GitChangesView");
                     if (!toolWindow) return;
 
-                    toolWindow.getComponent().putClientProperty(
-                        com.intellij.openapi.wm.impl.content.ToolWindowContentUi.HIDE_ID_LABEL,
-                        ${if (show) "null" else "'true'"}
-                    );
-
-                    const contentManager = toolWindow.getContentManager();
-                    if (contentManager instanceof com.intellij.ui.content.impl.ContentManagerImpl) {
-                        const ui = contentManager.getUI();
-                        if (ui instanceof com.intellij.openapi.wm.impl.content.ToolWindowContentUi) {
-                            ui.update();
-                        }
-                    }
+                    const compatibility = com.github.uiopak.lstcrc.toolWindow.ToolWindowUiCompatibility.INSTANCE;
+                    compatibility.setToolWindowTitleVisible(toolWindow, ${if (show) "true" else "false"});
                 })();
                 """.trimIndent(),
                 true
@@ -685,9 +675,8 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
                     const toolWindow = com.intellij.openapi.wm.ToolWindowManager.getInstance(project).getToolWindow("GitChangesView");
                     if (!toolWindow) return false;
 
-                    return toolWindow.getComponent().getClientProperty(
-                        com.intellij.openapi.wm.impl.content.ToolWindowContentUi.HIDE_ID_LABEL
-                    ) == null;
+                    const compatibility = com.github.uiopak.lstcrc.toolWindow.ToolWindowUiCompatibility.INSTANCE;
+                    return compatibility.isToolWindowTitleVisible(toolWindow);
                 })();
                 """.trimIndent(),
                 true
@@ -1377,9 +1366,7 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
                     throw new java.lang.IllegalStateException("No selected LST-CRC tab available for repo comparison update");
                 }
 
-                const comparisonMap = new java.util.HashMap(selectedTabInfo.getComparisonMap());
-                comparisonMap.put(repoRootPath, revision);
-                stateService.updateTabComparisonMap(selectedTabInfo.getBranchName(), comparisonMap, true);
+                stateService.updateTabRepoComparison(selectedTabInfo.getBranchName(), repoRootPath, revision);
                 """.trimIndent(),
                 true
             )
@@ -1444,9 +1431,7 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
                     throw new java.lang.IllegalStateException("Project base path is not available for repo comparison update");
                 }
 
-                const comparisonMap = new java.util.HashMap(selectedTabInfo.getComparisonMap());
-                comparisonMap.put(repoRootPath, branchName);
-                stateService.updateTabComparisonMap(selectedTabInfo.getBranchName(), comparisonMap, true);
+                stateService.updateTabRepoComparison(selectedTabInfo.getBranchName(), repoRootPath, branchName);
                 """.trimIndent(),
                 true
             )

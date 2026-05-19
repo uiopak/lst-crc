@@ -12,6 +12,7 @@ import com.intellij.remoterobot.search.locators.byXpath
 import com.intellij.remoterobot.stepsProcessing.step
 import com.intellij.remoterobot.utils.keyboard
 import com.intellij.remoterobot.utils.waitFor
+import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -333,6 +334,97 @@ class LstCrcInteractionUiTest : LstCrcUiTestSupport() {
             invokeSetRevisionAsRepoComparisonAction(featureRevision)
             waitFor(Duration.ofSeconds(15)) {
                 selectedTabComparisonMap().contains(featureRevision)
+            }
+        }
+    }
+
+    @Test
+    @Video
+    fun testBranchSelectionFilterDoesNotPersistAcrossReopen(remoteRobot: RemoteRobot) = with(remoteRobot) {
+        val uiSteps = PluginUiTestSteps(remoteRobot)
+
+        prepareFreshProject()
+
+        idea {
+            step("Wait for smart mode") {
+                dumbAware(Duration.ofMinutes(5)) {}
+            }
+
+            uiSteps.initializeGitRepository()
+            resetGitChangesViewState()
+
+            uiSteps.createNewFile("Main.txt", "Base line\n")
+            uiSteps.commitChanges("Initial commit")
+            val defaultBranch = uiSteps.defaultBranchName()
+
+            uiSteps.createBranch("feature/filter/alpha")
+            uiSteps.modifyFile("Main.txt", "Alpha branch\n")
+            uiSteps.commitChanges("Alpha branch commit")
+            uiSteps.checkoutBranch(defaultBranch)
+
+            uiSteps.createBranch("feature/filter/beta")
+            uiSteps.modifyFile("Main.txt", "Beta branch\n")
+            uiSteps.commitChanges("Beta branch commit")
+            uiSteps.checkoutBranch(defaultBranch)
+
+            uiSteps.createBranch("release/stable")
+            uiSteps.modifyFile("Main.txt", "Release branch\n")
+            uiSteps.commitChanges("Release branch commit")
+            uiSteps.checkoutBranch(defaultBranch)
+
+            openGitChangesView()
+            gitChangesView {
+                addTab()
+            }
+            branchSelection {
+                setSearchTerm("beta")
+                waitFor(Duration.ofSeconds(10), interval = Duration.ofMillis(250)) {
+                    hasVisibleBranchText("beta") &&
+                        !hasVisibleBranchText("stable") &&
+                        !hasVisibleBranchText("alpha")
+                }
+
+                assertTrue(hasVisibleBranchText("beta"))
+                assertFalse(hasVisibleBranchText("stable"))
+                assertFalse(hasVisibleBranchText("alpha"))
+                searchAndSelect("feature/filter/beta")
+            }
+
+            gitChangesView {
+                waitFor(Duration.ofSeconds(10)) {
+                    hasTab("feature/filter/beta")
+                }
+                addTab()
+            }
+
+            branchSelection {
+                waitFor(Duration.ofSeconds(10), interval = Duration.ofMillis(250)) {
+                    hasVisibleBranchText("alpha") &&
+                        hasVisibleBranchText("beta") &&
+                        hasVisibleBranchText("stable")
+                }
+
+                assertTrue(
+                    hasVisibleBranchText("alpha") &&
+                        hasVisibleBranchText("beta") &&
+                        hasVisibleBranchText("stable"),
+                    "Branch filter should not persist when the selection panel is reopened"
+                )
+
+                setSearchTerm("release")
+                waitFor(Duration.ofSeconds(10), interval = Duration.ofMillis(250)) {
+                    hasVisibleBranchText("stable") &&
+                        !hasVisibleBranchText("alpha") &&
+                        !hasVisibleBranchText("beta")
+                }
+
+                searchAndSelect("release/stable")
+            }
+
+            gitChangesView {
+                waitFor(Duration.ofSeconds(10)) {
+                    hasTab("release/stable")
+                }
             }
         }
     }

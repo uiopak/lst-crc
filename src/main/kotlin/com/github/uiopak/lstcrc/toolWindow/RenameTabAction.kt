@@ -3,6 +3,7 @@ package com.github.uiopak.lstcrc.toolWindow
 import com.github.uiopak.lstcrc.LstCrcConstants
 import com.github.uiopak.lstcrc.resources.LstCrcBundle
 import com.github.uiopak.lstcrc.services.ToolWindowStateService
+import com.github.uiopak.lstcrc.state.displayName
 import com.github.uiopak.lstcrc.utils.LstCrcKeys
 import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnAction
@@ -37,6 +38,7 @@ import javax.swing.JPanel
 class RenameTabAction : AnAction() {
 
     private val logger = thisLogger()
+    private data class RenameContext(val owner: Component, val branchName: String)
 
     private fun findContent(source: Component?): Content? {
         if (source == null) return null
@@ -48,6 +50,17 @@ class RenameTabAction : AnAction() {
         return label.content
     }
 
+    private fun findRenameContext(source: Component?): RenameContext? {
+        val content = findContent(source) ?: return null
+        if (!content.isCloseable) {
+            return null
+        }
+
+        val branchName = content.getUserData(LstCrcKeys.BRANCH_NAME_KEY) ?: return null
+        val owner = source ?: return null
+        return RenameContext(owner, branchName)
+    }
+
     override fun update(e: AnActionEvent) {
         val toolWindow = e.getData(PlatformDataKeys.TOOL_WINDOW)
         if (e.project == null || toolWindow == null || toolWindow.id != LstCrcConstants.TOOL_WINDOW_ID) {
@@ -55,32 +68,18 @@ class RenameTabAction : AnAction() {
             return
         }
 
-        val content = findContent(e.getData(PlatformDataKeys.CONTEXT_COMPONENT))
-
-        val isRenamable = content != null &&
-                content.isCloseable &&
-                content.getUserData(LstCrcKeys.BRANCH_NAME_KEY) != null
-
-        e.presentation.isEnabledAndVisible = isRenamable
+        e.presentation.isEnabledAndVisible = findRenameContext(e.getData(PlatformDataKeys.CONTEXT_COMPONENT)) != null
     }
 
     override fun actionPerformed(e: AnActionEvent) {
         val project = e.project!!
-        val component = e.getData(PlatformDataKeys.CONTEXT_COMPONENT)
-        val content = findContent(component)
-
-        if (component == null || content == null) {
+        val renameContext = findRenameContext(e.getData(PlatformDataKeys.CONTEXT_COMPONENT))
+        if (renameContext == null) {
             thisLogger().warn("Rename action performed without a valid component or content context.")
             return
         }
 
-        val branchName = content.getUserData(LstCrcKeys.BRANCH_NAME_KEY)
-        if (branchName == null) {
-            thisLogger().warn("Cannot rename tab, it has no branch name identifier.")
-            return
-        }
-
-        invokeRenamePopup(project, component, branchName)
+        invokeRenamePopup(project, renameContext.owner, renameContext.branchName)
     }
 
     override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.EDT
@@ -97,7 +96,7 @@ private fun invokeRenamePopup(project: Project, owner: Component, branchName: St
     ApplicationManager.getApplication().invokeLater {
         val stateService = project.service<ToolWindowStateService>()
         val tabInfo = stateService.state.openTabs.find { it.branchName == branchName }
-        val currentDisplayName = tabInfo?.alias ?: branchName
+        val currentDisplayName = tabInfo?.displayName ?: branchName
 
         val textField = JBTextField(currentDisplayName, 17)
         val titleLabel = JBLabel(LstCrcBundle.message("rename.popup.title"))
@@ -111,7 +110,7 @@ private fun invokeRenamePopup(project: Project, owner: Component, branchName: St
         var balloon: Balloon? = null
 
         val onOk = {
-            val newAlias = textField.text.trim().ifEmpty { null }
+            val newAlias = ToolWindowHelper.normalizedTabAlias(textField.text)
             if (tabInfo?.alias != newAlias) {
                 stateService.updateTabAlias(branchName, newAlias)
             }

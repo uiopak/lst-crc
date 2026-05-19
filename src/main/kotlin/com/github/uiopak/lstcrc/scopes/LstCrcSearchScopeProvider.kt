@@ -3,7 +3,6 @@ package com.github.uiopak.lstcrc.scopes
 import com.github.uiopak.lstcrc.resources.LstCrcBundle
 import com.intellij.openapi.actionSystem.DataContext
 import com.intellij.openapi.project.Project
-import com.intellij.psi.search.GlobalSearchScopesCore
 import com.intellij.psi.search.SearchScope
 import com.intellij.psi.search.SearchScopeProvider
 
@@ -19,7 +18,5 @@ class LstCrcSearchScopeProvider : SearchScopeProvider {
     }
 
     override fun getSearchScopes(project: Project, dataContext: DataContext): List<SearchScope> =
-        LstCrcScopeCollections.searchableScopes.map { scope ->
-            GlobalSearchScopesCore.filterScope(project, scope)
-        }
+        LstCrcProvidedScopes.searchScopes(project)
 }

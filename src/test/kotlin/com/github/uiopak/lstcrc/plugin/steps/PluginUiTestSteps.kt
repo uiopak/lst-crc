@@ -46,6 +46,22 @@ class PluginUiTestSteps(private val remoteRobot: RemoteRobot) {
         waitForGitIdle()
     }
 
+    fun updateFileWithoutStaging(fileName: String, content: String) = step("Update file without staging: $fileName") {
+        writeProjectFile(fileName, content)
+        waitForGitIdle()
+    }
+
+    fun createFilesWithoutStaging(files: Map<String, String>) = step("Create ${files.size} untracked files") {
+        if (files.isEmpty()) return@step
+        files.forEach { (relativePath, content) ->
+            val path = resolveProjectPath(relativePath)
+            path.parent?.let { Files.createDirectories(it) }
+            Files.writeString(path, content)
+        }
+        refreshProjectAfterExternalChange()
+        waitForGitIdle()
+    }
+
     /**
      * Performs a Git commit with the given commit message
      */
@@ -358,7 +374,6 @@ class PluginUiTestSteps(private val remoteRobot: RemoteRobot) {
             false
         )
     }
-
 
     private fun handleAddFileToGitDialogIfPresent() = with(remoteRobot) {
         val dialogXpath = "//div[@class='MyDialog' and (@title='Add File to Git' or .//div[@accessiblename='Add File to Git'])]"

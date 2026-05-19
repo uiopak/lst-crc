@@ -213,4 +213,36 @@ class ToolWindowStateServicePersistenceTest : BasePlatformTestCase() {
         assertEquals(before.openTabs.map { it.branchName to it.comparisonMap.toMap() }, after.openTabs.map { it.branchName to it.comparisonMap.toMap() })
         assertEquals(before.selectedTabIndex, after.selectedTabIndex)
     }
+
+    fun testUpdateTabRepoComparisonRemovesOverrideWhenTargetMatchesDefault() {
+        val service = project.service<ToolWindowStateService>()
+        service.loadState(
+            ToolWindowState(
+                openTabs = listOf(
+                    TabInfo(
+                        branchName = "feature-a",
+                        alias = "Feature A",
+                        comparisonMap = mutableMapOf(
+                            "C:/repo-a" to "feature-a",
+                            "C:/repo-b" to "release/1.0"
+                        )
+                    )
+                ),
+                selectedTabIndex = 0
+            )
+        )
+
+        service.updateTabRepoComparison(
+            branchName = "feature-a",
+            repositoryRootPath = "C:/repo-a",
+            targetRevision = "feature-a",
+            defaultTarget = "feature-a",
+            triggerRefresh = false
+        )
+
+        assertEquals(
+            mapOf("C:/repo-b" to "release/1.0"),
+            service.state.openTabs.first().comparisonMap
+        )
+    }
 }

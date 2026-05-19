@@ -174,6 +174,58 @@ class GitChangesViewFixture(remoteRobot: RemoteRobot, remoteComponent: RemoteCom
         }
     }
 
+    fun scrollChangeIntoView(fileName: String) {
+        step("Scroll '$fileName' into view") {
+            runJs(
+                """
+                (function() {
+                    function findTree(root) {
+                        var queue = new java.util.LinkedList();
+                        queue.add(root);
+                        while (!queue.isEmpty()) {
+                            var current = queue.poll();
+                            if (current == null) continue;
+                            if (current.getClass().getName().endsWith("LstCrcAsyncChangesTree") || current.getClass().getName().endsWith("ChangesTree")) {
+                                return current;
+                            }
+                            try {
+                                var children = current.getComponents();
+                                if (children) {
+                                    for (var i = 0; i < children.length; i++) {
+                                        queue.add(children[i]);
+                                    }
+                                }
+                            } catch (ignored) {}
+                        }
+                        return null;
+                    }
+
+                    var tree = findTree(component);
+                    if (!tree) {
+                        return;
+                    }
+
+                    var target = ${toJsStringLiteral(fileName)};
+                    for (var row = 0; row < tree.getRowCount(); row++) {
+                        var path = tree.getPathForRow(row);
+                        if (path == null) continue;
+                        var text = String(path.getLastPathComponent());
+                        if (text.indexOf(target) >= 0) {
+                            tree.scrollPathToVisible(path);
+                            return;
+                        }
+                    }
+                })()
+                """.trimIndent(),
+                true
+            )
+
+            waitFor(Duration.ofSeconds(10), interval = Duration.ofMillis(250)) {
+                changesTree.findAllText(fileName).isNotEmpty()
+            }
+        }
+    }
+
     fun doubleClickChange(fileName: String) {
         step("Double click '$fileName'") {
             waitFor(Duration.ofSeconds(10), interval = Duration.ofMillis(250)) {
@@ -185,6 +237,579 @@ class GitChangesViewFixture(remoteRobot: RemoteRobot, remoteComponent: RemoteCom
 
     fun rightClickChange(fileName: String) {
         clickChange(fileName, MouseButton.RIGHT_BUTTON)
+    }
+
+    fun treeViewportPosition(): Pair<Int, Int> = step("Read changes tree viewport position") {
+        callJs<String>(
+            """
+            (function() {
+                var tree = null;
+                var queue = new java.util.LinkedList();
+                queue.add(component);
+                while (!queue.isEmpty() && !tree) {
+                    var current = queue.poll();
+                    if (current == null) continue;
+                    if (current.getClass().getName().endsWith("LstCrcAsyncChangesTree") || current.getClass().getName().endsWith("ChangesTree")) {
+                        tree = current;
+                        break;
+                    }
+                    try {
+                        var children = current.getComponents();
+                        if (children) {
+                            for (var i = 0; i < children.length; i++) {
+                                queue.add(children[i]);
+                            }
+                        }
+                    } catch (ignored) {}
+                }
+                if (!tree) {
+                    return java.util.Arrays.asList(0, 0);
+                }
+                var parent = tree.getParent();
+                while (parent != null && !(parent instanceof javax.swing.JViewport)) {
+                    parent = parent.getParent();
+                }
+                if (parent == null) {
+                    return "0,0";
+                }
+                var point = parent.getViewPosition();
+                return point.x + "," + point.y;
+            })()
+            """.trimIndent(),
+            true
+        ).split(',', limit = 2).let { parts ->
+            (parts.getOrNull(0)?.toIntOrNull() ?: 0) to (parts.getOrNull(1)?.toIntOrNull() ?: 0)
+        }
+    }
+
+    fun treeVerticalScrollBarValue(): Int = step("Read changes tree vertical scrollbar value") {
+        callJs<String>(
+            """
+            (function() {
+                var tree = null;
+                var queue = new java.util.LinkedList();
+                queue.add(component);
+                while (!queue.isEmpty() && !tree) {
+                    var current = queue.poll();
+                    if (current == null) continue;
+                    if (current.getClass().getName().endsWith("LstCrcAsyncChangesTree") || current.getClass().getName().endsWith("ChangesTree")) {
+                        tree = current;
+                        break;
+                    }
+                    try {
+                        var children = current.getComponents();
+                        if (children) {
+                            for (var i = 0; i < children.length; i++) {
+                                queue.add(children[i]);
+                            }
+                        }
+                    } catch (ignored) {}
+                }
+                if (!tree) {
+                    return "0";
+                }
+                var parent = tree.getParent();
+                while (parent != null && !(parent instanceof javax.swing.JViewport)) {
+                    parent = parent.getParent();
+                }
+                if (parent == null) {
+                    return "0";
+                }
+                var scrollPane = parent.getParent();
+                while (scrollPane != null && !(scrollPane instanceof javax.swing.JScrollPane)) {
+                    scrollPane = scrollPane.getParent();
+                }
+                if (scrollPane == null) {
+                    return "0";
+                }
+                var scrollBar = scrollPane.getVerticalScrollBar();
+                return scrollBar == null ? "0" : String(scrollBar.getValue());
+            })()
+            """.trimIndent(),
+            true
+        ).toIntOrNull() ?: 0
+    }
+
+    fun dispatchTreeMouseWheelUp(notches: Int = 1) {
+        step("Dispatch mouse wheel up over changes tree $notches time(s)") {
+            runJs(
+                """
+                (function() {
+                    var tree = null;
+                    var queue = new java.util.LinkedList();
+                    queue.add(component);
+                    while (!queue.isEmpty() && !tree) {
+                        var current = queue.poll();
+                        if (current == null) continue;
+                        if (current.getClass().getName().endsWith("LstCrcAsyncChangesTree") || current.getClass().getName().endsWith("ChangesTree")) {
+                            tree = current;
+                            break;
+                        }
+                        try {
+                            var children = current.getComponents();
+                            if (children) {
+                                for (var i = 0; i < children.length; i++) {
+                                    queue.add(children[i]);
+                                }
+                            }
+                        } catch (ignored) {}
+                    }
+                    if (!tree) {
+                        return;
+                    }
+                    var parent = tree.getParent();
+                    while (parent != null && !(parent instanceof javax.swing.JViewport)) {
+                        parent = parent.getParent();
+                    }
+                    if (parent == null) {
+                        return;
+                    }
+                    var scrollPane = parent.getParent();
+                    while (scrollPane != null && !(scrollPane instanceof javax.swing.JScrollPane)) {
+                        scrollPane = scrollPane.getParent();
+                    }
+                    if (scrollPane == null) {
+                        return;
+                    }
+                    for (var i = 0; i < $notches; i++) {
+                        var event = new java.awt.event.MouseWheelEvent(
+                            scrollPane,
+                            java.awt.event.MouseEvent.MOUSE_WHEEL,
+                            java.lang.System.currentTimeMillis(),
+                            0,
+                            Math.max(1, Math.floor(scrollPane.getWidth() / 2)),
+                            Math.max(1, Math.floor(scrollPane.getHeight() / 2)),
+                            0,
+                            false,
+                            java.awt.event.MouseWheelEvent.WHEEL_UNIT_SCROLL,
+                            3,
+                            -1
+                        );
+                        scrollPane.dispatchEvent(event);
+                    }
+                })()
+                """.trimIndent(),
+                true
+            )
+        }
+    }
+
+    fun treeRowCount(): Int = step("Read changes tree row count") {
+        callJs<String>(
+            """
+            (function() {
+                var tree = null;
+                var queue = new java.util.LinkedList();
+                queue.add(component);
+                while (!queue.isEmpty() && !tree) {
+                    var current = queue.poll();
+                    if (current == null) continue;
+                    if (current.getClass().getName().endsWith("LstCrcAsyncChangesTree") || current.getClass().getName().endsWith("ChangesTree")) {
+                        tree = current;
+                        break;
+                    }
+                    try {
+                        var children = current.getComponents();
+                        if (children) {
+                            for (var i = 0; i < children.length; i++) {
+                                queue.add(children[i]);
+                            }
+                        }
+                    } catch (ignored) {}
+                }
+                if (!tree) {
+                    return "0";
+                }
+                return String(tree.getRowCount());
+            })()
+            """.trimIndent(),
+            true
+        ).toIntOrNull() ?: 0
+    }
+
+    fun selectedChangeEntry(): String = step("Read selected changes tree entry") {
+        callJs<String>(
+            """
+            (function() {
+                var tree = null;
+                var queue = new java.util.LinkedList();
+                queue.add(component);
+                while (!queue.isEmpty() && !tree) {
+                    var current = queue.poll();
+                    if (current == null) continue;
+                    if (current.getClass().getName().endsWith("LstCrcAsyncChangesTree") || current.getClass().getName().endsWith("ChangesTree")) {
+                        tree = current;
+                        break;
+                    }
+                    try {
+                        var children = current.getComponents();
+                        if (children) {
+                            for (var i = 0; i < children.length; i++) {
+                                queue.add(children[i]);
+                            }
+                        }
+                    } catch (ignored) {}
+                }
+                if (!tree) {
+                    return "";
+                }
+                var path = tree.getSelectionPath();
+                if (path == null) {
+                    return "";
+                }
+                return String(path.getLastPathComponent());
+            })()
+            """.trimIndent(),
+            true
+        )
+    }
+
+    fun beginTreeViewportTracking() {
+        step("Start tracking changes tree viewport movement") {
+            runJs(
+                """
+                (function() {
+                    function findTree(root) {
+                        var queue = new java.util.LinkedList();
+                        queue.add(root);
+                        while (!queue.isEmpty()) {
+                            var current = queue.poll();
+                            if (current == null) continue;
+                            if (current.getClass().getName().endsWith("LstCrcAsyncChangesTree") || current.getClass().getName().endsWith("ChangesTree")) {
+                                return current;
+                            }
+                            try {
+                                var children = current.getComponents();
+                                if (children) {
+                                    for (var i = 0; i < children.length; i++) {
+                                        queue.add(children[i]);
+                                    }
+                                }
+                            } catch (ignored) {}
+                        }
+                        return null;
+                    }
+
+                    var tree = findTree(component);
+                    if (!tree) return;
+
+                    var viewport = tree.getParent();
+                    while (viewport != null && !(viewport instanceof javax.swing.JViewport)) {
+                        viewport = viewport.getParent();
+                    }
+                    if (viewport == null) return;
+
+                    var previousListener = viewport.getClientProperty("lstcrc.viewport.listener");
+                    if (previousListener != null) {
+                        viewport.removeChangeListener(previousListener);
+                    }
+
+                    var history = new java.util.ArrayList();
+                    var initialPoint = viewport.getViewPosition();
+                    history.add(initialPoint.x + "," + initialPoint.y);
+
+                    var listener = new javax.swing.event.ChangeListener({
+                        stateChanged: function(event) {
+                            var point = viewport.getViewPosition();
+                            history.add(point.x + "," + point.y);
+                        }
+                    });
+
+                    viewport.putClientProperty("lstcrc.viewport.history", history);
+                    viewport.putClientProperty("lstcrc.viewport.listener", listener);
+                    viewport.addChangeListener(listener);
+                })()
+                """.trimIndent(),
+                true
+            )
+        }
+    }
+
+    fun stopTreeViewportTracking(): List<Pair<Int, Int>> = step("Stop tracking changes tree viewport movement") {
+        callJs<String>(
+            """
+            (function() {
+                function findTree(root) {
+                    var queue = new java.util.LinkedList();
+                    queue.add(root);
+                    while (!queue.isEmpty()) {
+                        var current = queue.poll();
+                        if (current == null) continue;
+                        if (current.getClass().getName().endsWith("LstCrcAsyncChangesTree") || current.getClass().getName().endsWith("ChangesTree")) {
+                            return current;
+                        }
+                        try {
+                            var children = current.getComponents();
+                            if (children) {
+                                for (var i = 0; i < children.length; i++) {
+                                    queue.add(children[i]);
+                                }
+                            }
+                        } catch (ignored) {}
+                    }
+                    return null;
+                }
+
+                var tree = findTree(component);
+                if (!tree) return "";
+
+                var viewport = tree.getParent();
+                while (viewport != null && !(viewport instanceof javax.swing.JViewport)) {
+                    viewport = viewport.getParent();
+                }
+                if (viewport == null) return "";
+
+                var listener = viewport.getClientProperty("lstcrc.viewport.listener");
+                if (listener != null) {
+                    viewport.removeChangeListener(listener);
+                    viewport.putClientProperty("lstcrc.viewport.listener", null);
+                }
+
+                var history = viewport.getClientProperty("lstcrc.viewport.history");
+                viewport.putClientProperty("lstcrc.viewport.history", null);
+                if (history == null) return "";
+
+                var parts = [];
+                for (var i = 0; i < history.size(); i++) {
+                    parts.push(String(history.get(i)));
+                }
+                return parts.join(";");
+            })()
+            """.trimIndent(),
+            true
+        ).split(';')
+            .filter { it.isNotBlank() }
+            .map { token ->
+                token.split(',', limit = 2).let { parts ->
+                    (parts.getOrNull(0)?.toIntOrNull() ?: 0) to (parts.getOrNull(1)?.toIntOrNull() ?: 0)
+                }
+            }
+    }
+
+    fun beginTopVisibleEntryTracking() {
+        step("Start tracking top visible changes tree entry") {
+            runJs(
+                """
+                (function() {
+                    function findTree(root) {
+                        var queue = new java.util.LinkedList();
+                        queue.add(root);
+                        while (!queue.isEmpty()) {
+                            var current = queue.poll();
+                            if (current == null) continue;
+                            if (current.getClass().getName().endsWith("LstCrcAsyncChangesTree") || current.getClass().getName().endsWith("ChangesTree")) {
+                                return current;
+                            }
+                            try {
+                                var children = current.getComponents();
+                                if (children) {
+                                    for (var i = 0; i < children.length; i++) {
+                                        queue.add(children[i]);
+                                    }
+                                }
+                            } catch (ignored) {}
+                        }
+                        return null;
+                    }
+
+                    function topVisibleEntry(tree, viewport) {
+                        var row = tree.getClosestRowForLocation(0, viewport.getViewPosition().y + 1);
+                        if (row < 0) return "";
+                        var path = tree.getPathForRow(row);
+                        if (path == null) return "";
+                        return String(path.getLastPathComponent());
+                    }
+
+                    var tree = findTree(component);
+                    if (!tree) return;
+
+                    var viewport = tree.getParent();
+                    while (viewport != null && !(viewport instanceof javax.swing.JViewport)) {
+                        viewport = viewport.getParent();
+                    }
+                    if (viewport == null) return;
+
+                    var previousViewportListener = tree.getClientProperty("lstcrc.topVisible.viewportListener");
+                    if (previousViewportListener != null) {
+                        viewport.removeChangeListener(previousViewportListener);
+                    }
+                    var previousModelListener = tree.getClientProperty("lstcrc.topVisible.modelListener");
+                    if (previousModelListener != null) {
+                        tree.getModel().removeTreeModelListener(previousModelListener);
+                    }
+
+                    var history = new java.util.ArrayList();
+                    function capture() {
+                        history.add(topVisibleEntry(tree, viewport));
+                    }
+
+                    var viewportListener = new javax.swing.event.ChangeListener({
+                        stateChanged: function(event) { capture(); }
+                    });
+                    var modelListener = new javax.swing.event.TreeModelListener({
+                        treeNodesChanged: function(event) { capture(); },
+                        treeNodesInserted: function(event) { capture(); },
+                        treeNodesRemoved: function(event) { capture(); },
+                        treeStructureChanged: function(event) { capture(); }
+                    });
+
+                    capture();
+                    viewport.addChangeListener(viewportListener);
+                    tree.getModel().addTreeModelListener(modelListener);
+                    tree.putClientProperty("lstcrc.topVisible.history", history);
+                    tree.putClientProperty("lstcrc.topVisible.viewportListener", viewportListener);
+                    tree.putClientProperty("lstcrc.topVisible.modelListener", modelListener);
+                })()
+                """.trimIndent(),
+                true
+            )
+        }
+    }
+
+    fun stopTopVisibleEntryTracking(): List<String> = step("Stop tracking top visible changes tree entry") {
+        callJs<String>(
+            """
+            (function() {
+                function findTree(root) {
+                    var queue = new java.util.LinkedList();
+                    queue.add(root);
+                    while (!queue.isEmpty()) {
+                        var current = queue.poll();
+                        if (current == null) continue;
+                        if (current.getClass().getName().endsWith("LstCrcAsyncChangesTree") || current.getClass().getName().endsWith("ChangesTree")) {
+                            return current;
+                        }
+                        try {
+                            var children = current.getComponents();
+                            if (children) {
+                                for (var i = 0; i < children.length; i++) {
+                                    queue.add(children[i]);
+                                }
+                            }
+                        } catch (ignored) {}
+                    }
+                    return null;
+                }
+
+                var tree = findTree(component);
+                if (!tree) return "";
+
+                var viewport = tree.getParent();
+                while (viewport != null && !(viewport instanceof javax.swing.JViewport)) {
+                    viewport = viewport.getParent();
+                }
+                if (viewport == null) return "";
+
+                var viewportListener = tree.getClientProperty("lstcrc.topVisible.viewportListener");
+                if (viewportListener != null) {
+                    viewport.removeChangeListener(viewportListener);
+                    tree.putClientProperty("lstcrc.topVisible.viewportListener", null);
+                }
+                var modelListener = tree.getClientProperty("lstcrc.topVisible.modelListener");
+                if (modelListener != null) {
+                    tree.getModel().removeTreeModelListener(modelListener);
+                    tree.putClientProperty("lstcrc.topVisible.modelListener", null);
+                }
+
+                var history = tree.getClientProperty("lstcrc.topVisible.history");
+                tree.putClientProperty("lstcrc.topVisible.history", null);
+                if (history == null) return "";
+
+                var parts = [];
+                for (var i = 0; i < history.size(); i++) {
+                    parts.push(String(history.get(i)).replace(/;/g, ","));
+                }
+                return parts.join(";");
+            })()
+            """.trimIndent(),
+            true
+        ).split(';').filter { it.isNotBlank() }
+    }
+
+    fun selectChangeInTree(fileName: String) {
+        step("Select '$fileName' in changes tree without scrolling") {
+            runJs(
+                """
+                (function() {
+                    function findTree(root) {
+                        var queue = new java.util.LinkedList();
+                        queue.add(root);
+                        while (!queue.isEmpty()) {
+                            var current = queue.poll();
+                            if (current == null) continue;
+                            if (current.getClass().getName().endsWith("LstCrcAsyncChangesTree") || current.getClass().getName().endsWith("ChangesTree")) {
+                                return current;
+                            }
+                            try {
+                                var children = current.getComponents();
+                                if (children) {
+                                    for (var i = 0; i < children.length; i++) {
+                                        queue.add(children[i]);
+                                    }
+                                }
+                            } catch (ignored) {}
+                        }
+                        return null;
+                    }
+
+                    var tree = findTree(component);
+                    if (!tree) return;
+
+                    for (var row = 0; row < tree.getRowCount(); row++) {
+                        var path = tree.getPathForRow(row);
+                        if (path == null) continue;
+                        var text = String(path.getLastPathComponent());
+                        if (text.indexOf(${'"'}$fileName${'"'}) >= 0) {
+                            tree.setSelectionRow(row);
+                            return;
+                        }
+                    }
+                })()
+                """.trimIndent(),
+                true
+            )
+        }
+    }
+
+    fun setTreeViewportPosition(x: Int = 0, y: Int) {
+        step("Scroll changes tree viewport to x=$x y=$y") {
+            runJs(
+                """
+                (function() {
+                    var tree = null;
+                    var queue = new java.util.LinkedList();
+                    queue.add(component);
+                    while (!queue.isEmpty() && !tree) {
+                        var current = queue.poll();
+                        if (current == null) continue;
+                        if (current.getClass().getName().endsWith("LstCrcAsyncChangesTree") || current.getClass().getName().endsWith("ChangesTree")) {
+                            tree = current;
+                            break;
+                        }
+                        try {
+                            var children = current.getComponents();
+                            if (children) {
+                                for (var i = 0; i < children.length; i++) {
+                                    queue.add(children[i]);
+                                }
+                            }
+                        } catch (ignored) {}
+                    }
+                    if (!tree) {
+                        return;
+                    }
+                    var parent = tree.getParent();
+                    while (parent != null && !(parent instanceof javax.swing.JViewport)) {
+                        parent = parent.getParent();
+                    }
+                    if (parent != null) {
+                        parent.setViewPosition(new java.awt.Point($x, $y));
+                    }
+                })()
+                """.trimIndent(),
+                true
+            )
+        }
     }
 
     fun rightClickTab(tabName: String) {

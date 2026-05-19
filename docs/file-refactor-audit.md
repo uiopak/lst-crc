@@ -122,9 +122,9 @@ This document correlates each production file with the JetBrains Platform APIs a
 - Simplify or remove: Only very small helpers could be inlined. The branch-selection tab flow is complex enough to justify the helper object.
 
 ### ExpandNewNodesStateStrategy.kt
-- JetBrains correlation: Clean use of `TreeState` and changes-tree strategy hooks.
+- JetBrains correlation: Clean use of changes-tree strategy hooks, with one intentional manual restore path to avoid IntelliJ's generic selected-row recentering.
 - Keep assessment: Keep it; it solves a real UX problem in the changes browser.
-- Simplify or remove: Only micro-optimizations are worth considering, such as trimming redundant tree traversals.
+- Simplify or remove: Do not collapse it back to `TreeState.applyTo()`. Only local cleanup, like trimming redundant traversals, is a safe simplification target.
 
 ### BranchSelectionPanel.kt
 - JetBrains correlation: Standard Swing and IntelliJ tree/search controls, implemented in an idiomatic reusable panel.

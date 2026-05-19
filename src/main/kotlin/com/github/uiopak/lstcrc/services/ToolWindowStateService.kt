@@ -5,6 +5,7 @@ import com.github.uiopak.lstcrc.messaging.TOOL_WINDOW_STATE_TOPIC
 import com.github.uiopak.lstcrc.resources.LstCrcBundle
 import com.github.uiopak.lstcrc.state.TabInfo
 import com.github.uiopak.lstcrc.state.ToolWindowState
+import com.github.uiopak.lstcrc.state.displayName
 import com.github.uiopak.lstcrc.toolWindow.SingleRepoBranchSelectionDialog
 import git4idea.GitUtil
 import com.intellij.notification.NotificationGroupManager
@@ -243,7 +244,7 @@ class ToolWindowStateService(private val project: Project, val coroutineScope: C
     private fun showBranchNotFoundNotification(tabInfo: TabInfo, failures: Map<GitRepository, String>) {
         val notificationGroup = NotificationGroupManager.getInstance().getNotificationGroup("LST-CRC Branch Errors")
         val failedBranchNames = failures.values.distinct().joinToString(", ") { "'$it'" }
-        val tabDisplayName = tabInfo.alias ?: tabInfo.branchName
+        val tabDisplayName = tabInfo.displayName
 
         val content = LstCrcBundle.message("notification.branch.not.found.content", failedBranchNames, tabDisplayName)
 
@@ -315,7 +316,7 @@ class ToolWindowStateService(private val project: Project, val coroutineScope: C
     private suspend fun runRefreshCycle() {
         while (!project.isDisposed && refreshQueued.getAndSet(false)) {
             val tabInfoToRefresh = getSelectedTabInfo()
-            val profileName = tabInfoToRefresh?.branchName ?: "HEAD"
+            val profileName = selectedProfileName(tabInfoToRefresh)
             logger.info("ACTION: Refreshing data for current selection: '$profileName'")
 
             loadDataForTab(tabInfoToRefresh)
@@ -325,7 +326,7 @@ class ToolWindowStateService(private val project: Project, val coroutineScope: C
     private fun commitStateAndBroadcast() {
         if (project.isDisposed) return
         logger.debug("commitStateAndBroadcast: broadcasting state to listeners.")
-        project.messageBus.syncPublisher(TOOL_WINDOW_STATE_TOPIC).stateChanged(normalizeState(myState))
+        broadcastNormalizedState()
     }
 
     /**
@@ -334,67 +335,135 @@ class ToolWindowStateService(private val project: Project, val coroutineScope: C
     fun broadcastCurrentState() {
         if (project.isDisposed) return
         logger.info("Broadcasting current state explicitly to all listeners.")
-        project.messageBus.syncPublisher(TOOL_WINDOW_STATE_TOPIC).stateChanged(normalizeState(myState))
+        broadcastNormalizedState()
     }
 
-    fun getSelectedTabInfo(): TabInfo? {
-        if (myState.selectedTabIndex >= 0 && myState.selectedTabIndex < myState.openTabs.size) {
-            return myState.openTabs[myState.selectedTabIndex]
-        }
-        return null
-    }
+    fun getSelectedTabInfo(): TabInfo? = selectedTabInfo(myState)
 
     fun findTabIndex(branchName: String): Int {
-        return myState.openTabs.indexOfFirst { it.branchName == branchName }
+        return findTabIndex { it.branchName == branchName }
+    }
+
+    private fun matchesDisplayName(tabInfo: TabInfo, displayName: String): Boolean {
+        return tabInfo.branchName == displayName || tabInfo.alias == displayName
     }
 
     @Suppress("unused")
     fun findTabByDisplayName(displayName: String): TabInfo? {
-        return myState.openTabs.firstOrNull { it.branchName == displayName || it.alias == displayName }
+        val tabIndex = findTabIndexByDisplayName(displayName)
+        return myState.openTabs.getOrNull(tabIndex)
     }
 
     @Suppress("unused")
     fun findTabIndexByDisplayName(displayName: String): Int {
-        return myState.openTabs.indexOfFirst { it.branchName == displayName || it.alias == displayName }
+        return findTabIndex { matchesDisplayName(it, displayName) }
     }
 
-    fun getSelectedTabBranchName(): String? {
-        return getSelectedTabInfo()?.branchName
-    }
+    fun getSelectedTabBranchName(): String? = selectedTabInfo(myState)?.branchName
 
     fun updateTabAlias(branchName: String, newAlias: String?) {
-        if (project.isDisposed) return
-        logger.info("updateTabAlias called for branch '$branchName' with new alias '$newAlias'.")
-        updateTab(branchName, triggerRefresh = false, missingMessage = "Could not find tab for branch '$branchName' to update its alias.") { oldTabInfo ->
-            if (oldTabInfo.alias == newAlias) {
-                logger.debug("Alias for '$branchName' is already '$newAlias'. No state change needed.")
-                oldTabInfo
-            } else {
-                oldTabInfo.copy(alias = newAlias)
+        updateTabState(
+            branchName = branchName,
+            triggerRefresh = false,
+            startMessage = "updateTabAlias called for branch '$branchName' with new alias '$newAlias'.",
+            missingMessage = "Could not find tab for branch '$branchName' to update its alias.",
+            updatedMessage = "Tab alias for '$branchName' updated."
+        ) { oldTabInfo ->
+                if (oldTabInfo.alias == newAlias) {
+                    logger.debug("Alias for '$branchName' is already '$newAlias'. No state change needed.")
+                    oldTabInfo
+                } else {
+                    oldTabInfo.copy(alias = newAlias)
+                }
             }
-        }?.let {
-            logger.info("Tab alias for '$branchName' updated. New state: $myState")
-        }
     }
 
     fun updateTabComparisonMap(branchName: String, newMap: Map<String, String>, triggerRefresh: Boolean = true) {
-        if (project.isDisposed) return
-        logger.info("updateTabComparisonMap called for branch '$branchName'.")
-        updateTab(branchName, triggerRefresh = triggerRefresh, missingMessage = "Could not find tab for branch '$branchName' to update its comparison map.") { oldTabInfo ->
-            if (oldTabInfo.comparisonMap == newMap) {
-                logger.debug("Comparison map for '$branchName' is unchanged. No state change needed.")
-                oldTabInfo
-            } else {
-                oldTabInfo.copy(comparisonMap = newMap.toMutableMap())
+        updateTabState(
+            branchName = branchName,
+            triggerRefresh = triggerRefresh,
+            startMessage = "updateTabComparisonMap called for branch '$branchName'.",
+            missingMessage = "Could not find tab for branch '$branchName' to update its comparison map.",
+            updatedMessage = "Comparison map for '$branchName' updated."
+        ) { oldTabInfo ->
+                if (oldTabInfo.comparisonMap == newMap) {
+                    logger.debug("Comparison map for '$branchName' is unchanged. No state change needed.")
+                    oldTabInfo
+                } else {
+                    oldTabInfo.copy(comparisonMap = newMap.toMutableMap())
+                }
             }
-        }?.let {
-            logger.info("Comparison map for '$branchName' updated. New state: $myState")
+    }
+
+    @JvmOverloads
+    fun updateTabRepoComparison(
+        branchName: String,
+        repositoryRootPath: String,
+        targetRevision: String,
+        defaultTarget: String? = null,
+        triggerRefresh: Boolean = true
+    ) {
+        updateTabState(
+            branchName = branchName,
+            triggerRefresh = triggerRefresh,
+            startMessage = "updateTabRepoComparison called for branch '$branchName', repo '$repositoryRootPath'.",
+            missingMessage = "Could not find tab for branch '$branchName' to update its repository comparison.",
+            updatedMessage = "Repository comparison for '$branchName' and repo '$repositoryRootPath' updated."
+        ) { oldTabInfo ->
+                val updatedMap = updatedRepoComparisonMap(oldTabInfo, repositoryRootPath, targetRevision, defaultTarget)
+                if (oldTabInfo.comparisonMap == updatedMap) {
+                    logger.debug("Repository comparison for '$branchName' and repo '$repositoryRootPath' is unchanged. No state change needed.")
+                    oldTabInfo
+                } else {
+                    oldTabInfo.copy(comparisonMap = updatedMap)
+                }
+            }
+    }
+
+    private fun updatedRepoComparisonMap(
+        oldTabInfo: TabInfo,
+        repositoryRootPath: String,
+        targetRevision: String,
+        defaultTarget: String?
+    ): MutableMap<String, String> {
+        return oldTabInfo.comparisonMap.toMutableMap().apply {
+            if (defaultTarget != null && targetRevision == defaultTarget) {
+                remove(repositoryRootPath)
+            } else {
+                put(repositoryRootPath, targetRevision)
+            }
+        }
+    }
+
+    private fun updateTabState(
+        branchName: String,
+        triggerRefresh: Boolean,
+        startMessage: String,
+        missingMessage: String,
+        updatedMessage: String,
+        transform: (TabInfo) -> TabInfo
+    ) {
+        if (project.isDisposed) return
+        logger.info(startMessage)
+        logTabUpdate(
+            updateTab(branchName, triggerRefresh = triggerRefresh, missingMessage = missingMessage, transform = transform),
+            updatedMessage
+        )
+    }
+
+    private fun logTabUpdate(tabIndex: Int?, message: String) {
+        if (tabIndex != null) {
+            logger.info("$message New state: $myState")
         }
     }
 
     private fun replaceState(newState: ToolWindowState) {
         myState = normalizeState(newState)
         commitStateAndBroadcast()
+    }
+
+    private fun broadcastNormalizedState() {
+        project.messageBus.syncPublisher(TOOL_WINDOW_STATE_TOPIC).stateChanged(normalizeState(myState))
     }
 
     private fun normalizeState(state: ToolWindowState): ToolWindowState {
@@ -449,5 +518,17 @@ class ToolWindowStateService(private val project: Project, val coroutineScope: C
             currentSelectedIndex == removedIndex -> minOf(removedIndex, newLastIndex)
             else -> currentSelectedIndex
         }
+    }
+
+    private fun selectedTabInfo(state: ToolWindowState): TabInfo? {
+        return state.openTabs.getOrNull(state.selectedTabIndex)
+    }
+
+    private fun findTabIndex(matches: (TabInfo) -> Boolean): Int {
+        return myState.openTabs.indexOfFirst(matches)
+    }
+
+    private fun selectedProfileName(tabInfo: TabInfo?): String {
+        return tabInfo?.branchName ?: "HEAD"
     }
 }

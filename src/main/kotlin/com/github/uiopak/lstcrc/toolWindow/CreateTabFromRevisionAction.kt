@@ -7,10 +7,11 @@ import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.components.service
+import com.intellij.openapi.project.Project
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.vcs.VcsDataKeys
-import com.intellij.openapi.wm.ToolWindowManager
+import com.intellij.openapi.wm.ToolWindow
 
 /**
  * An action available in the Git Log context menu to create a new LST-CRC comparison tab
@@ -23,8 +24,7 @@ class CreateTabFromRevisionAction : AnAction() {
 
     override fun update(e: AnActionEvent) {
         val project = e.project
-        val revisions = e.getData(VcsDataKeys.VCS_REVISION_NUMBERS)
-        e.presentation.isEnabledAndVisible = project != null && revisions?.size == 1
+        e.presentation.isEnabledAndVisible = project != null && selectedRevisionString(e) != null
     }
 
     override fun getActionUpdateThread(): ActionUpdateThread {
@@ -33,20 +33,10 @@ class CreateTabFromRevisionAction : AnAction() {
 
     override fun actionPerformed(e: AnActionEvent) {
         val project = e.project ?: return
-        val revisionNumber = e.getData(VcsDataKeys.VCS_REVISION_NUMBERS)?.firstOrNull() ?: return
-
-        val revisionString = revisionNumber.asString()
+        val revisionString = selectedRevisionString(e) ?: return
         logger.info("Action performed: Create tab for revision '$revisionString'")
 
-        // First, ask the user for an alias in a simple dialog. This is a better UX than a disconnected popup.
-        val newAlias = Messages.showInputDialog(
-            project,
-            LstCrcBundle.message("dialog.rename.tab.message"),
-            LstCrcBundle.message("dialog.rename.tab.title"),
-            Messages.getQuestionIcon(),
-            revisionString, // Use the full hash as the default suggestion
-            null
-        )
+        val newAlias = promptForAlias(project, revisionString)
 
         // If the user cancels the dialog, do nothing.
         if (newAlias == null) {
@@ -54,19 +44,40 @@ class CreateTabFromRevisionAction : AnAction() {
             return
         }
 
-        val toolWindowManager = ToolWindowManager.getInstance(project)
-        val toolWindow = toolWindowManager.getToolWindow(LstCrcConstants.TOOL_WINDOW_ID) ?: run {
+        val activated = ToolWindowHelper.activateToolWindow(project) { toolWindow ->
+            createRevisionTab(project, toolWindow, revisionString, newAlias)
+        }
+        if (!activated) {
             logger.error("Could not find ToolWindow '${LstCrcConstants.TOOL_WINDOW_ID}'")
             return
         }
+    }
 
-        toolWindow.activate {
-            // Use the helper to handle tab creation and selection logic.
-            ToolWindowHelper.createAndSelectTab(project, toolWindow, revisionString)
+    private fun createRevisionTab(
+        project: Project,
+        toolWindow: ToolWindow,
+        revisionString: String,
+        newAlias: String
+    ) {
+        ToolWindowHelper.createAndSelectTab(project, toolWindow, revisionString)
+        val finalAlias = ToolWindowHelper.normalizedTabAlias(newAlias)
+        project.service<ToolWindowStateService>().updateTabAlias(revisionString, finalAlias)
+    }
 
-            // Immediately apply the chosen alias to the state.
-            val finalAlias = newAlias.trim().ifEmpty { null }
-            project.service<ToolWindowStateService>().updateTabAlias(revisionString, finalAlias)
-        }
+    private fun promptForAlias(project: Project, revisionString: String): String? {
+        return Messages.showInputDialog(
+            project,
+            LstCrcBundle.message("dialog.rename.tab.message"),
+            LstCrcBundle.message("dialog.rename.tab.title"),
+            Messages.getQuestionIcon(),
+            revisionString,
+            null
+        )
+    }
+
+    private fun selectedRevisionString(e: AnActionEvent): String? {
+        return e.getData(VcsDataKeys.VCS_REVISION_NUMBERS)
+            ?.singleOrNull()
+            ?.asString()
     }
 }

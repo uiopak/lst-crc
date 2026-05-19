@@ -16,12 +16,10 @@ class SetRevisionAsRepoComparisonAction : AnAction() {
 
     override fun update(e: AnActionEvent) {
         val project = e.project
-        val selection = e.getData(VcsLogDataKeys.VCS_LOG_COMMIT_SELECTION)
-        val selectedTabInfo = project?.service<ToolWindowStateService>()?.getSelectedTabInfo()
 
         e.presentation.isEnabledAndVisible = project != null &&
-                selection?.commits?.size == 1 &&
-                selectedTabInfo != null
+                hasSingleCommitSelection(e) &&
+                selectedTabInfo(project) != null
     }
 
     override fun getActionUpdateThread(): ActionUpdateThread {
@@ -35,12 +33,16 @@ class SetRevisionAsRepoComparisonAction : AnAction() {
 
         val repo = GitRepositoryManager.getInstance(project).getRepositoryForRoot(commitId.root) ?: return
         val stateService = project.service<ToolWindowStateService>()
-        val selectedTabInfo = stateService.getSelectedTabInfo() ?: return
+        val selectedTabInfo = selectedTabInfo(project) ?: return
 
         val revisionString = commitId.hash.asString()
-        val newMap = selectedTabInfo.comparisonMap.toMutableMap()
-        newMap[repo.root.path] = revisionString
-
-        stateService.updateTabComparisonMap(selectedTabInfo.branchName, newMap)
+        stateService.updateTabRepoComparison(selectedTabInfo.branchName, repo.root.path, revisionString)
     }
+
+    private fun hasSingleCommitSelection(e: AnActionEvent): Boolean {
+        return e.getData(VcsLogDataKeys.VCS_LOG_COMMIT_SELECTION)?.commits?.size == 1
+    }
+
+    private fun selectedTabInfo(project: com.intellij.openapi.project.Project) =
+        project.service<ToolWindowStateService>().getSelectedTabInfo()
 }

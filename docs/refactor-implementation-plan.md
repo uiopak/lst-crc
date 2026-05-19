@@ -26,6 +26,115 @@ Plan status:
 	- Canonical tab lookup helpers in ToolWindowStateService now back factory, helper, and bridge selection flows.
 	- Remote Robot settings reset now delegates to LstCrcSettingsService.resetToDefaults() instead of duplicating the default matrix in JS.
 	- LstCrcChangesBrowser now exposes a narrow line-stats snapshot helper, removing one more reflective Robot path.
+	- ToolWindowSettingsProvider and ToolWindowStateService now use smaller shared helpers for reset/state access instead of duplicating selection and default logic inline.
+	- LstCrcChangesBrowser now exposes its tree viewer through an explicit helper, removing reflective viewer lookup from the test bridge.
+	- LstCrcSettingsService now centralizes reset-to-default behavior in one ordered reset action list, with focused unit coverage for representative settings round-trips.
+	- ToolWindowStateService now centralizes selected-profile naming for refresh logging and refresh-cycle orchestration.
+	- VisualTrackerManager now owns the tracker-summary diagnostic seam used by the test bridge, removing direct tracker reflection from bridge code.
+	- Added a focused unit test for LstCrcSettingsService reset and getter/setter round-trips.
+	- LstCrcProvidedScopes now caches its canonical scope lists instead of rebuilding them on every access.
+	- Removed the unused includeInSearchScopes descriptor flag from FileStatusScopes.
+	- MyToolWindowFactory now uses one helper for branch-content lookup instead of repeating contentManager scans.
+	- ToolWindowHelper now owns the shared branch-content lookup helper used by the factory and selection flows.
+	- ToolWindowHelper now owns the shared selection-tab display-name lookup helper used by the branch-selection flow.
+	- BranchSelectionPanel now resolves searchable node text through one helper instead of duplicating the same mapping in filter and selection paths.
+	- LstCrcUiTestBridge now normalizes paths and matches change file names through shared helpers instead of repeating the same path/file-name logic across tree lookups.
+	- ToolWindowStateService now owns a shared single-repository comparison update helper reused by the branch-selection dialog, VCS log action, Starter bridge, and Remote Robot fixture.
+	- OpenBranchSelectionTabAction and the status widget now reuse ToolWindowHelper content-lookup helpers instead of rescanning content metadata inline.
+	- ShowRepoComparisonInfoAction now routes its single-repo dialog dispatch through one helper instead of repeating the same dialog creation path.
+	- Tab display-name reads now reuse a shared non-persisted TabInfo extension instead of repeating alias-or-branch formatting across the state service and tool-window UI.
+	- CreateTabFromRevisionAction and RenameTabAction now reuse one alias-normalization helper instead of trimming empty aliases inline in each action.
+	- ToolWindowUiCompatibility now owns the ToolWindowEx tab-action cast so MyToolWindowFactory no longer reaches into that UI seam directly.
+	- LstCrcUiTestBridge now shares one tree-path text matcher and one change-row matcher instead of repeating the same selected-tree scans across bridge helpers.
+	- RenameTabAction now reuses one renamable-tab context helper instead of validating closable tab and branch identity through separate paths.
+	- ToolWindowUiCompatibility now documents why title visibility still requires one isolated internal API seam.
+	- Remote Robot title-visibility helpers now reuse ToolWindowUiCompatibility instead of touching ToolWindowContentUi internals directly.
+	- LstCrcUiTestBridge now routes renderedTreeText() through its existing reflective text helper instead of duplicating a second getText lookup.
+	- LstCrcUiTestBridge now builds synthetic repo-comparison dialog snapshots through one helper instead of duplicating the same dialog payload assembly.
+	- LstCrcUiTestBridge now shares one full-project Git refresh helper for VCS activation and external-change refresh flows.
+	- ToolWindowHelper now owns a shared HEAD-content lookup reused by the status widget and Starter bridge.
+	- LstCrcUiTestBridge now reuses ToolWindowHelper for widget-tab selection and display-name tab lookup instead of rescanning content lists inline.
+	- LstCrcUiTestBridge now centralizes selected-content display-name reads used for tab state synchronization.
+	- ToolWindowSettingsProvider now routes repetitive boolean and int setting reads through shared helpers instead of duplicating settingsService access patterns.
+	- Removed the unused duplicate reset-to-default matrix from ToolWindowSettingsProvider so LstCrcSettingsService remains the only reset authority.
+	- LstCrcSettingsService now uses typed setting definitions for click-action strings plus reset-time boolean and int defaults instead of repeating raw key/default pairs.
+	- ToolWindowSettingsProvider now builds mouse click action groups from shared click-setting and action-choice definitions instead of wiring each submenu inline.
+	- ToolWindowSettingsProvider now drives double-click speed options from one shared delay-choice list instead of rebuilding the label/value matrix inline.
+	- ToolWindowSettingsProvider now routes primitive setting writes used by menu actions through shared helpers instead of calling raw service setters inline.
+	- ToolWindowSettingsProvider now builds its mouse-click submenu and tree-view submenu through dedicated helpers so the root settings group only assembles top-level structure.
+	- ToolWindowSettingsProvider now builds its gutter submenu and general settings actions through dedicated helpers so createToolWindowSettingsGroup stays structural.
+	- LstCrcSettingsService now exposes typed accessors for representative boolean settings and stored double-click delay instead of forcing tests and nearby callers through raw key/default pairs.
+	- ToolWindowSettingsProvider now reuses typed service accessors for representative settings instead of mixing raw key/default reads with typed click-action access.
+	- Removed dead generic primitive helper reads from ToolWindowSettingsProvider after the typed accessor migration.
+	- LstCrcStatusWidget now routes popup tool-window activation through one helper instead of repeating lookup and activate plumbing in each popup action.
+	- LstCrcStatusWidget now assembles popup actions through one helper instead of building the action list inline in the click consumer.
+	- MyToolWindowFactory now routes selected-tab synchronization from the content-manager listener through one helper instead of keeping that branch logic inline in the listener.
+	- ToolWindowHelper now reuses one helper for selecting an existing branch-selection tab and refocusing its search field instead of duplicating that reuse path before and after async branch loading.
+	- ToolWindowHelper now reuses one helper for branch-content creation, selection, and state registration instead of duplicating that sequence for normal tab creation and selection-tab replacement.
+	- MyToolWindowFactory now routes state-driven tab display-name synchronization through one helper instead of keeping that update loop inline in the message-bus subscriber.
+	- MyToolWindowFactory now restores persisted tabs through a dedicated helper instead of mixing persisted restore and initial-branch creation logic in one method.
+	- ToolWindowHelper now owns the shared LST-CRC tool-window activation path used by the revision-tab action and status widget instead of repeating tool-window lookup and activate plumbing.
+	- ToolWindowHelper now centralizes branch-selection tab naming and content lookup instead of rebuilding that label and lookup path in multiple runtime call sites.
+	- ToolWindowHelper display-name lookup now scans content collections directly, fixing proxy-backed action tests while matching the helper's other content-resolution paths.
+	- Removed the dead selectionTabName callback parameter from ToolWindowHelper after centralizing branch-selection tab lookup.
+	- CreateTabFromRevisionAction now isolates alias prompting behind one helper instead of mixing dialog construction into the orchestration path.
+	- BranchSelectionPanel now routes branch-tree search matching through one helper instead of repeating the same searchable-text predicate in clone and selection paths.
+	- BranchSelectionPanel now centralizes snapshot-vs-repository branch list fallback and tree-path node casting through shared helpers instead of repeating that local/remote and mouse/keyboard wiring inline.
+	- BranchSelectionPanel now applies branch filtering synchronously on the EDT from its stable full-tree snapshot instead of routing local filter work through a disposable coroutine job.
+	- Added focused BranchSelectionPanel unit coverage for filter-first selection, Enter-key submission, and reopened-panel snapshot reset behavior.
+	- Remote Robot branch-selection coverage now verifies filter and reopen behavior directly, and the fixture selects filtered slash-form branches by visible leaf label instead of assuming the full branch path is rendered as one text fragment.
+	- RepoNodeRenderer now renders added and removed trailing line-stat fragments through shared helpers instead of repeating separator bookkeeping inline.
+	- LstCrcStatusWidget now routes HEAD and branch popup tab selection through one helper instead of repeating tool-window activation and content-selection plumbing in each action.
+	- ExpandNewNodesStateStrategy now restores expanded, collapsed, and selected tree paths manually instead of delegating to `TreeState.applyTo()`, because IntelliJ recenters the selected row during generic restore and breaks comparison-tree viewport preservation after local edits; focused browser and Remote Robot regressions cover the offscreen-selection and selected-untracked-file cases.
+	- LstCrcChangesBrowser now resolves pointer-targeted tree changes through shared helpers instead of repeating the same tree-path-to-change lookup in click and context-menu handlers.
+	- LstCrcChangesBrowser now routes single-click and double-click button-setting lookup through one helper instead of duplicating the same mouse-button matrix inline.
+	- LstCrcChangesBrowserTest now reuses one browser fixture helper instead of repeating the same browser, frame, and scroll-pane setup across viewport regression tests.
+	- ShowRepoComparisonInfoAction now builds the multi-repository popup and repo action group through dedicated helpers instead of keeping that assembly inline in actionPerformed.
+	- MyToolWindowFactory now builds the tool-window gear action group through one helper instead of assembling that wrapper inline in setupToolWindowActions.
+	- MyToolWindowFactory now routes its HEAD fallback selection through one helper instead of duplicating HEAD selection and `selectedTabIndex = -1` synchronization inline.
+	- MyToolWindowFactory now resolves the initial branch name through one helper instead of keeping the persisted-state conditional inline in the pooled startup task.
+	- LstCrcStatusWidget now resolves selected-tab display text through one helper instead of keeping the selected-index formatting branch inline in getText().
+	- LstCrcUiTestBridge now routes selected-content selection plus state synchronization through one helper instead of repeating that UI/state pair in individual tab-selection helpers.
+	- LstCrcUiTestBridge now routes selected-content component and display-name reads through shared selected-content helpers instead of casting and reading selected content directly in multiple helpers.
+	- ToolWindowHelper now routes both project-based and direct tool-window activation through one shared overload instead of leaving branch-selection tab activation on a separate direct `toolWindow.activate` path.
+	- LstCrcScopeCollections now owns search-scope mapping from named scopes to IDE search scopes so both scope providers share the same scope surface instead of keeping that conversion inline in LstCrcSearchScopeProvider.
+	- LstCrcProvidedScopes now directly owns both named-scope and search-scope sharing, removing the thin LstCrcScopeCollections wrapper so both providers read from the same source.
+	- ToolWindowHelper no longer threads the branch-selection tab name through helper calls now that branch-selection naming is centralized.
+	- CreateTabFromRevisionAction now routes revision-tab creation plus alias application through one helper instead of leaving that orchestration block inline inside the activation callback.
+	- ShowRepoComparisonInfoAction now uses imported local types for its extracted helpers instead of repeating fully qualified project, repository, and tab-info types.
+	- LstCrcStatusWidget now shares one select-or-log helper for popup tab actions instead of duplicating the same content-selection and warning flow for HEAD and branch tabs.
+	- LstCrcStatusWidget now routes add-tab popup behavior through one helper instead of inlining the branch-selection tab opener inside the activation callback.
+	- SingleRepoBranchSelectionDialog now applies the selected branch through one helper instead of keeping repo-comparison state updates inline in doOKAction().
+	- SingleRepoBranchSelectionDialog now builds its branch-selection panel through one helper instead of keeping callback wiring inline in createCenterPanel().
+	- ToolWindowStateService now shares one display-name matching helper instead of repeating branch-or-alias matching in both display-name lookup methods.
+	- ToolWindowStateService now shares one post-update logging helper across alias, comparison-map, and repo-comparison mutations instead of repeating the same “updated state” tail in each method.
+	- ToolWindowStateService now routes alias, comparison-map, and repo-comparison entry points through one shared mutation wrapper instead of repeating disposed checks, start logs, and `updateTab(...)` wiring in each method.
+	- ToolWindowStateService now builds repository comparison override maps through one helper instead of leaving repo-map rewrite logic inline in updateTabRepoComparison().
+	- ToolWindowStateService now routes display-name tab lookup through the indexed lookup helper instead of performing a second standalone scan.
+	- LstCrcStatusWidget popup actions now use the owning widget project directly and call branch-selection opening through ToolWindowHelper instead of threading redundant project wrappers through inner actions.
+	- CreateTabFromRevisionAction now uses local Project and ToolWindow imports in its helper signatures instead of carrying fully qualified IntelliJ types.
+	- MyToolWindowFactory now uses imported Content and ContentManager types in its helper signatures instead of mixed fully qualified content API references.
+	- LstCrcStatusWidget now uses imported Content and ContentManager types in its selection helper instead of fully qualified content API references.
+	- RepoNodeRenderer now resolves ToolWindowStateService through a local import instead of a fully qualified service lookup.
+	- LstCrcChangesBrowser now registers its parent disposable through the imported Disposer API instead of a fully qualified disposal call.
+	- LstCrcUiTestBridge now uses local DumbService and StatusBarWidget imports instead of fully qualified IntelliJ type references in its bridge helpers.
+	- LstCrcUiTestBridge now uses local JBColor, Document, and AnActionEvent imports in its bridge helpers instead of fully qualified IntelliJ type references.
+	- SetRevisionAsRepoComparisonAction now shares one single-commit visibility helper instead of resolving commit-selection cardinality inline in update().
+	- CreateTabFromRevisionAction now shares one selected-revision resolver instead of reading the single selected revision separately in update() and actionPerformed().
+	- ShowRepoComparisonInfoAction now shares one selected-tab lookup helper instead of resolving ToolWindowStateService state separately in update() and actionPerformed().
+	- SetRevisionAsRepoComparisonAction now shares one selected-tab lookup helper instead of resolving ToolWindowStateService state separately in update() and actionPerformed().
+	- LstCrcStatusWidget now resolves the selected open tab through one helper instead of open-coding selected-index bounds inside widget text rendering.
+	- ToolWindowStateService now routes branch-name and display-name index lookups through one shared predicate-based tab-index helper instead of scanning open tabs separately in each method.
+	- ToolWindowStateService now resolves selected tabs through `getOrNull(...)` instead of open-coding selected-index bounds in its private selected-tab accessor.
+	- ToolWindowStateService now shares one normalized state-publishing helper instead of duplicating the same message-bus publish call in commit and explicit broadcast paths.
+	- LstCrcSettingsService now shares one stored-value lookup helper instead of repeating the same non-blank state-map gate in string, boolean, and int getters.
+	- LstCrcSettingsService now resets defaults from typed string, boolean, and int definition lists instead of a hand-maintained reset lambda matrix.
+	- ToolWindowSettingsProvider now shares one VisualTrackerManager settings-change callback helper instead of repeating the same gutter refresh lambda across gutter toggles.
+	- ToolWindowSettingsProvider now builds right-click behavior radio actions from metadata instead of open-coding the two context-menu mode toggles.
+	- ToolWindowHelper now routes branch-name, display-name, and HEAD content lookup through one shared content-scan helper instead of scanning contentManager contents separately in each method.
+	- RepoNodeRenderer now shares one default target-revision fallback helper instead of repeating the same active-branch or selected-tab fallback chain in single-repo and per-repository resolution.
+	- RepoNodeRenderer now shares one categorized-changes fallback helper path instead of repeating the same provider-or-diff-service selection in comparison-context and line-stats accessors.
+	- BranchSelectionPanel now builds local and remote category nodes through one shared helper instead of repeating the same category-node assembly flow twice in its full tree model builder.
 	- Scope registry ordering and searchable filtering now reuse the shared provided-scope lists instead of duplicating metadata.
 	- Removed write-unsafe Remote Robot git initialization pre-save path by deleting saveAllDocuments() usage from PluginUiTestSteps.
 	- Validated Remote Robot coverage with deterministic class-by-class runs and persisted logs for all five UI test classes.
@@ -229,6 +338,7 @@ Plan status:
 153. Reduce duplicated string formatting in RepoNodeRenderer.
 154. Centralize color selection and line-stat text formatting.
 155. Simplify ExpandNewNodesStateStrategy so state restoration logic is easier to reason about.
+	- Keep `restoreState(...)` on the manual path. Reintroducing `TreeState.applyTo()` pulls the selected row back into view through `TreeUtil.showRowCentered(...)` and reintroduces the scroll-reset regression.
 156. Keep the current “expand new files in collapsed directories” feature exact.
 157. Add tests for rendered text snapshots and expansion behavior.
 

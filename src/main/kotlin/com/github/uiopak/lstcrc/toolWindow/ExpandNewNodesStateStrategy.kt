@@ -1,6 +1,5 @@
 package com.github.uiopak.lstcrc.toolWindow
 
-import com.intellij.ide.util.treeView.TreeState
 import com.intellij.openapi.vcs.changes.Change
 import com.intellij.openapi.vcs.changes.ui.ChangesTree
 import com.intellij.openapi.vcs.changes.ui.VcsTreeModelData
@@ -15,6 +14,11 @@ import javax.swing.tree.TreePath
 /**
  * Preserves the current expansion/collapse state while ensuring newly added changes become visible.
  *
+ * Selection restore is handled manually instead of delegating to `TreeState.applyTo()`. IntelliJ's
+ * generic tree-state restore recenters the selected row through `TreeUtil.showRowCentered(...)`,
+ * which breaks the comparison browser's requirement to preserve the user's current viewport when
+ * the selected change is offscreen.
+ *
  * When [expandNewFilesInCollapsedDirs] returns `true` (the default, driven by the
  * "Expand Collapsed Folders for New Changes" setting), directories that are currently
  * collapsed will be expanded when new changes appear inside them — matching the
@@ -26,8 +30,6 @@ class ExpandNewNodesStateStrategy(
         ToolWindowSettingsProvider.isExpandNewFilesInCollapsedDirs()
     }
 ) : ChangesTree.TreeStateStrategy<ExpandNewNodesStateStrategy.State> {
-
-
 
     data class ChangeKey(
         val firstPath: String?,
@@ -48,8 +50,9 @@ class ExpandNewNodesStateStrategy(
     }
 
     data class State(
-        val treeState: TreeState?,
         val changes: Set<ChangeKey>,
+        val selectedChanges: List<ChangeKey>,
+        val expandedPaths: Set<String>,
         val collapsedPaths: Set<String>
     )
 
@@ -87,40 +90,55 @@ class ExpandNewNodesStateStrategy(
     }
 
     override fun saveState(tree: ChangesTree): State {
-        val state = TreeState.createOn(tree, true, true)
         val currentChanges = VcsTreeModelData.all(tree)
             .userObjects(Change::class.java)
             .map { it.asChangeKey() }
             .toSet()
+        val selectedChanges = VcsTreeModelData.selected(tree)
+            .userObjects(Change::class.java)
+            .map { it.asChangeKey() }
 
+        val expandedPaths = mutableSetOf<String>()
         val collapsedPaths = mutableSetOf<String>()
         for (row in 0 until tree.rowCount) {
             val path = tree.getPathForRow(row) ?: continue
             val node = path.lastPathComponent as? DefaultMutableTreeNode ?: continue
             if (path.pathCount <= 1 || node.isLeaf) continue
-            if (!tree.isExpanded(path)) {
+            val key = pathKey(path)
+            if (tree.isExpanded(path)) {
+                expandedPaths.add(key)
+            } else {
                 collapsedPaths.add(pathKey(path))
             }
         }
 
-        return State(state, currentChanges, collapsedPaths)
+        return State(currentChanges, selectedChanges, expandedPaths, collapsedPaths)
     }
 
     override fun restoreState(tree: ChangesTree, savedState: State, scrollToSelection: Boolean) {
-        val oldTreeState = savedState.treeState
-        if (oldTreeState == null) {
-            tree.resetTreeState()
-            return
-        }
-
-        oldTreeState.setScrollToSelection(scrollToSelection)
-        oldTreeState.applyTo(tree)
-
         val oldChanges = savedState.changes
         val allCurrentChanges = VcsTreeModelData.all(tree).userObjects(Change::class.java)
         val newChangesToMakeVisible = allCurrentChanges.filter { it.asChangeKey() !in oldChanges }
 
         val expandedForNewFiles = mutableSetOf<String>()
+
+        val pathKeyToTreePath = mutableMapOf<String, TreePath>()
+        val selectedPathsByChange = mutableMapOf<ChangeKey, TreePath>()
+        TreeUtil.treeNodeTraverser(tree.root).forEach { treeNode ->
+            val node = treeNode as? DefaultMutableTreeNode ?: return@forEach
+            val path = TreeUtil.getPathFromRoot(node)
+            if (path.pathCount > 1 && !node.isLeaf) {
+                pathKeyToTreePath[pathKey(path)] = path
+            }
+            val change = node.userObject as? Change ?: return@forEach
+            selectedPathsByChange[change.asChangeKey()] = path
+        }
+
+        savedState.expandedPaths
+            .asSequence()
+            .mapNotNull { key -> pathKeyToTreePath[key] }
+            .sortedBy { it.pathCount }
+            .forEach { tree.expandPath(it) }
 
         if (newChangesToMakeVisible.isNotEmpty()) {
             val changeKeyToNodeMap = mutableMapOf<ChangeKey, DefaultMutableTreeNode>()
@@ -147,15 +165,6 @@ class ExpandNewNodesStateStrategy(
             }
         }
 
-        val collapsedPathToTreePath = mutableMapOf<String, TreePath>()
-        TreeUtil.treeNodeTraverser(tree.root).forEach { treeNode ->
-            val node = treeNode as? DefaultMutableTreeNode ?: return@forEach
-            val path = TreeUtil.getPathFromRoot(node)
-            if (path.pathCount > 1 && !node.isLeaf) {
-                collapsedPathToTreePath[pathKey(path)] = path
-            }
-        }
-
         savedState.collapsedPaths
             .asSequence()
             .filter { key ->
@@ -163,8 +172,15 @@ class ExpandNewNodesStateStrategy(
                 // to reveal newly appeared changes inside it.
                 expandedForNewFiles.isEmpty() || !expandNewFilesInCollapsedDirs() || key !in expandedForNewFiles
             }
-            .mapNotNull { key -> collapsedPathToTreePath[key] }
+            .mapNotNull { key -> pathKeyToTreePath[key] }
             .sortedByDescending { it.pathCount }
             .forEach { tree.collapsePath(it) }
+
+        val selectedPaths = savedState.selectedChanges
+            .mapNotNull { changeKey -> selectedPathsByChange[changeKey] }
+        if (selectedPaths.isNotEmpty()) {
+            // Preserve selection without recentering it into view.
+            tree.selectionPaths = selectedPaths.toTypedArray()
+        }
     }
 }

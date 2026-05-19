@@ -1,5 +1,6 @@
 package com.github.uiopak.lstcrc.toolWindow
 
+import com.github.uiopak.lstcrc.LstCrcConstants
 import com.github.uiopak.lstcrc.resources.LstCrcBundle
 import com.github.uiopak.lstcrc.services.BranchSnapshot
 import com.github.uiopak.lstcrc.services.GitService
@@ -11,6 +12,7 @@ import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.wm.ToolWindow
+import com.intellij.openapi.wm.ToolWindowManager
 import com.intellij.platform.ide.progress.withBackgroundProgress
 import com.intellij.ui.content.Content
 import com.intellij.ui.content.ContentFactory
@@ -25,6 +27,20 @@ import kotlinx.coroutines.withContext
  */
 object ToolWindowHelper {
     private val logger = thisLogger()
+
+    internal fun normalizedTabAlias(alias: String?): String? = alias?.trim()?.ifEmpty { null }
+
+    internal fun branchSelectionTabName(): String = LstCrcBundle.message("tab.name.select.branch")
+
+    internal fun activateToolWindow(project: Project, onActivated: (ToolWindow) -> Unit): Boolean {
+        val toolWindow = ToolWindowManager.getInstance(project).getToolWindow(LstCrcConstants.TOOL_WINDOW_ID) ?: return false
+        activateToolWindow(toolWindow, onActivated)
+        return true
+    }
+
+    internal fun activateToolWindow(toolWindow: ToolWindow, onActivated: (ToolWindow) -> Unit) {
+        toolWindow.activate({ onActivated(toolWindow) }, true, true)
+    }
 
     /**
      * Creates a new closable content tab for a branch comparison and adds it to the content manager.
@@ -75,16 +91,14 @@ object ToolWindowHelper {
         val contentManager = toolWindow.contentManager
         val stateService = project.service<ToolWindowStateService>()
 
-        val existingContent = contentManager.contents.find { it.getUserData(LstCrcKeys.BRANCH_NAME_KEY) == branchName }
+        val existingContent = findContentByBranchName(contentManager, branchName)
 
         if (existingContent != null) {
             logger.info("HELPER: Tab for '$branchName' already exists. Selecting it.")
             contentManager.setSelectedContent(existingContent, true)
         } else {
             logger.info("HELPER: Creating new tab for '$branchName'")
-            val newContent = createBranchContent(project, branchName, branchName, contentManager)
-            contentManager.setSelectedContent(newContent, true)
-            addAndSelectTabInState(stateService, branchName, newContent.component as? LstCrcChangesBrowser)
+            createSelectAndRegisterBranchContent(project, branchName, contentManager, stateService)
         }
     }
 
@@ -107,6 +121,39 @@ object ToolWindowHelper {
         }
     }
 
+    private fun createSelectAndRegisterBranchContent(
+        project: Project,
+        branchName: String,
+        contentManager: ContentManager,
+        stateService: ToolWindowStateService,
+        order: Int? = null
+    ): Content {
+        val newContent = createBranchContent(project, branchName, branchName, contentManager, order)
+        contentManager.setSelectedContent(newContent, true)
+        addAndSelectTabInState(stateService, branchName, newContent.component as? LstCrcChangesBrowser)
+        return newContent
+    }
+
+    internal fun findContentByBranchName(contentManager: ContentManager, branchName: String): Content? {
+        return findContent(contentManager) { it.getUserData(LstCrcKeys.BRANCH_NAME_KEY) == branchName }
+    }
+
+    internal fun findHeadContent(contentManager: ContentManager): Content? {
+        return findContent(contentManager) { !it.isCloseable }
+    }
+
+    internal fun findContentByDisplayName(contentManager: ContentManager, displayName: String): Content? {
+        return findContent(contentManager) { it.displayName == displayName }
+    }
+
+    internal fun findBranchSelectionContent(contentManager: ContentManager): Content? {
+        return findContentByDisplayName(contentManager, branchSelectionTabName())
+    }
+
+    private fun findContent(contentManager: ContentManager, matches: (Content) -> Boolean): Content? {
+        return contentManager.contents.firstOrNull(matches)
+    }
+
     /**
      * Opens a temporary "Select Branch" tab in the tool window.
      * If such a tab already exists, it is selected. Otherwise, a new one is created.
@@ -117,17 +164,12 @@ object ToolWindowHelper {
      * @param toolWindow The LST-CRC tool window instance.
      */
     fun openBranchSelectionTab(project: Project, toolWindow: ToolWindow) {
-        toolWindow.activate({
+        activateToolWindow(toolWindow) {
             logger.info("HELPER: openBranchSelectionTab called.")
-            val selectionTabName = LstCrcBundle.message("tab.name.select.branch")
             val contentManager: ContentManager = toolWindow.contentManager
 
-            val existingSelection = contentManager.findContent(selectionTabName)
-            if (existingSelection != null) {
-                contentManager.setSelectedContent(existingSelection, true)
-                (existingSelection.component as? BranchSelectionPanel)?.requestFocusOnSearchField()
-                logger.info("HELPER: Found existing '$selectionTabName' tab and selected it.")
-                return@activate
+            if (selectExistingBranchSelectionTab(contentManager)) {
+                return@activateToolWindow
             }
 
             val stateService = project.service<ToolWindowStateService>()
@@ -141,30 +183,36 @@ object ToolWindowHelper {
 
                 withContext(Dispatchers.EDT) {
                     if (project.isDisposed || toolWindow.isDisposed) return@withContext
-                    contentManager.findContent(selectionTabName)?.let { existingSelection ->
-                        contentManager.setSelectedContent(existingSelection, true)
-                        (existingSelection.component as? BranchSelectionPanel)?.requestFocusOnSearchField()
+                    if (selectExistingBranchSelectionTab(contentManager)) {
                         return@withContext
                     }
-                    addBranchSelectionContent(project, toolWindow, selectionTabName, contentManager, stateService, primaryRepo, branchSnapshot)
+                    addBranchSelectionContent(project, toolWindow, contentManager, stateService, primaryRepo, branchSnapshot)
                 }
             }
+        }
+    }
 
-        }, true, true)
+    private fun selectExistingBranchSelectionTab(contentManager: ContentManager): Boolean {
+        val selectionTabName = branchSelectionTabName()
+        val existingSelection = findBranchSelectionContent(contentManager) ?: return false
+        contentManager.setSelectedContent(existingSelection, true)
+        (existingSelection.component as? BranchSelectionPanel)?.requestFocusOnSearchField()
+        logger.info("HELPER: Found existing '$selectionTabName' tab and selected it.")
+        return true
     }
 
     private fun addBranchSelectionContent(
         project: Project,
         toolWindow: ToolWindow,
-        selectionTabName: String,
         contentManager: ContentManager,
         stateService: ToolWindowStateService,
         primaryRepo: GitRepository?,
         branchSnapshot: BranchSnapshot
     ) {
+        val selectionTabName = branchSelectionTabName()
         val gitService = project.service<GitService>()
         val branchSelectionUi = BranchSelectionPanel(gitService, primaryRepo, branchSnapshot) { selectedBranchName ->
-            handleBranchSelected(project, toolWindow, selectionTabName, stateService, selectedBranchName)
+            handleBranchSelected(project, toolWindow, stateService, selectedBranchName)
         }
         logger.info("HELPER: Creating and adding new '$selectionTabName' tab to UI.")
         val newContent = ContentFactory.getInstance().createContent(branchSelectionUi, selectionTabName, true).apply {
@@ -179,20 +227,19 @@ object ToolWindowHelper {
     private fun handleBranchSelected(
         project: Project,
         toolWindow: ToolWindow,
-        selectionTabName: String,
         stateService: ToolWindowStateService,
         selectedBranchName: String
     ) {
         logger.info("HELPER (Callback): Branch '$selectedBranchName' selected from panel.")
         val manager = toolWindow.contentManager
-        val selectionTabContent = manager.findContent(selectionTabName)
+        val selectionTabContent = findBranchSelectionContent(manager)
         if (selectedBranchName.isBlank() || selectionTabContent == null) {
             logger.error("HELPER (Callback): selectedBranchName is blank or selection tab disappeared.")
             selectionTabContent?.let { manager.removeContent(it, true) }
             return
         }
 
-        val existingBranchTab = manager.contents.find { it.getUserData(LstCrcKeys.BRANCH_NAME_KEY) == selectedBranchName }
+        val existingBranchTab = findContentByBranchName(manager, selectedBranchName)
         if (existingBranchTab != null) {
             manager.setSelectedContent(existingBranchTab, true)
             manager.removeContent(selectionTabContent, true)
@@ -214,8 +261,6 @@ object ToolWindowHelper {
         val selectionIndex = manager.getIndexOfContent(selectionTabContent)
         manager.removeContent(selectionTabContent, true)
 
-        val newBranchContent = createBranchContent(project, selectedBranchName, selectedBranchName, manager, selectionIndex)
-        manager.setSelectedContent(newBranchContent, true)
-        addAndSelectTabInState(stateService, selectedBranchName, newBranchContent.component as? LstCrcChangesBrowser)
+        createSelectAndRegisterBranchContent(project, selectedBranchName, manager, stateService, selectionIndex)
     }
 }

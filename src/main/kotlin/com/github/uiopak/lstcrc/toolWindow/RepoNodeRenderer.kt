@@ -5,6 +5,7 @@ import com.github.uiopak.lstcrc.services.GitService
 import com.github.uiopak.lstcrc.services.ProjectActiveDiffDataService
 import com.github.uiopak.lstcrc.services.ChangeLineStatsKey
 import com.github.uiopak.lstcrc.services.CategorizedChanges
+import com.github.uiopak.lstcrc.services.ToolWindowStateService
 import git4idea.GitUtil
 import com.intellij.dvcs.ui.RepositoryChangesBrowserNode
 import com.intellij.openapi.components.service
@@ -37,7 +38,7 @@ class RepoNodeRenderer(
 
     private val gitService = project.service<GitService>()
     private val diffDataService = project.service<ProjectActiveDiffDataService>()
-    private val stateService = project.service<com.github.uiopak.lstcrc.services.ToolWindowStateService>()
+    private val stateService = project.service<ToolWindowStateService>()
     private val trailingRenderer = SimpleColoredComponent().apply {
         border = JBUI.Borders.emptyLeft(TRAILING_METADATA_LEFT_GAP)
         isOpaque = false
@@ -62,27 +63,33 @@ class RepoNodeRenderer(
         }
 
         if (ToolWindowSettingsProvider.isShowLineStatsInTree() && lineStats != null) {
-            if (trailingRenderer.fragmentCount > 0) {
-                trailingRenderer.append(FontUtil.spaceAndThinSpace())
-            }
-            if (lineStats.addedLines > 0) {
-                trailingRenderer.append(
-                    "+${lineStats.addedLines}",
-                    ADDED_LINE_STATS_ATTRIBUTES
-                )
-            }
-            if (lineStats.removedLines > 0) {
-                if (trailingRenderer.fragmentCount > 0) {
-                    trailingRenderer.append(FontUtil.spaceAndThinSpace())
-                }
-                trailingRenderer.append(
-                    "-${lineStats.removedLines}",
-                    REMOVED_LINE_STATS_ATTRIBUTES
-                )
-            }
+            appendLineStats(lineStats)
         }
 
         trailingRenderer.isVisible = trailingRenderer.fragmentCount > 0
+    }
+
+    private fun appendLineStats(lineStats: ChangeLineStats) {
+        appendTrailingSeparatorIfNeeded()
+        if (lineStats.addedLines > 0) {
+            trailingRenderer.append(
+                "+${lineStats.addedLines}",
+                ADDED_LINE_STATS_ATTRIBUTES
+            )
+        }
+        if (lineStats.removedLines > 0) {
+            appendTrailingSeparatorIfNeeded()
+            trailingRenderer.append(
+                "-${lineStats.removedLines}",
+                REMOVED_LINE_STATS_ATTRIBUTES
+            )
+        }
+    }
+
+    private fun appendTrailingSeparatorIfNeeded() {
+        if (trailingRenderer.fragmentCount > 0) {
+            trailingRenderer.append(FontUtil.spaceAndThinSpace())
+        }
     }
 
     private fun updateRendererInsets(hasTrailingMetadata: Boolean) {
@@ -156,23 +163,27 @@ class RepoNodeRenderer(
             return null
         }
 
-        return currentComparisonContext().values.firstOrNull()
-            ?: diffDataService.activeBranchName
-            ?: stateService.getSelectedTabBranchName()
+        return currentComparisonContext().values.firstOrNull() ?: defaultTargetRevision()
     }
 
     private fun resolveTargetRevisionForRepository(repository: GitRepository): String? {
-        return currentComparisonContext()[repository.root.path]
-            ?: diffDataService.activeBranchName
-            ?: stateService.getSelectedTabBranchName()
+        return currentComparisonContext()[repository.root.path] ?: defaultTargetRevision()
+    }
+
+    private fun defaultTargetRevision(): String? {
+        return diffDataService.activeBranchName ?: stateService.getSelectedTabBranchName()
     }
 
     private fun currentComparisonContext(): Map<String, String> {
-        return categorizedChangesProvider()?.comparisonContext ?: diffDataService.activeComparisonContext
+        return currentCategorizedChanges()?.comparisonContext ?: diffDataService.activeComparisonContext
     }
 
     private fun currentLineStatsByChange(): Map<ChangeLineStatsKey, ChangeLineStats> {
-        return categorizedChangesProvider()?.lineStatsByChange ?: diffDataService.lineStatsByChange
+        return currentCategorizedChanges()?.lineStatsByChange ?: diffDataService.lineStatsByChange
+    }
+
+    private fun currentCategorizedChanges(): CategorizedChanges? {
+        return categorizedChangesProvider()
     }
 
     private fun shouldAnnotateSingleRepoNode(tree: JTree, node: ChangesBrowserNode<*>): Boolean {
