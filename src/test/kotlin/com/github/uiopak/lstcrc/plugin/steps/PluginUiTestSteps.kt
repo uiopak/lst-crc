@@ -359,16 +359,7 @@ class PluginUiTestSteps(private val remoteRobot: RemoteRobot) {
                 const changeListManagerEx = com.intellij.openapi.vcs.changes.ChangeListManagerEx.getInstanceEx(project);
                 changeListManagerEx.waitForUpdate();
 
-                const pluginId = com.intellij.openapi.extensions.PluginId.getId("com.github.uiopak.lstcrc");
-                const plugin = com.intellij.ide.plugins.PluginManagerCore.getPlugin(pluginId);
-                if (plugin != null) {
-                    const stateServiceClass = plugin.getPluginClassLoader()
-                        .loadClass("com.github.uiopak.lstcrc.services.ToolWindowStateService");
-                    const stateService = project.getService(stateServiceClass);
-                    if (stateService != null) {
-                        stateService.refreshDataForCurrentSelection().join();
-                    }
-                }
+                ${refreshCurrentSelectionScript()}
             }
             """.trimIndent(),
             false
@@ -415,6 +406,20 @@ class PluginUiTestSteps(private val remoteRobot: RemoteRobot) {
         }
     }
 
+    private fun refreshCurrentSelectionScript(projectVariableName: String = "project"): String =
+        """
+        const pluginId = com.intellij.openapi.extensions.PluginId.getId("com.github.uiopak.lstcrc");
+        const plugin = com.intellij.ide.plugins.PluginManagerCore.getPlugin(pluginId);
+        if (plugin != null) {
+            const stateServiceClass = plugin.getPluginClassLoader()
+                .loadClass("com.github.uiopak.lstcrc.services.ToolWindowStateService");
+            const stateService = $projectVariableName.getService(stateServiceClass);
+            if (stateService != null) {
+                stateService.refreshDataForCurrentSelection().join();
+            }
+        }
+        """.trimIndent()
+
     private fun refreshProjectAfterGitCommand() = with(remoteRobot) {
         runJs(
             """
@@ -427,16 +432,7 @@ class PluginUiTestSteps(private val remoteRobot: RemoteRobot) {
                 const changeListManagerEx = com.intellij.openapi.vcs.changes.ChangeListManagerEx.getInstanceEx(project);
                 changeListManagerEx.waitForUpdate();
 
-                const pluginId = com.intellij.openapi.extensions.PluginId.getId("com.github.uiopak.lstcrc");
-                const plugin = com.intellij.ide.plugins.PluginManagerCore.getPlugin(pluginId);
-                if (plugin != null) {
-                    const stateServiceClass = plugin.getPluginClassLoader()
-                        .loadClass("com.github.uiopak.lstcrc.services.ToolWindowStateService");
-                    const stateService = project.getService(stateServiceClass);
-                    if (stateService != null) {
-                        stateService.refreshDataForCurrentSelection().join();
-                    }
-                }
+                ${refreshCurrentSelectionScript()}
             }
             """,
             false
@@ -474,16 +470,7 @@ class PluginUiTestSteps(private val remoteRobot: RemoteRobot) {
                 const changeListManagerEx = com.intellij.openapi.vcs.changes.ChangeListManagerEx.getInstanceEx(project);
                 changeListManagerEx.waitForUpdate();
 
-                const pluginId = com.intellij.openapi.extensions.PluginId.getId("com.github.uiopak.lstcrc");
-                const plugin = com.intellij.ide.plugins.PluginManagerCore.getPlugin(pluginId);
-                if (plugin != null) {
-                    const stateServiceClass = plugin.getPluginClassLoader()
-                        .loadClass("com.github.uiopak.lstcrc.services.ToolWindowStateService");
-                    const stateService = project.getService(stateServiceClass);
-                    if (stateService != null) {
-                        stateService.refreshDataForCurrentSelection().join();
-                    }
-                }
+                ${refreshCurrentSelectionScript()}
             }
             """.trimIndent(),
             false

@@ -81,6 +81,7 @@ import java.awt.event.KeyEvent
 import java.awt.event.MouseEvent
 import java.awt.Window
 import java.io.File
+import java.lang.reflect.Field
 import javax.swing.JComboBox
 import javax.swing.JList
 import javax.swing.JTree
@@ -1119,17 +1120,13 @@ class LstCrcUiTestBridge {
     }
 
     private fun delegateTextRenderer(component: Component): Component? {
-        val rendererField = classHierarchy(component.javaClass)
-            .flatMap { it.declaredFields.asSequence() }
+        val rendererField = findDeclaredField(component.javaClass)
             .firstOrNull {
                 Component::class.java.isAssignableFrom(it.type) &&
                     (it.name == "textRenderer" || it.name == "myTextRenderer")
             } ?: return null
 
-        return runCatching {
-            rendererField.isAccessible = true
-            rendererField.get(component) as? Component
-        }.getOrNull()
+        return readDeclaredField(component, rendererField) as? Component
     }
 
     private fun invokeRenderedTextMethod(component: Component, methodName: String): String? {
@@ -1151,14 +1148,10 @@ class LstCrcUiTestBridge {
     }
 
     private fun reflectColoredFragments(component: Component): String? {
-        val fragmentsField = classHierarchy(component.javaClass)
-            .flatMap { it.declaredFields.asSequence() }
+        val fragmentsField = findDeclaredField(component.javaClass)
             .firstOrNull { it.name == "myFragments" } ?: return null
 
-        val fragments = runCatching {
-            fragmentsField.isAccessible = true
-            fragmentsField.get(component) as? Iterable<*>
-        }.getOrNull() ?: return null
+        val fragments = readDeclaredField(component, fragmentsField) as? Iterable<*> ?: return null
 
         val text = fragments.mapNotNull(::fragmentText)
             .joinToString(separator = "")
@@ -1169,16 +1162,24 @@ class LstCrcUiTestBridge {
 
     private fun fragmentText(fragment: Any?): String? {
         fragment ?: return null
-        val textField = classHierarchy(fragment.javaClass)
-            .flatMap { it.declaredFields.asSequence() }
+        val textField = findDeclaredField(fragment.javaClass)
             .firstOrNull {
                 CharSequence::class.java.isAssignableFrom(it.type) &&
                     (it.name == "fragmentText" || it.name == "myText" || it.name == "text")
             } ?: return null
 
+        return (readDeclaredField(fragment, textField) as? CharSequence)?.toString()
+    }
+
+    private fun findDeclaredField(startClass: Class<*>): Sequence<Field> {
+        return classHierarchy(startClass)
+            .flatMap { it.declaredFields.asSequence() }
+    }
+
+    private fun readDeclaredField(instance: Any, field: Field): Any? {
         return runCatching {
-            textField.isAccessible = true
-            (textField.get(fragment) as? CharSequence)?.toString()
+            field.isAccessible = true
+            field.get(instance)
         }.getOrNull()
     }
 

@@ -61,6 +61,7 @@ class VisualTrackerManager(
 
     private val logger = thisLogger()
     private val visualTrackers = ConcurrentHashMap<Document, SimpleLocalLineStatusTracker>()
+    private val updateJobs = ConcurrentHashMap<Document, kotlinx.coroutines.Job>()
 
     private fun isExpectedMissingFileInRevision(message: String?): Boolean {
         if (message.isNullOrBlank()) return false
@@ -86,6 +87,7 @@ class VisualTrackerManager(
 
             override fun onTrackerRemoved(tracker: LineStatusTracker<*>) {
                 val document = tracker.document
+                updateJobs.remove(document)?.cancel()
                 val visualTracker = visualTrackers.remove(document)
                 if (visualTracker != null) {
                     logger.debug("VISUAL_TRACKER: Native tracker removed for ${tracker.virtualFile.name}. Releasing visual tracker.")
@@ -286,6 +288,7 @@ class VisualTrackerManager(
 
     private fun restoreNativeTracker(nativeTracker: LocalLineStatusTracker<*>) {
         val document = nativeTracker.document
+        updateJobs.remove(document)?.cancel()
         
         // Only act if we actually have something to clean up
         if (visualTrackers.containsKey(document)) {
@@ -383,15 +386,22 @@ class VisualTrackerManager(
         }
 
         // 3. Update Content using the PRE-RESOLVED targetRevision
-        coroutineScope.launch {
-            val content = loadTargetContent(file, targetRevision)
-            withContext(dispatchers.ui) {
-                // Double-check tracker is still valid/needed?
-                // We rely on the fact that if it became invalid, refreshAllTrackers would have been called again 
-                // and might conflict, but `visualTracker` is the same instance.
-                visualTracker.setBaseRevision(content)
+        val oldJob = updateJobs.remove(document)
+        oldJob?.cancel()
+
+        val newJob = coroutineScope.launch {
+            try {
+                val content = loadTargetContent(file, targetRevision)
+                withContext(dispatchers.ui) {
+                    if (visualTrackers[document] === visualTracker) {
+                        visualTracker.setBaseRevision(content)
+                    }
+                }
+            } finally {
+                updateJobs.remove(document, coroutineContext[kotlinx.coroutines.Job])
             }
         }
+        updateJobs[document] = newJob
     }
 
     private fun performStandaloneInterception(document: Document, file: VirtualFile, targetRevision: String) {
@@ -400,15 +410,26 @@ class VisualTrackerManager(
             createVisualTracker(document, file)
         }
 
-        coroutineScope.launch {
-            val content = loadTargetContent(file, targetRevision)
-            withContext(dispatchers.ui) {
-                visualTracker.setBaseRevision(content)
+        val oldJob = updateJobs.remove(document)
+        oldJob?.cancel()
+
+        val newJob = coroutineScope.launch {
+            try {
+                val content = loadTargetContent(file, targetRevision)
+                withContext(dispatchers.ui) {
+                    if (visualTrackers[document] === visualTracker) {
+                        visualTracker.setBaseRevision(content)
+                    }
+                }
+            } finally {
+                updateJobs.remove(document, coroutineContext[kotlinx.coroutines.Job])
             }
         }
+        updateJobs[document] = newJob
     }
 
     private fun restoreStandaloneTracker(document: Document, file: VirtualFile) {
+        updateJobs.remove(document)?.cancel()
         if (visualTrackers.containsKey(document)) {
             logger.debug("VISUAL_TRACKER: Releasing standalone visual tracker for ${file.name}.")
             visualTrackers.remove(document)?.release()
@@ -457,6 +478,8 @@ class VisualTrackerManager(
     }
 
     override fun dispose() {
+        updateJobs.values.forEach { it.cancel() }
+        updateJobs.clear()
         visualTrackers.values.forEach { tracker ->
             try {
                 tracker.release()

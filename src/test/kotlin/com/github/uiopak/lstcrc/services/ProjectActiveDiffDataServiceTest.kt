@@ -84,4 +84,44 @@ class ProjectActiveDiffDataServiceTest : BasePlatformTestCase() {
         assertTrue(diffDataService.createdFilePaths.contains(selectedFile.path))
         assertFalse(diffDataService.createdFilePaths.contains(headFile.path))
     }
+
+    fun testUpdateActiveDiffWithIdenticalSnapshotBypassesNotification() {
+        val diffDataService = project.service<ProjectActiveDiffDataService>()
+        val file = myFixture.addFileToProject("diff/Same.txt", "same\n").virtualFile
+        selectHeadTab(project)
+
+        diffDataService.updateActiveDiff(
+            "HEAD",
+            categorizedChanges(createdFiles = listOf(file))
+        )
+        flushEdt()
+
+        var notifications = 0
+        project.messageBus.connect(testRootDisposable).subscribe(
+            com.github.uiopak.lstcrc.messaging.DIFF_DATA_CHANGED_TOPIC,
+            object : com.github.uiopak.lstcrc.messaging.ActiveDiffDataChangedListener {
+                override fun onDiffDataChanged() {
+                    notifications++
+                }
+            }
+        )
+
+        diffDataService.updateActiveDiff(
+            "HEAD",
+            categorizedChanges(createdFiles = listOf(file))
+        )
+        flushEdt()
+
+        assertEquals(0, notifications)
+
+        // Now update with different file
+        val otherFile = myFixture.addFileToProject("diff/Other.txt", "other\n").virtualFile
+        diffDataService.updateActiveDiff(
+            "HEAD",
+            categorizedChanges(createdFiles = listOf(otherFile))
+        )
+        flushEdt()
+
+        assertEquals(1, notifications)
+    }
 }

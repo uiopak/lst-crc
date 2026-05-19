@@ -216,29 +216,28 @@ class GitService(private val project: Project) {
         }
     }
 
+    fun resolveComparisonTarget(repo: GitRepository, tabInfo: TabInfo?): String {
+        if (tabInfo == null) return "HEAD"
+        return tabInfo.comparisonMap[repo.root.path] ?: tabInfo.branchName
+    }
+
     private fun loadChangesResult(
         repositories: List<GitRepository>,
         tabInfo: TabInfo?
     ): GetChangesResult {
         val context = ChangeLoadContext()
-        if (tabInfo == null) {
-            logger.debug("Using direct Git status for HEAD across all repositories.")
-            for (repo in repositories) {
-                val loadedChanges = loadLocalChanges(repo)
-                context.allChanges.addAll(loadedChanges.changes)
-                context.lineStatsByChange.putAll(loadedChanges.lineStatsByChange)
-                context.comparisonContext[repo.root.path] = "HEAD"
+        val primaryRevision = tabInfo?.branchName ?: "HEAD"
+        for (repo in repositories) {
+            val target = resolveComparisonTarget(repo, tabInfo)
+            context.comparisonContext[repo.root.path] = target
+            logger.debug("Repo '${repo.root.path}': using target '$target'")
+            val loadedChanges = if (tabInfo == null) {
+                loadLocalChanges(repo)
+            } else {
+                loadChangesForTarget(repo, primaryRevision, target, context.failures)
             }
-        } else {
-            val primaryRevision = tabInfo.branchName
-            for (repo in repositories) {
-                val target = tabInfo.comparisonMap[repo.root.path] ?: primaryRevision
-                context.comparisonContext[repo.root.path] = target
-                logger.debug("Repo '${repo.root.path}': using target '$target'")
-                val loadedChanges = loadChangesForTarget(repo, primaryRevision, target, context.failures)
-                context.allChanges.addAll(loadedChanges.changes)
-                context.lineStatsByChange.putAll(loadedChanges.lineStatsByChange)
-            }
+            context.allChanges.addAll(loadedChanges.changes)
+            context.lineStatsByChange.putAll(loadedChanges.lineStatsByChange)
         }
         return GetChangesResult(buildCategorizedChanges(context.allChanges, context.comparisonContext, context.lineStatsByChange), context.failures)
     }

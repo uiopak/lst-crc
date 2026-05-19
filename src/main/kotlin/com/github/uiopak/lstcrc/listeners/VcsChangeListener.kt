@@ -14,9 +14,11 @@ import com.intellij.openapi.vcs.changes.ChangeListListener
 import com.intellij.openapi.vcs.changes.ChangeListManager
 import com.intellij.openapi.vfs.VirtualFile
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * Listens for `ChangeListManager` updates to detect when VCS state changes (e.g., local edits,
@@ -62,7 +64,10 @@ class VcsChangeListener internal constructor(
                 .collectLatest { file ->
                     if (project.isDisposed) return@collectLatest
 
-                    if (file != null && !isRepositoryFile(file)) {
+                    val isRepo = file != null && withContext(Dispatchers.IO) {
+                        isRepositoryFile(file)
+                    }
+                    if (file != null && !isRepo) {
                         logger.debug("VCS_CHANGE_LISTENER: Skipping refresh for non-repository file '${file.path}'.")
                         return@collectLatest
                     }

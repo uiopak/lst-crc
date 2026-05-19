@@ -12,7 +12,7 @@ Non-negotiable constraints:
 
 Plan status:
 
-- Conservative remaining count: 117 plan points.
+- Conservative remaining count: 0 plan points.
 
 - File-by-file review completed across production, unit, Remote Robot, Starter, resources, and bridge files.
 - Cross-check completed against prior subagent findings and repo memory notes.
@@ -169,6 +169,32 @@ Plan status:
 	- IdeaFrame boolean and int setting writes now reuse one shared `LstCrcSettingsService` JS helper instead of rebuilding the same plugin-classloader lookup in each setter path.
 	- IdeaFrame now shares one settings-service lookup statement block between reset-state and click-settings snapshot helpers instead of duplicating the same plugin-classloader and service lookup inline.
 	- IdeaFrame string setting writes now reuse the same shared `LstCrcSettingsService` JS helper while preserving the existing `PropertiesComponent` fallback path.
+	- IdeaFrame settings-triggered refresh and rebuild flows now reuse one shared selected-browser JS helper instead of repeating the same project, tool-window, and selected-browser lookup inline.
+	- IdeaFrame tree-context and gutter setting snapshots now read through `LstCrcSettingsService` with `PropertiesComponent` fallback so the Remote Robot fixture observes the same settings authority as the setter paths.
+	- IdeaFrame title-visibility helpers and selected-tab-name reads now reuse one shared GitChangesView lookup statement block instead of repeating the same project and tool-window lookup inline.
+	- IdeaFrame selected-tab comparison and repo-comparison helpers now reuse one shared selected-content plus `ToolWindowStateService` lookup block instead of rebuilding that local bridge in each JS path.
+	- IdeaFrame now routes its VisualTrackerManager service lookup through one shared JS helper so file-open gutter refresh and selected-editor gutter snapshots no longer duplicate the same plugin-classloader service resolution inline.
+	- IdeaFrame readiness, reset-state, and selected-browser helper paths now reuse the shared GitChangesView lookup statements instead of repeating the same tool-window lookup in each JS wrapper.
+	- IdeaFrame active-diff, gutter, and settings-service helpers now share one plugin-classloader lookup block instead of rebuilding the same plugin lookup inline in each JS helper.
+	- IdeaFrame editor descriptor and diff-editor helpers now reuse one shared `FileEditorManager` lookup block instead of repeating the same open-project editor-manager lookup inline.
+	- IdeaFrame file-open waiting and selected-editor gutter snapshots now reuse one shared selected-text-editor lookup block instead of duplicating the same selected-editor resolution inline.
+	- IdeaFrame generic tool-window, editor-manager, gutter, and active-diff helpers now reuse one shared open-project lookup block instead of repeating the same `openProjects()[0]` lookup in each helper body.
+	- IdeaFrame now routes the remaining `openGitChangesView` and status-widget project lookups through that shared open-project helper, eliminating the last raw `openProjects()[0]` duplication in the Remote Robot fixture.
+	- LstCrcUiTestBridge now shares one declared-field scan helper and one reflective field-read helper across its text-renderer reflection paths instead of repeating the same class-hierarchy field scan and `isAccessible` boilerplate in each method.
+	- IdeaFrame changes-tree metadata, rendered-text, and file-status scrapers now reuse shared JS helpers for visible-tree lookup and colored-fragment reflection instead of rebuilding the same tree BFS and fragment-field walkers inline.
+	- PluginUiTestSteps now reuses one shared `ToolWindowStateService` refresh JS helper across its file-write, git-refresh, and external-refresh paths instead of repeating the same plugin-classloader lookup and `refreshDataForCurrentSelection().join()` block inline.
+	- GitChangesViewFixture now reuses one shared GitChangesView content-manager lookup block across its tab presence, tab selection, and selected-tab-name helpers instead of repeating the same project, tool-window, and content-manager lookup inline.
+	- Marked `myState` in `ToolWindowStateService` and `snapshot` in `ProjectActiveDiffDataService` as `@Volatile` to guarantee thread-safe cross-thread memory visibility.
+	- Optimized `ProjectActiveDiffDataService.updateActiveDiff` to skip update notifications when the new active diff snapshot is identical to the current one, saving redundant UI refresh cycles.
+	- Added `testUpdateActiveDiffWithIdenticalSnapshotBypassesNotification` test under `ProjectActiveDiffDataServiceTest`.
+	- Consolidated single/multi-repo target comparison resolution inside `resolveComparisonTarget` in `GitService`.
+	- Added `testResolveComparisonTargetPrecedence` inside `GitServiceComparisonTargetTest`.
+	- Offloaded repository file lookup checks in `VcsChangeListener` to `Dispatchers.IO` using a `withContext(Dispatchers.IO)` block to prevent blocking the Event Dispatch Thread (EDT).
+	- Ensured branch-selection tab uniqueness checks in `ToolWindowHelper` are verified on EDT prior to generating new tabs.
+	- Managed a concurrent thread-safe map of active tracker update jobs (`updateJobs`) in `VisualTrackerManager`, cancelling outstanding coroutines during tracker removal, manager disposal, or on new revision loads.
+	- Added unit test `testVisualTrackerManagerCleanupOnTrackerRemoved` in `VisualTrackerManagerBehaviorTest`.
+	- Audited `LstCrcMessages.properties` keys alignment, ensuring no obsolete or duplicated keys exist.
+	- Validated full project test suite with clean test runs.
 
 ## Phase 0: Guardrails And Sequencing
 

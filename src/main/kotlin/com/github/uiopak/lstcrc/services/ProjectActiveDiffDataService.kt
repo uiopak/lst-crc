@@ -71,6 +71,7 @@ class ProjectActiveDiffDataService(private val project: Project) : Disposable {
         }
     }
 
+    @Volatile
     private var snapshot: ActiveDiffSnapshot = ActiveDiffSnapshot.empty()
 
     val activeBranchName: String?
@@ -129,11 +130,17 @@ class ProjectActiveDiffDataService(private val project: Project) : Disposable {
                 if (project.isDisposed) return@invokeLater
                 logger.debug("EDT: Updating active data for '$branchNameFromEvent'.")
 
-                val previousFiles = snapshot.allFiles
-                snapshot = ActiveDiffSnapshot.from(
+                val newSnapshot = ActiveDiffSnapshot.from(
                     activeBranchName = branchNameFromEvent,
                     categorizedChanges = categorizedChanges
                 )
+                if (snapshot == newSnapshot) {
+                    logger.debug("EDT: Snapshot is identical. Skipping refresh triggers.")
+                    return@invokeLater
+                }
+
+                val previousFiles = snapshot.allFiles
+                snapshot = newSnapshot
 
                 notifyAffectedFiles(previousFiles + snapshot.allFiles)
                 project.messageBus.syncPublisher(DIFF_DATA_CHANGED_TOPIC).onDiffDataChanged()

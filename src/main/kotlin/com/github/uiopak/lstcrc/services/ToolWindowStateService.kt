@@ -44,6 +44,7 @@ import java.util.concurrent.atomic.AtomicReference
 @Service(Service.Level.PROJECT)
 class ToolWindowStateService(private val project: Project, val coroutineScope: CoroutineScope) : PersistentStateComponent<ToolWindowState> {
 
+    @Volatile
     private var myState = ToolWindowState()
     private val logger = thisLogger()
     private val activeRefresh = AtomicReference<CompletableFuture<Unit>?>(null)

@@ -10,6 +10,7 @@ import com.intellij.openapi.editor.ex.MarkupModelEx
 import com.intellij.openapi.editor.impl.DocumentMarkupModel
 import com.intellij.testFramework.LightVirtualFile
 import com.intellij.testFramework.PlatformTestUtil
+import com.intellij.openapi.components.service
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 
 class VisualTrackerManagerBehaviorTest : BasePlatformTestCase() {
@@ -54,6 +55,17 @@ class VisualTrackerManagerBehaviorTest : BasePlatformTestCase() {
         } finally {
             tracker.release()
         }
+    }
+
+    fun testVisualTrackerManagerCleanupOnTrackerRemoved() {
+        val manager = project.service<VisualTrackerManager>()
+        val file = myFixture.addFileToProject("TrackerRemoved.txt", "text\n").virtualFile
+        myFixture.openFileInEditor(file)
+        val document = FileDocumentManager.getInstance().getDocument(file)!!
+
+        manager.dispose()
+        val tracker = manager.findStandaloneTracker(document)
+        assertNull(tracker)
     }
 
     private fun createTracker(text: String, baseText: String): SimpleLocalLineStatusTracker {

@@ -41,6 +41,19 @@ class GitChangesViewFixture(remoteRobot: RemoteRobot, remoteComponent: RemoteCom
         }
     }
 
+    private fun contentManagerLookupStatements(
+        projectVariableName: String = "project",
+        toolWindowVariableName: String = "toolWindow",
+        contentManagerVariableName: String = "contentManager"
+    ): String =
+        """
+        const $projectVariableName = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
+        const $toolWindowVariableName = $projectVariableName
+            ? com.intellij.openapi.wm.ToolWindowManager.getInstance($projectVariableName).getToolWindow("GitChangesView")
+            : null;
+        const $contentManagerVariableName = $toolWindowVariableName ? $toolWindowVariableName.getContentManager() : null;
+        """.trimIndent()
+
     private fun tabLocator(tabName: String) = byXpath(
         "Tab '$tabName'",
         "//div[@class='ContentTabLabel' and (@text='$tabName' or @accessiblename='$tabName' or @visible_text='$tabName')]"
@@ -48,19 +61,13 @@ class GitChangesViewFixture(remoteRobot: RemoteRobot, remoteComponent: RemoteCom
 
     private fun hasContentTab(tabName: String): Boolean = remoteRobot.callJs(
         """
-        const project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
-        if (!project) {
+        ${contentManagerLookupStatements()}
+        if (!project || !contentManager) {
             false;
         } else {
-            const toolWindow = com.intellij.openapi.wm.ToolWindowManager.getInstance(project).getToolWindow("GitChangesView");
-            const contentManager = toolWindow ? toolWindow.getContentManager() : null;
-            if (!contentManager) {
-                false;
-            } else {
-                const tabName = ${toJsStringLiteral(tabName)};
-                java.util.Arrays.stream(contentManager.getContents())
-                    .anyMatch(content => tabName.equals(content.getDisplayName()));
-            }
+            const tabName = ${toJsStringLiteral(tabName)};
+            java.util.Arrays.stream(contentManager.getContents())
+                .anyMatch(content => tabName.equals(content.getDisplayName()));
         }
         """.trimIndent(),
         true
@@ -68,38 +75,32 @@ class GitChangesViewFixture(remoteRobot: RemoteRobot, remoteComponent: RemoteCom
 
     private fun selectContentTab(tabName: String): Boolean = remoteRobot.callJs(
         """
-        const project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
-        if (!project) {
+        ${contentManagerLookupStatements()}
+        if (!project || !contentManager) {
             false;
         } else {
-            const toolWindow = com.intellij.openapi.wm.ToolWindowManager.getInstance(project).getToolWindow("GitChangesView");
-            const contentManager = toolWindow ? toolWindow.getContentManager() : null;
-            if (!contentManager) {
+            const tabName = ${toJsStringLiteral(tabName)};
+            const content = java.util.Arrays.stream(contentManager.getContents())
+                .filter(item => tabName.equals(item.getDisplayName()))
+                .findFirst()
+                .orElse(null);
+            if (content == null) {
                 false;
             } else {
-                const tabName = ${toJsStringLiteral(tabName)};
-                const content = java.util.Arrays.stream(contentManager.getContents())
-                    .filter(item => tabName.equals(item.getDisplayName()))
-                    .findFirst()
-                    .orElse(null);
-                if (content == null) {
-                    false;
-                } else {
-                    contentManager.setSelectedContent(content, true);
-                    const browser = content.getComponent();
-                    const stateServiceClass = browser.getClass().getClassLoader()
-                        .loadClass("com.github.uiopak.lstcrc.services.ToolWindowStateService");
-                    const stateService = project.getService(stateServiceClass);
-                    if (stateService != null) {
-                        const selectedIndex = java.util.Arrays.stream(contentManager.getContents())
-                            .filter(item => item.isCloseable())
-                            .toList()
-                            .indexOf(content);
-                        stateService.setSelectedTab(selectedIndex);
-                        stateService.refreshDataForCurrentSelection();
-                    }
-                    true;
+                contentManager.setSelectedContent(content, true);
+                const browser = content.getComponent();
+                const stateServiceClass = browser.getClass().getClassLoader()
+                    .loadClass("com.github.uiopak.lstcrc.services.ToolWindowStateService");
+                const stateService = project.getService(stateServiceClass);
+                if (stateService != null) {
+                    const selectedIndex = java.util.Arrays.stream(contentManager.getContents())
+                        .filter(item => item.isCloseable())
+                        .toList()
+                        .indexOf(content);
+                    stateService.setSelectedTab(selectedIndex);
+                    stateService.refreshDataForCurrentSelection();
                 }
+                true;
             }
         }
         """.trimIndent(),
@@ -108,13 +109,11 @@ class GitChangesViewFixture(remoteRobot: RemoteRobot, remoteComponent: RemoteCom
 
     private fun selectedContentTabName(): String = remoteRobot.callJs(
         """
-        const project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
-        if (!project) {
+        ${contentManagerLookupStatements()}
+        if (!project || !contentManager) {
             null;
         } else {
-            const toolWindow = com.intellij.openapi.wm.ToolWindowManager.getInstance(project).getToolWindow("GitChangesView");
-            const contentManager = toolWindow ? toolWindow.getContentManager() : null;
-            const selectedContent = contentManager ? contentManager.getSelectedContent() : null;
+            const selectedContent = contentManager.getSelectedContent();
             selectedContent ? selectedContent.getDisplayName() : null;
         }
         """.trimIndent(),

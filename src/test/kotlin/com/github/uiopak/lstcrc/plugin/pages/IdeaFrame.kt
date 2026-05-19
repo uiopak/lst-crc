@@ -133,11 +133,10 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
                 callJs<Boolean>(
                     """
                     (function() {
-                        const project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
-                        if (!project) return false;
+                        ${selectedTextEditorLookupStatements()}
+                        if (!editor) return false;
 
-                        const editor = com.intellij.openapi.fileEditor.FileEditorManager.getInstance(project).getSelectedTextEditor();
-                        const file = editor ? editor.getVirtualFile() : null;
+                        const file = editor.getVirtualFile();
                         return file != null && String(file.getPath()).endsWith('/$normalizedPath');
                     })();
                     """.trimIndent(),
@@ -147,21 +146,7 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
         }
 
         runJs(
-            """
-            const project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
-            if (project) {
-                const pluginId = com.intellij.openapi.extensions.PluginId.getId("com.github.uiopak.lstcrc");
-                const plugin = com.intellij.ide.plugins.PluginManagerCore.getPlugin(pluginId);
-                if (plugin != null) {
-                    const managerClass = plugin.getPluginClassLoader()
-                        .loadClass("com.github.uiopak.lstcrc.gutters.VisualTrackerManager");
-                    const manager = project.getService(managerClass);
-                    if (manager != null) {
-                        manager.settingsChanged();
-                    }
-                }
-            }
-            """.trimIndent(),
+            visualTrackerManagerScript("manager.settingsChanged();"),
             true
         )
     }
@@ -173,7 +158,7 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
 
             runJs(
                 """
-                const project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
+                ${openProjectLookupStatements()}
                 if (project) {
                     const toolWindow = com.intellij.openapi.wm.ToolWindowManager.getInstance(project).getToolWindow("GitChangesView");
                     if (toolWindow) {
@@ -232,10 +217,7 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
             callJs<Boolean>(
                 """
                 (function() {
-                    const project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
-                    if (!project) return false;
-
-                    const toolWindow = com.intellij.openapi.wm.ToolWindowManager.getInstance(project).getToolWindow("GitChangesView");
+                    ${toolWindowLookupStatements()}
                     if (!toolWindow || !toolWindow.isVisible()) return false;
 
                     const contentManager = toolWindow.getContentManager();
@@ -286,7 +268,7 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
                         } catch(e) {}
                     }
 
-                    const toolWindow = com.intellij.openapi.wm.ToolWindowManager.getInstance(project).getToolWindow("GitChangesView");
+                    ${toolWindowLookupStatements("project", "toolWindow")}
                     if (toolWindow) {
                         if (cl) {
                             try {
@@ -386,10 +368,8 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
             callJs(
                 """
                 (function() {
-                    const project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
-                    if (!project) return "";
-
-                    const manager = com.intellij.openapi.fileEditor.FileEditorManager.getInstance(project);
+                    ${fileEditorManagerLookupStatements()}
+                    if (!manager) return "";
                     const selectedFiles = manager.getSelectedFiles();
                     if (selectedFiles.length === 0) return "";
 
@@ -407,9 +387,9 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
         step("Close all editors") {
             runJs(
                 """
-                const project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
-                if (project) {
-                    com.intellij.openapi.fileEditor.FileEditorManager.getInstance(project).closeAllFiles();
+                ${fileEditorManagerLookupStatements()}
+                if (manager) {
+                    manager.closeAllFiles();
                 }
                 """.trimIndent(),
                 true
@@ -423,9 +403,8 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
             callJs(
                 """
                 (function() {
-                    const project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
-                    if (project) {
-                        const manager = com.intellij.openapi.fileEditor.FileEditorManager.getInstance(project);
+                    ${fileEditorManagerLookupStatements()}
+                    if (manager) {
                         const allEditors = manager.getAllEditors();
                         for (let i = 0; i < allEditors.length; i++) {
                             const editor = allEditors[i];
@@ -467,8 +446,7 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
             callJs(
                 """
                 (function() {
-                    const project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
-                    const manager = project ? com.intellij.openapi.fileEditor.FileEditorManager.getInstance(project) : null;
+                    ${fileEditorManagerLookupStatements()}
                     const diffEditorCount = manager
                         ? manager.getAllEditors().filter(editor => editor.getClass().getName().toLowerCase().includes("diff")).length
                         : 0;
@@ -618,7 +596,7 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
     private fun statusWidgetScript(body: String): String =
         """
         (function() {
-            const project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
+            ${openProjectLookupStatements()}
             if (!project) return "";
 
             const statusBar = com.intellij.openapi.wm.WindowManager.getInstance().getStatusBar(project);
@@ -629,6 +607,169 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
 
             $body
         })();
+        """.trimIndent()
+
+    private fun selectedBrowserScript(body: String): String =
+        """
+        (function() {
+            ${toolWindowLookupStatements()}
+            if (!project) return;
+
+            const browser = toolWindow && toolWindow.getContentManager().getSelectedContent()
+                ? toolWindow.getContentManager().getSelectedContent().getComponent()
+                : null;
+            if (!browser) return;
+
+            $body
+        })();
+        """.trimIndent()
+
+    private fun toolWindowLookupStatements(
+        projectVariableName: String = "project",
+        toolWindowVariableName: String = "toolWindow"
+    ): String =
+        """
+        ${openProjectLookupStatements(projectVariableName)}
+        const $toolWindowVariableName = $projectVariableName
+            ? com.intellij.openapi.wm.ToolWindowManager.getInstance($projectVariableName).getToolWindow("GitChangesView")
+            : null;
+        """.trimIndent()
+
+    private fun fileEditorManagerLookupStatements(
+        projectVariableName: String = "project",
+        managerVariableName: String = "manager"
+    ): String =
+        """
+        ${openProjectLookupStatements(projectVariableName)}
+        const $managerVariableName = $projectVariableName
+            ? com.intellij.openapi.fileEditor.FileEditorManager.getInstance($projectVariableName)
+            : null;
+        """.trimIndent()
+
+    private fun selectedTextEditorLookupStatements(
+        projectVariableName: String = "project",
+        managerVariableName: String = "manager",
+        editorVariableName: String = "editor"
+    ): String =
+        """
+        ${fileEditorManagerLookupStatements(projectVariableName, managerVariableName)}
+        const $editorVariableName = $managerVariableName ? $managerVariableName.getSelectedTextEditor() : null;
+        """.trimIndent()
+
+    private fun changesTreeLookupFunctionsScript(): String =
+        """
+        function findTree() {
+            var windows = java.awt.Window.getWindows();
+            for (var w = 0; w < windows.length; w++) {
+                var queue = new java.util.LinkedList();
+                queue.add(windows[w]);
+                while (!queue.isEmpty()) {
+                    var component = queue.poll();
+                    if (component && component.getClass().getName().endsWith("LstCrcAsyncChangesTree") && component.isShowing()) {
+                        return component;
+                    }
+                    if (!component) continue;
+                    try {
+                        var children = component.getComponents();
+                        if (children) {
+                            for (var ci = 0; ci < children.length; ci++) {
+                                queue.add(children[ci]);
+                            }
+                        }
+                    } catch (ignored) {}
+                }
+            }
+            return null;
+        }
+        """.trimIndent()
+
+    private fun coloredFragmentReflectionFunctionsScript(): String =
+        """
+        function findDeclaredField(instance, fieldName) {
+            var cls = instance.getClass();
+            while (cls) {
+                try {
+                    var field = cls.getDeclaredField(fieldName);
+                    field.setAccessible(true);
+                    return field;
+                } catch (ignored) {
+                    cls = cls.getSuperclass();
+                }
+            }
+            return null;
+        }
+
+        function fragmentText(component) {
+            if (!component) return "";
+            var fragmentsField = findDeclaredField(component, "myFragments");
+            if (!fragmentsField) return "";
+            var fragments = fragmentsField.get(component);
+            if (!fragments) return "";
+
+            var values = [];
+            var iterator = fragments.iterator();
+            while (iterator.hasNext()) {
+                var fragment = iterator.next();
+                var textField = findDeclaredField(fragment, "myText") || findDeclaredField(fragment, "text");
+                if (textField) {
+                    values.push(String(textField.get(fragment)));
+                }
+            }
+            return values.join("");
+        }
+        """.trimIndent()
+
+    private fun selectedContentStateServiceLookupStatements(
+        projectVariableName: String = "project",
+        toolWindowVariableName: String = "toolWindow",
+        contentVariableName: String = "content",
+        classLoaderVariableName: String = "classLoader",
+        stateServiceVariableName: String = "stateService"
+    ): String =
+        """
+        ${toolWindowLookupStatements(projectVariableName, toolWindowVariableName)}
+        const $contentVariableName = $toolWindowVariableName ? $toolWindowVariableName.getContentManager().getSelectedContent() : null;
+        const $classLoaderVariableName = $contentVariableName
+            ? $contentVariableName.getComponent().getClass().getClassLoader()
+            : $projectVariableName.getClass().getClassLoader();
+        const stateServiceClass = java.lang.Class.forName(
+            "com.github.uiopak.lstcrc.services.ToolWindowStateService",
+            true,
+            $classLoaderVariableName
+        );
+        const $stateServiceVariableName = $projectVariableName.getService(stateServiceClass);
+        """.trimIndent()
+
+    private fun visualTrackerManagerScript(body: String): String =
+        """
+        (function() {
+            ${openProjectLookupStatements()}
+            if (!project) return "";
+
+            ${pluginClassLoaderLookupStatements("classLoader")}
+            if (!classLoader) return "";
+
+            try {
+                const managerClass = classLoader.loadClass("com.github.uiopak.lstcrc.gutters.VisualTrackerManager");
+                const manager = project.getService(managerClass);
+                if (!manager) return "";
+                $body
+            } catch (e) {
+                return "";
+            }
+        })();
+        """.trimIndent()
+
+    private fun openProjectLookupStatements(projectVariableName: String = "project"): String =
+        """
+        const $projectVariableName = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
+        """.trimIndent()
+
+    private fun pluginClassLoaderLookupStatements(classLoaderVariableName: String = "cl"): String =
+        """
+        const pluginId = com.intellij.openapi.extensions.PluginId.getId("com.github.uiopak.lstcrc");
+        const plugin = com.intellij.ide.plugins.PluginManagerCore.getPlugin(pluginId);
+        const $classLoaderVariableName = plugin ? plugin.getPluginClassLoader() : null;
         """.trimIndent()
 
     fun setShowWidgetContext(show: Boolean) {
@@ -643,11 +784,8 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
             runJs(
                 """
                 (function() {
-                    const project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
-                    if (!project) return;
-
-                    const toolWindow = com.intellij.openapi.wm.ToolWindowManager.getInstance(project).getToolWindow("GitChangesView");
-                    if (!toolWindow) return;
+                    ${toolWindowLookupStatements()}
+                    if (!project || !toolWindow) return;
 
                     const compatibility = com.github.uiopak.lstcrc.toolWindow.ToolWindowUiCompatibility.INSTANCE;
                     compatibility.setToolWindowTitleVisible(toolWindow, ${if (show) "true" else "false"});
@@ -663,11 +801,8 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
             callJs(
                 """
                 (function() {
-                    const project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
-                    if (!project) return false;
-
-                    const toolWindow = com.intellij.openapi.wm.ToolWindowManager.getInstance(project).getToolWindow("GitChangesView");
-                    if (!toolWindow) return false;
+                    ${toolWindowLookupStatements()}
+                    if (!project || !toolWindow) return false;
 
                     const compatibility = com.github.uiopak.lstcrc.toolWindow.ToolWindowUiCompatibility.INSTANCE;
                     return compatibility.toolWindowTitleVisible(toolWindow);
@@ -682,20 +817,13 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
         step("Set include HEAD in scopes to $include") {
             setPluginBooleanSetting(INCLUDE_HEAD_IN_SCOPES_KEY, include, false)
             runJs(
-                """
-                (function() {
-                    const project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
-                    if (!project) return;
-
-                    const toolWindow = com.intellij.openapi.wm.ToolWindowManager.getInstance(project).getToolWindow("GitChangesView");
-                    const browser = toolWindow && toolWindow.getContentManager().getSelectedContent()
-                        ? toolWindow.getContentManager().getSelectedContent().getComponent()
-                        : null;
-                    if (browser && browser.requestRefreshData) {
+                selectedBrowserScript(
+                    """
+                    if (browser.requestRefreshData) {
                         browser.requestRefreshData();
                     }
-                })();
-                """.trimIndent(),
+                    """.trimIndent()
+                ),
                 true
             )
         }
@@ -716,20 +844,13 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
             showCommits?.let { setPluginBooleanSetting(SHOW_CONTEXT_FOR_COMMITS_KEY, it, false) }
             showLineStats?.let { setPluginBooleanSetting(SHOW_LINE_STATS_IN_TREE_KEY, it, false) }
             runJs(
-                """
-                (function() {
-                    const project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
-                    if (!project) return;
-
-                    const toolWindow = com.intellij.openapi.wm.ToolWindowManager.getInstance(project).getToolWindow("GitChangesView");
-                    const browser = toolWindow && toolWindow.getContentManager().getSelectedContent()
-                        ? toolWindow.getContentManager().getSelectedContent().getComponent()
-                        : null;
-                    if (browser && browser.rebuildView) {
+                selectedBrowserScript(
+                    """
+                    if (browser.rebuildView) {
                         browser.rebuildView();
                     }
-                })();
-                """.trimIndent(),
+                    """.trimIndent()
+                ),
                 true
             )
         }
@@ -745,20 +866,13 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
         step("Set show untracked files as new to $enabled") {
             setPluginBooleanSetting(SHOW_UNTRACKED_FILES_AS_NEW_KEY, enabled, false)
             runJs(
-                """
-                (function() {
-                    const project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
-                    if (!project) return;
-
-                    const toolWindow = com.intellij.openapi.wm.ToolWindowManager.getInstance(project).getToolWindow("GitChangesView");
-                    const browser = toolWindow && toolWindow.getContentManager().getSelectedContent()
-                        ? toolWindow.getContentManager().getSelectedContent().getComponent()
-                        : null;
-                    if (browser && browser.requestRefreshData) {
+                selectedBrowserScript(
+                    """
+                    if (browser.requestRefreshData) {
                         browser.requestRefreshData();
                     }
-                })();
-                """.trimIndent(),
+                    """.trimIndent()
+                ),
                 true
             )
         }
@@ -769,10 +883,11 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
             callJs(
                 """
                 (function() {
+                    ${settingsServiceLookupStatements("service")}
                     const properties = com.intellij.ide.util.PropertiesComponent.getInstance();
-                    return String(properties.getBoolean('$SHOW_CONTEXT_SINGLE_REPO_KEY', true)) + "|" +
-                        String(properties.getBoolean('$SHOW_CONTEXT_FOR_COMMITS_KEY', false)) + "|" +
-                        String(properties.getBoolean('$SHOW_LINE_STATS_IN_TREE_KEY', false));
+                    return String(service ? service.getBoolean('$SHOW_CONTEXT_SINGLE_REPO_KEY', true) : properties.getBoolean('$SHOW_CONTEXT_SINGLE_REPO_KEY', true)) + "|" +
+                        String(service ? service.getBoolean('$SHOW_CONTEXT_FOR_COMMITS_KEY', false) : properties.getBoolean('$SHOW_CONTEXT_FOR_COMMITS_KEY', false)) + "|" +
+                        String(service ? service.getBoolean('$SHOW_LINE_STATS_IN_TREE_KEY', false) : properties.getBoolean('$SHOW_LINE_STATS_IN_TREE_KEY', false));
                 })();
                 """.trimIndent(),
                 true
@@ -785,10 +900,11 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
             callJs(
                 """
                 (function() {
+                    ${settingsServiceLookupStatements("service")}
                     const properties = com.intellij.ide.util.PropertiesComponent.getInstance();
-                    return String(properties.getBoolean('$ENABLE_GUTTER_MARKERS_KEY', true)) + "|" +
-                        String(properties.getBoolean('$ENABLE_GUTTER_FOR_NEW_FILES_KEY', false)) + "|" +
-                        String(properties.getBoolean('$INCLUDE_HEAD_IN_SCOPES_KEY', false));
+                    return String(service ? service.getBoolean('$ENABLE_GUTTER_MARKERS_KEY', true) : properties.getBoolean('$ENABLE_GUTTER_MARKERS_KEY', true)) + "|" +
+                        String(service ? service.getBoolean('$ENABLE_GUTTER_FOR_NEW_FILES_KEY', false) : properties.getBoolean('$ENABLE_GUTTER_FOR_NEW_FILES_KEY', false)) + "|" +
+                        String(service ? service.getBoolean('$INCLUDE_HEAD_IN_SCOPES_KEY', false) : properties.getBoolean('$INCLUDE_HEAD_IN_SCOPES_KEY', false));
                 })();
                 """.trimIndent(),
                 true
@@ -802,14 +918,12 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
             callJs(
                 """
                 (function() {
-                    const project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
+                    ${openProjectLookupStatements()}
                     if (!project) return "";
 
-                    const pluginId = com.intellij.openapi.extensions.PluginId.getId("com.github.uiopak.lstcrc");
-                    const plugin = com.intellij.ide.plugins.PluginManagerCore.getPlugin(pluginId);
-                    if (!plugin) return "plugin=missing";
+                    ${pluginClassLoaderLookupStatements("classLoader")}
+                    if (!classLoader) return "plugin=missing";
 
-                    const classLoader = plugin.getPluginClassLoader();
                     const serviceClass = classLoader.loadClass("com.github.uiopak.lstcrc.services.ProjectActiveDiffDataService");
                     const diffDataService = project.getService(serviceClass);
                     if (!diffDataService) return "diff=missing";
@@ -856,62 +970,8 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
                 var result = new java.util.concurrent.atomic.AtomicReference("");
                 var targetFileName = ${toJsStringLiteral(fileName)};
 
-                function findTree() {
-                    var windows = java.awt.Window.getWindows();
-                    for (var w = 0; w < windows.length; w++) {
-                        var queue = new java.util.LinkedList();
-                        queue.add(windows[w]);
-                        while (!queue.isEmpty()) {
-                            var component = queue.poll();
-                            if (component && component.getClass().getName().endsWith("LstCrcAsyncChangesTree") && component.isShowing()) {
-                                return component;
-                            }
-                            if (!component) continue;
-                            try {
-                                var children = component.getComponents();
-                                if (children) {
-                                    for (var ci = 0; ci < children.length; ci++) {
-                                        queue.add(children[ci]);
-                                    }
-                                }
-                            } catch (ignored) {}
-                        }
-                    }
-                    return null;
-                }
-
-                function findDeclaredField(instance, fieldName) {
-                    var cls = instance.getClass();
-                    while (cls) {
-                        try {
-                            var field = cls.getDeclaredField(fieldName);
-                            field.setAccessible(true);
-                            return field;
-                        } catch (ignored) {
-                            cls = cls.getSuperclass();
-                        }
-                    }
-                    return null;
-                }
-
-                function fragmentText(component) {
-                    if (!component) return "";
-                    var fragmentsField = findDeclaredField(component, "myFragments");
-                    if (!fragmentsField) return "";
-                    var fragments = fragmentsField.get(component);
-                    if (!fragments) return "";
-
-                    var values = [];
-                    var iterator = fragments.iterator();
-                    while (iterator.hasNext()) {
-                        var fragment = iterator.next();
-                        var textField = findDeclaredField(fragment, "myText") || findDeclaredField(fragment, "text");
-                        if (textField) {
-                            values.push(String(textField.get(fragment)));
-                        }
-                    }
-                    return values.join("");
-                }
+                ${changesTreeLookupFunctionsScript()}
+                ${coloredFragmentReflectionFunctionsScript()}
 
                 com.intellij.openapi.application.ApplicationManager.getApplication().invokeAndWait(new java.lang.Runnable({
                     run: function() {
@@ -968,62 +1028,8 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
             (function() {
                 var result = new java.util.concurrent.atomic.AtomicReference("");
 
-                function findTree() {
-                    var windows = java.awt.Window.getWindows();
-                    for (var w = 0; w < windows.length; w++) {
-                        var queue = new java.util.LinkedList();
-                        queue.add(windows[w]);
-                        while (!queue.isEmpty()) {
-                            var component = queue.poll();
-                            if (component && component.getClass().getName().endsWith("LstCrcAsyncChangesTree") && component.isShowing()) {
-                                return component;
-                            }
-                            if (!component) continue;
-                            try {
-                                var children = component.getComponents();
-                                if (children) {
-                                    for (var ci = 0; ci < children.length; ci++) {
-                                        queue.add(children[ci]);
-                                    }
-                                }
-                            } catch (ignored) {}
-                        }
-                    }
-                    return null;
-                }
-
-                function findDeclaredField(instance, fieldName) {
-                    var cls = instance.getClass();
-                    while (cls) {
-                        try {
-                            var field = cls.getDeclaredField(fieldName);
-                            field.setAccessible(true);
-                            return field;
-                        } catch (ignored) {
-                            cls = cls.getSuperclass();
-                        }
-                    }
-                    return null;
-                }
-
-                function fragmentText(component) {
-                    if (!component) return "";
-                    var fragmentsField = findDeclaredField(component, "myFragments");
-                    if (!fragmentsField) return "";
-                    var fragments = fragmentsField.get(component);
-                    if (!fragments) return "";
-
-                    var values = [];
-                    var iterator = fragments.iterator();
-                    while (iterator.hasNext()) {
-                        var fragment = iterator.next();
-                        var textField = findDeclaredField(fragment, "myText") || findDeclaredField(fragment, "text");
-                        if (textField) {
-                            values.push(String(textField.get(fragment)));
-                        }
-                    }
-                    return values.join("");
-                }
+                ${changesTreeLookupFunctionsScript()}
+                ${coloredFragmentReflectionFunctionsScript()}
 
                 com.intellij.openapi.application.ApplicationManager.getApplication().invokeAndWait(new java.lang.Runnable({
                     run: function() {
@@ -1074,28 +1080,10 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
                 """
                 (function() {
                     var result = new java.util.concurrent.atomic.AtomicReference("");
+                    ${changesTreeLookupFunctionsScript()}
                     com.intellij.openapi.application.ApplicationManager.getApplication().invokeAndWait(new java.lang.Runnable({
                         run: function() {
-                            var tree = null;
-                            var windows = java.awt.Window.getWindows();
-                            for (var w = 0; w < windows.length && !tree; w++) {
-                                var queue = new java.util.LinkedList();
-                                queue.add(windows[w]);
-                                while (!queue.isEmpty()) {
-                                    var c = queue.poll();
-                                    if (c && c.getClass().getName().endsWith("LstCrcAsyncChangesTree") && c.isShowing()) {
-                                        tree = c;
-                                        break;
-                                    } else if (c) {
-                                        try {
-                                            var children = c.getComponents();
-                                            if (children) {
-                                                for (var ci = 0; ci < children.length; ci++) queue.add(children[ci]);
-                                            }
-                                        } catch(e) {}
-                                    }
-                                }
-                            }
+                            var tree = findTree();
                             if (!tree) return;
                             for (var row = 0; row < tree.getRowCount(); row++) {
                                 var path = tree.getPathForRow(row);
@@ -1130,11 +1118,8 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
             callJs(
                 """
                 (function() {
-                    const project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
-                    if (!project) return "";
-
-                    const toolWindow = com.intellij.openapi.wm.ToolWindowManager.getInstance(project).getToolWindow("GitChangesView");
-                    if (!toolWindow) return "";
+                    ${toolWindowLookupStatements()}
+                    if (!project || !toolWindow) return "";
 
                     const content = toolWindow.getContentManager().getSelectedContent();
                     if (!content) return "";
@@ -1159,19 +1144,11 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
             callJs(
                 """
                 (function() {
-                    const project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
-                    if (!project) return "";
-
-                    const toolWindow = com.intellij.openapi.wm.ToolWindowManager.getInstance(project).getToolWindow("GitChangesView");
-                    if (!toolWindow) return "";
-
-                    const content = toolWindow.getContentManager().getSelectedContent();
+                    ${selectedContentStateServiceLookupStatements()}
+                    if (!project || !toolWindow) return "";
                     if (!content) return "";
 
                     const displayName = content.getDisplayName ? String(content.getDisplayName()) : "";
-                    const classLoader = content.getComponent().getClass().getClassLoader();
-                    const stateServiceClass = java.lang.Class.forName("com.github.uiopak.lstcrc.services.ToolWindowStateService", true, classLoader);
-                    const stateService = project.getService(stateServiceClass);
                     let tabInfo = stateService ? stateService.getSelectedTabInfo() : null;
                     const state = stateService ? stateService.getState() : null;
                     const openTabs = state ? state.getOpenTabs() : null;
@@ -1295,16 +1272,11 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
                 """
                 const branchName = ${toJsStringLiteral(branchName)};
                 const newAlias = ${newAlias?.let(::toJsStringLiteral) ?: "null"};
-                const project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
+                ${selectedContentStateServiceLookupStatements()}
                 if (!project) {
                     throw new java.lang.IllegalStateException("No open project available for tab alias update");
                 }
 
-                const toolWindow = com.intellij.openapi.wm.ToolWindowManager.getInstance(project).getToolWindow("GitChangesView");
-                const content = toolWindow ? toolWindow.getContentManager().getSelectedContent() : null;
-                const classLoader = content ? content.getComponent().getClass().getClassLoader() : project.getClass().getClassLoader();
-                const stateServiceClass = java.lang.Class.forName("com.github.uiopak.lstcrc.services.ToolWindowStateService", true, classLoader);
-                const stateService = project.getService(stateServiceClass);
                 stateService.updateTabAlias(branchName, newAlias);
                 """.trimIndent(),
                 true
@@ -1323,25 +1295,21 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
                     throw new java.lang.IllegalStateException("No open project available for SetRevisionAsRepoComparisonAction");
                 }
 
-                const toolWindow = com.intellij.openapi.wm.ToolWindowManager.getInstance(project).getToolWindow("GitChangesView");
+                ${selectedContentStateServiceLookupStatements()}
                 if (!toolWindow) {
                     throw new java.lang.IllegalStateException("GitChangesView tool window is not available");
                 }
 
-                const content = toolWindow.getContentManager().getSelectedContent();
                 if (!content) {
                     throw new java.lang.IllegalStateException("No selected LST-CRC tab content available for repo comparison update");
                 }
 
                 const displayName = content.getDisplayName ? String(content.getDisplayName()) : "";
-                const classLoader = content.getComponent().getClass().getClassLoader();
                 const repoRootPath = project.getBasePath() ? String(project.getBasePath()).replace(/\\/g, '/') : null;
                 if (!repoRootPath) {
                     throw new java.lang.IllegalStateException("Project base path is not available for repo comparison update");
                 }
 
-                const stateServiceClass = java.lang.Class.forName("com.github.uiopak.lstcrc.services.ToolWindowStateService", true, classLoader);
-                const stateService = project.getService(stateServiceClass);
                 let selectedTabInfo = stateService ? stateService.getSelectedTabInfo() : null;
                 if (!selectedTabInfo && displayName.length > 0 && stateService) {
                     selectedTabInfo = stateService.findTabByDisplayName(displayName);
@@ -1363,21 +1331,16 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
             runJs(
                 """
                 const branchName = ${toJsStringLiteral(branchName)};
-                const project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
+                ${selectedContentStateServiceLookupStatements()}
                 if (!project) {
                     throw new java.lang.IllegalStateException("No open project available for repo comparison update");
                 }
 
-                const toolWindow = com.intellij.openapi.wm.ToolWindowManager.getInstance(project).getToolWindow("GitChangesView");
-                const content = toolWindow ? toolWindow.getContentManager().getSelectedContent() : null;
                 if (!content) {
                     throw new java.lang.IllegalStateException("No selected LST-CRC tab content available for repo comparison update");
                 }
 
                 const displayName = content.getDisplayName ? String(content.getDisplayName()) : "";
-                const classLoader = content.getComponent().getClass().getClassLoader();
-                const stateServiceClass = java.lang.Class.forName("com.github.uiopak.lstcrc.services.ToolWindowStateService", true, classLoader);
-                const stateService = project.getService(stateServiceClass);
                 let selectedTabInfo = stateService ? stateService.getSelectedTabInfo() : null;
                 let selectedTabIndex = -1;
 
@@ -1417,28 +1380,15 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
     fun visualGutterSummaryForSelectedEditor(): String {
         return step("Read visual gutter summary for selected editor") {
             callJs(
-                """
-                (function() {
-                    const project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
-                    if (!project) return "";
-
-                    const editor = com.intellij.openapi.fileEditor.FileEditorManager.getInstance(project).getSelectedTextEditor();
+                visualTrackerManagerScript(
+                    """
+                    ${selectedTextEditorLookupStatements("project", "manager", "editor")}
                     if (!editor) return "";
 
                     const document = editor.getDocument();
-                    const pluginId = com.intellij.openapi.extensions.PluginId.getId("com.github.uiopak.lstcrc");
-                    const plugin = com.intellij.ide.plugins.PluginManagerCore.getPlugin(pluginId);
-                    if (plugin != null) {
-                        const managerClass = plugin.getPluginClassLoader()
-                            .loadClass("com.github.uiopak.lstcrc.gutters.VisualTrackerManager");
-                        const manager = project.getService(managerClass);
-                        if (manager != null) {
-                            return String(manager.debugGutterSummaryFor(document));
-                        }
-                    }
-                    return "";
-                })();
-                """.trimIndent(),
+                    return String(manager.debugGutterSummaryFor(document));
+                    """.trimIndent()
+                ),
                 true
             )
         }
@@ -1493,9 +1443,7 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
     private fun settingsServiceScript(body: String): String =
         """
         (function() {
-            const pluginId = com.intellij.openapi.extensions.PluginId.getId("com.github.uiopak.lstcrc");
-            const plugin = com.intellij.ide.plugins.PluginManagerCore.getPlugin(pluginId);
-            const cl = plugin ? plugin.getPluginClassLoader() : null;
+            ${pluginClassLoaderLookupStatements()}
             if (!cl) return;
             try {
                 const settingsClass = cl.loadClass("com.github.uiopak.lstcrc.toolWindow.LstCrcSettingsService");
@@ -1508,9 +1456,7 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
 
     private fun settingsServiceLookupStatements(serviceVariableName: String): String =
         """
-        const pluginId = com.intellij.openapi.extensions.PluginId.getId("com.github.uiopak.lstcrc");
-        const plugin = com.intellij.ide.plugins.PluginManagerCore.getPlugin(pluginId);
-        const cl = plugin ? plugin.getPluginClassLoader() : null;
+        ${pluginClassLoaderLookupStatements()}
         let $serviceVariableName = null;
         if (cl) {
             try {
