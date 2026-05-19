@@ -3,9 +3,9 @@ package com.github.uiopak.lstcrc.testing
 import com.github.uiopak.lstcrc.LstCrcConstants
 import com.github.uiopak.lstcrc.resources.LstCrcBundle
 import com.github.uiopak.lstcrc.gutters.VisualTrackerManager
-import com.github.uiopak.lstcrc.messaging.PLUGIN_SETTINGS_CHANGED_TOPIC
 import com.github.uiopak.lstcrc.scopes.LstCrcProvidedScopes
 import com.github.uiopak.lstcrc.scopes.LstCrcSearchScopeProvider
+import com.github.uiopak.lstcrc.services.BranchSnapshot
 import com.github.uiopak.lstcrc.services.GitService
 import com.github.uiopak.lstcrc.services.ProjectActiveDiffDataService
 import com.github.uiopak.lstcrc.services.ToolWindowStateService
@@ -15,6 +15,7 @@ import com.github.uiopak.lstcrc.toolWindow.BranchSelectionPanel
 import com.github.uiopak.lstcrc.toolWindow.LstCrcSettingsService
 import com.github.uiopak.lstcrc.toolWindow.ShowRepoComparisonInfoAction
 import com.github.uiopak.lstcrc.toolWindow.LstCrcSettingDefinitions
+import com.github.uiopak.lstcrc.toolWindow.LstCrcStatusWidget
 import com.github.uiopak.lstcrc.toolWindow.ToolWindowHelper
 import com.github.uiopak.lstcrc.toolWindow.ToolWindowSettingsProvider
 import com.github.uiopak.lstcrc.toolWindow.ToolWindowUiCompatibility
@@ -69,6 +70,7 @@ import com.intellij.ui.JBColor
 import com.intellij.ui.content.Content
 import com.intellij.ui.treeStructure.Tree
 import com.intellij.util.ui.tree.TreeUtil
+import git4idea.repo.GitRepository
 import git4idea.repo.GitRepositoryManager
 import java.awt.Color
 import java.awt.Component
@@ -80,7 +82,9 @@ import java.awt.event.MouseEvent
 import java.awt.Window
 import java.io.File
 import javax.swing.JComboBox
+import javax.swing.JList
 import javax.swing.JTree
+import javax.swing.ListCellRenderer
 import javax.swing.SwingUtilities
 import javax.swing.tree.DefaultMutableTreeNode
 import javax.swing.tree.TreePath
@@ -346,7 +350,7 @@ class LstCrcUiTestBridge {
     fun statusWidgetText(): String = onEdtResult {
         val project = project()
         val statusBar = WindowManager.getInstance().getStatusBar(project) ?: return@onEdtResult ""
-        val widget = statusBar.getWidget("LstCrcStatusWidget") ?: return@onEdtResult ""
+        val widget = statusBar.getWidget(LstCrcStatusWidget.ID) ?: return@onEdtResult ""
         (widget as? StatusBarWidget.TextPresentation)?.getText().orEmpty()
     }
 
@@ -560,7 +564,7 @@ class LstCrcUiTestBridge {
         val project = project()
         onEdt {
             settingsService().setShowWidgetContext(show)
-            project.messageBus.syncPublisher(PLUGIN_SETTINGS_CHANGED_TOPIC).onSettingsChanged()
+            LstCrcStatusWidget.refresh(project)
         }
         awaitCurrentSelectionRefresh(project)
     }

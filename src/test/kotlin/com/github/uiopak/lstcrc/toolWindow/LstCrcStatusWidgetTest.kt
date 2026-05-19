@@ -62,6 +62,18 @@ class LstCrcStatusWidgetTest : BasePlatformTestCase() {
         assertEquals(LstCrcBundle.message("plugin.name.short"), widget.getText())
     }
 
+    fun testPluginXmlStatusWidgetFactoryIdMatchesWidgetConstant() {
+        val pluginXml = javaClass.classLoader.getResourceAsStream("META-INF/plugin.xml")
+            ?.bufferedReader()
+            ?.use { it.readText() }
+            ?: error("Could not load META-INF/plugin.xml from test classpath.")
+
+        assertTrue(
+            "plugin.xml statusBarWidgetFactory id should match LstCrcStatusWidget.ID.",
+            pluginXml.contains("""statusBarWidgetFactory implementation="com.github.uiopak.lstcrc.toolWindow.LstCrcStatusWidgetFactory" id="${LstCrcStatusWidget.ID}"""),
+        )
+    }
+
     @Suppress("SameParameterValue")
     private fun setShowWidgetContext(show: Boolean) {
         ApplicationManager.getApplication().service<LstCrcSettingsService>().setShowWidgetContext(show)

@@ -1,6 +1,5 @@
 package com.github.uiopak.lstcrc.toolWindow
 
-import com.github.uiopak.lstcrc.messaging.PLUGIN_SETTINGS_CHANGED_TOPIC
 import com.github.uiopak.lstcrc.resources.LstCrcBundle
 import com.github.uiopak.lstcrc.services.GitService
 import com.github.uiopak.lstcrc.gutters.VisualTrackerManager
@@ -264,7 +263,7 @@ object ToolWindowSettingsProvider {
             LstCrcBundle.message("settings.show.widget.context"),
             ::isShowWidgetContext,
             { settingsService().setShowWidgetContext(it) },
-            onChanged = { e, _ -> e.project?.messageBus?.syncPublisher(PLUGIN_SETTINGS_CHANGED_TOPIC)?.onSettingsChanged() }
+            onChanged = { e, _ -> e.project?.let(LstCrcStatusWidget::refresh) }
         ))
 
         rootSettingsGroup.add(createBooleanSettingToggle(

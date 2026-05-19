@@ -12,6 +12,8 @@ Non-negotiable constraints:
 
 Plan status:
 
+- Conservative remaining count: 117 plan points.
+
 - File-by-file review completed across production, unit, Remote Robot, Starter, resources, and bridge files.
 - Cross-check completed against prior subagent findings and repo memory notes.
 - Conflicts reconciled in plan text where a public replacement is not currently available.
@@ -160,6 +162,13 @@ Plan status:
 	- Narrowed Starter suite breakage to a single failing restart-persistence assertion in multi-root Starter coverage.
 	- Hardened the Starter restart-persistence test flow by waiting for restored tab presence first, then selecting and asserting restored alias/comparison state.
 	- Fixed persisted state deserialization bug for restart flows by restoring writable state properties required by XMLB for ToolWindowState and TabInfo.
+	- LstCrcStatusWidget now refreshes through one explicit `refresh(project)` helper from the settings provider, Starter bridge, and startup path, removing redundant widget-only settings-topic plumbing.
+	- Status-widget lookups now reuse `LstCrcStatusWidget.ID` across the Starter bridge and Remote Robot fixture, with focused unit coverage that keeps the `plugin.xml` widget-factory id aligned with the widget constant.
+	- Remote Robot fixture setting writes now reuse `LstCrcSettingDefinitions` keys instead of duplicating raw setting ids inline.
+	- IdeaFrame now routes status-widget JS reads through one shared widget-lookup helper instead of repeating the same project/status-bar/widget lookup across widget text and popup snapshot helpers.
+	- IdeaFrame boolean and int setting writes now reuse one shared `LstCrcSettingsService` JS helper instead of rebuilding the same plugin-classloader lookup in each setter path.
+	- IdeaFrame now shares one settings-service lookup statement block between reset-state and click-settings snapshot helpers instead of duplicating the same plugin-classloader and service lookup inline.
+	- IdeaFrame string setting writes now reuse the same shared `LstCrcSettingsService` JS helper while preserving the existing `PropertiesComponent` fallback path.
 
 ## Phase 0: Guardrails And Sequencing
 

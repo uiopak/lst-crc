@@ -2,6 +2,8 @@
 
 package com.github.uiopak.lstcrc.plugin.pages
 
+import com.github.uiopak.lstcrc.toolWindow.LstCrcSettingDefinitions
+import com.github.uiopak.lstcrc.toolWindow.LstCrcStatusWidget
 import com.github.uiopak.lstcrc.toolWindow.LstCrcSettingsService
 import com.intellij.remoterobot.RemoteRobot
 import com.intellij.remoterobot.data.RemoteComponent
@@ -23,24 +25,25 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
 
     companion object {
         private val CI_SMART_MODE_TIMEOUT: Duration = Duration.ofMinutes(10)
-        private const val SINGLE_CLICK_ACTION_KEY = "com.github.uiopak.lstcrc.app.singleClickAction"
-        private const val DOUBLE_CLICK_ACTION_KEY = "com.github.uiopak.lstcrc.app.doubleClickAction"
-        private const val MIDDLE_CLICK_ACTION_KEY = "com.github.uiopak.lstcrc.app.middleClickAction"
-        private const val DOUBLE_MIDDLE_CLICK_ACTION_KEY = "com.github.uiopak.lstcrc.app.doubleMiddleClickAction"
-        private const val RIGHT_CLICK_ACTION_KEY = "com.github.uiopak.lstcrc.app.rightClickAction"
-        private const val DOUBLE_RIGHT_CLICK_ACTION_KEY = "com.github.uiopak.lstcrc.app.doubleRightClickAction"
-        private const val SHOW_CONTEXT_MENU_KEY = "com.github.uiopak.lstcrc.app.showContextMenu"
-        private const val DOUBLE_CLICK_DELAY_KEY = "com.github.uiopak.lstcrc.app.userDoubleClickDelay"
-        private const val INCLUDE_HEAD_IN_SCOPES_KEY = "com.github.uiopak.lstcrc.app.includeHeadInScopes"
-        private const val ENABLE_GUTTER_MARKERS_KEY = "com.github.uiopak.lstcrc.app.enableGutterMarkers"
-        private const val ENABLE_GUTTER_FOR_NEW_FILES_KEY = "com.github.uiopak.lstcrc.app.enableGutterForNewFiles"
-        private const val SHOW_TOOL_WINDOW_TITLE_KEY = "com.github.uiopak.lstcrc.app.showToolWindowTitle"
-        private const val SHOW_WIDGET_CONTEXT_KEY = "com.github.uiopak.lstcrc.app.showWidgetContext"
-        private const val SHOW_CONTEXT_SINGLE_REPO_KEY = "com.github.uiopak.lstcrc.app.showContextSingleRepo"
-        private const val SHOW_CONTEXT_FOR_COMMITS_KEY = "com.github.uiopak.lstcrc.app.showContextForCommits"
-        private const val SHOW_LINE_STATS_IN_TREE_KEY = "com.github.uiopak.lstcrc.app.showLineStatsInTree"
-        private const val EXPAND_NEW_FILES_IN_COLLAPSED_DIRS_KEY = "com.github.uiopak.lstcrc.app.expandNewFilesInCollapsedDirs"
-        private const val SHOW_UNTRACKED_FILES_AS_NEW_KEY = "com.github.uiopak.lstcrc.app.showUntrackedFilesAsNew"
+        private val SINGLE_CLICK_ACTION_KEY = LstCrcSettingDefinitions.SINGLE_CLICK_ACTION.key
+        private val DOUBLE_CLICK_ACTION_KEY = LstCrcSettingDefinitions.DOUBLE_CLICK_ACTION.key
+        private val MIDDLE_CLICK_ACTION_KEY = LstCrcSettingDefinitions.MIDDLE_CLICK_ACTION.key
+        private val DOUBLE_MIDDLE_CLICK_ACTION_KEY = LstCrcSettingDefinitions.DOUBLE_MIDDLE_CLICK_ACTION.key
+        private val RIGHT_CLICK_ACTION_KEY = LstCrcSettingDefinitions.RIGHT_CLICK_ACTION.key
+        private val DOUBLE_RIGHT_CLICK_ACTION_KEY = LstCrcSettingDefinitions.DOUBLE_RIGHT_CLICK_ACTION.key
+        private val SHOW_CONTEXT_MENU_KEY = LstCrcSettingDefinitions.SHOW_CONTEXT_MENU.key
+        private val DOUBLE_CLICK_DELAY_KEY = LstCrcSettingDefinitions.USER_DOUBLE_CLICK_DELAY.key
+        private val INCLUDE_HEAD_IN_SCOPES_KEY = LstCrcSettingDefinitions.INCLUDE_HEAD_IN_SCOPES.key
+        private val ENABLE_GUTTER_MARKERS_KEY = LstCrcSettingDefinitions.ENABLE_GUTTER_MARKERS.key
+        private val ENABLE_GUTTER_FOR_NEW_FILES_KEY = LstCrcSettingDefinitions.ENABLE_GUTTER_FOR_NEW_FILES.key
+        private val SHOW_TOOL_WINDOW_TITLE_KEY = LstCrcSettingDefinitions.SHOW_TOOL_WINDOW_TITLE.key
+        private val SHOW_WIDGET_CONTEXT_KEY = LstCrcSettingDefinitions.SHOW_WIDGET_CONTEXT.key
+        private val SHOW_CONTEXT_SINGLE_REPO_KEY = LstCrcSettingDefinitions.SHOW_CONTEXT_SINGLE_REPO.key
+        private val SHOW_CONTEXT_FOR_COMMITS_KEY = LstCrcSettingDefinitions.SHOW_CONTEXT_FOR_COMMITS.key
+        private val SHOW_LINE_STATS_IN_TREE_KEY = LstCrcSettingDefinitions.SHOW_LINE_STATS_IN_TREE.key
+        private val EXPAND_NEW_FILES_IN_COLLAPSED_DIRS_KEY = LstCrcSettingDefinitions.EXPAND_NEW_FILES_IN_COLLAPSED_DIRS.key
+        private val SHOW_UNTRACKED_FILES_AS_NEW_KEY = LstCrcSettingDefinitions.SHOW_UNTRACKED_FILES_AS_NEW.key
+        private const val STATUS_WIDGET_ID = LstCrcStatusWidget.ID
     }
 
 
@@ -261,17 +264,13 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
                 const frameHelper = com.intellij.openapi.wm.impl.ProjectFrameHelper.getFrameHelper(component);
                 const project = frameHelper ? frameHelper.getProject() : null;
                 if (project) {
-                    const pluginId = com.intellij.openapi.extensions.PluginId.getId("com.github.uiopak.lstcrc");
-                    const plugin = com.intellij.ide.plugins.PluginManagerCore.getPlugin(pluginId);
-                    const cl = plugin ? plugin.getPluginClassLoader() : null;
+                    ${settingsServiceLookupStatements("svc")}
                     if (cl) {
-                        try {
-                            const settingsClass = cl.loadClass("com.github.uiopak.lstcrc.toolWindow.LstCrcSettingsService");
-                            const svc = com.intellij.openapi.application.ApplicationManager.getApplication().getService(settingsClass);
-                            if (svc) {
-                                svc.resetToDefaults();
-                            }
+                        if (svc) {
+                            svc.resetToDefaults();
+                        }
 
+                        try {
                             const toolWindowStateClass = cl.loadClass("com.github.uiopak.lstcrc.state.ToolWindowState");
                             const toolWindowStateServiceClass = cl.loadClass("com.github.uiopak.lstcrc.services.ToolWindowStateService");
                             const stateService = project.getService(toolWindowStateServiceClass);
@@ -355,16 +354,7 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
             callJs(
                 """
                 (function() {
-                    const pluginId = com.intellij.openapi.extensions.PluginId.getId("com.github.uiopak.lstcrc");
-                    const plugin = com.intellij.ide.plugins.PluginManagerCore.getPlugin(pluginId);
-                    const cl = plugin ? plugin.getPluginClassLoader() : null;
-                    if (!cl) return "";
-
-                    let service = null;
-                    try {
-                        const settingsClass = cl.loadClass("com.github.uiopak.lstcrc.toolWindow.LstCrcSettingsService");
-                        service = com.intellij.openapi.application.ApplicationManager.getApplication().getService(settingsClass);
-                    } catch(e) {}
+                    ${settingsServiceLookupStatements("service")}
 
                     const properties = com.intellij.ide.util.PropertiesComponent.getInstance();
                     const values = [
@@ -506,24 +496,15 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
     fun statusWidgetText(): String {
         return step("Read LST-CRC widget text") {
             callJs(
-                """
-                (function() {
-                    const project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
-                    if (!project) return "";
-
-                    const statusBar = com.intellij.openapi.wm.WindowManager.getInstance().getStatusBar(project);
-                    if (!statusBar) return "";
-
-                    const widget = statusBar.getWidget("LstCrcStatusWidget");
-                    if (!widget) return "";
-
+                statusWidgetScript(
+                    """
                     const presentation = widget.getPresentation();
                     if (presentation && presentation.getText) {
                         return presentation.getText();
                     }
                     return widget.getText ? widget.getText() : "";
-                })();
-                """.trimIndent(),
+                    """.trimIndent()
+                ),
                 true
             )
         }
@@ -542,10 +523,8 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
     fun statusWidgetPopupSnapshot(): String {
         return step("Read LST-CRC widget popup snapshot") {
             val widgetAndStatusBar = callJs<String>(
-                """
-                (function() {
-                    const project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
-                    if (!project) return "";
+                statusWidgetScript(
+                    """
 
                     function safeText(component) {
                         try {
@@ -576,11 +555,6 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
                             return "";
                         }
                     }
-
-                    const statusBar = com.intellij.openapi.wm.WindowManager.getInstance().getStatusBar(project);
-                    if (!statusBar) return "";
-                    const widget = statusBar.getWidget("LstCrcStatusWidget");
-                    if (!widget) return "";
 
                     const presentation = widget.getPresentation ? widget.getPresentation() : widget;
                     const widgetText = presentation && presentation.getText ? String(presentation.getText()) : "";
@@ -615,8 +589,8 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
                         "widget=" + boundsString(widgetComponent),
                         "statusBar=" + boundsString(statusBarComponent)
                     ].join("|");
-                })();
-                """.trimIndent(),
+                    """.trimIndent()
+                ),
                 true
             )
 
@@ -640,6 +614,22 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
             }
         }
     }
+
+    private fun statusWidgetScript(body: String): String =
+        """
+        (function() {
+            const project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
+            if (!project) return "";
+
+            const statusBar = com.intellij.openapi.wm.WindowManager.getInstance().getStatusBar(project);
+            if (!statusBar) return "";
+
+            const widget = statusBar.getWidget("$STATUS_WIDGET_ID");
+            if (!widget) return "";
+
+            $body
+        })();
+        """.trimIndent()
 
     fun setShowWidgetContext(show: Boolean) {
         step("Set widget context prefix to $show") {
@@ -1296,6 +1286,7 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
                 true
             )
         }
+
     }
 
     fun updateTabAlias(branchName: String, newAlias: String?) {
@@ -1463,44 +1454,29 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
         val valueStr = if (value) "true" else "false"
         val defaultStr = if (default) "true" else "false"
         runJs(
-            """
-            (function() {
-                const pluginId = com.intellij.openapi.extensions.PluginId.getId("com.github.uiopak.lstcrc");
-                const plugin = com.intellij.ide.plugins.PluginManagerCore.getPlugin(pluginId);
-                const cl = plugin ? plugin.getPluginClassLoader() : null;
-                if (!cl) return;
-                try {
-                    const settingsClass = cl.loadClass("com.github.uiopak.lstcrc.toolWindow.LstCrcSettingsService");
-                    const appService = com.intellij.openapi.application.ApplicationManager.getApplication().getService(settingsClass);
-                    if (appService) appService.setBoolean(${toJsStringLiteral(key)}, $valueStr, $defaultStr);
-                } catch(e) {}
-            })();
-            """.trimIndent(),
+            settingsServiceScript("appService.setBoolean(${toJsStringLiteral(key)}, $valueStr, $defaultStr);"),
             true
         )
     }
 
     private fun setPluginStringSetting(key: String, value: String, setterMethod: String) {
+        val keyLiteral = toJsStringLiteral(key)
+        val valueLiteral = toJsStringLiteral(value)
+        val setterLiteral = toJsStringLiteral(setterMethod)
         runJs(
             """
-            (function() {
-                const pluginId = com.intellij.openapi.extensions.PluginId.getId("com.github.uiopak.lstcrc");
-                const plugin = com.intellij.ide.plugins.PluginManagerCore.getPlugin(pluginId);
-                const cl = plugin ? plugin.getPluginClassLoader() : null;
                 const properties = com.intellij.ide.util.PropertiesComponent.getInstance();
-                properties.setValue(${toJsStringLiteral(key)}, ${toJsStringLiteral(value)});
-                if (!cl) return;
-                try {
-                    const settingsClass = cl.loadClass("com.github.uiopak.lstcrc.toolWindow.LstCrcSettingsService");
-                    const appService = com.intellij.openapi.application.ApplicationManager.getApplication().getService(settingsClass);
-                    const setterName = ${toJsStringLiteral(setterMethod)};
-                    if (appService && typeof appService[setterName] === "function") {
-                        appService[setterName](${toJsStringLiteral(value)});
+                properties.setValue($keyLiteral, $valueLiteral);
+                ${settingsServiceScript(
+                    """
+                    const setterName = $setterLiteral;
+                    if (typeof appService[setterName] === "function") {
+                        appService[setterName]($valueLiteral);
                     } else {
-                        properties.setValue(${toJsStringLiteral(key)}, ${toJsStringLiteral(value)});
+                        properties.setValue($keyLiteral, $valueLiteral);
                     }
-                } catch(e) {}
-            })();
+                    """.trimIndent()
+                )}
             """.trimIndent(),
             true
         )
@@ -1509,22 +1485,40 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
     @Suppress("SameParameterValue")
     private fun setPluginIntSetting(key: String, value: Int, default: Int) {
         runJs(
-            """
-            (function() {
-                const pluginId = com.intellij.openapi.extensions.PluginId.getId("com.github.uiopak.lstcrc");
-                const plugin = com.intellij.ide.plugins.PluginManagerCore.getPlugin(pluginId);
-                const cl = plugin ? plugin.getPluginClassLoader() : null;
-                if (!cl) return;
-                try {
-                    const settingsClass = cl.loadClass("com.github.uiopak.lstcrc.toolWindow.LstCrcSettingsService");
-                    const appService = com.intellij.openapi.application.ApplicationManager.getApplication().getService(settingsClass);
-                    if (appService) appService.setInt(${toJsStringLiteral(key)}, $value, $default)
-                } catch(e) {}
-            })();
-            """.trimIndent(),
+            settingsServiceScript("appService.setInt(${toJsStringLiteral(key)}, $value, $default);"),
             true
         )
     }
+
+    private fun settingsServiceScript(body: String): String =
+        """
+        (function() {
+            const pluginId = com.intellij.openapi.extensions.PluginId.getId("com.github.uiopak.lstcrc");
+            const plugin = com.intellij.ide.plugins.PluginManagerCore.getPlugin(pluginId);
+            const cl = plugin ? plugin.getPluginClassLoader() : null;
+            if (!cl) return;
+            try {
+                const settingsClass = cl.loadClass("com.github.uiopak.lstcrc.toolWindow.LstCrcSettingsService");
+                const appService = com.intellij.openapi.application.ApplicationManager.getApplication().getService(settingsClass);
+                if (!appService) return;
+                $body
+            } catch(e) {}
+        })();
+        """.trimIndent()
+
+    private fun settingsServiceLookupStatements(serviceVariableName: String): String =
+        """
+        const pluginId = com.intellij.openapi.extensions.PluginId.getId("com.github.uiopak.lstcrc");
+        const plugin = com.intellij.ide.plugins.PluginManagerCore.getPlugin(pluginId);
+        const cl = plugin ? plugin.getPluginClassLoader() : null;
+        let $serviceVariableName = null;
+        if (cl) {
+            try {
+                const settingsClass = cl.loadClass("com.github.uiopak.lstcrc.toolWindow.LstCrcSettingsService");
+                $serviceVariableName = com.intellij.openapi.application.ApplicationManager.getApplication().getService(settingsClass);
+            } catch(e) {}
+        }
+        """.trimIndent()
 
     private fun toJsStringLiteral(value: String): String {
         return buildString {

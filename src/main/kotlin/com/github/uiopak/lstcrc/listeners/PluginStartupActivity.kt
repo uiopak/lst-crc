@@ -10,7 +10,6 @@ import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.project.DumbService
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.startup.ProjectActivity
-import com.intellij.openapi.wm.WindowManager
 import git4idea.repo.GitRepositoryManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.future.await
@@ -31,7 +30,7 @@ class PluginStartupActivity : ProjectActivity {
             if (project.isDisposed) return@withContext
             logger.info("STARTUP_LOGIC: Broadcasting ToolWindowState to sync all UI components.")
             stateService.broadcastCurrentState()
-            WindowManager.getInstance().getStatusBar(project)?.updateWidget(LstCrcStatusWidget.ID)
+            LstCrcStatusWidget.refresh(project)
             logger.info("STARTUP_LOGIC: Sent direct update request to status bar widget '${LstCrcStatusWidget.ID}'.")
         }
     }

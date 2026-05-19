@@ -1,7 +1,5 @@
 package com.github.uiopak.lstcrc.toolWindow
 
-import com.github.uiopak.lstcrc.messaging.PLUGIN_SETTINGS_CHANGED_TOPIC
-import com.github.uiopak.lstcrc.messaging.PluginSettingsChangedListener
 import com.github.uiopak.lstcrc.messaging.TOOL_WINDOW_STATE_TOPIC
 import com.github.uiopak.lstcrc.messaging.ToolWindowStateListener
 import com.github.uiopak.lstcrc.resources.LstCrcBundle
@@ -21,6 +19,7 @@ import com.intellij.openapi.ui.popup.JBPopupFactory
 import com.intellij.openapi.wm.StatusBar
 import com.intellij.openapi.wm.StatusBarWidget
 import com.intellij.openapi.wm.StatusBarWidgetFactory
+import com.intellij.openapi.wm.WindowManager
 import com.intellij.ui.content.Content
 import com.intellij.ui.content.ContentManager
 import com.intellij.ui.awt.RelativePoint
@@ -54,6 +53,10 @@ class LstCrcStatusWidget(private val project: Project) : StatusBarWidget, Status
 
     companion object {
         const val ID = "LstCrcStatusWidget"
+
+        fun refresh(project: Project) {
+            WindowManager.getInstance().getStatusBar(project)?.updateWidget(ID)
+        }
     }
 
     override fun ID(): String = ID
@@ -68,11 +71,6 @@ class LstCrcStatusWidget(private val project: Project) : StatusBarWidget, Status
         // It does not need to manage any internal state itself.
         messageBusConnection?.subscribe(TOOL_WINDOW_STATE_TOPIC, object : ToolWindowStateListener {
             override fun stateChanged(newState: ToolWindowState) {
-                this@LstCrcStatusWidget.statusBar?.updateWidget(ID())
-            }
-        })
-        messageBusConnection?.subscribe(PLUGIN_SETTINGS_CHANGED_TOPIC, object : PluginSettingsChangedListener {
-            override fun onSettingsChanged() {
                 this@LstCrcStatusWidget.statusBar?.updateWidget(ID())
             }
         })
