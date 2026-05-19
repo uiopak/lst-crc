@@ -184,6 +184,7 @@ Plan status:
 	- IdeaFrame changes-tree metadata, rendered-text, and file-status scrapers now reuse shared JS helpers for visible-tree lookup and colored-fragment reflection instead of rebuilding the same tree BFS and fragment-field walkers inline.
 	- PluginUiTestSteps now reuses one shared `ToolWindowStateService` refresh JS helper across its file-write, git-refresh, and external-refresh paths instead of repeating the same plugin-classloader lookup and `refreshDataForCurrentSelection().join()` block inline.
 	- GitChangesViewFixture now reuses one shared GitChangesView content-manager lookup block across its tab presence, tab selection, and selected-tab-name helpers instead of repeating the same project, tool-window, and content-manager lookup inline.
+	- GitChangesViewFixture now reuses one shared plugin-classloader lookup block across its state-refresh and ToolWindowHelper fallback paths instead of repeating the same plugin lookup before loading `ToolWindowStateService` or `ToolWindowHelper`.
 	- Marked `myState` in `ToolWindowStateService` and `snapshot` in `ProjectActiveDiffDataService` as `@Volatile` to guarantee thread-safe cross-thread memory visibility.
 	- Optimized `ProjectActiveDiffDataService.updateActiveDiff` to skip update notifications when the new active diff snapshot is identical to the current one, saving redundant UI refresh cycles.
 	- Added `testUpdateActiveDiffWithIdenticalSnapshotBypassesNotification` test under `ProjectActiveDiffDataServiceTest`.

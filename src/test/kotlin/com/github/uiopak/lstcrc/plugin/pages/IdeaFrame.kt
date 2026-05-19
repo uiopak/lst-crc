@@ -71,14 +71,16 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
     fun isDumbMode(): Boolean {
         return callJs(
             """
-            const frameHelper = com.intellij.openapi.wm.impl.ProjectFrameHelper.getFrameHelper(component)
-            if (frameHelper) {
-                const project = frameHelper.getProject()
-                project ? com.intellij.openapi.project.DumbService.isDumb(project) : true
-            } else { 
-                true 
-            }
-        """, true
+            (function() {
+                var frameHelper = com.intellij.openapi.wm.impl.ProjectFrameHelper.getFrameHelper(component);
+                if (frameHelper) {
+                    var project = frameHelper.getProject();
+                    return project ? com.intellij.openapi.project.DumbService.isDumb(project) : true;
+                } else { 
+                    return true; 
+                }
+            })();
+            """.trimIndent(), true
         )
     }
 
@@ -100,31 +102,33 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
         val normalizedPath = path.replace('\\', '/')
         runJs(
             """
-            importPackage(com.intellij.openapi.fileEditor)
-            importPackage(com.intellij.openapi.vfs)
-            importPackage(com.intellij.openapi.wm.impl)
-            importClass(com.intellij.openapi.application.ApplicationManager)
+            (function() {
+                importPackage(com.intellij.openapi.fileEditor);
+                importPackage(com.intellij.openapi.vfs);
+                importPackage(com.intellij.openapi.wm.impl);
+                importClass(com.intellij.openapi.application.ApplicationManager);
 
-            const relativePath = '$normalizedPath'
-            const frameHelper = ProjectFrameHelper.getFrameHelper(component)
-            if (frameHelper) {
-                const project = frameHelper.getProject()
-                const projectPath = project.getBasePath()
-                const normalizedProjectPath = String(projectPath).split('\\').join('/')
-                const absolutePath = normalizedProjectPath + '/' + relativePath
-                const file = LocalFileSystem.getInstance().refreshAndFindFileByPath(absolutePath)
-                if (file) {
-                    const openFileFunction = new Runnable({
-                        run: function() {
-                            FileEditorManager.getInstance(project).openTextEditor(
-                                new OpenFileDescriptor(project, file),
-                                true
-                            )
-                        }
-                    })
-                    ApplicationManager.getApplication().invokeAndWait(openFileFunction)
+                var relativePath = '$normalizedPath';
+                var frameHelper = ProjectFrameHelper.getFrameHelper(component);
+                if (frameHelper) {
+                    var project = frameHelper.getProject();
+                    var projectPath = project.getBasePath();
+                    var normalizedProjectPath = String(projectPath).split('\\').join('/');
+                    var absolutePath = normalizedProjectPath + '/' + relativePath;
+                    var file = LocalFileSystem.getInstance().refreshAndFindFileByPath(absolutePath);
+                    if (file) {
+                        var openFileFunction = new Runnable({
+                            run: function() {
+                                FileEditorManager.getInstance(project).openTextEditor(
+                                    new OpenFileDescriptor(project, file),
+                                    true
+                                );
+                            }
+                        });
+                        ApplicationManager.getApplication().invokeAndWait(openFileFunction);
+                    }
                 }
-            }
+            })();
         """, true
         )
 
@@ -158,29 +162,31 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
 
             runJs(
                 """
-                ${openProjectLookupStatements()}
-                if (project) {
-                    const toolWindow = com.intellij.openapi.wm.ToolWindowManager.getInstance(project).getToolWindow("GitChangesView");
-                    if (toolWindow) {
-                        toolWindow.show();
-                        toolWindow.activate(null);
+                (function() {
+                    ${openProjectLookupStatements()}
+                    if (project) {
+                        var toolWindow = com.intellij.openapi.wm.ToolWindowManager.getInstance(project).getToolWindow("GitChangesView");
+                        if (toolWindow) {
+                            toolWindow.show();
+                            toolWindow.activate(null);
+                        }
                     }
-                }
 
-                const actionManager = com.intellij.openapi.actionSystem.ActionManager.getInstance();
-                const gitChangesViewAction = actionManager.getAction("ActivateGitChangesViewToolWindow");
-                if (gitChangesViewAction) {
-                    const dataContext = com.intellij.ide.DataManager.getInstance().getDataContext();
-                    const event = com.intellij.openapi.actionSystem.AnActionEvent.createEvent(
-                        gitChangesViewAction,
-                        dataContext,
-                        null,
-                        "test",
-                        com.intellij.openapi.actionSystem.ActionUiKind.NONE,
-                        null
-                    );
-                    gitChangesViewAction.actionPerformed(event);
-                }
+                    var actionManager = com.intellij.openapi.actionSystem.ActionManager.getInstance();
+                    var gitChangesViewAction = actionManager.getAction("ActivateGitChangesViewToolWindow");
+                    if (gitChangesViewAction) {
+                        var dataContext = com.intellij.ide.DataManager.getInstance().getDataContext();
+                        var event = com.intellij.openapi.actionSystem.AnActionEvent.createEvent(
+                            gitChangesViewAction,
+                            dataContext,
+                            null,
+                            "test",
+                            com.intellij.openapi.actionSystem.ActionUiKind.NONE,
+                            null
+                        );
+                        gitChangesViewAction.actionPerformed(event);
+                    }
+                })();
             """, true
             )
 
@@ -243,60 +249,62 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
         step("Reset GitChangesView state") {
             runJs(
                 """
-                const frameHelper = com.intellij.openapi.wm.impl.ProjectFrameHelper.getFrameHelper(component);
-                const project = frameHelper ? frameHelper.getProject() : null;
-                if (project) {
-                    ${settingsServiceLookupStatements("svc")}
-                    if (cl) {
-                        if (svc) {
-                            svc.resetToDefaults();
-                        }
-
-                        try {
-                            const toolWindowStateClass = cl.loadClass("com.github.uiopak.lstcrc.state.ToolWindowState");
-                            const toolWindowStateServiceClass = cl.loadClass("com.github.uiopak.lstcrc.services.ToolWindowStateService");
-                            const stateService = project.getService(toolWindowStateServiceClass);
-                            if (stateService) {
-                                stateService.loadState(toolWindowStateClass.getDeclaredConstructor().newInstance());
-                            }
-
-                            const diffDataServiceClass = cl.loadClass("com.github.uiopak.lstcrc.services.ProjectActiveDiffDataService");
-                            const diffDataService = project.getService(diffDataServiceClass);
-                            if (diffDataService) {
-                                diffDataService.clearActiveDiff();
-                            }
-                        } catch(e) {}
-                    }
-
-                    const toolWindow = project
-                        ? com.intellij.openapi.wm.ToolWindowManager.getInstance(project).getToolWindow("GitChangesView")
-                        : null;
-                    if (toolWindow) {
+                (function() {
+                    var frameHelper = com.intellij.openapi.wm.impl.ProjectFrameHelper.getFrameHelper(component);
+                    var project = frameHelper ? frameHelper.getProject() : null;
+                    if (project) {
+                        ${settingsServiceLookupStatements("svc")}
                         if (cl) {
-                            try {
-                                const compatibilityClass = cl.loadClass("com.github.uiopak.lstcrc.toolWindow.ToolWindowUiCompatibility");
-                                const compatibility = compatibilityClass.getField("INSTANCE").get(null);
-                                compatibilityClass.getMethod("setToolWindowTitleVisible", com.intellij.openapi.wm.ToolWindow, java.lang.Boolean.TYPE)
-                                    .invoke(compatibility, toolWindow, false);
-                            } catch (e) {}
-                        }
-                        const contentManager = toolWindow.getContentManager();
-                        const contents = contentManager.getContents();
-                        for (let i = contents.length - 1; i >= 0; i--) {
-                            const content = contents[i];
-                            if (content.isCloseable()) {
-                                contentManager.removeContent(content, true);
+                            if (svc) {
+                                svc.resetToDefaults();
                             }
+
+                            try {
+                                var toolWindowStateClass = cl.loadClass("com.github.uiopak.lstcrc.state.ToolWindowState");
+                                var toolWindowStateServiceClass = cl.loadClass("com.github.uiopak.lstcrc.services.ToolWindowStateService");
+                                var stateService = project.getService(toolWindowStateServiceClass);
+                                if (stateService) {
+                                    stateService.loadState(toolWindowStateClass.getDeclaredConstructor().newInstance());
+                                }
+
+                                var diffDataServiceClass = cl.loadClass("com.github.uiopak.lstcrc.services.ProjectActiveDiffDataService");
+                                var diffDataService = project.getService(diffDataServiceClass);
+                                if (diffDataService) {
+                                    diffDataService.clearActiveDiff();
+                                }
+                            } catch(e) {}
                         }
 
-                        const remainingContents = contentManager.getContents();
-                        if (remainingContents.length > 0) {
-                            contentManager.setSelectedContent(remainingContents[0], true);
-                        }
+                        var toolWindow = project
+                            ? com.intellij.openapi.wm.ToolWindowManager.getInstance(project).getToolWindow("GitChangesView")
+                            : null;
+                        if (toolWindow) {
+                            if (cl) {
+                                try {
+                                    var compatibilityClass = cl.loadClass("com.github.uiopak.lstcrc.toolWindow.ToolWindowUiCompatibility");
+                                    var compatibility = compatibilityClass.getField("INSTANCE").get(null);
+                                    compatibilityClass.getMethod("setToolWindowTitleVisible", com.intellij.openapi.wm.ToolWindow, java.lang.Boolean.TYPE)
+                                        .invoke(compatibility, toolWindow, false);
+                                } catch (e) {}
+                            }
+                            var contentManager = toolWindow.getContentManager();
+                            var contents = contentManager.getContents();
+                            for (var i = contents.length - 1; i >= 0; i--) {
+                                var content = contents[i];
+                                if (content.isCloseable()) {
+                                    contentManager.removeContent(content, true);
+                                }
+                            }
 
-                        toolWindow.hide();
+                            var remainingContents = contentManager.getContents();
+                            if (remainingContents.length > 0) {
+                                contentManager.setSelectedContent(remainingContents[0], true);
+                            }
+
+                            toolWindow.hide();
+                        }
                     }
-                }
+                })();
                 """,
                 true
             )
@@ -389,10 +397,12 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
         step("Close all editors") {
             runJs(
                 """
-                ${fileEditorManagerLookupStatements()}
-                if (manager) {
-                    manager.closeAllFiles();
-                }
+                (function() {
+                    ${fileEditorManagerLookupStatements()}
+                    if (manager) {
+                        manager.closeAllFiles();
+                    }
+                })();
                 """.trimIndent(),
                 true
             )
@@ -632,7 +642,7 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
     ): String =
         """
         ${openProjectLookupStatements(projectVariableName)}
-        const $toolWindowVariableName = $projectVariableName
+        var $toolWindowVariableName = $projectVariableName
             ? com.intellij.openapi.wm.ToolWindowManager.getInstance($projectVariableName).getToolWindow("GitChangesView")
             : null;
         """.trimIndent()
@@ -643,7 +653,7 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
     ): String =
         """
         ${openProjectLookupStatements(projectVariableName)}
-        const $managerVariableName = $projectVariableName
+        var $managerVariableName = $projectVariableName
             ? com.intellij.openapi.fileEditor.FileEditorManager.getInstance($projectVariableName)
             : null;
         """.trimIndent()
@@ -655,7 +665,7 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
     ): String =
         """
         ${fileEditorManagerLookupStatements(projectVariableName, managerVariableName)}
-        const $editorVariableName = $managerVariableName ? $managerVariableName.getSelectedTextEditor() : null;
+        var $editorVariableName = $managerVariableName ? $managerVariableName.getSelectedTextEditor() : null;
         """.trimIndent()
 
     private fun changesTreeLookupFunctionsScript(): String =
@@ -730,48 +740,48 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
     ): String =
         """
         ${toolWindowLookupStatements(projectVariableName, toolWindowVariableName)}
-        const $contentVariableName = $toolWindowVariableName ? $toolWindowVariableName.getContentManager().getSelectedContent() : null;
-        const $classLoaderVariableName = $contentVariableName
+        var $contentVariableName = $toolWindowVariableName ? $toolWindowVariableName.getContentManager().getSelectedContent() : null;
+        var $classLoaderVariableName = $contentVariableName
             ? $contentVariableName.getComponent().getClass().getClassLoader()
             : $projectVariableName.getClass().getClassLoader();
-        const stateServiceClass = java.lang.Class.forName(
+        var stateServiceClass = java.lang.Class.forName(
             "com.github.uiopak.lstcrc.services.ToolWindowStateService",
             true,
             $classLoaderVariableName
         );
-        const $stateServiceVariableName = $projectVariableName.getService(stateServiceClass);
+        var $stateServiceVariableName = $projectVariableName.getService(stateServiceClass);
         """.trimIndent()
 
     private fun visualTrackerManagerScript(body: String): String =
         """
         (function() {
             ${openProjectLookupStatements()}
-            if (!project) return "";
+            if (!project) return "ERROR: project is null";
 
             ${pluginClassLoaderLookupStatements("classLoader")}
-            if (!classLoader) return "";
+            if (!classLoader) return "ERROR: classLoader is null";
 
             try {
-                const managerClass = classLoader.loadClass("com.github.uiopak.lstcrc.gutters.VisualTrackerManager");
-                const manager = project.getService(managerClass);
-                if (!manager) return "";
+                var managerClass = classLoader.loadClass("com.github.uiopak.lstcrc.gutters.VisualTrackerManager");
+                var manager = project.getService(managerClass);
+                if (!manager) return "ERROR: manager is null";
                 $body
             } catch (e) {
-                return "";
+                return "ERROR: " + e.toString() + "\n" + (e.stack || "");
             }
         })();
         """.trimIndent()
 
     private fun openProjectLookupStatements(projectVariableName: String = "project"): String =
         """
-        const $projectVariableName = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
+        var $projectVariableName = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
         """.trimIndent()
 
     private fun pluginClassLoaderLookupStatements(classLoaderVariableName: String = "cl"): String =
         """
-        const pluginId = com.intellij.openapi.extensions.PluginId.getId("com.github.uiopak.lstcrc");
-        const plugin = com.intellij.ide.plugins.PluginManagerCore.getPlugin(pluginId);
-        const $classLoaderVariableName = plugin ? plugin.getPluginClassLoader() : null;
+        var pluginId = com.intellij.openapi.extensions.PluginId.getId("com.github.uiopak.lstcrc");
+        var plugin = com.intellij.ide.plugins.PluginManagerCore.getPlugin(pluginId);
+        var $classLoaderVariableName = plugin ? plugin.getPluginClassLoader() : null;
         """.trimIndent()
 
     fun setShowWidgetContext(show: Boolean) {
@@ -1206,80 +1216,82 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
         step("Invoke CreateTabFromRevisionAction for $revision") {
             runJs(
                 """
-                const revision = ${toJsStringLiteral(revision)};
-                const alias = ${alias?.let(::toJsStringLiteral) ?: "null"};
-                const frameHelper = com.intellij.openapi.wm.impl.ProjectFrameHelper.getFrameHelper(component);
-                const project = frameHelper ? frameHelper.getProject() : null;
-                if (!project) {
-                    throw new java.lang.IllegalStateException("No open project available for CreateTabFromRevisionAction");
-                }
+                (function() {
+                    var revision = ${toJsStringLiteral(revision)};
+                    var alias = ${alias?.let(::toJsStringLiteral) ?: "null"};
+                    var frameHelper = com.intellij.openapi.wm.impl.ProjectFrameHelper.getFrameHelper(component);
+                    var project = frameHelper ? frameHelper.getProject() : null;
+                    if (!project) {
+                        throw new java.lang.IllegalStateException("No open project available for CreateTabFromRevisionAction");
+                    }
 
-                const action = com.intellij.openapi.actionSystem.ActionManager.getInstance()
-                    .getAction("com.github.uiopak.lstcrc.CreateTabFromRevisionAction");
-                if (!action) {
-                    throw new java.lang.IllegalStateException("CreateTabFromRevisionAction is not registered");
-                }
+                    var action = com.intellij.openapi.actionSystem.ActionManager.getInstance()
+                        .getAction("com.github.uiopak.lstcrc.CreateTabFromRevisionAction");
+                    if (!action) {
+                        throw new java.lang.IllegalStateException("CreateTabFromRevisionAction is not registered");
+                    }
 
-                const actionClassLoader = action.getClass().getClassLoader();
-                const toolWindow = com.intellij.openapi.wm.ToolWindowManager.getInstance(project).getToolWindow("GitChangesView");
-                if (!toolWindow) {
-                    throw new java.lang.IllegalStateException("GitChangesView tool window is not available");
-                }
+                    var actionClassLoader = action.getClass().getClassLoader();
+                    var toolWindow = com.intellij.openapi.wm.ToolWindowManager.getInstance(project).getToolWindow("GitChangesView");
+                    if (!toolWindow) {
+                        throw new java.lang.IllegalStateException("GitChangesView tool window is not available");
+                    }
 
-                if (alias !== null) {
-                    try {
-                        const helperClass = java.lang.Class.forName("com.github.uiopak.lstcrc.toolWindow.ToolWindowHelper", true, actionClassLoader);
-                        const helperInstance = helperClass.getField("INSTANCE").get(null);
-                        const stateServiceClass = java.lang.Class.forName("com.github.uiopak.lstcrc.services.ToolWindowStateService", true, actionClassLoader);
-                        const stateService = project.getService(stateServiceClass);
+                    if (alias !== null) {
+                        try {
+                            var helperClass = java.lang.Class.forName("com.github.uiopak.lstcrc.toolWindow.ToolWindowHelper", true, actionClassLoader);
+                            var helperInstance = helperClass.getField("INSTANCE").get(null);
+                            var stateServiceClass = java.lang.Class.forName("com.github.uiopak.lstcrc.services.ToolWindowStateService", true, actionClassLoader);
+                            var stateService = project.getService(stateServiceClass);
 
+                            com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater(new java.lang.Runnable({
+                                run: function() {
+                                    helperInstance.createAndSelectTab(project, toolWindow, revision);
+                                    stateService.updateTabAlias(revision, alias);
+                                }
+                            }));
+                        } catch (error) {
+                            throw new java.lang.IllegalStateException("Aliased revision tab setup failed: " + error, error);
+                        }
+                    } else {
+                        var gitRevisionNumberClass = java.lang.Class.forName("git4idea.GitRevisionNumber", true, actionClassLoader);
+                        var gitRevisionNumberConstructor = null;
+                        var constructors = gitRevisionNumberClass.getConstructors();
+                        for (var i = 0; i < constructors.length; i++) {
+                            if (constructors[i].getParameterCount() === 1) {
+                                gitRevisionNumberConstructor = constructors[i];
+                                break;
+                            }
+                        }
+                        if (!gitRevisionNumberConstructor) {
+                            throw new java.lang.IllegalStateException("Unable to locate GitRevisionNumber(String) constructor");
+                        }
+                        var gitRevisionNumber = gitRevisionNumberConstructor.newInstance(revision);
+
+                        var dataContext = com.intellij.openapi.actionSystem.impl.SimpleDataContext.builder()
+                            .add(com.intellij.openapi.actionSystem.CommonDataKeys.PROJECT, project)
+                            .add(com.intellij.openapi.actionSystem.PlatformCoreDataKeys.CONTEXT_COMPONENT, component)
+                            .add(
+                                com.intellij.openapi.vcs.VcsDataKeys.VCS_REVISION_NUMBERS,
+                                java.util.Collections.singletonList(gitRevisionNumber)
+                            )
+                            .build();
+
+                        var event = com.intellij.openapi.actionSystem.AnActionEvent.createEvent(
+                            action,
+                            dataContext,
+                            null,
+                            "test",
+                            com.intellij.openapi.actionSystem.ActionUiKind.NONE,
+                            null
+                        );
                         com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater(new java.lang.Runnable({
                             run: function() {
-                                helperInstance.createAndSelectTab(project, toolWindow, revision);
-                                stateService.updateTabAlias(revision, alias);
+                                action.actionPerformed(event);
                             }
                         }));
-                    } catch (error) {
-                        throw new java.lang.IllegalStateException("Aliased revision tab setup failed: " + error, error);
                     }
-                } else {
-                    const gitRevisionNumberClass = java.lang.Class.forName("git4idea.GitRevisionNumber", true, actionClassLoader);
-                    let gitRevisionNumberConstructor = null;
-                    const constructors = gitRevisionNumberClass.getConstructors();
-                    for (let i = 0; i < constructors.length; i++) {
-                        if (constructors[i].getParameterCount() === 1) {
-                            gitRevisionNumberConstructor = constructors[i];
-                            break;
-                        }
-                    }
-                    if (!gitRevisionNumberConstructor) {
-                        throw new java.lang.IllegalStateException("Unable to locate GitRevisionNumber(String) constructor");
-                    }
-                    const gitRevisionNumber = gitRevisionNumberConstructor.newInstance(revision);
-
-                    const dataContext = com.intellij.openapi.actionSystem.impl.SimpleDataContext.builder()
-                        .add(com.intellij.openapi.actionSystem.CommonDataKeys.PROJECT, project)
-                        .add(com.intellij.openapi.actionSystem.PlatformCoreDataKeys.CONTEXT_COMPONENT, component)
-                        .add(
-                            com.intellij.openapi.vcs.VcsDataKeys.VCS_REVISION_NUMBERS,
-                            java.util.Collections.singletonList(gitRevisionNumber)
-                        )
-                        .build();
-
-                    const event = com.intellij.openapi.actionSystem.AnActionEvent.createEvent(
-                        action,
-                        dataContext,
-                        null,
-                        "test",
-                        com.intellij.openapi.actionSystem.ActionUiKind.NONE,
-                        null
-                    );
-                    com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater(new java.lang.Runnable({
-                        run: function() {
-                            action.actionPerformed(event);
-                        }
-                    }));
-                }
+                })();
                 """.trimIndent(),
                 true
             )
@@ -1291,14 +1303,16 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
         step("Update tab alias for $branchName") {
             runJs(
                 """
-                const branchName = ${toJsStringLiteral(branchName)};
-                const newAlias = ${newAlias?.let(::toJsStringLiteral) ?: "null"};
-                ${selectedContentStateServiceLookupStatements()}
-                if (!project) {
-                    throw new java.lang.IllegalStateException("No open project available for tab alias update");
-                }
+                (function() {
+                    var branchName = ${toJsStringLiteral(branchName)};
+                    var newAlias = ${newAlias?.let(::toJsStringLiteral) ?: "null"};
+                    ${selectedContentStateServiceLookupStatements()}
+                    if (!project) {
+                        throw new java.lang.IllegalStateException("No open project available for tab alias update");
+                    }
 
-                stateService.updateTabAlias(branchName, newAlias);
+                    stateService.updateTabAlias(branchName, newAlias);
+                })();
                 """.trimIndent(),
                 true
             )
@@ -1309,38 +1323,52 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
         step("Invoke SetRevisionAsRepoComparisonAction for $revision") {
             runJs(
                 """
-                const revision = ${toJsStringLiteral(revision)};
-                const frameHelper = com.intellij.openapi.wm.impl.ProjectFrameHelper.getFrameHelper(component);
-                const project = frameHelper ? frameHelper.getProject() : null;
-                if (!project) {
-                    throw new java.lang.IllegalStateException("No open project available for SetRevisionAsRepoComparisonAction");
-                }
+                (function() {
+                    var revision = ${toJsStringLiteral(revision)};
+                    var frameHelper = com.intellij.openapi.wm.impl.ProjectFrameHelper.getFrameHelper(component);
+                    var project = frameHelper ? frameHelper.getProject() : null;
+                    if (!project) {
+                        throw new java.lang.IllegalStateException("No open project available for SetRevisionAsRepoComparisonAction");
+                    }
 
-                ${selectedContentStateServiceLookupStatements()}
-                if (!toolWindow) {
-                    throw new java.lang.IllegalStateException("GitChangesView tool window is not available");
-                }
+                    var toolWindow = project
+                        ? com.intellij.openapi.wm.ToolWindowManager.getInstance(project).getToolWindow("GitChangesView")
+                        : null;
+                    var content = toolWindow ? toolWindow.getContentManager().getSelectedContent() : null;
+                    var classLoader = content
+                        ? content.getComponent().getClass().getClassLoader()
+                        : project.getClass().getClassLoader();
+                    var stateServiceClass = java.lang.Class.forName(
+                        "com.github.uiopak.lstcrc.services.ToolWindowStateService",
+                        true,
+                        classLoader
+                    );
+                    var stateService = project.getService(stateServiceClass);
+                    if (!toolWindow) {
+                        throw new java.lang.IllegalStateException("GitChangesView tool window is not available");
+                    }
 
-                if (!content) {
-                    throw new java.lang.IllegalStateException("No selected LST-CRC tab content available for repo comparison update");
-                }
+                    if (!content) {
+                        throw new java.lang.IllegalStateException("No selected LST-CRC tab content available for repo comparison update");
+                    }
 
-                const displayName = content.getDisplayName ? String(content.getDisplayName()) : "";
-                const repoRootPath = project.getBasePath() ? String(project.getBasePath()).replace(/\\/g, '/') : null;
-                if (!repoRootPath) {
-                    throw new java.lang.IllegalStateException("Project base path is not available for repo comparison update");
-                }
+                    var displayName = content.getDisplayName ? String(content.getDisplayName()) : "";
+                    var repoRootPath = project.getBasePath() ? String(project.getBasePath()).replace(/\\/g, '/') : null;
+                    if (!repoRootPath) {
+                        throw new java.lang.IllegalStateException("Project base path is not available for repo comparison update");
+                    }
 
-                let selectedTabInfo = stateService ? stateService.getSelectedTabInfo() : null;
-                if (!selectedTabInfo && displayName.length > 0 && stateService) {
-                    selectedTabInfo = stateService.findTabByDisplayName(displayName);
-                }
+                    var selectedTabInfo = stateService ? stateService.getSelectedTabInfo() : null;
+                    if (!selectedTabInfo && displayName.length > 0 && stateService) {
+                        selectedTabInfo = stateService.findTabByDisplayName(displayName);
+                    }
 
-                if (!selectedTabInfo) {
-                    throw new java.lang.IllegalStateException("No selected LST-CRC tab available for repo comparison update");
-                }
+                    if (!selectedTabInfo) {
+                        throw new java.lang.IllegalStateException("No selected LST-CRC tab available for repo comparison update");
+                    }
 
-                stateService.updateTabRepoComparison(selectedTabInfo.getBranchName(), repoRootPath, revision);
+                    stateService.updateTabRepoComparison(selectedTabInfo.getBranchName(), repoRootPath, revision);
+                })();
                 """.trimIndent(),
                 true
             )
@@ -1351,47 +1379,49 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
         step("Set selected tab repo comparison to branch $branchName") {
             runJs(
                 """
-                const branchName = ${toJsStringLiteral(branchName)};
-                ${selectedContentStateServiceLookupStatements()}
-                if (!project) {
-                    throw new java.lang.IllegalStateException("No open project available for repo comparison update");
-                }
-
-                if (!content) {
-                    throw new java.lang.IllegalStateException("No selected LST-CRC tab content available for repo comparison update");
-                }
-
-                const displayName = content.getDisplayName ? String(content.getDisplayName()) : "";
-                let selectedTabInfo = stateService ? stateService.getSelectedTabInfo() : null;
-                let selectedTabIndex = -1;
-
-                if (displayName.length > 0 && stateService) {
-                    selectedTabIndex = stateService.findTabIndexByDisplayName(displayName);
-                    if (!selectedTabInfo) {
-                        selectedTabInfo = stateService.findTabByDisplayName(displayName);
+                (function() {
+                    var branchName = ${toJsStringLiteral(branchName)};
+                    ${selectedContentStateServiceLookupStatements()}
+                    if (!project) {
+                        throw new java.lang.IllegalStateException("No open project available for repo comparison update");
                     }
-                }
 
-                if (!selectedTabInfo) {
-                    throw new java.lang.IllegalStateException("No selected LST-CRC tab available for repo comparison update");
-                }
+                    if (!content) {
+                        throw new java.lang.IllegalStateException("No selected LST-CRC tab content available for repo comparison update");
+                    }
 
-                if (selectedTabIndex >= 0) {
-                    stateService.setSelectedTab(selectedTabIndex);
-                    selectedTabInfo = stateService.getSelectedTabInfo();
-                }
+                    var displayName = content.getDisplayName ? String(content.getDisplayName()) : "";
+                    var selectedTabInfo = stateService ? stateService.getSelectedTabInfo() : null;
+                    var selectedTabIndex = -1;
 
-                // Use ProjectUtil.guessProjectDir().path — the same call used by the Starter bridge — to
-                // get a VirtualFile path with forward slashes that exactly matches repo.root.path in GitService.
-                const projectDir = com.intellij.openapi.project.ProjectUtil.guessProjectDir(project);
-                const repoRootPath = projectDir
-                    ? String(projectDir.getPath())
-                    : (project.getBasePath() ? String(project.getBasePath()).replace(/\\/g, '/') : null);
-                if (!repoRootPath) {
-                    throw new java.lang.IllegalStateException("Project base path is not available for repo comparison update");
-                }
+                    if (displayName.length > 0 && stateService) {
+                        selectedTabIndex = stateService.findTabIndexByDisplayName(displayName);
+                        if (!selectedTabInfo) {
+                            selectedTabInfo = stateService.findTabByDisplayName(displayName);
+                        }
+                    }
 
-                stateService.updateTabRepoComparison(selectedTabInfo.getBranchName(), repoRootPath, branchName);
+                    if (!selectedTabInfo) {
+                        throw new java.lang.IllegalStateException("No selected LST-CRC tab available for repo comparison update");
+                    }
+
+                    if (selectedTabIndex >= 0) {
+                        stateService.setSelectedTab(selectedTabIndex);
+                        selectedTabInfo = stateService.getSelectedTabInfo();
+                    }
+
+                    // Use ProjectUtil.guessProjectDir().path — the same call used by the Starter bridge — to
+                    // get a VirtualFile path with forward slashes that exactly matches repo.root.path in GitService.
+                    var projectDir = com.intellij.openapi.project.ProjectUtil.guessProjectDir(project);
+                    var repoRootPath = projectDir
+                        ? String(projectDir.getPath())
+                        : (project.getBasePath() ? String(project.getBasePath()).replace(/\\/g, '/') : null);
+                    if (!repoRootPath) {
+                        throw new java.lang.IllegalStateException("Project base path is not available for repo comparison update");
+                    }
+
+                    stateService.updateTabRepoComparison(selectedTabInfo.getBranchName(), repoRootPath, branchName);
+                })();
                 """.trimIndent(),
                 true
             )
@@ -1403,10 +1433,11 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
             callJs(
                 visualTrackerManagerScript(
                     """
-                    ${selectedTextEditorLookupStatements("project", "manager", "editor")}
+                    var fileEditorManager = com.intellij.openapi.fileEditor.FileEditorManager.getInstance(project);
+                    var editor = fileEditorManager ? fileEditorManager.getSelectedTextEditor() : null;
                     if (!editor) return "";
 
-                    const document = editor.getDocument();
+                    var document = editor.getDocument();
                     return String(manager.debugGutterSummaryFor(document));
                     """.trimIndent()
                 ),
@@ -1436,11 +1467,12 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
         val setterLiteral = toJsStringLiteral(setterMethod)
         runJs(
             """
-                const properties = com.intellij.ide.util.PropertiesComponent.getInstance();
+            (function() {
+                var properties = com.intellij.ide.util.PropertiesComponent.getInstance();
                 properties.setValue($keyLiteral, $valueLiteral);
                 ${settingsServiceScript(
                     """
-                    const setterName = $setterLiteral;
+                    var setterName = $setterLiteral;
                     if (typeof appService[setterName] === "function") {
                         appService[setterName]($valueLiteral);
                     } else {
@@ -1448,6 +1480,7 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
                     }
                     """.trimIndent()
                 )}
+            })();
             """.trimIndent(),
             true
         )
@@ -1467,8 +1500,8 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
             ${pluginClassLoaderLookupStatements()}
             if (!cl) return;
             try {
-                const settingsClass = cl.loadClass("com.github.uiopak.lstcrc.toolWindow.LstCrcSettingsService");
-                const appService = com.intellij.openapi.application.ApplicationManager.getApplication().getService(settingsClass);
+                var settingsClass = cl.loadClass("com.github.uiopak.lstcrc.toolWindow.LstCrcSettingsService");
+                var appService = com.intellij.openapi.application.ApplicationManager.getApplication().getService(settingsClass);
                 if (!appService) return;
                 $body
             } catch(e) {}
@@ -1478,10 +1511,10 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
     private fun settingsServiceLookupStatements(serviceVariableName: String): String =
         """
         ${pluginClassLoaderLookupStatements()}
-        let $serviceVariableName = null;
+        var $serviceVariableName = null;
         if (cl) {
             try {
-                const settingsClass = cl.loadClass("com.github.uiopak.lstcrc.toolWindow.LstCrcSettingsService");
+                var settingsClass = cl.loadClass("com.github.uiopak.lstcrc.toolWindow.LstCrcSettingsService");
                 $serviceVariableName = com.intellij.openapi.application.ApplicationManager.getApplication().getService(settingsClass);
             } catch(e) {}
         }

@@ -47,11 +47,18 @@ class GitChangesViewFixture(remoteRobot: RemoteRobot, remoteComponent: RemoteCom
         contentManagerVariableName: String = "contentManager"
     ): String =
         """
-        const $projectVariableName = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
-        const $toolWindowVariableName = $projectVariableName
+        var $projectVariableName = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
+        var $toolWindowVariableName = $projectVariableName
             ? com.intellij.openapi.wm.ToolWindowManager.getInstance($projectVariableName).getToolWindow("GitChangesView")
             : null;
-        const $contentManagerVariableName = $toolWindowVariableName ? $toolWindowVariableName.getContentManager() : null;
+        var $contentManagerVariableName = $toolWindowVariableName ? $toolWindowVariableName.getContentManager() : null;
+        """.trimIndent()
+
+    private fun pluginClassLoaderLookupStatements(classLoaderVariableName: String = "classLoader"): String =
+        """
+        var pluginId = com.intellij.openapi.extensions.PluginId.getId("com.github.uiopak.lstcrc");
+        var plugin = com.intellij.ide.plugins.PluginManagerCore.getPlugin(pluginId);
+        var $classLoaderVariableName = plugin ? plugin.getPluginClassLoader() : null;
         """.trimIndent()
 
     private fun tabLocator(tabName: String) = byXpath(
@@ -61,61 +68,67 @@ class GitChangesViewFixture(remoteRobot: RemoteRobot, remoteComponent: RemoteCom
 
     private fun hasContentTab(tabName: String): Boolean = remoteRobot.callJs(
         """
-        ${contentManagerLookupStatements()}
-        if (!project || !contentManager) {
-            false;
-        } else {
-            const tabName = ${toJsStringLiteral(tabName)};
-            java.util.Arrays.stream(contentManager.getContents())
-                .anyMatch(content => tabName.equals(content.getDisplayName()));
-        }
+        (function() {
+            ${contentManagerLookupStatements()}
+            if (!project || !contentManager) {
+                return false;
+            } else {
+                var tabName = ${toJsStringLiteral(tabName)};
+                return java.util.Arrays.stream(contentManager.getContents())
+                    .anyMatch(function(content) { return tabName.equals(content.getDisplayName()); });
+            }
+        })();
         """.trimIndent(),
         true
     )
 
     private fun selectContentTab(tabName: String): Boolean = remoteRobot.callJs(
         """
-        ${contentManagerLookupStatements()}
-        if (!project || !contentManager) {
-            false;
-        } else {
-            const tabName = ${toJsStringLiteral(tabName)};
-            const content = java.util.Arrays.stream(contentManager.getContents())
-                .filter(item => tabName.equals(item.getDisplayName()))
-                .findFirst()
-                .orElse(null);
-            if (content == null) {
-                false;
+        (function() {
+            ${contentManagerLookupStatements()}
+            if (!project || !contentManager) {
+                return false;
             } else {
-                contentManager.setSelectedContent(content, true);
-                const browser = content.getComponent();
-                const stateServiceClass = browser.getClass().getClassLoader()
-                    .loadClass("com.github.uiopak.lstcrc.services.ToolWindowStateService");
-                const stateService = project.getService(stateServiceClass);
-                if (stateService != null) {
-                    const selectedIndex = java.util.Arrays.stream(contentManager.getContents())
-                        .filter(item => item.isCloseable())
-                        .toList()
-                        .indexOf(content);
-                    stateService.setSelectedTab(selectedIndex);
-                    stateService.refreshDataForCurrentSelection();
+                var tabName = ${toJsStringLiteral(tabName)};
+                var content = java.util.Arrays.stream(contentManager.getContents())
+                    .filter(function(item) { return tabName.equals(item.getDisplayName()); })
+                    .findFirst()
+                    .orElse(null);
+                if (content == null) {
+                    return false;
+                } else {
+                    contentManager.setSelectedContent(content, true);
+                    var browser = content.getComponent();
+                    var stateServiceClass = browser.getClass().getClassLoader()
+                        .loadClass("com.github.uiopak.lstcrc.services.ToolWindowStateService");
+                    var stateService = project.getService(stateServiceClass);
+                    if (stateService != null) {
+                        var selectedIndex = java.util.Arrays.stream(contentManager.getContents())
+                            .filter(function(item) { return item.isCloseable(); })
+                            .toList()
+                            .indexOf(content);
+                        stateService.setSelectedTab(selectedIndex);
+                        stateService.refreshDataForCurrentSelection();
+                    }
+                    return true;
                 }
-                true;
             }
-        }
+        })();
         """.trimIndent(),
         true
     )
 
     private fun selectedContentTabName(): String = remoteRobot.callJs(
         """
-        ${contentManagerLookupStatements()}
-        if (!project || !contentManager) {
-            null;
-        } else {
-            const selectedContent = contentManager.getSelectedContent();
-            selectedContent ? selectedContent.getDisplayName() : null;
-        }
+        (function() {
+            ${contentManagerLookupStatements()}
+            if (!project || !contentManager) {
+                return null;
+            } else {
+                var selectedContent = contentManager.getSelectedContent();
+                return selectedContent ? selectedContent.getDisplayName() : null;
+            }
+        })();
         """.trimIndent(),
         true
     )
@@ -142,19 +155,20 @@ class GitChangesViewFixture(remoteRobot: RemoteRobot, remoteComponent: RemoteCom
 
             runJs(
                 """
-                const project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
-                if (project) {
-                    const pluginId = com.intellij.openapi.extensions.PluginId.getId("com.github.uiopak.lstcrc");
-                    const plugin = com.intellij.ide.plugins.PluginManagerCore.getPlugin(pluginId);
-                    if (plugin != null) {
-                        const stateServiceClass = plugin.getPluginClassLoader()
-                            .loadClass("com.github.uiopak.lstcrc.services.ToolWindowStateService");
-                        const stateService = project.getService(stateServiceClass);
-                        if (stateService != null) {
-                            stateService.refreshDataForCurrentSelection().join();
+                (function() {
+                    var project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
+                    if (project) {
+                        ${pluginClassLoaderLookupStatements()}
+                        if (classLoader != null) {
+                            var stateServiceClass = classLoader
+                                .loadClass("com.github.uiopak.lstcrc.services.ToolWindowStateService");
+                            var stateService = project.getService(stateServiceClass);
+                            if (stateService != null) {
+                                stateService.refreshDataForCurrentSelection().join();
+                            }
                         }
                     }
-                }
+                })();
                 """.trimIndent(),
                 false
             )
@@ -830,39 +844,41 @@ class GitChangesViewFixture(remoteRobot: RemoteRobot, remoteComponent: RemoteCom
             }
             remoteRobot.findAll<ComponentFixture>(tabLocator(tabName)).first().runJs(
                 """
-                const x = Math.max(1, Math.floor(component.getWidth() / 2));
-                const y = Math.max(1, Math.floor(component.getHeight() / 2));
-                const now = java.lang.System.currentTimeMillis();
+                (function() {
+                    var x = Math.max(1, Math.floor(component.getWidth() / 2));
+                    var y = Math.max(1, Math.floor(component.getHeight() / 2));
+                    var now = java.lang.System.currentTimeMillis();
 
-                const pressed = new java.awt.event.MouseEvent(
-                    component,
-                    java.awt.event.MouseEvent.MOUSE_PRESSED,
-                    now,
-                    java.awt.event.InputEvent.BUTTON3_DOWN_MASK,
-                    x,
-                    y,
-                    1,
-                    true,
-                    java.awt.event.MouseEvent.BUTTON3
-                );
-                const released = new java.awt.event.MouseEvent(
-                    component,
-                    java.awt.event.MouseEvent.MOUSE_RELEASED,
-                    now + 1,
-                    0,
-                    x,
-                    y,
-                    1,
-                    true,
-                    java.awt.event.MouseEvent.BUTTON3
-                );
+                    var pressed = new java.awt.event.MouseEvent(
+                        component,
+                        java.awt.event.MouseEvent.MOUSE_PRESSED,
+                        now,
+                        java.awt.event.InputEvent.BUTTON3_DOWN_MASK,
+                        x,
+                        y,
+                        1,
+                        true,
+                        java.awt.event.MouseEvent.BUTTON3
+                    );
+                    var released = new java.awt.event.MouseEvent(
+                        component,
+                        java.awt.event.MouseEvent.MOUSE_RELEASED,
+                        now + 1,
+                        0,
+                        x,
+                        y,
+                        1,
+                        true,
+                        java.awt.event.MouseEvent.BUTTON3
+                    );
 
-                com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater(new java.lang.Runnable({
-                    run: function() {
-                        component.dispatchEvent(pressed);
-                        component.dispatchEvent(released);
-                    }
-                }));
+                    com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater(new java.lang.Runnable({
+                        run: function() {
+                            component.dispatchEvent(pressed);
+                            component.dispatchEvent(released);
+                        }
+                    }));
+                })();
                 """.trimIndent(),
                 true
             )
@@ -889,24 +905,25 @@ class GitChangesViewFixture(remoteRobot: RemoteRobot, remoteComponent: RemoteCom
             if (!openedFromClick) {
                 remoteRobot.runJs(
                     """
-                    const project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
-                    if (project) {
-                        const toolWindow = com.intellij.openapi.wm.ToolWindowManager.getInstance(project).getToolWindow("GitChangesView");
-                        const pluginId = com.intellij.openapi.extensions.PluginId.getId("com.github.uiopak.lstcrc");
-                        const plugin = com.intellij.ide.plugins.PluginManagerCore.getPlugin(pluginId);
-                        if (toolWindow != null && plugin != null) {
-                            const helperClass = plugin.getPluginClassLoader()
-                                .loadClass("com.github.uiopak.lstcrc.toolWindow.ToolWindowHelper");
-                            const helper = helperClass.getField("INSTANCE").get(null);
-                            helperClass
-                                .getMethod(
-                                    "openBranchSelectionTab",
-                                    com.intellij.openapi.project.Project,
-                                    com.intellij.openapi.wm.ToolWindow
-                                )
-                                .invoke(helper, project, toolWindow);
+                    (function() {
+                        var project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
+                        if (project) {
+                            var toolWindow = com.intellij.openapi.wm.ToolWindowManager.getInstance(project).getToolWindow("GitChangesView");
+                            ${pluginClassLoaderLookupStatements()}
+                            if (toolWindow != null && classLoader != null) {
+                                var helperClass = classLoader
+                                    .loadClass("com.github.uiopak.lstcrc.toolWindow.ToolWindowHelper");
+                                var helper = helperClass.getField("INSTANCE").get(null);
+                                helperClass
+                                    .getMethod(
+                                        "openBranchSelectionTab",
+                                        com.intellij.openapi.project.Project,
+                                        com.intellij.openapi.wm.ToolWindow
+                                    )
+                                    .invoke(helper, project, toolWindow);
+                            }
                         }
-                    }
+                    })();
                     """.trimIndent(),
                     true
                 )
@@ -927,41 +944,43 @@ class GitChangesViewFixture(remoteRobot: RemoteRobot, remoteComponent: RemoteCom
             tab.click()
             tab.runJs(
                 """
-                const project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
-                if (!project) {
-                    throw new java.lang.IllegalStateException("No open project available for RenameTabAction");
-                }
-
-                const toolWindow = com.intellij.openapi.wm.ToolWindowManager.getInstance(project).getToolWindow("GitChangesView");
-                if (!toolWindow) {
-                    throw new java.lang.IllegalStateException("GitChangesView tool window is not available");
-                }
-
-                const action = com.intellij.openapi.actionSystem.ActionManager.getInstance()
-                    .getAction("com.github.uiopak.lstcrc.RenameTabAction");
-                if (!action) {
-                    throw new java.lang.IllegalStateException("RenameTabAction is not registered");
-                }
-
-                const dataContext = com.intellij.openapi.actionSystem.impl.SimpleDataContext.builder()
-                    .add(com.intellij.openapi.actionSystem.CommonDataKeys.PROJECT, project)
-                    .add(com.intellij.openapi.actionSystem.PlatformDataKeys.TOOL_WINDOW, toolWindow)
-                    .add(com.intellij.openapi.actionSystem.PlatformCoreDataKeys.CONTEXT_COMPONENT, component)
-                    .build();
-                const event = com.intellij.openapi.actionSystem.AnActionEvent.createEvent(
-                    action,
-                    dataContext,
-                    null,
-                    "test",
-                    com.intellij.openapi.actionSystem.ActionUiKind.NONE,
-                    null
-                );
-
-                com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater(new java.lang.Runnable({
-                    run: function() {
-                        action.actionPerformed(event);
+                (function() {
+                    var project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
+                    if (!project) {
+                        throw new java.lang.IllegalStateException("No open project available for RenameTabAction");
                     }
-                }));
+
+                    var toolWindow = com.intellij.openapi.wm.ToolWindowManager.getInstance(project).getToolWindow("GitChangesView");
+                    if (!toolWindow) {
+                        throw new java.lang.IllegalStateException("GitChangesView tool window is not available");
+                    }
+
+                    var action = com.intellij.openapi.actionSystem.ActionManager.getInstance()
+                        .getAction("com.github.uiopak.lstcrc.RenameTabAction");
+                    if (!action) {
+                        throw new java.lang.IllegalStateException("RenameTabAction is not registered");
+                    }
+
+                    var dataContext = com.intellij.openapi.actionSystem.impl.SimpleDataContext.builder()
+                        .add(com.intellij.openapi.actionSystem.CommonDataKeys.PROJECT, project)
+                        .add(com.intellij.openapi.actionSystem.PlatformDataKeys.TOOL_WINDOW, toolWindow)
+                        .add(com.intellij.openapi.actionSystem.PlatformCoreDataKeys.CONTEXT_COMPONENT, component)
+                        .build();
+                    var event = com.intellij.openapi.actionSystem.AnActionEvent.createEvent(
+                        action,
+                        dataContext,
+                        null,
+                        "test",
+                        com.intellij.openapi.actionSystem.ActionUiKind.NONE,
+                        null
+                    );
+
+                    com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater(new java.lang.Runnable({
+                        run: function() {
+                            action.actionPerformed(event);
+                        }
+                    }));
+                })();
                 """.trimIndent(),
                 true
             )
@@ -970,7 +989,7 @@ class GitChangesViewFixture(remoteRobot: RemoteRobot, remoteComponent: RemoteCom
                 remoteRobot.callJs(
                     """
                     (function() {
-                        const focusOwner = java.awt.KeyboardFocusManager.getCurrentKeyboardFocusManager().getFocusOwner();
+                        var focusOwner = java.awt.KeyboardFocusManager.getCurrentKeyboardFocusManager().getFocusOwner();
                         return focusOwner instanceof javax.swing.text.JTextComponent;
                     })();
                     """.trimIndent(),
