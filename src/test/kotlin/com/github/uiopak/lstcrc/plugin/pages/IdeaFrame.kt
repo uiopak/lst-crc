@@ -268,7 +268,9 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
                         } catch(e) {}
                     }
 
-                    ${toolWindowLookupStatements("project", "toolWindow")}
+                    const toolWindow = project
+                        ? com.intellij.openapi.wm.ToolWindowManager.getInstance(project).getToolWindow("GitChangesView")
+                        : null;
                     if (toolWindow) {
                         if (cl) {
                             try {
@@ -787,8 +789,17 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
                     ${toolWindowLookupStatements()}
                     if (!project || !toolWindow) return;
 
-                    const compatibility = com.github.uiopak.lstcrc.toolWindow.ToolWindowUiCompatibility.INSTANCE;
-                    compatibility.setToolWindowTitleVisible(toolWindow, ${if (show) "true" else "false"});
+                    ${pluginClassLoaderLookupStatements("cl")}
+                    if (cl) {
+                        try {
+                            const compatibilityClass = cl.loadClass("com.github.uiopak.lstcrc.toolWindow.ToolWindowUiCompatibility");
+                            const compatibility = compatibilityClass.getField("INSTANCE").get(null);
+                            compatibilityClass.getMethod("setToolWindowTitleVisible", com.intellij.openapi.wm.ToolWindow, java.lang.Boolean.TYPE)
+                                .invoke(compatibility, toolWindow, ${if (show) "true" else "false"});
+                        } catch (e) {
+                            throw new java.lang.IllegalStateException("Failed to set tool window title visibility: " + e.toString());
+                        }
+                    }
                 })();
                 """.trimIndent(),
                 true
@@ -804,8 +815,18 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
                     ${toolWindowLookupStatements()}
                     if (!project || !toolWindow) return false;
 
-                    const compatibility = com.github.uiopak.lstcrc.toolWindow.ToolWindowUiCompatibility.INSTANCE;
-                    return compatibility.toolWindowTitleVisible(toolWindow);
+                    ${pluginClassLoaderLookupStatements("cl")}
+                    if (cl) {
+                        try {
+                            const compatibilityClass = cl.loadClass("com.github.uiopak.lstcrc.toolWindow.ToolWindowUiCompatibility");
+                            const compatibility = compatibilityClass.getField("INSTANCE").get(null);
+                            return compatibilityClass.getMethod("isToolWindowTitleVisible", com.intellij.openapi.wm.ToolWindow)
+                                .invoke(compatibility, toolWindow);
+                        } catch (e) {
+                            throw new java.lang.IllegalStateException("Failed to read tool window title visibility: " + e.toString());
+                        }
+                    }
+                    return false;
                 })();
                 """.trimIndent(),
                 true
