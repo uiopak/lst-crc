@@ -42,12 +42,24 @@ class RemoteRobotExtension : AfterTestExecutionCallback, ParameterResolver {
         }
         val client = OkHttpClient.Builder().apply {
             this.addInterceptor(interceptor)
+            this.connectTimeout(connectionTimeout)
+            this.readTimeout(connectionTimeout)
+            this.writeTimeout(connectionTimeout)
         }.build()
         RemoteRobot(url, client)
     } else {
-        RemoteRobot(url)
+        val client = OkHttpClient.Builder().apply {
+            this.connectTimeout(connectionTimeout)
+            this.readTimeout(connectionTimeout)
+            this.writeTimeout(connectionTimeout)
+        }.build()
+        RemoteRobot(url, client)
     }
-    private val client = OkHttpClient()
+    private val client = OkHttpClient.Builder().apply {
+        this.connectTimeout(connectionTimeout)
+        this.readTimeout(connectionTimeout)
+        this.writeTimeout(connectionTimeout)
+    }.build()
 
     override fun supportsParameter(parameterContext: ParameterContext, extensionContext: ExtensionContext): Boolean {
         return parameterContext.parameter.type == RemoteRobot::class.java
