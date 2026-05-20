@@ -510,6 +510,63 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
         }
     }
 
+    fun selectStatusWidgetPopupItem(itemName: String) {
+        step("Select '$itemName' in LST-CRC status widget popup") {
+            val popupList = find<ComponentFixture>(
+                byXpath("LST-CRC widget popup", "//div[@class='MyList' and contains(@accessiblename, 'LST-CRC Actions')]"),
+                Duration.ofSeconds(10)
+            )
+            popupList.runJs(
+                """
+                const list = component;
+                const model = list.getModel();
+                const targetText = ${toJsStringLiteral(itemName)};
+                let foundIndex = -1;
+                for (let i = 0; i < model.getSize(); i++) {
+                    const item = model.getElementAt(i);
+                    if (!item) continue;
+                    let text = "";
+                    if (typeof item.getText === "function") {
+                        text = String(item.getText());
+                    } else {
+                        text = String(item);
+                    }
+                    if (text === targetText) {
+                        foundIndex = i;
+                        break;
+                    }
+                }
+                if (foundIndex === -1) {
+                    for (let i = 0; i < model.getSize(); i++) {
+                        const item = model.getElementAt(i);
+                        if (!item) continue;
+                        let text = "";
+                        if (typeof item.getText === "function") {
+                            text = String(item.getText());
+                        } else {
+                            text = String(item);
+                        }
+                        if (text.indexOf(targetText) >= 0) {
+                            foundIndex = i;
+                            break;
+                        }
+                    }
+                }
+                if (foundIndex === -1) {
+                    throw new java.lang.IllegalStateException("Could not find popup item with text: " + targetText);
+                }
+                list.setSelectedIndex(foundIndex);
+                const popup = com.intellij.openapi.ui.popup.util.PopupUtil.getPopupContainerFor(list);
+                if (!popup) {
+                    throw new java.lang.IllegalStateException("Could not find popup container for list");
+                }
+                popup.handleSelect(true);
+                """.trimIndent(),
+                true
+            )
+        }
+    }
+
     fun statusWidgetPopupSnapshot(): String {
         return step("Read LST-CRC widget popup snapshot") {
             val widgetAndStatusBar = callJs<String>(

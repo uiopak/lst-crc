@@ -262,44 +262,20 @@ class LstCrcInteractionUiTest : LstCrcUiTestSupport() {
             }
 
             clickStatusWidget()
-            waitFor(Duration.ofSeconds(10)) {
-                findAll<ComponentFixture>(
-                    byXpath("//div[@class='MyList' and contains(@accessiblename, 'LST-CRC Actions')]")
-                ).isNotEmpty()
-            }
             assertWidgetPopupAnchoredNearStatusWidget(statusWidgetPopupSnapshot())
-            keyboard {
-                enterText("HEAD")
-                enter()
-            }
+            selectStatusWidgetPopupItem("HEAD")
             waitFor(Duration.ofSeconds(10)) {
                 selectedLstCrcTabName() == "HEAD"
             }
 
             clickStatusWidget()
-            waitFor(Duration.ofSeconds(10)) {
-                findAll<ComponentFixture>(
-                    byXpath("//div[@class='MyList' and contains(@accessiblename, 'LST-CRC Actions')]")
-                ).isNotEmpty()
-            }
-            keyboard {
-                enterText("feature-widget")
-                enter()
-            }
+            selectStatusWidgetPopupItem("feature-widget")
             waitFor(Duration.ofSeconds(10)) {
                 selectedLstCrcTabName() == "feature-widget" && statusWidgetText().contains("feature-widget")
             }
 
             clickStatusWidget()
-            waitFor(Duration.ofSeconds(10)) {
-                findAll<ComponentFixture>(
-                    byXpath("//div[@class='MyList' and contains(@accessiblename, 'LST-CRC Actions')]")
-                ).isNotEmpty()
-            }
-            keyboard {
-                enterText("Add Tab")
-                enter()
-            }
+            selectStatusWidgetPopupItem("Add Tab")
             branchSelection {
                 searchAndSelect("feature-widget-2")
             }
@@ -318,15 +294,7 @@ class LstCrcInteractionUiTest : LstCrcUiTestSupport() {
             }
 
             clickStatusWidget()
-            waitFor(Duration.ofSeconds(10)) {
-                findAll<ComponentFixture>(
-                    byXpath("//div[@class='MyList' and contains(@accessiblename, 'LST-CRC Actions')]")
-                ).isNotEmpty()
-            }
-            keyboard {
-                enterText("feature-widget")
-                enter()
-            }
+            selectStatusWidgetPopupItem("feature-widget")
             waitFor(Duration.ofSeconds(10)) {
                 selectedLstCrcTabName() == "feature-widget"
             }
