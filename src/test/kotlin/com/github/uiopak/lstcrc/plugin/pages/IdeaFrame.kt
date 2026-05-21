@@ -518,14 +518,14 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
             )
             popupList.runJs(
                 """
-                const list = component;
-                const model = list.getModel();
-                const targetText = ${toJsStringLiteral(itemName)};
-                let foundIndex = -1;
-                for (let i = 0; i < model.getSize(); i++) {
-                    const item = model.getElementAt(i);
+                var list = component;
+                var model = list.getModel();
+                var targetText = ${toJsStringLiteral(itemName)};
+                var foundIndex = -1;
+                for (var i = 0; i < model.getSize(); i++) {
+                    var item = model.getElementAt(i);
                     if (!item) continue;
-                    let text = "";
+                    var text = "";
                     if (typeof item.getText === "function") {
                         text = String(item.getText());
                     } else {
@@ -537,17 +537,17 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
                     }
                 }
                 if (foundIndex === -1) {
-                    for (let i = 0; i < model.getSize(); i++) {
-                        const item = model.getElementAt(i);
-                        if (!item) continue;
-                        let text = "";
-                        if (typeof item.getText === "function") {
-                            text = String(item.getText());
+                    for (var j = 0; j < model.getSize(); j++) {
+                        var item2 = model.getElementAt(j);
+                        if (!item2) continue;
+                        var text2 = "";
+                        if (typeof item2.getText === "function") {
+                            text2 = String(item2.getText());
                         } else {
-                            text = String(item);
+                            text2 = String(item2);
                         }
-                        if (text.indexOf(targetText) >= 0) {
-                            foundIndex = i;
+                        if (text2.indexOf(targetText) >= 0) {
+                            foundIndex = j;
                             break;
                         }
                     }
@@ -556,7 +556,7 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
                     throw new java.lang.IllegalStateException("Could not find popup item with text: " + targetText);
                 }
                 list.setSelectedIndex(foundIndex);
-                const popup = com.intellij.openapi.ui.popup.util.PopupUtil.getPopupContainerFor(list);
+                var popup = com.intellij.openapi.ui.popup.util.PopupUtil.getPopupContainerFor(list);
                 if (!popup) {
                     throw new java.lang.IllegalStateException("Could not find popup container for list");
                 }
