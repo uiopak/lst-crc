@@ -1,40 +1,111 @@
 package com.github.uiopak.lstcrc.toolWindow
 
-import com.intellij.ide.util.PropertiesComponent
 import com.intellij.openapi.components.PersistentStateComponent
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.State
 import com.intellij.openapi.components.Storage
 
+data class StringSettingDefinition(val key: String, val defaultValue: String)
+data class BooleanSettingDefinition(val key: String, val defaultValue: Boolean)
+data class IntSettingDefinition(val key: String, val defaultValue: Int)
+
+object LstCrcSettingDefinitions {
+    val SINGLE_CLICK_ACTION = StringSettingDefinition(
+        key = "com.github.uiopak.lstcrc.app.singleClickAction",
+        defaultValue = ToolWindowSettingsProvider.ACTION_OPEN_SOURCE
+    )
+    val DOUBLE_CLICK_ACTION = StringSettingDefinition(
+        key = "com.github.uiopak.lstcrc.app.doubleClickAction",
+        defaultValue = ToolWindowSettingsProvider.ACTION_NONE
+    )
+    val MIDDLE_CLICK_ACTION = StringSettingDefinition(
+        key = "com.github.uiopak.lstcrc.app.middleClickAction",
+        defaultValue = ToolWindowSettingsProvider.ACTION_SHOW_IN_PROJECT_TREE
+    )
+    val DOUBLE_MIDDLE_CLICK_ACTION = StringSettingDefinition(
+        key = "com.github.uiopak.lstcrc.app.doubleMiddleClickAction",
+        defaultValue = ToolWindowSettingsProvider.ACTION_NONE
+    )
+    val RIGHT_CLICK_ACTION = StringSettingDefinition(
+        key = "com.github.uiopak.lstcrc.app.rightClickAction",
+        defaultValue = ToolWindowSettingsProvider.ACTION_OPEN_DIFF
+    )
+    val DOUBLE_RIGHT_CLICK_ACTION = StringSettingDefinition(
+        key = "com.github.uiopak.lstcrc.app.doubleRightClickAction",
+        defaultValue = ToolWindowSettingsProvider.ACTION_NONE
+    )
+
+    val SHOW_CONTEXT_MENU = BooleanSettingDefinition(
+        key = "com.github.uiopak.lstcrc.app.showContextMenu",
+        defaultValue = false
+    )
+    val USER_DOUBLE_CLICK_DELAY = IntSettingDefinition(
+        key = "com.github.uiopak.lstcrc.app.userDoubleClickDelay",
+        defaultValue = -1
+    )
+    val INCLUDE_HEAD_IN_SCOPES = BooleanSettingDefinition(
+        key = "com.github.uiopak.lstcrc.app.includeHeadInScopes",
+        defaultValue = false
+    )
+    val ENABLE_GUTTER_MARKERS = BooleanSettingDefinition(
+        key = "com.github.uiopak.lstcrc.app.enableGutterMarkers",
+        defaultValue = true
+    )
+    val ENABLE_GUTTER_FOR_NEW_FILES = BooleanSettingDefinition(
+        key = "com.github.uiopak.lstcrc.app.enableGutterForNewFiles",
+        defaultValue = false
+    )
+    val SHOW_TOOL_WINDOW_TITLE = BooleanSettingDefinition(
+        key = "com.github.uiopak.lstcrc.app.showToolWindowTitle",
+        defaultValue = false
+    )
+    val SHOW_WIDGET_CONTEXT = BooleanSettingDefinition(
+        key = "com.github.uiopak.lstcrc.app.showWidgetContext",
+        defaultValue = false
+    )
+    val EXPAND_NEW_FILES_IN_COLLAPSED_DIRS = BooleanSettingDefinition(
+        key = "com.github.uiopak.lstcrc.app.expandNewFilesInCollapsedDirs",
+        defaultValue = true
+    )
+    val SHOW_UNTRACKED_FILES_AS_NEW = BooleanSettingDefinition(
+        key = "com.github.uiopak.lstcrc.app.showUntrackedFilesAsNew",
+        defaultValue = false
+    )
+    val SHOW_LINE_STATS_IN_TREE = BooleanSettingDefinition(
+        key = "com.github.uiopak.lstcrc.app.showLineStatsInTree",
+        defaultValue = false
+    )
+    val SHOW_CONTEXT_SINGLE_REPO = BooleanSettingDefinition(
+        key = "com.github.uiopak.lstcrc.app.showContextSingleRepo",
+        defaultValue = true
+    )
+    val SHOW_CONTEXT_MULTI_REPO = BooleanSettingDefinition(
+        key = "com.github.uiopak.lstcrc.app.showContextMultiRepo",
+        defaultValue = true
+    )
+    val SHOW_CONTEXT_FOR_COMMITS = BooleanSettingDefinition(
+        key = "com.github.uiopak.lstcrc.app.showContextForCommits",
+        defaultValue = false
+    )
+
+    val stringSettings: List<StringSettingDefinition> = listOf(
+        SINGLE_CLICK_ACTION, DOUBLE_CLICK_ACTION, MIDDLE_CLICK_ACTION,
+        DOUBLE_MIDDLE_CLICK_ACTION, RIGHT_CLICK_ACTION, DOUBLE_RIGHT_CLICK_ACTION
+    )
+
+    val booleanSettings: List<BooleanSettingDefinition> = listOf(
+        SHOW_CONTEXT_MENU, INCLUDE_HEAD_IN_SCOPES, ENABLE_GUTTER_MARKERS,
+        ENABLE_GUTTER_FOR_NEW_FILES, SHOW_TOOL_WINDOW_TITLE, SHOW_WIDGET_CONTEXT,
+        SHOW_CONTEXT_SINGLE_REPO, SHOW_CONTEXT_MULTI_REPO, SHOW_CONTEXT_FOR_COMMITS,
+        SHOW_LINE_STATS_IN_TREE, EXPAND_NEW_FILES_IN_COLLAPSED_DIRS, SHOW_UNTRACKED_FILES_AS_NEW
+    )
+
+    val intSettings: List<IntSettingDefinition> = listOf(USER_DOUBLE_CLICK_DELAY)
+}
+
 @State(name = "LstCrcSettingsService", storages = [Storage("lstCrcSettings.xml")])
 @Service(Service.Level.APP)
 class LstCrcSettingsService : PersistentStateComponent<LstCrcSettingsService.SettingsState> {
-
-    private companion object {
-        private val SINGLE_CLICK_ACTION = LstCrcSettingDefinitions.SINGLE_CLICK_ACTION
-        private val DOUBLE_CLICK_ACTION = LstCrcSettingDefinitions.DOUBLE_CLICK_ACTION
-        private val MIDDLE_CLICK_ACTION = LstCrcSettingDefinitions.MIDDLE_CLICK_ACTION
-        private val DOUBLE_MIDDLE_CLICK_ACTION = LstCrcSettingDefinitions.DOUBLE_MIDDLE_CLICK_ACTION
-        private val RIGHT_CLICK_ACTION = LstCrcSettingDefinitions.RIGHT_CLICK_ACTION
-        private val DOUBLE_RIGHT_CLICK_ACTION = LstCrcSettingDefinitions.DOUBLE_RIGHT_CLICK_ACTION
-        private val SHOW_CONTEXT_MENU = LstCrcSettingDefinitions.SHOW_CONTEXT_MENU
-        private val USER_DOUBLE_CLICK_DELAY = LstCrcSettingDefinitions.USER_DOUBLE_CLICK_DELAY
-        private val INCLUDE_HEAD_IN_SCOPES = LstCrcSettingDefinitions.INCLUDE_HEAD_IN_SCOPES
-        private val ENABLE_GUTTER_MARKERS = LstCrcSettingDefinitions.ENABLE_GUTTER_MARKERS
-        private val ENABLE_GUTTER_FOR_NEW_FILES = LstCrcSettingDefinitions.ENABLE_GUTTER_FOR_NEW_FILES
-        private val SHOW_TOOL_WINDOW_TITLE = LstCrcSettingDefinitions.SHOW_TOOL_WINDOW_TITLE
-        private val SHOW_WIDGET_CONTEXT = LstCrcSettingDefinitions.SHOW_WIDGET_CONTEXT
-        private val SHOW_CONTEXT_SINGLE_REPO = LstCrcSettingDefinitions.SHOW_CONTEXT_SINGLE_REPO
-        private val SHOW_CONTEXT_MULTI_REPO = LstCrcSettingDefinitions.SHOW_CONTEXT_MULTI_REPO
-        private val SHOW_CONTEXT_FOR_COMMITS = LstCrcSettingDefinitions.SHOW_CONTEXT_FOR_COMMITS
-        private val SHOW_LINE_STATS_IN_TREE = LstCrcSettingDefinitions.SHOW_LINE_STATS_IN_TREE
-        private val EXPAND_NEW_FILES_IN_COLLAPSED_DIRS = LstCrcSettingDefinitions.EXPAND_NEW_FILES_IN_COLLAPSED_DIRS
-        private val SHOW_UNTRACKED_FILES_AS_NEW = LstCrcSettingDefinitions.SHOW_UNTRACKED_FILES_AS_NEW
-
-        private val STRING_SETTINGS = LstCrcSettingDefinitions.stringSettings
-        private val BOOLEAN_SETTINGS = LstCrcSettingDefinitions.booleanSettings
-        private val INT_SETTINGS = LstCrcSettingDefinitions.intSettings
-    }
 
     data class SettingsState(
         var values: MutableMap<String, String> = mutableMapOf()
@@ -42,202 +113,100 @@ class LstCrcSettingsService : PersistentStateComponent<LstCrcSettingsService.Set
 
     private var state = SettingsState()
 
-    private val properties: PropertiesComponent
-        get() = PropertiesComponent.getInstance()
-
     override fun getState(): SettingsState = state
-
-    override fun loadState(state: SettingsState) {
-        this.state = state
-    }
+    override fun loadState(state: SettingsState) { this.state = state }
 
     private fun storedValue(key: String): String? = state.values[key]?.takeUnless(String::isBlank)
 
-    private fun getString(key: String, default: String): String {
-        storedValue(key)?.let { return it }
+    private fun getString(key: String, default: String): String = storedValue(key) ?: default
+    private fun setString(key: String, value: String) { state.values[key] = value }
 
-        val legacyValue = properties.getValue(key)
-        if (!legacyValue.isNullOrBlank()) {
-            state.values[key] = legacyValue
-            return legacyValue
-        }
+    private fun getString(def: StringSettingDefinition): String = getString(def.key, def.defaultValue)
+    private fun setString(def: StringSettingDefinition, value: String) = setString(def.key, value)
+    private fun getBoolean(def: BooleanSettingDefinition): Boolean = getBoolean(def.key, def.defaultValue)
+    private fun setBoolean(def: BooleanSettingDefinition, value: Boolean) = setBoolean(def.key, value, def.defaultValue)
+    private fun getInt(def: IntSettingDefinition): Int = getInt(def.key, def.defaultValue)
+    private fun setInt(def: IntSettingDefinition, value: Int) = setInt(def.key, value, def.defaultValue)
 
-        return default
-    }
+    // --- Public typed accessors ---
 
-    private fun setString(key: String, value: String) {
-        state.values[key] = value
-        // Keep legacy keys in sync for staged migration compatibility.
-        properties.setValue(key, value)
-    }
+    fun getSingleClickAction(): String = getString(LstCrcSettingDefinitions.SINGLE_CLICK_ACTION)
+    fun setSingleClickAction(action: String) = setString(LstCrcSettingDefinitions.SINGLE_CLICK_ACTION, action)
 
-    private fun getString(definition: StringSettingDefinition): String =
-        getString(definition.key, definition.defaultValue)
+    fun getDoubleClickAction(): String = getString(LstCrcSettingDefinitions.DOUBLE_CLICK_ACTION)
+    fun setDoubleClickAction(action: String) = setString(LstCrcSettingDefinitions.DOUBLE_CLICK_ACTION, action)
 
-    private fun setString(definition: StringSettingDefinition, value: String) {
-        setString(definition.key, value)
-    }
+    fun getMiddleClickAction(): String = getString(LstCrcSettingDefinitions.MIDDLE_CLICK_ACTION)
+    fun setMiddleClickAction(action: String) = setString(LstCrcSettingDefinitions.MIDDLE_CLICK_ACTION, action)
 
-    private fun setBoolean(definition: BooleanSettingDefinition, value: Boolean) {
-        setBoolean(definition.key, value, definition.defaultValue)
-    }
+    fun getDoubleMiddleClickAction(): String = getString(LstCrcSettingDefinitions.DOUBLE_MIDDLE_CLICK_ACTION)
+    fun setDoubleMiddleClickAction(action: String) = setString(LstCrcSettingDefinitions.DOUBLE_MIDDLE_CLICK_ACTION, action)
 
-    private fun getBoolean(definition: BooleanSettingDefinition): Boolean =
-        getBoolean(definition.key, definition.defaultValue)
+    fun getRightClickAction(): String = getString(LstCrcSettingDefinitions.RIGHT_CLICK_ACTION)
+    fun setRightClickAction(action: String) = setString(LstCrcSettingDefinitions.RIGHT_CLICK_ACTION, action)
 
-    private fun getInt(definition: IntSettingDefinition): Int =
-        getInt(definition.key, definition.defaultValue)
+    fun getDoubleRightClickAction(): String = getString(LstCrcSettingDefinitions.DOUBLE_RIGHT_CLICK_ACTION)
+    fun setDoubleRightClickAction(action: String) = setString(LstCrcSettingDefinitions.DOUBLE_RIGHT_CLICK_ACTION, action)
 
-    private fun setInt(definition: IntSettingDefinition, value: Int) {
-        setInt(definition.key, value, definition.defaultValue)
-    }
+    fun isContextMenuEnabled(): Boolean = getBoolean(LstCrcSettingDefinitions.SHOW_CONTEXT_MENU)
+    fun setContextMenuEnabled(enabled: Boolean) = setBoolean(LstCrcSettingDefinitions.SHOW_CONTEXT_MENU, enabled)
 
-    fun getSingleClickAction(): String = getString(SINGLE_CLICK_ACTION)
+    fun getUserDoubleClickDelay(): Int = getInt(LstCrcSettingDefinitions.USER_DOUBLE_CLICK_DELAY)
+    fun setUserDoubleClickDelay(delay: Int) = setInt(LstCrcSettingDefinitions.USER_DOUBLE_CLICK_DELAY, delay)
 
-    fun setSingleClickAction(action: String) {
-        setString(SINGLE_CLICK_ACTION, action)
-    }
+    fun isIncludeHeadInScopes(): Boolean = getBoolean(LstCrcSettingDefinitions.INCLUDE_HEAD_IN_SCOPES)
+    fun setIncludeHeadInScopes(enabled: Boolean) = setBoolean(LstCrcSettingDefinitions.INCLUDE_HEAD_IN_SCOPES, enabled)
 
-    fun getDoubleClickAction(): String = getString(DOUBLE_CLICK_ACTION)
+    fun isGutterMarkersEnabled(): Boolean = getBoolean(LstCrcSettingDefinitions.ENABLE_GUTTER_MARKERS)
+    fun setGutterMarkersEnabled(enabled: Boolean) = setBoolean(LstCrcSettingDefinitions.ENABLE_GUTTER_MARKERS, enabled)
 
-    fun setDoubleClickAction(action: String) {
-        setString(DOUBLE_CLICK_ACTION, action)
-    }
+    fun isGutterForNewFilesEnabled(): Boolean = getBoolean(LstCrcSettingDefinitions.ENABLE_GUTTER_FOR_NEW_FILES)
+    fun setGutterForNewFilesEnabled(enabled: Boolean) = setBoolean(LstCrcSettingDefinitions.ENABLE_GUTTER_FOR_NEW_FILES, enabled)
 
-    fun getMiddleClickAction(): String = getString(MIDDLE_CLICK_ACTION)
+    fun isShowToolWindowTitle(): Boolean = getBoolean(LstCrcSettingDefinitions.SHOW_TOOL_WINDOW_TITLE)
+    fun setShowToolWindowTitle(enabled: Boolean) = setBoolean(LstCrcSettingDefinitions.SHOW_TOOL_WINDOW_TITLE, enabled)
 
-    fun setMiddleClickAction(action: String) {
-        setString(MIDDLE_CLICK_ACTION, action)
-    }
+    fun isShowWidgetContext(): Boolean = getBoolean(LstCrcSettingDefinitions.SHOW_WIDGET_CONTEXT)
+    fun setShowWidgetContext(enabled: Boolean) = setBoolean(LstCrcSettingDefinitions.SHOW_WIDGET_CONTEXT, enabled)
 
-    fun getDoubleMiddleClickAction(): String = getString(DOUBLE_MIDDLE_CLICK_ACTION)
+    fun isShowContextForSingleRepo(): Boolean = getBoolean(LstCrcSettingDefinitions.SHOW_CONTEXT_SINGLE_REPO)
+    fun setShowContextForSingleRepo(enabled: Boolean) = setBoolean(LstCrcSettingDefinitions.SHOW_CONTEXT_SINGLE_REPO, enabled)
 
-    fun setDoubleMiddleClickAction(action: String) {
-        setString(DOUBLE_MIDDLE_CLICK_ACTION, action)
-    }
+    fun isShowContextForMultiRepo(): Boolean = getBoolean(LstCrcSettingDefinitions.SHOW_CONTEXT_MULTI_REPO)
+    fun setShowContextForMultiRepo(enabled: Boolean) = setBoolean(LstCrcSettingDefinitions.SHOW_CONTEXT_MULTI_REPO, enabled)
 
-    fun getRightClickAction(): String = getString(RIGHT_CLICK_ACTION)
+    fun isShowContextForCommits(): Boolean = getBoolean(LstCrcSettingDefinitions.SHOW_CONTEXT_FOR_COMMITS)
+    fun setShowContextForCommits(enabled: Boolean) = setBoolean(LstCrcSettingDefinitions.SHOW_CONTEXT_FOR_COMMITS, enabled)
 
-    fun setRightClickAction(action: String) {
-        setString(RIGHT_CLICK_ACTION, action)
-    }
+    fun isShowLineStatsInTree(): Boolean = getBoolean(LstCrcSettingDefinitions.SHOW_LINE_STATS_IN_TREE)
+    fun setShowLineStatsInTree(enabled: Boolean) = setBoolean(LstCrcSettingDefinitions.SHOW_LINE_STATS_IN_TREE, enabled)
 
-    fun getDoubleRightClickAction(): String = getString(DOUBLE_RIGHT_CLICK_ACTION)
+    fun isExpandNewFilesInCollapsedDirs(): Boolean = getBoolean(LstCrcSettingDefinitions.EXPAND_NEW_FILES_IN_COLLAPSED_DIRS)
+    fun setExpandNewFilesInCollapsedDirs(enabled: Boolean) = setBoolean(LstCrcSettingDefinitions.EXPAND_NEW_FILES_IN_COLLAPSED_DIRS, enabled)
 
-    fun setDoubleRightClickAction(action: String) {
-        setString(DOUBLE_RIGHT_CLICK_ACTION, action)
-    }
+    fun isShowUntrackedFilesAsNew(): Boolean = getBoolean(LstCrcSettingDefinitions.SHOW_UNTRACKED_FILES_AS_NEW)
+    fun setShowUntrackedFilesAsNew(enabled: Boolean) = setBoolean(LstCrcSettingDefinitions.SHOW_UNTRACKED_FILES_AS_NEW, enabled)
 
-    fun isContextMenuEnabled(): Boolean = getBoolean(SHOW_CONTEXT_MENU)
+    // --- Public raw-key accessors (used by tests via reflection) ---
 
-    fun setContextMenuEnabled(enabled: Boolean) {
-        setBoolean(SHOW_CONTEXT_MENU, enabled)
-    }
-
-    fun getUserDoubleClickDelay(): Int = getInt(USER_DOUBLE_CLICK_DELAY)
-
-    fun setUserDoubleClickDelay(delay: Int) {
-        setInt(USER_DOUBLE_CLICK_DELAY, delay)
-    }
-
-    fun isIncludeHeadInScopes(): Boolean = getBoolean(INCLUDE_HEAD_IN_SCOPES)
-
-    fun setIncludeHeadInScopes(enabled: Boolean) {
-        setBoolean(INCLUDE_HEAD_IN_SCOPES, enabled)
-    }
-
-    fun isGutterMarkersEnabled(): Boolean = getBoolean(ENABLE_GUTTER_MARKERS)
-
-    fun setGutterMarkersEnabled(enabled: Boolean) {
-        setBoolean(ENABLE_GUTTER_MARKERS, enabled)
-    }
-
-    fun isGutterForNewFilesEnabled(): Boolean = getBoolean(ENABLE_GUTTER_FOR_NEW_FILES)
-
-    fun setGutterForNewFilesEnabled(enabled: Boolean) {
-        setBoolean(ENABLE_GUTTER_FOR_NEW_FILES, enabled)
-    }
-
-    fun isShowToolWindowTitle(): Boolean = getBoolean(SHOW_TOOL_WINDOW_TITLE)
-
-    fun setShowToolWindowTitle(enabled: Boolean) {
-        setBoolean(SHOW_TOOL_WINDOW_TITLE, enabled)
-    }
-
-    fun isShowWidgetContext(): Boolean = getBoolean(SHOW_WIDGET_CONTEXT)
-
-    fun setShowWidgetContext(enabled: Boolean) {
-        setBoolean(SHOW_WIDGET_CONTEXT, enabled)
-    }
-
-    fun isShowContextForSingleRepo(): Boolean = getBoolean(SHOW_CONTEXT_SINGLE_REPO)
-
-    fun setShowContextForSingleRepo(enabled: Boolean) {
-        setBoolean(SHOW_CONTEXT_SINGLE_REPO, enabled)
-    }
-
-    fun isShowContextForMultiRepo(): Boolean = getBoolean(SHOW_CONTEXT_MULTI_REPO)
-
-    fun setShowContextForMultiRepo(enabled: Boolean) {
-        setBoolean(SHOW_CONTEXT_MULTI_REPO, enabled)
-    }
-
-    fun isShowContextForCommits(): Boolean = getBoolean(SHOW_CONTEXT_FOR_COMMITS)
-
-    fun setShowContextForCommits(enabled: Boolean) {
-        setBoolean(SHOW_CONTEXT_FOR_COMMITS, enabled)
-    }
-
-    fun isShowLineStatsInTree(): Boolean = getBoolean(SHOW_LINE_STATS_IN_TREE)
-
-    fun setShowLineStatsInTree(enabled: Boolean) {
-        setBoolean(SHOW_LINE_STATS_IN_TREE, enabled)
-    }
-
-    fun isExpandNewFilesInCollapsedDirs(): Boolean = getBoolean(EXPAND_NEW_FILES_IN_COLLAPSED_DIRS)
-
-    fun setExpandNewFilesInCollapsedDirs(enabled: Boolean) {
-        setBoolean(EXPAND_NEW_FILES_IN_COLLAPSED_DIRS, enabled)
-    }
-
-    fun isShowUntrackedFilesAsNew(): Boolean = getBoolean(SHOW_UNTRACKED_FILES_AS_NEW)
-
-    fun setShowUntrackedFilesAsNew(enabled: Boolean) {
-        setBoolean(SHOW_UNTRACKED_FILES_AS_NEW, enabled)
-    }
-
-    fun getBoolean(key: String, default: Boolean): Boolean {
-        storedValue(key)?.let { return it.toBooleanStrictOrNull() ?: default }
-
-        val legacyValue = properties.getBoolean(key, default)
-        state.values[key] = legacyValue.toString()
-        return legacyValue
-    }
+    fun getBoolean(key: String, default: Boolean): Boolean =
+        storedValue(key)?.toBooleanStrictOrNull() ?: default
 
     fun setBoolean(key: String, value: Boolean, default: Boolean) {
         state.values[key] = value.toString()
-        // Keep legacy keys in sync for staged migration compatibility.
-        properties.setValue(key, value, default)
     }
 
-    fun getInt(key: String, default: Int): Int {
-        storedValue(key)?.let { return it.toIntOrNull() ?: default }
-
-        val legacyValue = properties.getInt(key, default)
-        state.values[key] = legacyValue.toString()
-        return legacyValue
-    }
+    fun getInt(key: String, default: Int): Int =
+        storedValue(key)?.toIntOrNull() ?: default
 
     fun setInt(key: String, value: Int, default: Int) {
         state.values[key] = value.toString()
-        // Keep legacy keys in sync for staged migration compatibility.
-        properties.setValue(key, value, default)
     }
 
     @Suppress("unused")
     fun resetToDefaults() {
-        STRING_SETTINGS.forEach { definition -> setString(definition, definition.defaultValue) }
-        BOOLEAN_SETTINGS.forEach { definition -> setBoolean(definition, definition.defaultValue) }
-        INT_SETTINGS.forEach { definition -> setInt(definition, definition.defaultValue) }
+        LstCrcSettingDefinitions.stringSettings.forEach { setString(it, it.defaultValue) }
+        LstCrcSettingDefinitions.booleanSettings.forEach { setBoolean(it, it.defaultValue) }
+        LstCrcSettingDefinitions.intSettings.forEach { setInt(it, it.defaultValue) }
     }
 }

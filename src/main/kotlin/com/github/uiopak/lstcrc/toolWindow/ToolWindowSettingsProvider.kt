@@ -49,18 +49,18 @@ object ToolWindowSettingsProvider {
     )
 
     private val leftClickSettings = listOf(
-        ClickActionSettingDefinition("settings.left.click.single", ::getSingleClickAction, ::setSingleClickAction),
-        ClickActionSettingDefinition("settings.left.click.double", ::getDoubleClickAction, ::setDoubleClickAction)
+        ClickActionSettingDefinition("settings.left.click.single", ::getSingleClickAction) { settingsService().setSingleClickAction(it) },
+        ClickActionSettingDefinition("settings.left.click.double", ::getDoubleClickAction) { settingsService().setDoubleClickAction(it) }
     )
 
     private val middleClickSettings = listOf(
-        ClickActionSettingDefinition("settings.middle.click.single", ::getMiddleClickAction, ::setMiddleClickAction),
-        ClickActionSettingDefinition("settings.middle.click.double", ::getDoubleMiddleClickAction, ::setDoubleMiddleClickAction)
+        ClickActionSettingDefinition("settings.middle.click.single", ::getMiddleClickAction) { settingsService().setMiddleClickAction(it) },
+        ClickActionSettingDefinition("settings.middle.click.double", ::getDoubleMiddleClickAction) { settingsService().setDoubleMiddleClickAction(it) }
     )
 
     private val rightClickSettings = listOf(
-        ClickActionSettingDefinition("settings.right.click.single", ::getRightClickAction, ::setRightClickAction),
-        ClickActionSettingDefinition("settings.right.click.double", ::getDoubleRightClickAction, ::setDoubleRightClickAction)
+        ClickActionSettingDefinition("settings.right.click.single", ::getRightClickAction) { settingsService().setRightClickAction(it) },
+        ClickActionSettingDefinition("settings.right.click.double", ::getDoubleRightClickAction) { settingsService().setDoubleRightClickAction(it) }
     )
 
     private val doubleClickDelayChoices = listOf(
@@ -96,7 +96,6 @@ object ToolWindowSettingsProvider {
     fun isShowUntrackedFilesAsNew(): Boolean = settingsService().isShowUntrackedFilesAsNew()
     fun isShowLineStatsInTree(): Boolean = settingsService().isShowLineStatsInTree()
 
-
     fun getUserDoubleClickDelayMs(): Int {
         val storedValue = settingsService().getUserDoubleClickDelay()
         if (storedValue > 0) {
@@ -105,15 +104,6 @@ object ToolWindowSettingsProvider {
         val systemValue = UIManager.get("Tree.doubleClickTimeout") as? Int
         return systemValue?.takeIf { it > 0 } ?: 300
     }
-
-    // --- Private Setters used by Actions ---
-    private fun setSingleClickAction(action: String) = settingsService().setSingleClickAction(action)
-    private fun setDoubleClickAction(action: String) = settingsService().setDoubleClickAction(action)
-    private fun setMiddleClickAction(action: String) = settingsService().setMiddleClickAction(action)
-    private fun setDoubleMiddleClickAction(action: String) = settingsService().setDoubleMiddleClickAction(action)
-    private fun setRightClickAction(action: String) = settingsService().setRightClickAction(action)
-    private fun setDoubleRightClickAction(action: String) = settingsService().setDoubleRightClickAction(action)
-    private fun setUserDoubleClickDelayMs(delay: Int) = settingsService().setUserDoubleClickDelay(delay)
 
 
     fun createToolWindowSettingsGroup(): ActionGroup {
@@ -166,7 +156,7 @@ object ToolWindowSettingsProvider {
         doubleClickDelayChoices.forEach { choice ->
             delaySpeedGroup.add(createToggleAction(LstCrcBundle.message(choice.labelKey),
                 { settingsService().getUserDoubleClickDelay() == choice.delayMs },
-                { setUserDoubleClickDelayMs(choice.delayMs) }
+                { settingsService().setUserDoubleClickDelay(choice.delayMs) }
             ))
         }
         mouseClickActionsGroup.add(delaySpeedGroup)

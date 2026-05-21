@@ -146,31 +146,16 @@ class GitService(private val project: Project) {
      * project's base directory.
      */
     internal fun getPrimaryRepository(): GitRepository? {
-        logger.debug("getPrimaryRepository() called.")
         val repositoryManager = GitRepositoryManager.getInstance(project)
         val repositories = repositoryManager.repositories
-        logger.debug("Found ${repositories.size} repositories.")
+        if (repositories.isEmpty()) return null
+        if (repositories.size == 1) return repositories.first()
 
-        if (repositories.isEmpty()) {
-            logger.info("No Git repositories found. Returning null.")
-            return null
-        }
-        if (repositories.size == 1) {
-            logger.info("Exactly one Git repository found: ${repositories.first().root.path}")
-            return repositories.first()
-        }
-
-        // For multiple repositories, prefer the one that contains the project's base path.
         val projectBasePath = project.basePath?.let { LocalFileSystem.getInstance().findFileByPath(it) }
         if (projectBasePath != null) {
-            val repoForProjectRoot = repositoryManager.getRepositoryForFile(projectBasePath)
-            if (repoForProjectRoot != null) {
-                logger.info("Multiple repositories found. Using the one for the project root: ${repoForProjectRoot.root.path}")
-                return repoForProjectRoot
-            }
+            repositoryManager.getRepositoryForFile(projectBasePath)?.let { return it }
         }
 
-        // Fallback to the first repository if no better match is found.
         logger.warn("Multiple Git repositories found, but none contains the project base path. Using the first one: ${repositories.first().root.path}")
         return repositories.first()
     }
@@ -307,17 +292,7 @@ class GitService(private val project: Project) {
 
     private fun loadChangesAgainstWorkingTree(repo: GitRepository, target: String): LoadedChanges {
         val trackedChanges = loadTrackedChangesAgainstWorkingTree(repo, target)
-        val untrackedChanges = loadOptionalUntrackedChanges(repo)
-        val unsavedChanges = collectUnsavedDocumentChanges(repo, target)
-        val allChanges = overlayUnsavedDocumentChanges(trackedChanges.changes + untrackedChanges, unsavedChanges)
-        return LoadedChanges(
-            changes = allChanges,
-            lineStatsByChange = buildLineStats(
-                changes = allChanges,
-                trackedLineStats = trackedChanges.lineStatsByChange,
-                forceRecompute = unsavedChanges.mapTo(linkedSetOf()) { ChangeLineStatsKey.from(it) }
-            )
-        )
+        return combineWithUntrackedAndUnsaved(repo, target, trackedChanges)
     }
 
     @Suppress("UsePropertyAccessSyntax")
@@ -510,12 +485,8 @@ class GitService(private val project: Project) {
     }
 
     private fun logLocalComparisonFallback(repo: GitRepository, target: String) {
-        if (repo.isFresh) {
-            logger.info("Repo '${repo.root.name}' is fresh. Falling back to comparing against HEAD for target '$target'.")
-            return
-        }
-
-        logger.debug("Repo '${repo.root.name}' is targeting HEAD. Comparing against local changes.")
+        if (repo.isFresh) logger.info("Repo '${repo.root.name}' is fresh. Falling back to comparing against HEAD for target '$target'.")
+        else logger.debug("Repo '${repo.root.name}' is targeting HEAD. Comparing against local changes.")
     }
 
     private fun buildCategorizedChanges(
@@ -554,8 +525,12 @@ class GitService(private val project: Project) {
 
     private fun loadLocalChanges(repo: GitRepository): LoadedChanges {
         val trackedChanges = loadTrackedChangesAgainstHead(repo)
+        return combineWithUntrackedAndUnsaved(repo, "HEAD", trackedChanges)
+    }
+
+    private fun combineWithUntrackedAndUnsaved(repo: GitRepository, target: String, trackedChanges: LoadedChanges): LoadedChanges {
         val untrackedChanges = loadOptionalUntrackedChanges(repo)
-        val unsavedChanges = collectUnsavedDocumentChanges(repo, "HEAD")
+        val unsavedChanges = collectUnsavedDocumentChanges(repo, target)
         val allChanges = overlayUnsavedDocumentChanges(trackedChanges.changes + untrackedChanges, unsavedChanges)
         return LoadedChanges(
             changes = allChanges,
