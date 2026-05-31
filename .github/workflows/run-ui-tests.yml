@@ -27,6 +27,8 @@ jobs:
       matrix:
         include:
           - os: ubuntu-latest
+            uiTestServerWaitTimeout: 1200
+            uiTestIdeRuntimeWarmupTimeout: 1200
             prepareIdeRuntime: ./gradlew runIdeForUiTests --dry-run --stacktrace
             runIde: |
               export DISPLAY=:99.0
@@ -42,6 +44,8 @@ jobs:
             url: http://127.0.0.1:8082
             reportName: ui-test-fails-report-linux
           - os: macOS-latest
+            uiTestServerWaitTimeout: 1800
+            uiTestIdeRuntimeWarmupTimeout: 1800
             prepareIdeRuntime: ./gradlew runIdeForUiTests --dry-run --stacktrace
             runIde: ./gradlew runIdeForUiTests --info --stacktrace --scan &> build/reports/idea.log &
             runTests: ./gradlew uiTest --no-configuration-cache --info --stacktrace -Dui.test.connection.timeout=${UI_TEST_CONNECTION_TIMEOUT} -Dui.test.timeout=${UI_TEST_TIMEOUT}
@@ -51,6 +55,8 @@ jobs:
             url: http://127.0.0.1:8082
             reportName: ui-test-fails-report-mac
           - os: windows-latest
+            uiTestServerWaitTimeout: 1200
+            uiTestIdeRuntimeWarmupTimeout: 1200
             prepareIdeRuntime: .\gradlew.bat runIdeForUiTests --dry-run --stacktrace
             runIde: |
               $process = Start-Process -FilePath "cmd.exe" -ArgumentList @(
@@ -246,12 +252,12 @@ jobs:
 
       - name: Prepare UI test IDE runtime
         if: runner.os != 'Windows'
-        timeout-minutes: 25
+        timeout-minutes: 40
         shell: bash
         env:
           GRADLE_ACTIONS_SKIP_BUILD_RESULT_CAPTURE: true
         run: |
-          deadline=$(( $(date +%s) + UI_TEST_IDE_RUNTIME_WARMUP_TIMEOUT ))
+          deadline=$(( $(date +%s) + ${{ matrix.uiTestIdeRuntimeWarmupTimeout }} ))
           attempt=1
 
           while true; do
@@ -261,7 +267,7 @@ jobs:
 
             now=$(date +%s)
             if [ "$now" -ge "$deadline" ]; then
-              echo "IDE runtime warmup timed out after ${UI_TEST_IDE_RUNTIME_WARMUP_TIMEOUT}s"
+              echo "IDE runtime warmup timed out after ${{ matrix.uiTestIdeRuntimeWarmupTimeout }}s"
               exit 1
             fi
 
@@ -273,12 +279,12 @@ jobs:
 
       - name: Prepare UI test IDE runtime
         if: runner.os == 'Windows'
-        timeout-minutes: 25
+        timeout-minutes: 40
         shell: powershell
         env:
           GRADLE_ACTIONS_SKIP_BUILD_RESULT_CAPTURE: true
         run: |
-          $deadline = (Get-Date).AddSeconds([int]$env:UI_TEST_IDE_RUNTIME_WARMUP_TIMEOUT)
+          $deadline = (Get-Date).AddSeconds([int]"${{ matrix.uiTestIdeRuntimeWarmupTimeout }}")
           $attempt = 1
 
           while ($true) {
@@ -289,7 +295,7 @@ jobs:
 
             $now = Get-Date
             if ($now -ge $deadline) {
-              Write-Host "IDE runtime warmup timed out after $($env:UI_TEST_IDE_RUNTIME_WARMUP_TIMEOUT)s"
+              Write-Host "IDE runtime warmup timed out after ${{ matrix.uiTestIdeRuntimeWarmupTimeout }}s"
               exit 1
             }
 
@@ -378,7 +384,7 @@ jobs:
       # Wait for IDEA to be started and the Remote Robot server to respond through Gradle's readiness task.
       - name: Wait for IDE readiness
         if: runner.os != 'Windows'
-        run: ./gradlew uiTestReady --info --stacktrace -Dui.test.server.wait.timeout=${UI_TEST_SERVER_WAIT_TIMEOUT}
+        run: ./gradlew uiTestReady --info --stacktrace -Dui.test.server.wait.timeout=${{ matrix.uiTestServerWaitTimeout }}
         shell: bash
 
       - name: Wait for IDE readiness
@@ -388,7 +394,7 @@ jobs:
             "uiTestReady",
             "--info",
             "--stacktrace",
-            "-Dui.test.server.wait.timeout=$($env:UI_TEST_SERVER_WAIT_TIMEOUT)"
+            "-Dui.test.server.wait.timeout=${{ matrix.uiTestServerWaitTimeout }}"
           )
           & .\gradlew.bat @gradleArgs
         shell: powershell
@@ -447,9 +453,53 @@ jobs:
         if: always()
         shell: bash
         run: |
-          echo "## UI Test Results for ${{ matrix.os }}" >> $GITHUB_STEP_SUMMARY
-          if [ "${{ job.status }}" = "success" ]; then
-            echo "✅ All tests passed" >> $GITHUB_STEP_SUMMARY
+          echo "## UI Test Results for ${{ matrix.os }}" >> "$GITHUB_STEP_SUMMARY"
+
+          total_tests=0
+          total_failures=0
+          total_errors=0
+          total_skipped=0
+          file_count=0
+
+          while IFS= read -r -d '' file; do
+            file_count=$((file_count + 1))
+            tests=$(grep -Eo 'tests="[0-9]+"' "$file" | head -n1 | grep -Eo '[0-9]+' || echo 0)
+            failures=$(grep -Eo 'failures="[0-9]+"' "$file" | head -n1 | grep -Eo '[0-9]+' || echo 0)
+            errors=$(grep -Eo 'errors="[0-9]+"' "$file" | head -n1 | grep -Eo '[0-9]+' || echo 0)
+            skipped=$(grep -Eo 'skipped="[0-9]+"' "$file" | head -n1 | grep -Eo '[0-9]+' || echo 0)
+
+            total_tests=$((total_tests + tests))
+            total_failures=$((total_failures + failures))
+            total_errors=$((total_errors + errors))
+            total_skipped=$((total_skipped + skipped))
+          done < <(find build/test-results -type f -name 'TEST-*.xml' -print0 2>/dev/null)
+
+          if [ "$file_count" -eq 0 ]; then
+            echo "No JUnit XML files found under build/test-results." >> "$GITHUB_STEP_SUMMARY"
+            if [ "${{ job.status }}" = "success" ]; then
+              echo "✅ Job status: success" >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "❌ Job status: failure" >> "$GITHUB_STEP_SUMMARY"
+            fi
+            exit 0
+          fi
+
+          total_failed=$((total_failures + total_errors))
+          total_passed=$((total_tests - total_failed - total_skipped))
+
+          if [ "$total_passed" -lt 0 ]; then
+            total_passed=0
+          fi
+
+          echo "| Metric | Count |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|---|---:|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Passed | $total_passed |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Failed | $total_failed |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Skipped | $total_skipped |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Total | $total_tests |" >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$total_failed" -eq 0 ] && [ "${{ job.status }}" = "success" ]; then
+            echo "✅ All tests passed" >> "$GITHUB_STEP_SUMMARY"
           else
-            echo "❌ Tests failed — see job logs for details" >> $GITHUB_STEP_SUMMARY
+            echo "❌ Tests failed — see job logs for details" >> "$GITHUB_STEP_SUMMARY"
           fi

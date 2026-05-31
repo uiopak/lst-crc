@@ -2,27 +2,44 @@ package com.github.uiopak.lstcrc.toolWindow
 
 import com.github.uiopak.lstcrc.resources.LstCrcBundle
 import com.github.uiopak.lstcrc.services.CategorizedChanges
+import com.github.uiopak.lstcrc.services.ProjectActiveDiffDataService
 import com.github.uiopak.lstcrc.services.ToolWindowStateService
-import com.github.uiopak.lstcrc.utils.getTreePathForMouseCoordinates
+import com.github.uiopak.lstcrc.messaging.DIFF_DATA_CHANGED_TOPIC
+import com.github.uiopak.lstcrc.messaging.ActiveDiffDataChangedListener
+import com.intellij.util.ui.tree.TreeUtil
 import com.intellij.ide.projectView.ProjectView
+import com.intellij.diff.editor.ChainDiffVirtualFile
+import com.intellij.diff.editor.DiffEditorTabFilesManager
+import com.intellij.openapi.ListSelection
 import com.intellij.openapi.Disposable
-import com.intellij.openapi.actionSystem.*
+import com.intellij.openapi.actionSystem.ActionManager
+import com.intellij.openapi.actionSystem.ActionPlaces
+import com.intellij.openapi.actionSystem.ActionUpdateThread
+import com.intellij.openapi.actionSystem.AnAction
+import com.intellij.openapi.actionSystem.AnActionEvent
+import com.intellij.openapi.actionSystem.DefaultActionGroup
+import com.intellij.openapi.actionSystem.UiDataProvider
+import com.intellij.openapi.application.EDT
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.service
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.fileEditor.OpenFileDescriptor
+import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.project.DumbAwareAction
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.vcs.changes.Change
 import com.intellij.openapi.vcs.changes.ContentRevision
 import com.intellij.openapi.vcs.changes.ChangesUtil
+import com.intellij.openapi.vcs.changes.actions.diff.ChangeDiffRequestProducer
 import com.intellij.openapi.vcs.changes.actions.diff.ShowDiffAction
+import com.intellij.openapi.vcs.changes.ui.ChangeDiffRequestChain
 import com.intellij.openapi.vcs.changes.ui.*
 import com.intellij.openapi.vcs.changes.ui.AsyncChangesTreeModel
 import com.intellij.openapi.vcs.vfs.ContentRevisionVirtualFile
 import java.awt.Color
+import java.awt.Point
 import com.intellij.ui.FileColorManager
 import com.intellij.ui.JBColor
 import com.intellij.openapi.wm.ToolWindowId
@@ -30,37 +47,99 @@ import com.intellij.openapi.wm.ToolWindowManager
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.psi.PsiManager
 import com.intellij.ui.PopupHandler
+import com.intellij.ui.render.RenderingHelper
+import com.intellij.ui.treeStructure.Tree
 import com.intellij.util.ui.JBUI
-import com.intellij.util.Alarm
+import javax.swing.plaf.basic.BasicTreeUI
 import git4idea.repo.GitRepository
 import git4idea.repo.GitRepositoryChangeListener
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlin.time.Duration.Companion.milliseconds
 import java.awt.BorderLayout
 import java.awt.event.ComponentAdapter
 import java.awt.event.ComponentEvent
-import java.awt.event.MouseAdapter
-import java.awt.event.MouseEvent
 import javax.swing.JComponent
 import javax.swing.JPanel
-import javax.swing.SwingUtilities
+import javax.swing.JViewport
+import javax.swing.event.TreeModelEvent
+import javax.swing.event.TreeModelListener
 
 /**
  * The main UI part for displaying the tree of file changes for a specific branch comparison.
  * It extends [AsyncChangesBrowserBase] to provide a fully custom asynchronous tree model, and
  * highly customized mouse click handling based on user settings.
  */
+@Suppress("JComponentDataProvider")
+@OptIn(FlowPreview::class)
 class LstCrcChangesBrowser(
     private val project: Project,
     private val targetBranchToCompare: String,
     parentDisposable: Disposable
-) : AsyncChangesBrowserBase(project, false, true), Disposable, GitRepositoryChangeListener {
+) : AsyncChangesBrowserBase(project, false, true), Disposable, GitRepositoryChangeListener, UiDataProvider {
+
 
     private companion object {
         const val OPEN_SOURCE_ERROR_TITLE_KEY = "changes.browser.open.source.error.title"
         const val OPEN_SOURCE_ERROR_MESSAGE_KEY = "changes.browser.open.source.error.message"
     }
 
+    private data class TreeViewportState(
+        val viewPosition: Point
+    )
+
+    private data class DiffChangeKey(
+        val type: Change.Type,
+        val beforePath: String?,
+        val beforeRevision: String?,
+        val afterPath: String?,
+        val afterRevision: String?
+    )
+
+    private data class DiffSelectionKey(
+        val comparisonTarget: String,
+        val changes: List<DiffChangeKey>
+    )
+
+    private data class BrowserChangeActionDefinition(
+        val settingValue: String,
+        val titleKey: String,
+        val isEnabled: (List<Change>) -> Boolean = { it.isNotEmpty() },
+        val action: (List<Change>) -> Unit
+    )
+
+    private data class MouseClickActionBinding(
+        val singleAction: () -> String,
+        val doubleAction: () -> String
+    )
+
+    private class ReusableChangeDiffVirtualFile(
+        chain: ChangeDiffRequestChain,
+        private val diffKey: DiffSelectionKey,
+        name: String
+    ) : ChainDiffVirtualFile(chain, name) {
+        fun matches(otherKey: DiffSelectionKey): Boolean = diffKey == otherKey
+
+        override fun equals(other: Any?): Boolean {
+            if (this === other) return true
+            if (other !is ReusableChangeDiffVirtualFile) return false
+            return diffKey == other.diffKey
+        }
+
+        override fun hashCode(): Int = diffKey.hashCode()
+    }
+
     private val logger = thisLogger()
-    private val refreshDebounceAlarm = Alarm(this)
+    private val debounceScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val repositoryChangeSignals = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
 
     // This field will hold the changes and context for the async tree model builder.
     private var currentChanges: CategorizedChanges? = null
@@ -68,78 +147,102 @@ class LstCrcChangesBrowser(
     private val selectedChanges: List<Change>
         get() = VcsTreeModelData.selected(viewer).userObjects(Change::class.java)
 
-    /** Helper class to manage the state for detecting single vs. double clicks. */
-    private class ClickState(parentDisposable: Disposable) {
-        private val alarm = Alarm(parentDisposable)
-        var pendingChange: Change? = null
-        var pendingPath: javax.swing.tree.TreePath? = null
-        var actionHasFiredForPath: javax.swing.tree.TreePath? = null
-
-        fun schedule(delayMs: Int, action: () -> Unit) {
-            alarm.cancelAllRequests()
-            alarm.addRequest(action, delayMs)
-        }
-
-        fun cancelPending() {
-            alarm.cancelAllRequests()
-        }
-
-        fun clear() {
-            alarm.cancelAllRequests()
-            pendingChange = null
-            pendingPath = null
-            actionHasFiredForPath = null
-        }
+    private val browserChangeActions by lazy(LazyThreadSafetyMode.NONE) {
+        listOf(
+            BrowserChangeActionDefinition(
+                settingValue = ToolWindowSettingsProvider.ACTION_OPEN_DIFF,
+                titleKey = "context.menu.show.diff",
+                action = ::openDiff
+            ),
+            BrowserChangeActionDefinition(
+                settingValue = ToolWindowSettingsProvider.ACTION_OPEN_SOURCE,
+                titleKey = "context.menu.open.source",
+                isEnabled = { it.size == 1 },
+                action = { changes -> openSource(changes.first()) }
+            ),
+            BrowserChangeActionDefinition(
+                settingValue = ToolWindowSettingsProvider.ACTION_SHOW_IN_PROJECT_TREE,
+                titleKey = "context.menu.show.project.tree",
+                isEnabled = { it.size == 1 && it.first().type != Change.Type.DELETED },
+                action = { changes -> showInProjectTree(changes.first()) }
+            )
+        )
     }
-    private val leftClickState = ClickState(this)
-    private val middleClickState = ClickState(this)
-    private val rightClickState = ClickState(this)
+
 
     init {
         // This is CRITICAL. Unlike SimpleAsyncChangesBrowser, AsyncChangesBrowserBase does not call
         // init() in its constructor, so we must do it to build the component layout.
         init()
 
-        // Set the custom strategy to preserve the tree state while expanding new nodes.
+        // Preserve user expansion/collapse state while still revealing newly added nodes.
         viewer.treeStateStrategy = ExpandNewNodesStateStrategy()
+
+        debounceScope.launch {
+            repositoryChangeSignals
+                .debounce(100.milliseconds)
+                .collectLatest {
+                    if (!project.isDisposed) {
+                        withContext(Dispatchers.EDT) {
+                            if (!project.isDisposed) {
+                                requestRefreshData()
+                            }
+                        }
+                    }
+                }
+        }
 
         viewer.setCellRenderer(
             RepoNodeRenderer(
                 project,
+                { currentChanges },
                 { viewer.isShowFlatten },
                 viewer.isHighlightProblems
             )
         )
 
         viewer.emptyText.text = LstCrcBundle.message("changes.browser.loading")
-        project.messageBus.connect(this).subscribe(GitRepository.GIT_REPO_CHANGE, this)
-        com.intellij.openapi.util.Disposer.register(parentDisposable, this)
+        
+        val connection = project.messageBus.connect(this)
+        connection.subscribe(GitRepository.GIT_REPO_CHANGE, this)
+        connection.subscribe(DIFF_DATA_CHANGED_TOPIC, object : ActiveDiffDataChangedListener {
+            override fun onDiffDataChanged() {
+                if (project.isDisposed) return
+                val diffDataService = project.service<ProjectActiveDiffDataService>()
+                val branchName = diffDataService.activeBranchName ?: "HEAD"
+                if (branchName == targetBranchToCompare) {
+                    displayChanges(diffDataService.categorizedChanges, branchName)
+                }
+            }
+        })
+        
+        Disposer.register(parentDisposable, this)
 
         // The base class adds a border to its scroll pane, and the tool window content manager also adds one,
         // creating a "double border" effect. Removing the inner border lets the tool window manage it correctly.
         setViewerBorder(JBUI.Borders.empty())
 
-        // Disable default click/key handlers to install our own custom configurable versions.
-        viewer.setDoubleClickAndEnterKeyHandler {}
+        // Custom Enter-key behavior: open diff.
+        viewer.addKeyListener(object : java.awt.event.KeyAdapter() {
+            override fun keyPressed(e: java.awt.event.KeyEvent) {
+                if (e.keyCode == java.awt.event.KeyEvent.VK_ENTER) {
+                    val changes = selectedChanges
+                    if (changes.isNotEmpty()) {
+                        openDiff(changes)
+                        e.consume()
+                    }
+                }
+            }
+        })
 
-        removeDefaultPopupHandlers()
-        installViewerMouseHandling()
+        installConfigurableMouseHandler()
+        installContextMenuHandler()
+        configureRendererWidthCacheReset()
         configureDynamicToolbarBorder()
     }
 
     override fun createToolbarActions(): MutableList<AnAction> {
-        val actions = super.createToolbarActions().toMutableList()
-        // Find the "Group by" action and insert our action right after it.
-        val groupByActionIndex = actions.indexOfFirst { it.javaClass.simpleName == "GroupByActionGroup" }
-
-        val configureAction = ShowRepoComparisonInfoAction()
-
-        if (groupByActionIndex != -1) {
-            actions.add(groupByActionIndex + 1, configureAction)
-        } else {
-            actions.add(configureAction)
-        }
-        return actions
+        return toolbarActionsWithRepoComparison(super.createToolbarActions(), ShowRepoComparisonInfoAction())
     }
 
 
@@ -160,11 +263,18 @@ class LstCrcChangesBrowser(
      * Extends the standard tree to provide custom colors for deleted files while
      * preserving all native coloring for other file types.
      */
+    @Suppress("JComponentDataProvider")
     private inner class LstCrcAsyncChangesTree(
         project: Project,
         showCheckboxes: Boolean,
         highlightProblems: Boolean
-    ) : AsyncChangesTree(project, showCheckboxes, highlightProblems) {
+    ) : AsyncChangesTree(project, showCheckboxes, highlightProblems), UiDataProvider {
+
+        init {
+            putClientProperty(RenderingHelper.SHRINK_LONG_RENDERER, true)
+            putClientProperty(RenderingHelper.SHRINK_LONG_SELECTION, true)
+        }
+
 
         override val changesTreeModel: AsyncChangesTreeModel
             get() = this@LstCrcChangesBrowser.changesTreeModel
@@ -220,74 +330,51 @@ class LstCrcChangesBrowser(
         }
 
 
-    private fun handleGenericClick(
-        e: MouseEvent,
-        change: Change,
-        path: javax.swing.tree.TreePath,
-        singleClickAction: String,
-        doubleClickAction: String,
-        clickState: ClickState
-    ) {
-        selectPathAndFocus(path)
-
-        if (doubleClickAction == "NONE") {
-            handleImmediateSingleClick(e, change, singleClickAction, clickState)
-            return
-        }
-
-        if (e.clickCount == 1) {
-            scheduleSingleClick(path, change, singleClickAction, clickState)
-            return
-        }
-
-        if (e.clickCount >= 2) {
-            handleDoubleClick(path, change, doubleClickAction, clickState)
-        }
-    }
-
-    /**
-     * Routes a click event to the correct [handleGenericClick] call based on the mouse button.
-     * Shared by the real [MouseAdapter] listener and the test-bridge [invokeConfiguredActionForFile].
-     */
-    private fun dispatchClickAction(e: MouseEvent, change: Change, path: javax.swing.tree.TreePath) {
-        when {
-            SwingUtilities.isLeftMouseButton(e) -> {
-                middleClickState.clear()
-                rightClickState.clear()
-                handleGenericClick(e, change, path, ToolWindowSettingsProvider.getSingleClickAction(), ToolWindowSettingsProvider.getDoubleClickAction(), leftClickState)
-            }
-            SwingUtilities.isMiddleMouseButton(e) -> {
-                leftClickState.clear()
-                rightClickState.clear()
-                handleGenericClick(e, change, path, ToolWindowSettingsProvider.getMiddleClickAction(), ToolWindowSettingsProvider.getDoubleMiddleClickAction(), middleClickState)
-            }
-            SwingUtilities.isRightMouseButton(e) -> {
-                leftClickState.clear()
-                middleClickState.clear()
-                handleGenericClick(e, change, path, ToolWindowSettingsProvider.getRightClickAction(), ToolWindowSettingsProvider.getDoubleRightClickAction(), rightClickState)
-            }
-        }
-    }
-
-    private fun performConfiguredAction(change: Change, actionType: String) {
-        ApplicationManager.getApplication().invokeLater {
-            if (project.isDisposed) return@invokeLater
-            when (actionType) {
-                ToolWindowSettingsProvider.ACTION_OPEN_DIFF -> openDiff(listOf(change))
-                ToolWindowSettingsProvider.ACTION_OPEN_SOURCE -> openSource(change)
-                ToolWindowSettingsProvider.ACTION_SHOW_IN_PROJECT_TREE -> {
-                    if (change.type != Change.Type.DELETED) {
-                        showInProjectTree(change)
-                    }
-                }
-            }
-        }
-    }
-
     private fun openDiff(changes: List<Change>) {
-        if (changes.isNotEmpty()) {
+        if (changes.isEmpty()) return
+
+        val diffKey = DiffSelectionKey(targetBranchToCompare, changes.map { it.toDiffChangeKey() })
+        findOpenReusableDiffFile(diffKey)?.let { openDiffFile(it); return }
+
+        val producers = changes.mapNotNull { ChangeDiffRequestProducer.create(project, it) }
+        if (producers.size != changes.size) {
             ShowDiffAction.showDiffForChange(project, changes)
+            return
         }
+
+        val chain = ChangeDiffRequestChain(ListSelection.createAt(producers, 0))
+        val diffFile = ReusableChangeDiffVirtualFile(
+            chain = chain,
+            diffKey = diffKey,
+            name = changes.first().diffFileDisplayName()
+        )
+        openDiffFile(diffFile)
+    }
+
+    private fun findOpenReusableDiffFile(diffKey: DiffSelectionKey): ReusableChangeDiffVirtualFile? {
+        return FileEditorManager.getInstance(project).openFiles
+            .filterIsInstance<ReusableChangeDiffVirtualFile>()
+            .firstOrNull { it.matches(diffKey) }
+    }
+
+    private fun openDiffFile(diffFile: ChainDiffVirtualFile) {
+        DiffEditorTabFilesManager.getInstance(project).showDiffFile(diffFile, true)
+    }
+
+    private fun Change.toDiffChangeKey(): DiffChangeKey {
+        return DiffChangeKey(
+            type = type,
+            beforePath = beforeRevision?.file?.path,
+            beforeRevision = beforeRevision?.revisionNumber?.asString(),
+            afterPath = afterRevision?.file?.path,
+            afterRevision = afterRevision?.revisionNumber?.asString()
+        )
+    }
+
+    private fun Change.diffFileDisplayName(): String {
+        val path = afterRevision?.file?.path ?: beforeRevision?.file?.path
+        return path?.substringAfterLast('/')?.substringAfterLast('\\')
+            ?: LstCrcBundle.message("context.menu.show.diff")
     }
 
     private fun getFileFromChange(change: Change): VirtualFile? {
@@ -329,7 +416,7 @@ class LstCrcChangesBrowser(
 
         val fileToOpen = getFileFromChange(change)
         if (fileToOpen != null && fileToOpen.isValid && !fileToOpen.isDirectory) {
-            OpenFileDescriptor(project, fileToOpen).navigate(true)
+            FileEditorManager.getInstance(project).openTextEditor(OpenFileDescriptor(project, fileToOpen), true)
             return
         }
 
@@ -378,10 +465,157 @@ class LstCrcChangesBrowser(
 
     private fun openSourceErrorTitle(): String = LstCrcBundle.message(OPEN_SOURCE_ERROR_TITLE_KEY)
 
+    @Suppress("unused")
+    fun viewerTree(): Tree = viewer
+
+    @Suppress("unused")
+    fun currentChangeFileNamesSnapshot(): List<String> {
+        return currentChanges?.allChanges
+            ?.asSequence()
+            ?.mapNotNull { change -> change.afterRevision?.file ?: change.beforeRevision?.file }
+            ?.map { it.name }
+            ?.distinct()
+            ?.toList()
+            ?: emptyList()
+    }
+
+    @Suppress("unused")
+    fun currentLineStatsSnapshot(): List<String> {
+        return currentChanges?.lineStatsByChange
+            ?.entries
+            ?.asSequence()
+            ?.map { (key, stats) ->
+                val path = key.afterPath ?: key.beforePath ?: ""
+                "$path:+${stats.addedLines}/-${stats.removedLines}"
+            }
+            ?.sorted()
+            ?.toList()
+            ?: emptyList()
+    }
+
+    @Suppress("unused")
+    fun invokeTestContextMenuAction(change: Change, actionTitle: String) {
+        val changes = listOf(change)
+        resolveBrowserChangeActionByTitle(actionTitle)
+            ?.takeIf { it.isEnabled(changes) }
+            ?.action
+            ?.invoke(changes)
+            ?: error("Unsupported context menu action '$actionTitle'.")
+    }
+
+    @Suppress("unused")
+    fun availableContextMenuActionTitlesForTest(change: Change): List<String> {
+        return availableBrowserChangeActions(listOf(change)).map { LstCrcBundle.message(it.titleKey) }
+    }
+
+    @Suppress("unused")
+    fun configuredActionForClickForTest(button: Int, doubleClick: Boolean): String {
+        return configuredActionForButton(button, doubleClick)
+    }
+
+    @Suppress("unused")
+    fun toolbarActionSimpleNamesForTest(): List<String> {
+        return createToolbarActions().map { it.javaClass.simpleName }
+    }
+
+    @Suppress("unused")
+    fun fileColorForPathForTest(path: javax.swing.tree.TreePath): Color? {
+        return (viewer as? LstCrcAsyncChangesTree)?.getFileColorForPath(path)
+    }
+
+    @Suppress("unused")
+    fun visibleRowTextsForTest(): List<String> {
+        return visibleRowPaths()
+            .mapNotNull { (row, path) -> renderedRowTextForTest(path, row) }
+            .filter(String::isNotBlank)
+    }
+
+    @Suppress("unused")
+    fun expandedNodeTextsForTest(): List<String> {
+        return visibleRowPaths()
+            .mapNotNull { (row, path) ->
+                val node = path.lastPathComponent as? javax.swing.tree.DefaultMutableTreeNode ?: return@mapNotNull null
+                if (node.isLeaf || !viewer.isExpanded(path)) {
+                    return@mapNotNull null
+                }
+                renderedRowTextForTest(path, row)
+            }
+            .filter(String::isNotBlank)
+    }
+
+    @Suppress("unused")
+    fun setExpandedForVisibleNodeTextForTest(nodeText: String, expanded: Boolean): Boolean {
+        val targetPath = visibleRowPaths()
+            .firstOrNull { (row, path) ->
+                val userObjectText = (path.lastPathComponent as? javax.swing.tree.DefaultMutableTreeNode)
+                    ?.userObject
+                    ?.toString()
+                    .orEmpty()
+                val renderedText = renderedRowTextForTest(path, row).orEmpty()
+                renderedText == nodeText || renderedText.contains(nodeText) || userObjectText.contains(nodeText)
+            }
+            ?.second
+            ?: return false
+
+        if (expanded) {
+            viewer.expandPath(targetPath)
+        } else {
+            viewer.collapsePath(targetPath)
+        }
+        return true
+    }
+
+    @Suppress("unused")
+    fun scrollVisibleFileIntoViewForTest(fileName: String): Boolean {
+        val row = visibleRowForFileName(fileName) ?: return false
+        val path = viewer.getPathForRow(row) ?: return false
+        viewer.scrollPathToVisible(path)
+        return true
+    }
+
+    @Suppress("unused")
+    fun selectVisibleFileForTest(fileName: String): Boolean {
+        val row = visibleRowForFileName(fileName) ?: return false
+        viewer.setSelectionRow(row)
+        return true
+    }
+
+    private fun visibleRowPaths(): List<Pair<Int, javax.swing.tree.TreePath>> {
+        return (0 until viewer.rowCount)
+            .mapNotNull { row -> viewer.getPathForRow(row)?.let { row to it } }
+    }
+
+    private fun visibleRowForFileName(fileName: String): Int? {
+        return visibleRowPaths()
+            .firstOrNull { (_, path) -> changeAtPathMatchesFileName(path, fileName) }
+            ?.first
+    }
+
+    private fun changeAtPathMatchesFileName(path: javax.swing.tree.TreePath, fileName: String): Boolean {
+        val node = path.lastPathComponent as? javax.swing.tree.DefaultMutableTreeNode ?: return false
+        val change = node.userObject as? Change ?: return false
+        val file = change.afterRevision?.file ?: change.beforeRevision?.file ?: return false
+        return file.name == fileName || file.path.replace('\\', '/').endsWith("/$fileName")
+    }
+
+    private fun renderedRowTextForTest(path: javax.swing.tree.TreePath, row: Int): String? {
+        val renderer = viewer.cellRenderer as? RepoNodeRenderer ?: return null
+        val model = viewer.model
+        return renderer.renderedTextForTest(
+            viewer,
+            path.lastPathComponent,
+            viewer.isRowSelected(row),
+            viewer.isExpanded(row),
+            model.isLeaf(path.lastPathComponent),
+            row,
+            false
+        ).ifBlank { null }
+    }
+
     /**
      * Updates the browser with a new set of changes, preserving the user's scroll and expansion state.
      */
-    fun displayChanges(categorizedChanges: CategorizedChanges?, forBranchName: String) {
+    private fun displayChanges(categorizedChanges: CategorizedChanges?, forBranchName: String) {
         if (forBranchName != targetBranchToCompare) {
             return
         }
@@ -398,7 +632,7 @@ class LstCrcChangesBrowser(
 
             // Store the changes and trigger an asynchronous rebuild
             currentChanges = categorizedChanges
-            viewer.rebuildTree()
+            rebuildTreePreservingViewport()
         }
     }
 
@@ -416,102 +650,76 @@ class LstCrcChangesBrowser(
     fun rebuildView() {
         ApplicationManager.getApplication().invokeLater {
             if (!project.isDisposed) {
-                viewer.rebuildTree()
+                rebuildTreePreservingViewport()
             }
         }
     }
 
-    // -- Test bridge helpers: used only by LstCrcUiTestBridge for IDE Starter tests --
+    private fun rebuildTreePreservingViewport() {
+        val viewportState = snapshotTreeViewportState()
+        if (viewportState == null) {
+            rebuildTreeWithoutScrollingSelection()
+            return
+        }
 
-    @org.jetbrains.annotations.ApiStatus.Internal
-    internal fun debugRenderedRowsSnapshot(): String {
-        val renderer = viewer.cellRenderer
         val model = viewer.model
-        val rows = mutableListOf<String>()
+        var restoreScheduled = false
+        lateinit var listener: TreeModelListener
 
-        for (row in 0 until viewer.rowCount) {
-            val path = viewer.getPathForRow(row) ?: continue
-            val node = path.lastPathComponent
-            val rendered = renderer.getTreeCellRendererComponent(
-                viewer,
-                node,
-                viewer.isRowSelected(row),
-                viewer.isExpanded(row),
-                model.isLeaf(node),
-                row,
-                false
-            )
-
-            val text = rendered.accessibleContext?.accessibleName
-                ?: (rendered as? javax.swing.JLabel)?.text
-                ?: rendered.name
-
-            if (!text.isNullOrBlank()) {
-                rows.add(text)
+        fun restoreViewportOnce() {
+            if (restoreScheduled) return
+            restoreScheduled = true
+            model?.removeTreeModelListener(listener)
+            ApplicationManager.getApplication().invokeLater {
+                if (!project.isDisposed) {
+                    restoreTreeViewport(viewportState)
+                }
             }
         }
 
-        return rows.joinToString("\n")
-    }
+        listener = object : TreeModelListener {
+            override fun treeNodesChanged(e: TreeModelEvent?) = restoreViewportOnce()
 
-    @org.jetbrains.annotations.ApiStatus.Internal
-    internal fun debugChangeFileNamesSnapshot(): String {
-        return currentChanges?.allChanges
-            ?.mapNotNull { change ->
-                change.afterRevision?.file?.name ?: change.beforeRevision?.file?.name
+            override fun treeNodesInserted(e: TreeModelEvent?) = restoreViewportOnce()
+
+            override fun treeNodesRemoved(e: TreeModelEvent?) = restoreViewportOnce()
+
+            override fun treeStructureChanged(e: TreeModelEvent?) = restoreViewportOnce()
+        }
+
+        model?.addTreeModelListener(listener)
+        rebuildTreeWithoutScrollingSelection()
+
+        ApplicationManager.getApplication().invokeLater {
+            if (!restoreScheduled) {
+                model?.removeTreeModelListener(listener)
+                restoreViewportOnce()
             }
-            ?.distinct()
-            ?.joinToString("\n")
-            .orEmpty()
+        }
     }
 
-    @org.jetbrains.annotations.ApiStatus.Internal
-    internal fun invokeConfiguredActionForFile(fileName: String, button: String, clickCount: Int) {
-        val path = findPathByFileName(fileName)
-            ?: error("Could not find change for file '$fileName' in '$targetBranchToCompare'.")
-        val change = ((path.lastPathComponent as? ChangesBrowserNode<*>)?.userObject as? Change)
-            ?: error("Could not find change for file '$fileName' in '$targetBranchToCompare'.")
+    private fun rebuildTreeWithoutScrollingSelection() {
+        viewer.rebuildTree()
+    }
 
-        if (button.equals("RIGHT", ignoreCase = true) && ToolWindowSettingsProvider.isContextMenuEnabled()) {
-            error("Context menu is enabled for right click. Query contextMenuActionTitlesForFile() instead of invoking a configured action.")
-        }
+    private fun snapshotTreeViewportState(): TreeViewportState? {
+        val viewport = viewer.parent as? JViewport ?: return null
+        return TreeViewportState(Point(viewport.viewPosition))
+    }
 
-        val awtButton = when {
-            button.equals("LEFT", ignoreCase = true) -> MouseEvent.BUTTON1
-            button.equals("MIDDLE", ignoreCase = true) -> MouseEvent.BUTTON2
-            button.equals("RIGHT", ignoreCase = true) -> MouseEvent.BUTTON3
-            else -> error("Unsupported mouse button '$button'.")
-        }
-        val event = MouseEvent(
-            viewer,
-            MouseEvent.MOUSE_CLICKED,
-            System.currentTimeMillis(),
-            0,
-            1,
-            1,
-            clickCount,
-            false,
-            awtButton
+    private fun restoreTreeViewport(state: TreeViewportState) {
+        val viewport = viewer.parent as? JViewport ?: return
+        val view = viewport.view ?: return
+        val maxX = (view.width - viewport.extentSize.width).coerceAtLeast(0)
+        val maxY = (view.height - viewport.extentSize.height).coerceAtLeast(0)
+        val clampedPosition = Point(
+            state.viewPosition.x.coerceIn(0, maxX),
+            state.viewPosition.y.coerceIn(0, maxY)
         )
-
-        dispatchClickAction(event, change, path)
-    }
-
-    @org.jetbrains.annotations.ApiStatus.Internal
-    internal fun contextMenuActionTitlesForFile(fileName: String): String {
-        val change = findChangeByFileName(fileName)
-            ?: error("Could not find change for file '$fileName' in '$targetBranchToCompare'.")
-
-        val titles = mutableListOf(
-            LstCrcBundle.message("context.menu.show.diff"),
-            LstCrcBundle.message("context.menu.open.source")
-        )
-        if (change.type != Change.Type.DELETED) {
-            titles.add(LstCrcBundle.message("context.menu.show.project.tree"))
+        if (viewport.viewPosition != clampedPosition) {
+            viewport.viewPosition = clampedPosition
         }
-        return titles.joinToString("|")
     }
-
 
     override fun repositoryChanged(repository: GitRepository) {
         if (repository.project == project) {
@@ -521,96 +729,132 @@ class LstCrcChangesBrowser(
     }
 
     private fun triggerDebouncedDataRefresh() {
-        refreshDebounceAlarm.cancelAllRequests()
-        refreshDebounceAlarm.addRequest({
-            if (!project.isDisposed) {
-                requestRefreshData()
-            }
-        }, 100)
+        repositoryChangeSignals.tryEmit(Unit)
     }
 
     override fun dispose() {
+        pendingClickJob?.cancel()
+        debounceScope.cancel()
         shutdown()
-        leftClickState.clear()
-        middleClickState.clear()
-        rightClickState.clear()
         logger.info("LstCrcChangesBrowser for branch '$targetBranchToCompare' disposed.")
     }
 
-    private fun createContextMenuAction(
-        titleKey: String,
-        action: (List<Change>) -> Unit,
-        enabledCondition: (List<Change>) -> Boolean = { it.isNotEmpty() }
-    ): AnAction {
-        return object : DumbAwareAction(LstCrcBundle.message(titleKey)) {
-            override fun update(e: AnActionEvent) {
-                e.presentation.isEnabled = enabledCondition(selectedChanges)
+    private var pendingClickJob: kotlinx.coroutines.Job? = null
+
+    private fun installConfigurableMouseHandler() {
+        viewer.addMouseListener(object : java.awt.event.MouseAdapter() {
+            override fun mouseClicked(e: java.awt.event.MouseEvent) {
+                handleMouseClick(e)
             }
-            override fun actionPerformed(e: AnActionEvent) = action(selectedChanges)
+        })
+    }
+
+    private fun handleMouseClick(e: java.awt.event.MouseEvent) {
+        val clickCount = e.clickCount
+        val button = e.button
+
+        if (javax.swing.SwingUtilities.isRightMouseButton(e) && ToolWindowSettingsProvider.isContextMenuEnabled()) {
+            return
+        }
+
+        val path = changePathAt(e.x, e.y) ?: return
+        val change = changeAt(path) ?: return
+
+        selectPathAndFocus(path)
+
+        val singleAction = configuredActionForButton(button, doubleClick = false)
+        val doubleAction = configuredActionForButton(button, doubleClick = true)
+
+        if (clickCount == 1) {
+            if (singleAction == ToolWindowSettingsProvider.ACTION_NONE) return
+            
+            // If double action is NONE, fire immediately
+            if (doubleAction == ToolWindowSettingsProvider.ACTION_NONE) {
+                performConfiguredAction(change, singleAction)
+                return
+            }
+
+            // Otherwise, delay to see if a double click comes
+            val delayMs = ToolWindowSettingsProvider.getUserDoubleClickDelayMs().toLong()
+            pendingClickJob?.cancel()
+            pendingClickJob = debounceScope.launch {
+                kotlinx.coroutines.delay(delayMs.milliseconds)
+                withContext(Dispatchers.EDT) {
+                    performConfiguredAction(change, singleAction)
+                }
+            }
+        } else if (clickCount == 2) {
+            pendingClickJob?.cancel()
+            if (doubleAction != ToolWindowSettingsProvider.ACTION_NONE) {
+                performConfiguredAction(change, doubleAction)
+            }
+        }
+    }
+
+    private fun performConfiguredAction(change: Change, actionType: String) {
+        ApplicationManager.getApplication().invokeLater {
+            if (project.isDisposed) return@invokeLater
+            val changes = listOf(change)
+            resolveBrowserChangeActionBySetting(actionType)
+                ?.takeIf { it.isEnabled(changes) }
+                ?.action
+                ?.invoke(changes)
+        }
+    }
+
+    private fun configuredActionForButton(button: Int, doubleClick: Boolean): String {
+        val binding = mouseClickActionBinding(button) ?: return ToolWindowSettingsProvider.ACTION_NONE
+        return if (doubleClick) binding.doubleAction() else binding.singleAction()
+    }
+
+    private fun changePathAt(x: Int, y: Int): javax.swing.tree.TreePath? {
+        val path = TreeUtil.getPathForLocation(viewer, x, y) ?: return null
+        return path.takeIf { changeAt(it) != null }
+    }
+
+    private fun changeAt(path: javax.swing.tree.TreePath): Change? {
+        return (path.lastPathComponent as? ChangesBrowserNode<*>)?.userObject as? Change
+    }
+
+    private fun createContextMenuAction(
+        definition: BrowserChangeActionDefinition
+    ): AnAction {
+        return object : DumbAwareAction(LstCrcBundle.message(definition.titleKey)) {
+            override fun update(e: AnActionEvent) {
+                e.presentation.isEnabled = definition.isEnabled(selectedChanges)
+            }
+            override fun actionPerformed(e: AnActionEvent) = definition.action(selectedChanges)
             override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.EDT
         }
     }
 
-    private fun showContextMenu(e: MouseEvent) {
-        val changes = this.selectedChanges
-        if (changes.isEmpty()) return
-
-        val group = DefaultActionGroup()
-        group.add(createContextMenuAction("context.menu.show.diff", this::openDiff))
-
-        group.add(createContextMenuAction("context.menu.open.source",
-            action = { changes -> openSource(changes.first()) },
-            enabledCondition = { it.size == 1 }
-        ))
-
-        group.add(createContextMenuAction("context.menu.show.project.tree",
-            action = { changes -> showInProjectTree(changes.first()) },
-            enabledCondition = { it.size == 1 && it.first().type != Change.Type.DELETED }
-        ))
-
-        val popupMenu = ActionManager.getInstance().createActionPopupMenu(ActionPlaces.TOOLWINDOW_POPUP, group)
-        popupMenu.component.show(e.component, e.x, e.y)
-    }
-
-
-    private fun findChangeByFileName(fileName: String): Change? {
-        return currentChanges?.allChanges?.firstOrNull { change ->
-            change.afterRevision?.file?.name == fileName || change.beforeRevision?.file?.name == fileName
-        }
-    }
-
-    private fun findPathByFileName(fileName: String): javax.swing.tree.TreePath? {
-        for (row in 0 until viewer.rowCount) {
-            val path = viewer.getPathForRow(row) ?: continue
-            val change = (path.lastPathComponent as? ChangesBrowserNode<*>)?.userObject as? Change ?: continue
-            if (change.afterRevision?.file?.name == fileName || change.beforeRevision?.file?.name == fileName) {
-                return path
-            }
-        }
-        return null
-    }
-
-    private fun removeDefaultPopupHandlers() {
+    private fun installContextMenuHandler() {
+        // Remove the default empty popup handler that the base class installs.
         viewer.mouseListeners.filterIsInstance<PopupHandler>().forEach {
             viewer.removeMouseListener(it)
             logger.debug("Removed a default PopupHandler to prevent empty context menu.")
         }
-    }
 
-    private fun installViewerMouseHandling() {
-        viewer.addMouseListener(object : MouseAdapter() {
-            override fun mouseClicked(e: MouseEvent) {
-                val path = viewer.getTreePathForMouseCoordinates(e) ?: return
-                val change = (path.lastPathComponent as? ChangesBrowserNode<*>)?.userObject as? Change ?: return
+        // Install our custom context menu handler
+        viewer.addMouseListener(object : PopupHandler() {
+            override fun invokePopup(comp: java.awt.Component?, x: Int, y: Int) {
+                    if (!ToolWindowSettingsProvider.isContextMenuEnabled()) return
 
-                if (SwingUtilities.isRightMouseButton(e) && ToolWindowSettingsProvider.isContextMenuEnabled()) {
-                    showContextMenu(e)
-                    return
+                    val path = changePathAt(x, y) ?: return
+
+                    selectPathAndFocus(path)
+                    val changes = selectedChanges
+                    if (changes.isEmpty()) return
+
+                    val group = DefaultActionGroup()
+                    availableBrowserChangeActions(changes).forEach { definition ->
+                        group.add(createContextMenuAction(definition))
+                    }
+
+                    val popupMenu = ActionManager.getInstance().createActionPopupMenu(ActionPlaces.TOOLWINDOW_POPUP, group)
+                    popupMenu.component.show(comp, x, y)
                 }
-
-                dispatchClickAction(e, change, path)
-            }
-        })
+            })
     }
 
     private fun configureDynamicToolbarBorder() {
@@ -641,10 +885,49 @@ class LstCrcChangesBrowser(
         })
     }
 
+    private fun configureRendererWidthCacheReset() {
+        val scrollPane = viewerScrollPane
+        val resetRendererWidthCache = {
+            val treeUI = viewer.ui
+            if (treeUI is BasicTreeUI) {
+                treeUI.setLeftChildIndent(treeUI.leftChildIndent)
+            }
+            viewer.revalidate()
+            viewer.repaint()
+        }
+
+        ApplicationManager.getApplication().invokeLater {
+            if (!project.isDisposed) {
+                resetRendererWidthCache()
+            }
+        }
+
+        scrollPane.viewport.addComponentListener(object : ComponentAdapter() {
+            override fun componentResized(e: ComponentEvent?) {
+                resetRendererWidthCache()
+            }
+
+            override fun componentShown(e: ComponentEvent?) {
+                resetRendererWidthCache()
+            }
+        })
+    }
+
     private fun findToolbarComponent(): JComponent? {
         val mainLayout = this.layout as? BorderLayout ?: return null
         val topPanel = mainLayout.getLayoutComponent(BorderLayout.NORTH) as? JPanel ?: return null
         return (topPanel.layout as? BorderLayout)?.getLayoutComponent(BorderLayout.CENTER) as? JComponent
+    }
+
+    private fun toolbarActionsWithRepoComparison(
+        baseActions: List<AnAction>,
+        configureAction: AnAction
+    ): MutableList<AnAction> {
+        val actions = baseActions.toMutableList()
+        val groupByActionIndex = actions.indexOfFirst { it.javaClass.simpleName == "GroupByActionGroup" }
+        val insertionIndex = if (groupByActionIndex >= 0) groupByActionIndex + 1 else actions.size
+        actions.add(insertionIndex, configureAction)
+        return actions
     }
 
     private fun selectPathAndFocus(path: javax.swing.tree.TreePath) {
@@ -654,60 +937,34 @@ class LstCrcChangesBrowser(
         viewer.requestFocusInWindow()
     }
 
-    private fun handleImmediateSingleClick(
-        e: MouseEvent,
-        change: Change,
-        singleClickAction: String,
-        clickState: ClickState
-    ) {
-        clickState.clear()
-        if (e.clickCount == 1 && singleClickAction != "NONE") {
-            performConfiguredAction(change, singleClickAction)
+    private fun availableBrowserChangeActions(changes: List<Change>): List<BrowserChangeActionDefinition> {
+        return browserChangeActions.filter { it.isEnabled(changes) }
+    }
+
+    private fun resolveBrowserChangeActionBySetting(actionType: String): BrowserChangeActionDefinition? {
+        return browserChangeActions.firstOrNull { it.settingValue == actionType }
+    }
+
+    private fun resolveBrowserChangeActionByTitle(actionTitle: String): BrowserChangeActionDefinition? {
+        return browserChangeActions.firstOrNull { LstCrcBundle.message(it.titleKey) == actionTitle }
+    }
+
+    private fun mouseClickActionBinding(button: Int): MouseClickActionBinding? {
+        return when (button) {
+            java.awt.event.MouseEvent.BUTTON1 -> MouseClickActionBinding(
+                singleAction = ToolWindowSettingsProvider::getSingleClickAction,
+                doubleAction = ToolWindowSettingsProvider::getDoubleClickAction
+            )
+            java.awt.event.MouseEvent.BUTTON2 -> MouseClickActionBinding(
+                singleAction = ToolWindowSettingsProvider::getMiddleClickAction,
+                doubleAction = ToolWindowSettingsProvider::getDoubleMiddleClickAction
+            )
+            java.awt.event.MouseEvent.BUTTON3 -> MouseClickActionBinding(
+                singleAction = ToolWindowSettingsProvider::getRightClickAction,
+                doubleAction = ToolWindowSettingsProvider::getDoubleRightClickAction
+            )
+            else -> null
         }
     }
 
-    private fun scheduleSingleClick(
-        path: javax.swing.tree.TreePath,
-        change: Change,
-        singleClickAction: String,
-        clickState: ClickState
-    ) {
-        if (clickState.pendingPath != path || clickState.actionHasFiredForPath != null) {
-            clickState.clear()
-        }
-
-        clickState.pendingChange = change
-        clickState.pendingPath = path
-        clickState.cancelPending()
-        clickState.schedule(ToolWindowSettingsProvider.getUserDoubleClickDelayMs()) {
-            val scheduledChange = clickState.pendingChange
-            val scheduledPath = clickState.pendingPath
-            clickState.clear()
-
-            if (scheduledChange != null && scheduledPath != null && singleClickAction != "NONE") {
-                performConfiguredAction(scheduledChange, singleClickAction)
-                clickState.actionHasFiredForPath = scheduledPath
-            }
-        }
-    }
-
-    private fun handleDoubleClick(
-        path: javax.swing.tree.TreePath,
-        change: Change,
-        doubleClickAction: String,
-        clickState: ClickState
-    ) {
-        if (clickState.actionHasFiredForPath == path) {
-            clickState.actionHasFiredForPath = null
-            clickState.cancelPending()
-            return
-        }
-
-        if (clickState.pendingPath == path) {
-            clickState.clear()
-        }
-
-        performConfiguredAction(change, doubleClickAction)
-        clickState.actionHasFiredForPath = null
-    }
 }

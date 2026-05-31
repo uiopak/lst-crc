@@ -30,15 +30,17 @@ class SingleRepoBranchSelectionDialog(
     }
 
     override fun createCenterPanel(): JComponent {
+        return createBranchSelectionPanel()
+    }
+
+    private fun createBranchSelectionPanel(): JComponent {
         val gitService = project.service<GitService>()
-        // Pass the specific repository to the panel so it shows the correct branch list.
         val panel = BranchSelectionPanel(gitService, repository) { branchName ->
-            // When a branch is selected in the panel, store it and close the dialog with OK.
             this.selectedBranchName = branchName
             this.doOKAction()
         }
         panel.requestFocusOnSearchField()
-        return panel.getPanel()
+        return panel
     }
 
     /**
@@ -50,24 +52,18 @@ class SingleRepoBranchSelectionDialog(
         if (isOK) { // Prevent multiple executions
             return
         }
-        val branchToSet = selectedBranchName
-        if (branchToSet != null) {
-            val stateService = project.service<ToolWindowStateService>()
-            val newMap = tabInfo.comparisonMap.toMutableMap()
-
-            // The default target is simply the primary revision identifier of the tab.
-            // This correctly handles cases where the identifier is a commit hash.
-            val defaultTarget = tabInfo.branchName
-
-            if (branchToSet == defaultTarget) {
-                // If the user selected the default, we can remove the override from the map.
-                newMap.remove(repository.root.path)
-            } else {
-                // Otherwise, store the explicit override.
-                newMap[repository.root.path] = branchToSet
-            }
-            stateService.updateTabComparisonMap(tabInfo.branchName, newMap)
-        }
+        applySelectedBranch()
         super.doOKAction()
+    }
+
+    private fun applySelectedBranch() {
+        val branchToSet = selectedBranchName ?: return
+        val stateService = project.service<ToolWindowStateService>()
+        stateService.updateTabRepoComparison(
+            branchName = tabInfo.branchName,
+            repositoryRootPath = repository.root.path,
+            targetRevision = branchToSet,
+            defaultTarget = tabInfo.branchName
+        )
     }
 }

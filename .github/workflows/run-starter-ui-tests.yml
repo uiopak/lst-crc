@@ -16,6 +16,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       ORG_GRADLE_PROJECT_org.jetbrains.intellij.platform.useCacheRedirector: false
+      STARTER_UI_TEST_TIMEOUT_MINUTES: 75
     steps:
 
       # Free GitHub Actions Environment Disk Space
@@ -46,10 +47,11 @@ jobs:
 
       - name: Run Starter UI Tests
         shell: bash
+        timeout-minutes: 90
         run: |
           set -o pipefail
           mkdir -p build/reports/starter-ui-test
-          ./gradlew starterUiTest --info --stacktrace 2>&1 | tee build/reports/starter-ui-test/gradle-starterUiTest.log
+          ./gradlew starterUiTest --info --stacktrace -Dstarter.ui.test.task.timeout.minutes=${STARTER_UI_TEST_TIMEOUT_MINUTES} 2>&1 | tee build/reports/starter-ui-test/gradle-starterUiTest.log
 
       - name: Collect IDE Starter diagnostics
         if: ${{ failure() }}

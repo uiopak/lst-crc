@@ -1,11 +1,10 @@
 package com.github.uiopak.lstcrc.toolWindow
 
-import com.github.uiopak.lstcrc.messaging.PLUGIN_SETTINGS_CHANGED_TOPIC
 import com.github.uiopak.lstcrc.resources.LstCrcBundle
 import com.github.uiopak.lstcrc.services.GitService
 import com.github.uiopak.lstcrc.gutters.VisualTrackerManager
 import com.github.uiopak.lstcrc.services.ToolWindowStateService
-import com.intellij.ide.util.PropertiesComponent
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.actionSystem.ActionGroup
 import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnActionEvent
@@ -13,15 +12,28 @@ import com.intellij.openapi.actionSystem.DefaultActionGroup
 import com.intellij.openapi.actionSystem.PlatformDataKeys
 import com.intellij.openapi.actionSystem.ToggleAction
 import com.intellij.openapi.components.service
-import com.intellij.openapi.wm.impl.content.ToolWindowContentUi
-import com.intellij.ui.content.impl.ContentManagerImpl
 import javax.swing.UIManager
 
 /**
  * Provides the actions for the tool window's "gear" (options) menu. This class centralizes
- * all user-configurable settings, which are stored at the application level in [PropertiesComponent].
+ * all user-configurable settings. Values are read and written through [LstCrcSettingsService],
+ * which persists them in application-level state and mirrors legacy PropertiesComponent keys
+ * during the staged migration.
  */
 object ToolWindowSettingsProvider {
+
+    private data class ClickActionSettingDefinition(
+        val titleKey: String,
+        val getter: () -> String,
+        val setter: (String) -> Unit
+    )
+
+    private data class ClickActionChoice(val labelKey: String, val actionValue: String)
+    private data class DelayChoice(val labelKey: String, val delayMs: Int)
+    private data class RightClickModeChoice(val labelKey: String, val contextMenuEnabled: Boolean)
+
+    private fun settingsService(): LstCrcSettingsService =
+        ApplicationManager.getApplication().service()
 
     // --- Keys for Click Actions ---
     internal const val ACTION_NONE = "NONE"
@@ -29,70 +41,63 @@ object ToolWindowSettingsProvider {
     internal const val ACTION_OPEN_SOURCE = "OPEN_SOURCE"
     internal const val ACTION_SHOW_IN_PROJECT_TREE = "SHOW_IN_PROJECT_TREE"
 
-    internal const val APP_SINGLE_CLICK_ACTION_KEY: String = "com.github.uiopak.lstcrc.app.singleClickAction"
-    internal const val APP_DOUBLE_CLICK_ACTION_KEY = "com.github.uiopak.lstcrc.app.doubleClickAction"
-    internal const val DEFAULT_SINGLE_CLICK_ACTION = ACTION_OPEN_SOURCE
-    internal const val DEFAULT_DOUBLE_CLICK_ACTION = ACTION_NONE
+    private val clickActionChoices = listOf(
+        ClickActionChoice("settings.action.none", ACTION_NONE),
+        ClickActionChoice("settings.action.show.diff", ACTION_OPEN_DIFF),
+        ClickActionChoice("settings.action.show.source", ACTION_OPEN_SOURCE),
+        ClickActionChoice("settings.action.show.project.tree", ACTION_SHOW_IN_PROJECT_TREE)
+    )
 
-    internal const val APP_MIDDLE_CLICK_ACTION_KEY = "com.github.uiopak.lstcrc.app.middleClickAction"
-    internal const val APP_DOUBLE_MIDDLE_CLICK_ACTION_KEY = "com.github.uiopak.lstcrc.app.doubleMiddleClickAction"
-    internal const val DEFAULT_MIDDLE_CLICK_ACTION = ACTION_SHOW_IN_PROJECT_TREE
-    internal const val DEFAULT_DOUBLE_MIDDLE_CLICK_ACTION = ACTION_NONE
+    private val leftClickSettings = listOf(
+        ClickActionSettingDefinition("settings.left.click.single", ::getSingleClickAction) { settingsService().setSingleClickAction(it) },
+        ClickActionSettingDefinition("settings.left.click.double", ::getDoubleClickAction) { settingsService().setDoubleClickAction(it) }
+    )
 
-    internal const val APP_RIGHT_CLICK_ACTION_KEY = "com.github.uiopak.lstcrc.app.rightClickAction"
-    internal const val APP_DOUBLE_RIGHT_CLICK_ACTION_KEY = "com.github.uiopak.lstcrc.app.doubleRightClickAction"
-    internal const val DEFAULT_RIGHT_CLICK_ACTION = ACTION_OPEN_DIFF
-    internal const val DEFAULT_DOUBLE_RIGHT_CLICK_ACTION = ACTION_NONE
+    private val middleClickSettings = listOf(
+        ClickActionSettingDefinition("settings.middle.click.single", ::getMiddleClickAction) { settingsService().setMiddleClickAction(it) },
+        ClickActionSettingDefinition("settings.middle.click.double", ::getDoubleMiddleClickAction) { settingsService().setDoubleMiddleClickAction(it) }
+    )
 
-    // --- Keys for General Settings ---
-    internal const val APP_SHOW_CONTEXT_MENU_KEY = "com.github.uiopak.lstcrc.app.showContextMenu"
-    internal const val DEFAULT_SHOW_CONTEXT_MENU = false
+    private val rightClickSettings = listOf(
+        ClickActionSettingDefinition("settings.right.click.single", ::getRightClickAction) { settingsService().setRightClickAction(it) },
+        ClickActionSettingDefinition("settings.right.click.double", ::getDoubleRightClickAction) { settingsService().setDoubleRightClickAction(it) }
+    )
 
-    internal const val APP_USER_DOUBLE_CLICK_DELAY_KEY = "com.github.uiopak.lstcrc.app.userDoubleClickDelay"
-    internal const val DELAY_OPTION_SYSTEM_DEFAULT = -1
+    private val doubleClickDelayChoices = listOf(
+        DelayChoice("settings.speed.default", LstCrcSettingDefinitions.USER_DOUBLE_CLICK_DELAY.defaultValue),
+        DelayChoice("settings.speed.faster", 200),
+        DelayChoice("settings.speed.fast", 250),
+        DelayChoice("settings.speed.medium", 300),
+        DelayChoice("settings.speed.slow", 500)
+    )
 
-    internal const val APP_INCLUDE_HEAD_IN_SCOPES_KEY = "com.github.uiopak.lstcrc.app.includeHeadInScopes"
-    internal const val DEFAULT_INCLUDE_HEAD_IN_SCOPES = false
-
-    const val APP_ENABLE_GUTTER_MARKERS_KEY = "com.github.uiopak.lstcrc.app.enableGutterMarkers"
-    const val DEFAULT_ENABLE_GUTTER_MARKERS = true
-
-    const val APP_ENABLE_GUTTER_FOR_NEW_FILES_KEY = "com.github.uiopak.lstcrc.app.enableGutterForNewFiles"
-    const val DEFAULT_ENABLE_GUTTER_FOR_NEW_FILES = false
-
-    const val APP_SHOW_TOOL_WINDOW_TITLE_KEY = "com.github.uiopak.lstcrc.app.showToolWindowTitle"
-    const val DEFAULT_SHOW_TOOL_WINDOW_TITLE = false
-
-    const val APP_SHOW_WIDGET_CONTEXT_KEY = "com.github.uiopak.lstcrc.app.showWidgetContext"
-    const val DEFAULT_SHOW_WIDGET_CONTEXT = false
-
-    const val APP_SHOW_CONTEXT_SINGLE_REPO_KEY = "com.github.uiopak.lstcrc.app.showContextSingleRepo"
-    const val DEFAULT_SHOW_CONTEXT_SINGLE_REPO = true
-    const val APP_SHOW_CONTEXT_MULTI_REPO_KEY = "com.github.uiopak.lstcrc.app.showContextMultiRepo"
-    const val DEFAULT_SHOW_CONTEXT_MULTI_REPO = true
-    const val APP_SHOW_CONTEXT_FOR_COMMITS_KEY = "com.github.uiopak.lstcrc.app.showContextForCommits"
-    const val DEFAULT_SHOW_CONTEXT_FOR_COMMITS = false
-
+    private val rightClickModeChoices = listOf(
+        RightClickModeChoice("settings.right.click.show.menu", true),
+        RightClickModeChoice("settings.right.click.trigger.actions", false)
+    )
 
     // --- Public Getters for Settings ---
-    fun getSingleClickAction(): String = PropertiesComponent.getInstance().getValue(APP_SINGLE_CLICK_ACTION_KEY, DEFAULT_SINGLE_CLICK_ACTION)
-    fun getDoubleClickAction(): String = PropertiesComponent.getInstance().getValue(APP_DOUBLE_CLICK_ACTION_KEY, DEFAULT_DOUBLE_CLICK_ACTION)
-    fun getMiddleClickAction(): String = PropertiesComponent.getInstance().getValue(APP_MIDDLE_CLICK_ACTION_KEY, DEFAULT_MIDDLE_CLICK_ACTION)
-    fun getDoubleMiddleClickAction(): String = PropertiesComponent.getInstance().getValue(APP_DOUBLE_MIDDLE_CLICK_ACTION_KEY, DEFAULT_DOUBLE_MIDDLE_CLICK_ACTION)
-    fun getRightClickAction(): String = PropertiesComponent.getInstance().getValue(APP_RIGHT_CLICK_ACTION_KEY, DEFAULT_RIGHT_CLICK_ACTION)
-    fun getDoubleRightClickAction(): String = PropertiesComponent.getInstance().getValue(APP_DOUBLE_RIGHT_CLICK_ACTION_KEY, DEFAULT_DOUBLE_RIGHT_CLICK_ACTION)
-    fun isContextMenuEnabled(): Boolean = PropertiesComponent.getInstance().getBoolean(APP_SHOW_CONTEXT_MENU_KEY, DEFAULT_SHOW_CONTEXT_MENU)
-    fun isShowContextForSingleRepoEnabled(): Boolean = PropertiesComponent.getInstance().getBoolean(APP_SHOW_CONTEXT_SINGLE_REPO_KEY, DEFAULT_SHOW_CONTEXT_SINGLE_REPO)
-    fun isShowContextForMultiRepoEnabled(): Boolean = PropertiesComponent.getInstance().getBoolean(APP_SHOW_CONTEXT_MULTI_REPO_KEY, DEFAULT_SHOW_CONTEXT_MULTI_REPO)
-    fun isShowContextForCommitsEnabled(): Boolean = PropertiesComponent.getInstance().getBoolean(APP_SHOW_CONTEXT_FOR_COMMITS_KEY, DEFAULT_SHOW_CONTEXT_FOR_COMMITS)
-    fun isGutterMarkersEnabled(): Boolean = PropertiesComponent.getInstance().getBoolean(APP_ENABLE_GUTTER_MARKERS_KEY, DEFAULT_ENABLE_GUTTER_MARKERS)
-    fun isGutterForNewFilesEnabled(): Boolean = PropertiesComponent.getInstance().getBoolean(APP_ENABLE_GUTTER_FOR_NEW_FILES_KEY, DEFAULT_ENABLE_GUTTER_FOR_NEW_FILES)
-    fun isIncludeHeadInScopes(): Boolean = PropertiesComponent.getInstance().getBoolean(APP_INCLUDE_HEAD_IN_SCOPES_KEY, DEFAULT_INCLUDE_HEAD_IN_SCOPES)
-    fun isShowWidgetContext(): Boolean = PropertiesComponent.getInstance().getBoolean(APP_SHOW_WIDGET_CONTEXT_KEY, DEFAULT_SHOW_WIDGET_CONTEXT)
-
+    fun getSingleClickAction(): String = settingsService().getSingleClickAction()
+    fun getDoubleClickAction(): String = settingsService().getDoubleClickAction()
+    fun getMiddleClickAction(): String = settingsService().getMiddleClickAction()
+    fun getDoubleMiddleClickAction(): String = settingsService().getDoubleMiddleClickAction()
+    fun getRightClickAction(): String = settingsService().getRightClickAction()
+    fun getDoubleRightClickAction(): String = settingsService().getDoubleRightClickAction()
+    fun isContextMenuEnabled(): Boolean = settingsService().isContextMenuEnabled()
+    fun isShowContextForSingleRepoEnabled(): Boolean = settingsService().isShowContextForSingleRepo()
+    fun isShowContextForMultiRepoEnabled(): Boolean = settingsService().isShowContextForMultiRepo()
+    fun isShowContextForCommitsEnabled(): Boolean = settingsService().isShowContextForCommits()
+    fun isGutterMarkersEnabled(): Boolean = settingsService().isGutterMarkersEnabled()
+    fun isGutterForNewFilesEnabled(): Boolean = settingsService().isGutterForNewFilesEnabled()
+    fun isIncludeHeadInScopes(): Boolean = settingsService().isIncludeHeadInScopes()
+    fun isShowToolWindowTitleEnabled(): Boolean = settingsService().isShowToolWindowTitle()
+    fun isShowWidgetContext(): Boolean = settingsService().isShowWidgetContext()
+    fun isExpandNewFilesInCollapsedDirs(): Boolean = settingsService().isExpandNewFilesInCollapsedDirs()
+    fun isShowUntrackedFilesAsNew(): Boolean = settingsService().isShowUntrackedFilesAsNew()
+    fun isShowLineStatsInTree(): Boolean = settingsService().isShowLineStatsInTree()
 
     fun getUserDoubleClickDelayMs(): Int {
-        val storedValue = PropertiesComponent.getInstance().getInt(APP_USER_DOUBLE_CLICK_DELAY_KEY, DELAY_OPTION_SYSTEM_DEFAULT)
+        val storedValue = settingsService().getUserDoubleClickDelay()
         if (storedValue > 0) {
             return storedValue
         }
@@ -100,45 +105,71 @@ object ToolWindowSettingsProvider {
         return systemValue?.takeIf { it > 0 } ?: 300
     }
 
-    // --- Private Setters used by Actions ---
-    private fun setSingleClickAction(action: String) = PropertiesComponent.getInstance().setValue(APP_SINGLE_CLICK_ACTION_KEY, action)
-    private fun setDoubleClickAction(action: String) = PropertiesComponent.getInstance().setValue(APP_DOUBLE_CLICK_ACTION_KEY, action)
-    private fun setMiddleClickAction(action: String) = PropertiesComponent.getInstance().setValue(APP_MIDDLE_CLICK_ACTION_KEY, action)
-    private fun setDoubleMiddleClickAction(action: String) = PropertiesComponent.getInstance().setValue(APP_DOUBLE_MIDDLE_CLICK_ACTION_KEY, action)
-    private fun setRightClickAction(action: String) = PropertiesComponent.getInstance().setValue(APP_RIGHT_CLICK_ACTION_KEY, action)
-    private fun setDoubleRightClickAction(action: String) = PropertiesComponent.getInstance().setValue(APP_DOUBLE_RIGHT_CLICK_ACTION_KEY, action)
-    private fun setUserDoubleClickDelayMs(delay: Int) = PropertiesComponent.getInstance().setValue(APP_USER_DOUBLE_CLICK_DELAY_KEY, delay, DELAY_OPTION_SYSTEM_DEFAULT)
-
 
     fun createToolWindowSettingsGroup(): ActionGroup {
         val rootSettingsGroup = DefaultActionGroup(LstCrcBundle.message("settings.root.title"), true)
 
-        // --- Gutter Marks Submenu ---
-        val gutterSettingsGroup = DefaultActionGroup({ LstCrcBundle.message("settings.gutter.group.title") }, true)
-        rootSettingsGroup.add(gutterSettingsGroup)
-
-        gutterSettingsGroup.add(createBooleanSettingToggle(
-            LstCrcBundle.message("settings.gutter.enable"),
-            APP_ENABLE_GUTTER_MARKERS_KEY, DEFAULT_ENABLE_GUTTER_MARKERS,
-            onChanged = { e, _ -> e.project?.service<VisualTrackerManager>()?.settingsChanged() }
-        ))
-
-        gutterSettingsGroup.add(createBooleanSettingToggle(
-            LstCrcBundle.message("settings.gutter.for.new.files"),
-            APP_ENABLE_GUTTER_FOR_NEW_FILES_KEY, DEFAULT_ENABLE_GUTTER_FOR_NEW_FILES,
-            onChanged = { e, _ -> e.project?.service<VisualTrackerManager>()?.settingsChanged() },
-            updateCheck = { e ->
-                e.presentation.isEnabled = PropertiesComponent.getInstance()
-                    .getBoolean(APP_ENABLE_GUTTER_MARKERS_KEY, DEFAULT_ENABLE_GUTTER_MARKERS)
-            }
-        ))
+        rootSettingsGroup.add(createGutterSettingsGroup())
         rootSettingsGroup.addSeparator()
 
-        // --- Tree View Submenu ---
-        val treeViewSettingsGroup = DefaultActionGroup({ LstCrcBundle.message("settings.tree.view.group.title") }, true).apply {
+        rootSettingsGroup.add(createTreeViewSettingsGroup())
+        rootSettingsGroup.addSeparator()
+
+        addGeneralSettingsActions(rootSettingsGroup)
+        rootSettingsGroup.addSeparator()
+
+        rootSettingsGroup.add(createMouseClickActionsGroup())
+
+        return rootSettingsGroup
+    }
+
+    private fun createMouseClickActionsGroup(): ActionGroup {
+        val mouseClickActionsGroup = DefaultActionGroup({ LstCrcBundle.message("settings.mouse.click.actions") }, true)
+
+        addClickActionSettings(mouseClickActionsGroup, leftClickSettings)
+        mouseClickActionsGroup.addSeparator()
+        addClickActionSettings(mouseClickActionsGroup, middleClickSettings)
+        mouseClickActionsGroup.addSeparator()
+
+        val rightClickSettingsGroup = DefaultActionGroup({ LstCrcBundle.message("settings.right.click.behavior") }, true)
+        rightClickModeChoices.forEach { choice ->
+            rightClickSettingsGroup.add(createToggleAction(
+                LstCrcBundle.message(choice.labelKey),
+                { isContextMenuEnabled() == choice.contextMenuEnabled },
+                { settingsService().setContextMenuEnabled(choice.contextMenuEnabled) }
+            ))
+        }
+        mouseClickActionsGroup.add(rightClickSettingsGroup)
+
+        val rightClickActionsConditionalGroup = object : DefaultActionGroup() {
+            override fun update(e: AnActionEvent) {
+                e.presentation.isEnabledAndVisible = !isContextMenuEnabled()
+            }
+
+            override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
+        }
+        addClickActionSettings(rightClickActionsConditionalGroup, rightClickSettings)
+        mouseClickActionsGroup.add(rightClickActionsConditionalGroup)
+        mouseClickActionsGroup.addSeparator()
+
+        val delaySpeedGroup = DefaultActionGroup({ LstCrcBundle.message("settings.double.click.speed") }, true)
+        doubleClickDelayChoices.forEach { choice ->
+            delaySpeedGroup.add(createToggleAction(LstCrcBundle.message(choice.labelKey),
+                { settingsService().getUserDoubleClickDelay() == choice.delayMs },
+                { settingsService().setUserDoubleClickDelay(choice.delayMs) }
+            ))
+        }
+        mouseClickActionsGroup.add(delaySpeedGroup)
+
+        return mouseClickActionsGroup
+    }
+
+    private fun createTreeViewSettingsGroup(): ActionGroup {
+        return DefaultActionGroup({ LstCrcBundle.message("settings.tree.view.group.title") }, true).apply {
             add(createBooleanSettingToggle(
                 LstCrcBundle.message("settings.tree.view.show.context.multi.repo"),
-                APP_SHOW_CONTEXT_MULTI_REPO_KEY, DEFAULT_SHOW_CONTEXT_MULTI_REPO,
+                ::isShowContextForMultiRepoEnabled,
+                { settingsService().setShowContextForMultiRepo(it) },
                 onChanged = { e, _ -> rebuildActiveView(e) },
                 updateCheck = { e ->
                     e.presentation.isEnabledAndVisible =
@@ -148,7 +179,8 @@ object ToolWindowSettingsProvider {
 
             add(createBooleanSettingToggle(
                 LstCrcBundle.message("settings.tree.view.show.context.single.repo"),
-                APP_SHOW_CONTEXT_SINGLE_REPO_KEY, DEFAULT_SHOW_CONTEXT_SINGLE_REPO,
+                ::isShowContextForSingleRepoEnabled,
+                { settingsService().setShowContextForSingleRepo(it) },
                 onChanged = { e, _ -> rebuildActiveView(e) },
                 updateCheck = { e ->
                     e.presentation.isEnabledAndVisible =
@@ -158,32 +190,76 @@ object ToolWindowSettingsProvider {
 
             add(createBooleanSettingToggle(
                 LstCrcBundle.message("settings.tree.view.show.context.for.commits"),
-                APP_SHOW_CONTEXT_FOR_COMMITS_KEY, DEFAULT_SHOW_CONTEXT_FOR_COMMITS,
+                ::isShowContextForCommitsEnabled,
+                { settingsService().setShowContextForCommits(it) },
                 onChanged = { e, _ -> rebuildActiveView(e) },
                 updateCheck = { e ->
                     e.presentation.isEnabled = isShowContextForSingleRepoEnabled() || isShowContextForMultiRepoEnabled()
                 }
             ))
-        }
-        rootSettingsGroup.add(treeViewSettingsGroup)
-        rootSettingsGroup.addSeparator()
 
-        // --- Other General Settings ---
+            add(createBooleanSettingToggle(
+                LstCrcBundle.message("settings.tree.view.expand.new.files.in.collapsed.dirs"),
+                ::isExpandNewFilesInCollapsedDirs,
+                { settingsService().setExpandNewFilesInCollapsedDirs(it) }
+            ))
+
+            add(createBooleanSettingToggle(
+                LstCrcBundle.message("settings.tree.view.show.untracked.files.as.new"),
+                ::isShowUntrackedFilesAsNew,
+                { settingsService().setShowUntrackedFilesAsNew(it) },
+                onChanged = { e, _ -> e.project?.service<ToolWindowStateService>()?.refreshDataForCurrentSelection() }
+            ))
+
+            add(createBooleanSettingToggle(
+                LstCrcBundle.message("settings.tree.view.show.line.stats"),
+                ::isShowLineStatsInTree,
+                { settingsService().setShowLineStatsInTree(it) },
+                onChanged = { e, _ -> rebuildActiveView(e) }
+            ))
+        }
+    }
+
+    private fun createGutterSettingsGroup(): ActionGroup {
+        return DefaultActionGroup({ LstCrcBundle.message("settings.gutter.group.title") }, true).apply {
+            add(createBooleanSettingToggle(
+                LstCrcBundle.message("settings.gutter.enable"),
+                ::isGutterMarkersEnabled,
+                { settingsService().setGutterMarkersEnabled(it) },
+                onChanged = { e, _ -> notifyVisualTrackerSettingsChanged(e) }
+            ))
+
+            add(createBooleanSettingToggle(
+                LstCrcBundle.message("settings.gutter.for.new.files"),
+                ::isGutterForNewFilesEnabled,
+                { settingsService().setGutterForNewFilesEnabled(it) },
+                onChanged = { e, _ -> notifyVisualTrackerSettingsChanged(e) },
+                updateCheck = { e ->
+                    e.presentation.isEnabled = settingsService().isGutterMarkersEnabled()
+                }
+            ))
+        }
+    }
+
+    private fun addGeneralSettingsActions(rootSettingsGroup: DefaultActionGroup) {
         rootSettingsGroup.add(createBooleanSettingToggle(
             LstCrcBundle.message("settings.show.tool.window.title"),
-            APP_SHOW_TOOL_WINDOW_TITLE_KEY, DEFAULT_SHOW_TOOL_WINDOW_TITLE,
+            ::isShowToolWindowTitleEnabled,
+            { settingsService().setShowToolWindowTitle(it) },
             onChanged = { e, state -> updateToolWindowTitleVisibility(e, state) }
         ))
 
         rootSettingsGroup.add(createBooleanSettingToggle(
             LstCrcBundle.message("settings.show.widget.context"),
-            APP_SHOW_WIDGET_CONTEXT_KEY, DEFAULT_SHOW_WIDGET_CONTEXT,
-            onChanged = { e, _ -> e.project?.messageBus?.syncPublisher(PLUGIN_SETTINGS_CHANGED_TOPIC)?.onSettingsChanged() }
+            ::isShowWidgetContext,
+            { settingsService().setShowWidgetContext(it) },
+            onChanged = { e, _ -> e.project?.let(LstCrcStatusWidget::refresh) }
         ))
 
         rootSettingsGroup.add(createBooleanSettingToggle(
             LstCrcBundle.message("settings.include.head.in.scopes"),
-            APP_INCLUDE_HEAD_IN_SCOPES_KEY, DEFAULT_INCLUDE_HEAD_IN_SCOPES,
+            ::isIncludeHeadInScopes,
+            { settingsService().setIncludeHeadInScopes(it) },
             onChanged = { e, _ ->
                 val project = e.project ?: return@createBooleanSettingToggle
                 if (project.service<ToolWindowStateService>().getSelectedTabBranchName() == null) {
@@ -191,96 +267,42 @@ object ToolWindowSettingsProvider {
                 }
             }
         ))
-        rootSettingsGroup.addSeparator()
-
-        // Mouse Click Action Settings
-        val mouseClickActionsGroup = DefaultActionGroup({ LstCrcBundle.message("settings.mouse.click.actions") }, true)
-        rootSettingsGroup.add(mouseClickActionsGroup)
-
-        mouseClickActionsGroup.add(createClickActionChoiceGroup("settings.left.click.single", ::getSingleClickAction, ::setSingleClickAction))
-        mouseClickActionsGroup.add(createClickActionChoiceGroup("settings.left.click.double", ::getDoubleClickAction, ::setDoubleClickAction))
-        mouseClickActionsGroup.addSeparator()
-        mouseClickActionsGroup.add(createClickActionChoiceGroup("settings.middle.click.single", ::getMiddleClickAction, ::setMiddleClickAction))
-        mouseClickActionsGroup.add(createClickActionChoiceGroup("settings.middle.click.double", ::getDoubleMiddleClickAction, ::setDoubleMiddleClickAction))
-        mouseClickActionsGroup.addSeparator()
-
-        // --- Right-Click Behavior ---
-        val rightClickSettingsGroup = DefaultActionGroup({ LstCrcBundle.message("settings.right.click.behavior") }, true)
-        rightClickSettingsGroup.add(createToggleAction(LstCrcBundle.message("settings.right.click.show.menu"),
-            { isContextMenuEnabled() },
-            { PropertiesComponent.getInstance().setValue(APP_SHOW_CONTEXT_MENU_KEY, true, DEFAULT_SHOW_CONTEXT_MENU) })
-        )
-        rightClickSettingsGroup.add(createToggleAction(LstCrcBundle.message("settings.right.click.trigger.actions"),
-            { !isContextMenuEnabled() },
-            { PropertiesComponent.getInstance().setValue(APP_SHOW_CONTEXT_MENU_KEY, false, DEFAULT_SHOW_CONTEXT_MENU) })
-        )
-        mouseClickActionsGroup.add(rightClickSettingsGroup)
-
-        val rightClickActionsConditionalGroup = object : DefaultActionGroup() {
-            override fun update(e: AnActionEvent) {
-                e.presentation.isEnabledAndVisible = !isContextMenuEnabled()
-            }
-            override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
-        }
-        rightClickActionsConditionalGroup.add(createClickActionChoiceGroup("settings.right.click.single", ::getRightClickAction, ::setRightClickAction))
-        rightClickActionsConditionalGroup.add(createClickActionChoiceGroup("settings.right.click.double", ::getDoubleRightClickAction, ::setDoubleRightClickAction))
-        mouseClickActionsGroup.add(rightClickActionsConditionalGroup)
-        mouseClickActionsGroup.addSeparator()
-
-        // --- Double-Click Speed ---
-        val delaySpeedGroup = DefaultActionGroup({ LstCrcBundle.message("settings.double.click.speed") }, true)
-        val predefinedDelays = listOf(
-            Pair(LstCrcBundle.message("settings.speed.default"), DELAY_OPTION_SYSTEM_DEFAULT),
-            Pair(LstCrcBundle.message("settings.speed.faster"), 200),
-            Pair(LstCrcBundle.message("settings.speed.fast"), 250),
-            Pair(LstCrcBundle.message("settings.speed.medium"), 300),
-            Pair(LstCrcBundle.message("settings.speed.slow"), 500)
-        )
-        predefinedDelays.forEach { (label, value) ->
-            delaySpeedGroup.add(createToggleAction(label,
-                { PropertiesComponent.getInstance().getInt(APP_USER_DOUBLE_CLICK_DELAY_KEY, DELAY_OPTION_SYSTEM_DEFAULT) == value },
-                { setUserDoubleClickDelayMs(value) }
-            ))
-        }
-        mouseClickActionsGroup.add(delaySpeedGroup)
-
-        return rootSettingsGroup
     }
 
     /**
      * Helper to create a radio-button style group for choosing a click action.
      */
-    private fun createClickActionChoiceGroup(titleKey: String, getter: () -> String, setter: (String) -> Unit): ActionGroup {
-        val group = DefaultActionGroup({ LstCrcBundle.message(titleKey) }, true)
-        val actions = mapOf(
-            LstCrcBundle.message("settings.action.none") to ACTION_NONE,
-            LstCrcBundle.message("settings.action.show.diff") to ACTION_OPEN_DIFF,
-            LstCrcBundle.message("settings.action.show.source") to ACTION_OPEN_SOURCE,
-            LstCrcBundle.message("settings.action.show.project.tree") to ACTION_SHOW_IN_PROJECT_TREE
-        )
-        actions.forEach { (textKey, actionValue) ->
+    private fun addClickActionSettings(group: DefaultActionGroup, definitions: Iterable<ClickActionSettingDefinition>) {
+        definitions.forEach { definition ->
+            group.add(createClickActionChoiceGroup(definition))
+        }
+    }
+
+    private fun createClickActionChoiceGroup(definition: ClickActionSettingDefinition): ActionGroup {
+        val group = DefaultActionGroup({ LstCrcBundle.message(definition.titleKey) }, true)
+        clickActionChoices.forEach { choice ->
             group.add(createToggleAction(
-                textKey,
-                { getter() == actionValue },
-                { setter(actionValue) }
+                LstCrcBundle.message(choice.labelKey),
+                { definition.getter() == choice.actionValue },
+                { definition.setter(choice.actionValue) }
             ))
         }
         return group
     }
 
     /**
-     * Helper to create a [ToggleAction] for a boolean setting stored in [PropertiesComponent].
+     * Helper to create a [ToggleAction] for a boolean setting stored in [LstCrcSettingsService].
      *
      * @param text The display text for the action.
-     * @param key The property key.
-     * @param default The default value.
+     * @param isSelected Reads the current value from the typed settings service accessor.
+     * @param setSelected Persists the value through the typed settings service accessor.
      * @param onChanged Optional callback invoked after the value changes. Receives the event and new state.
      * @param updateCheck Optional predicate to control enabled/visible state in [ToggleAction.update].
      */
     private fun createBooleanSettingToggle(
         text: String,
-        key: String,
-        default: Boolean,
+        isSelected: () -> Boolean,
+        setSelected: (Boolean) -> Unit,
         onChanged: ((AnActionEvent, Boolean) -> Unit)? = null,
         updateCheck: ((AnActionEvent) -> Unit)? = null
     ): ToggleAction {
@@ -291,10 +313,10 @@ object ToolWindowSettingsProvider {
             }
 
             override fun isSelected(e: AnActionEvent): Boolean =
-                PropertiesComponent.getInstance().getBoolean(key, default)
+                isSelected()
 
             override fun setSelected(e: AnActionEvent, state: Boolean) {
-                PropertiesComponent.getInstance().setValue(key, state, default)
+                setSelected(state)
                 onChanged?.invoke(e, state)
             }
 
@@ -313,15 +335,16 @@ object ToolWindowSettingsProvider {
 
     /**
      * Updates the tool window's ID label visibility and refreshes the header UI.
-     * Wraps usage of impl-package APIs ([ToolWindowContentUi], [ContentManagerImpl])
-     * in one place for easier maintenance if public alternatives become available.
+     * Delegates the impl-package details to ToolWindowUiCompatibility so this
+     * settings provider stays isolated from internal tool-window UI classes.
      */
     private fun updateToolWindowTitleVisibility(e: AnActionEvent, showTitle: Boolean) {
         val toolWindow = e.getData(PlatformDataKeys.TOOL_WINDOW) ?: return
-        toolWindow.component.putClientProperty(ToolWindowContentUi.HIDE_ID_LABEL, if (showTitle) null else "true")
-        (toolWindow.contentManager as? ContentManagerImpl)?.let {
-            (it.ui as? ToolWindowContentUi)?.update()
-        }
+        ToolWindowUiCompatibility.setToolWindowTitleVisible(toolWindow, showTitle)
+    }
+
+    private fun notifyVisualTrackerSettingsChanged(e: AnActionEvent) {
+        e.project?.service<VisualTrackerManager>()?.settingsChanged()
     }
 
     /**

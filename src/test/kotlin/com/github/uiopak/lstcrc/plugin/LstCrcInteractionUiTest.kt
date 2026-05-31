@@ -12,6 +12,8 @@ import com.intellij.remoterobot.search.locators.byXpath
 import com.intellij.remoterobot.stepsProcessing.step
 import com.intellij.remoterobot.utils.keyboard
 import com.intellij.remoterobot.utils.waitFor
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import java.time.Duration
@@ -146,6 +148,79 @@ class LstCrcInteractionUiTest : LstCrcUiTestSupport() {
 
     @Test
     @Video
+    fun testContextMenuOpenSourceWinsOverFocusedDiffAndReusesDiff(remoteRobot: RemoteRobot) = with(remoteRobot) {
+        val uiSteps = PluginUiTestSteps(remoteRobot)
+
+        prepareFreshProject()
+
+        idea {
+            step("Wait for smart mode") {
+                dumbAware(Duration.ofMinutes(5)) {}
+            }
+
+            uiSteps.initializeGitRepository()
+            resetGitChangesViewState()
+
+            uiSteps.createNewFile("Main.txt", "Base line\n")
+            uiSteps.commitChanges("Initial commit")
+            val defaultBranch = uiSteps.defaultBranchName()
+
+            uiSteps.createBranch("feature-context-focus")
+            uiSteps.modifyFile("Main.txt", "Feature context focus line\n")
+            uiSteps.commitChanges("Feature context focus commit")
+            uiSteps.checkoutBranch(defaultBranch)
+
+            openGitChangesView()
+            gitChangesView {
+                addTab()
+            }
+            branchSelection {
+                searchAndSelect("feature-context-focus")
+            }
+
+            configureLstCrcClickActions(showContextMenu = true)
+
+            gitChangesView {
+                selectTab("feature-context-focus")
+                rightClickChange("Main.txt")
+            }
+
+            waitFor(Duration.ofSeconds(10)) {
+                actionMenuItem("Show Diff").isShowing &&
+                    actionMenuItem("Open Source").isShowing &&
+                    actionMenuItem("Show in Project Tree").isShowing
+            }
+
+            actionMenuItem("Show Diff").click()
+
+            waitFor(Duration.ofSeconds(15)) { diffEditorCount() > 0 }
+            val firstDiffCount = diffEditorCount()
+            assertTrue(firstDiffCount > 0, "Show Diff should open a diff editor")
+
+            gitChangesView {
+                selectTab("feature-context-focus")
+                rightClickChange("Main.txt")
+            }
+
+            waitFor(Duration.ofSeconds(10)) {
+                actionMenuItem("Open Source").isShowing
+            }
+
+            actionMenuItem("Open Source").click()
+
+            waitFor(Duration.ofSeconds(15)) {
+                val descriptor = selectedEditorDescriptor()
+                descriptor.contains("Main.txt") && !descriptor.lowercase().contains("diff")
+            }
+
+            val selectedEditor = selectedEditorDescriptor()
+            assertTrue(selectedEditor.contains("Main.txt"), "Open Source should select Main.txt after the diff was focused")
+            assertFalse(selectedEditor.lowercase().contains("diff"), "Open Source should activate a text editor, not keep the diff selected: $selectedEditor")
+        }
+    }
+
+    @Test
+    @Video
     fun testStatusWidgetAndRevisionActions(remoteRobot: RemoteRobot) = with(remoteRobot) {
         val uiSteps = PluginUiTestSteps(remoteRobot)
 
@@ -187,43 +262,20 @@ class LstCrcInteractionUiTest : LstCrcUiTestSupport() {
             }
 
             clickStatusWidget()
-            waitFor(Duration.ofSeconds(10)) {
-                findAll<ComponentFixture>(
-                    byXpath("//div[@class='MyList' and contains(@accessiblename, 'LST-CRC Actions')]")
-                ).isNotEmpty()
-            }
-            keyboard {
-                enterText("HEAD")
-                enter()
-            }
+            assertWidgetPopupAnchoredNearStatusWidget(statusWidgetPopupSnapshot())
+            selectStatusWidgetPopupItem("HEAD")
             waitFor(Duration.ofSeconds(10)) {
                 selectedLstCrcTabName() == "HEAD"
             }
 
             clickStatusWidget()
-            waitFor(Duration.ofSeconds(10)) {
-                findAll<ComponentFixture>(
-                    byXpath("//div[@class='MyList' and contains(@accessiblename, 'LST-CRC Actions')]")
-                ).isNotEmpty()
-            }
-            keyboard {
-                enterText("feature-widget")
-                enter()
-            }
+            selectStatusWidgetPopupItem("feature-widget")
             waitFor(Duration.ofSeconds(10)) {
                 selectedLstCrcTabName() == "feature-widget" && statusWidgetText().contains("feature-widget")
             }
 
             clickStatusWidget()
-            waitFor(Duration.ofSeconds(10)) {
-                findAll<ComponentFixture>(
-                    byXpath("//div[@class='MyList' and contains(@accessiblename, 'LST-CRC Actions')]")
-                ).isNotEmpty()
-            }
-            keyboard {
-                enterText("Add Tab")
-                enter()
-            }
+            selectStatusWidgetPopupItem("Add Tab")
             branchSelection {
                 searchAndSelect("feature-widget-2")
             }
@@ -242,15 +294,7 @@ class LstCrcInteractionUiTest : LstCrcUiTestSupport() {
             }
 
             clickStatusWidget()
-            waitFor(Duration.ofSeconds(10)) {
-                findAll<ComponentFixture>(
-                    byXpath("//div[@class='MyList' and contains(@accessiblename, 'LST-CRC Actions')]")
-                ).isNotEmpty()
-            }
-            keyboard {
-                enterText("feature-widget")
-                enter()
-            }
+            selectStatusWidgetPopupItem("feature-widget")
             waitFor(Duration.ofSeconds(10)) {
                 selectedLstCrcTabName() == "feature-widget"
             }
@@ -258,6 +302,97 @@ class LstCrcInteractionUiTest : LstCrcUiTestSupport() {
             invokeSetRevisionAsRepoComparisonAction(featureRevision)
             waitFor(Duration.ofSeconds(15)) {
                 selectedTabComparisonMap().contains(featureRevision)
+            }
+        }
+    }
+
+    @Test
+    @Video
+    fun testBranchSelectionFilterDoesNotPersistAcrossReopen(remoteRobot: RemoteRobot) = with(remoteRobot) {
+        val uiSteps = PluginUiTestSteps(remoteRobot)
+
+        prepareFreshProject()
+
+        idea {
+            step("Wait for smart mode") {
+                dumbAware(Duration.ofMinutes(5)) {}
+            }
+
+            uiSteps.initializeGitRepository()
+            resetGitChangesViewState()
+
+            uiSteps.createNewFile("Main.txt", "Base line\n")
+            uiSteps.commitChanges("Initial commit")
+            val defaultBranch = uiSteps.defaultBranchName()
+
+            uiSteps.createBranch("feature/filter/alpha")
+            uiSteps.modifyFile("Main.txt", "Alpha branch\n")
+            uiSteps.commitChanges("Alpha branch commit")
+            uiSteps.checkoutBranch(defaultBranch)
+
+            uiSteps.createBranch("feature/filter/beta")
+            uiSteps.modifyFile("Main.txt", "Beta branch\n")
+            uiSteps.commitChanges("Beta branch commit")
+            uiSteps.checkoutBranch(defaultBranch)
+
+            uiSteps.createBranch("release/stable")
+            uiSteps.modifyFile("Main.txt", "Release branch\n")
+            uiSteps.commitChanges("Release branch commit")
+            uiSteps.checkoutBranch(defaultBranch)
+
+            openGitChangesView()
+            gitChangesView {
+                addTab()
+            }
+            branchSelection {
+                setSearchTerm("beta")
+                waitFor(Duration.ofSeconds(10), interval = Duration.ofMillis(250)) {
+                    hasVisibleBranchText("beta") &&
+                        !hasVisibleBranchText("stable") &&
+                        !hasVisibleBranchText("alpha")
+                }
+
+                assertTrue(hasVisibleBranchText("beta"))
+                assertFalse(hasVisibleBranchText("stable"))
+                assertFalse(hasVisibleBranchText("alpha"))
+                searchAndSelect("feature/filter/beta")
+            }
+
+            gitChangesView {
+                waitFor(Duration.ofSeconds(10)) {
+                    hasTab("feature/filter/beta")
+                }
+                addTab()
+            }
+
+            branchSelection {
+                waitFor(Duration.ofSeconds(10), interval = Duration.ofMillis(250)) {
+                    hasVisibleBranchText("alpha") &&
+                        hasVisibleBranchText("beta") &&
+                        hasVisibleBranchText("stable")
+                }
+
+                assertTrue(
+                    hasVisibleBranchText("alpha") &&
+                        hasVisibleBranchText("beta") &&
+                        hasVisibleBranchText("stable"),
+                    "Branch filter should not persist when the selection panel is reopened"
+                )
+
+                setSearchTerm("release")
+                waitFor(Duration.ofSeconds(10), interval = Duration.ofMillis(250)) {
+                    hasVisibleBranchText("stable") &&
+                        !hasVisibleBranchText("alpha") &&
+                        !hasVisibleBranchText("beta")
+                }
+
+                searchAndSelect("release/stable")
+            }
+
+            gitChangesView {
+                waitFor(Duration.ofSeconds(10)) {
+                    hasTab("release/stable")
+                }
             }
         }
     }
@@ -437,4 +572,47 @@ class LstCrcInteractionUiTest : LstCrcUiTestSupport() {
             }
         }
     }
+
+    private fun assertWidgetPopupAnchoredNearStatusWidget(snapshot: String) {
+        val widgetBounds = parseSnapshotBounds(snapshot, "widget")
+        val popupBounds = parseSnapshotBounds(snapshot, "popup")
+
+        assertTrue(widgetBounds != null, "Missing widget bounds in popup snapshot: $snapshot")
+        assertTrue(popupBounds != null, "Missing popup bounds in popup snapshot: $snapshot")
+
+        val widget = widgetBounds!!
+        val popup = popupBounds!!
+        assertTrue(
+            popup.x <= widget.x + widget.width && popup.x + popup.width >= widget.x,
+            "Widget popup should horizontally overlap the widget instead of opening near the status bar origin. Snapshot: $snapshot"
+        )
+        assertTrue(
+            popup.y + popup.height <= widget.y + 40,
+            "Widget popup should open above the widget instead of near the status bar origin. Snapshot: $snapshot"
+        )
+    }
+
+    private fun parseSnapshotBounds(snapshot: String, key: String): ScreenBounds? {
+        val value = snapshot
+            .split("|")
+            .firstOrNull { it.startsWith("$key=") }
+            ?.substringAfter('=')
+            ?.takeIf { it.isNotBlank() }
+            ?: return null
+        val parts = value.split(',')
+        if (parts.size != 4) return null
+        return ScreenBounds(
+            x = parts[0].toIntOrNull() ?: return null,
+            y = parts[1].toIntOrNull() ?: return null,
+            width = parts[2].toIntOrNull() ?: return null,
+            height = parts[3].toIntOrNull() ?: return null
+        )
+    }
+
+    private data class ScreenBounds(
+        val x: Int,
+        val y: Int,
+        val width: Int,
+        val height: Int
+    )
 }

@@ -293,7 +293,12 @@ class LstCrcMultiRootStarterUiTest : LstCrcStarterUiTestBase() {
             openGitChangesView()
 
             waitUntil(30.seconds) {
-                ui.hasTab("persisted-feature") && ui.selectedTabName() == "persisted-feature"
+                ui.hasTab("persisted-feature")
+            }
+
+            ui.selectTab("persisted-feature")
+            waitUntil(30.seconds) {
+                ui.selectedTabName() == "persisted-feature"
             }
             waitUntil(30.seconds) {
                 ui.selectedTabComparisonMap().contains("${secondaryRepoPath(project)}=secondary-persist-override")
@@ -312,7 +317,7 @@ class LstCrcMultiRootStarterUiTest : LstCrcStarterUiTestBase() {
         context.runLstCrcIdeWithDriver().useDriverAndCloseIde {
             waitForIndicators(5.minutes)
             val bridge = service<LstCrcUiTestBridgeRemote>()
-            val starterContext = LstCrcStarterContext(project, bridge, this)
+            val starterContext = LstCrcStarterContext(project, bridge)
             starterContext.waitForSmartMode()
             block(starterContext)
         }

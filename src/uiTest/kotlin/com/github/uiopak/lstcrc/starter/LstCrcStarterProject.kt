@@ -2,12 +2,8 @@ package com.github.uiopak.lstcrc.starter
 
 import java.nio.file.Files
 import java.nio.file.Path
-import java.nio.file.StandardCopyOption
-import java.nio.file.StandardOpenOption
 import kotlin.io.path.createDirectories
-import kotlin.io.path.deleteIfExists
 import kotlin.io.path.exists
-import kotlin.io.path.name
 import kotlin.io.path.writeText
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
@@ -70,20 +66,7 @@ class LstCrcStarterProject private constructor(val path: Path) {
         }
     }
 
-    fun renameFile(oldPath: String, newPath: String) {
-        val source = path.resolve(oldPath)
-        val target = path.resolve(newPath)
-        target.parent?.createDirectories()
-        Files.move(source, target, StandardCopyOption.REPLACE_EXISTING)
-    }
 
-    fun deleteFile(relativePath: String) {
-        path.resolve(relativePath).deleteIfExists()
-    }
-
-    fun deleteFileInRepo(repoRelativePath: String, relativePath: String) {
-        repoPath(repoRelativePath).resolve(relativePath).deleteIfExists()
-    }
 
     fun commitAll(message: String) {
         git("add", "-A")
@@ -115,9 +98,6 @@ class LstCrcStarterProject private constructor(val path: Path) {
         git("branch", "-D", branchName)
     }
 
-    fun deleteBranchInRepo(repoRelativePath: String, branchName: String) {
-        gitAt(repoRelativePath, "branch", "-D", branchName)
-    }
 
     fun defaultBranchName(): String = git("rev-parse", "--abbrev-ref", "HEAD")
 
@@ -125,7 +105,8 @@ class LstCrcStarterProject private constructor(val path: Path) {
 
     fun gitRevision(reference: String): String = git("rev-parse", reference)
 
-    fun gitRevisionInRepo(repoRelativePath: String, reference: String): String = gitAt(repoRelativePath, "rev-parse", reference)
+    fun runGit(vararg args: String): String = git(*args)
+
 
     private fun repoPath(relativeRepoPath: String): Path = path.resolve(relativeRepoPath)
 
@@ -157,7 +138,7 @@ class LstCrcStarterProject private constructor(val path: Path) {
         }
 
         check(exitCode == 0) {
-            if (output.isNotBlank()) output else "git ${args.joinToString(" ")} failed with exit code $exitCode"
+            output.ifBlank { "git ${args.joinToString(" ")} failed with exit code $exitCode" }
         }
         return output
     }

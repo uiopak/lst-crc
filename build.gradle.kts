@@ -218,9 +218,9 @@ kover {
     }
 }
 
-// Exclude the IDE Starter test bridge from the published plugin JAR by default.
-// The bridge (@Service) is only needed when running starterUiTest.
-// It is auto-included when starterUiTest is requested, or manually via -PincludeTestBridge=true.
+// Include the IDE Starter test bridge source set only when needed.
+// The bridge (@Service) is required in the running IDE only for starterUiTest / starterPerformanceTest,
+// or manually via -PincludeTestBridge=true.
 val includeTestBridge = providers.gradleProperty("includeTestBridge")
     .map { it.toBoolean() }
     .orElse(
@@ -229,15 +229,15 @@ val includeTestBridge = providers.gradleProperty("includeTestBridge")
         }
     )
 
-if (!includeTestBridge.get()) {
+if (includeTestBridge.get()) {
     sourceSets.main {
-        kotlin.exclude("com/github/uiopak/lstcrc/testing/**")
+        kotlin.srcDir("src/testBridge/kotlin")
     }
 }
 
 // Resolve IntelliJ once via the Gradle plugin, then keep a single shared workspace copy for
-// UI-related tasks. This avoids maintaining separate 4+ GB copies for Remote Robot and
-// IDE Starter, while also keeping the running IDEs off the mutable Gradle transform cache.
+// IDE Starter tasks. Remote Robot uses the standard runIde setup because the Windows local-path
+// flow can fail while resolving bundled plugins from the copied IDE.
 val resolvedIdeHome = intellijPlatform.platformPath
 val sharedUiIdeDir = layout.buildDirectory.dir("shared-ui-ide/idea")
 val preparedSharedUiIdeDir = providers.provider {
@@ -261,10 +261,25 @@ tasks {
     val isCi = isCiEnvironment
     val starterPerformanceTag = "starter-performance"
     val defaultRobotServerUrl = "http://127.0.0.1:8082"
-    val robotServerUrlProvider = providers.systemProperty("robot.server.url").orElse(defaultRobotServerUrl)
-    val robotServerWaitTimeoutProvider = providers.systemProperty("ui.test.server.wait.timeout").orElse(if (isCi) "240" else "90")
-    val robotConnectionTimeoutProvider = providers.systemProperty("ui.test.connection.timeout").orElse(if (isCi) "90" else "30")
-    val uiTestTimeoutProvider = providers.systemProperty("ui.test.timeout").orElse(if (isCi) "900" else "600")
+    val robotServerUrlProvider = providers.systemProperty("robot.server.url")
+        .orElse(providers.environmentVariable("ROBOT_SERVER_URL"))
+        .orElse(defaultRobotServerUrl)
+    val robotServerWaitTimeoutProvider = providers.systemProperty("ui.test.server.wait.timeout")
+        .orElse(providers.environmentVariable("UI_TEST_SERVER_WAIT_TIMEOUT"))
+        .orElse(if (isCi) "240" else "90")
+    val robotConnectionTimeoutProvider = providers.systemProperty("ui.test.connection.timeout")
+        .orElse(providers.environmentVariable("UI_TEST_CONNECTION_TIMEOUT"))
+        .orElse(if (isCi) "90" else "30")
+    val uiTestTimeoutProvider = providers.systemProperty("ui.test.timeout")
+        .orElse(providers.environmentVariable("UI_TEST_TIMEOUT"))
+        .orElse(if (isCi) "900" else "600")
+    val uiTestTaskTimeoutMinutesProvider = providers.systemProperty("ui.test.task.timeout.minutes")
+        .orElse(providers.environmentVariable("UI_TEST_TASK_TIMEOUT_MINUTES"))
+        .orElse(if (isCi) "45" else "30")
+    val starterUiTestTaskTimeoutMinutesProvider = providers.systemProperty("starter.ui.test.task.timeout.minutes")
+        .orElse(providers.environmentVariable("STARTER_UI_TEST_TIMEOUT_MINUTES"))
+        .orElse(if (isCi) "75" else "40")
+    val starterUiTestMaxParallelForksProvider = providers.systemProperty("starter.ui.test.max.parallel.forks").orElse("1")
 
     fun Test.configureCommonTestTask() {
         useJUnitPlatform()
@@ -294,7 +309,7 @@ tasks {
         systemProperty("ui.test.connection.timeout", robotConnectionTimeoutProvider.get())
         systemProperty("ui.test.timeout", uiTestTimeoutProvider.get())
 
-        timeout.set(Duration.ofMinutes(30))
+        timeout.set(Duration.ofMinutes(uiTestTaskTimeoutMinutesProvider.get().toLong()))
     }
 
     fun Test.configureStarterIdeTestTask(allureSubdirectory: String) {
@@ -302,15 +317,21 @@ tasks {
 
         notCompatibleWithConfigurationCache("Starter UI test discovery is unstable when this task is restored from configuration cache.")
 
-        maxParallelForks = 1
+        maxParallelForks = starterUiTestMaxParallelForksProvider.get().toInt()
         minHeapSize = "1g"
         maxHeapSize = "4g"
+
+        systemProperty("junit.jupiter.extensions.autodetection.enabled", "false")
 
         systemProperty("path.to.build.plugin", buildPlugin.get().archiveFile.get().asFile.absolutePath)
         systemProperty("idea.home.path", prepareTestSandbox.get().getDestinationDir().parentFile.absolutePath)
         systemProperty("local.ide.path", preparedSharedUiIdeDir.get().asFile.absolutePath)
-        systemProperty("lstcrc.starter.driver.jmx.port", System.getProperty("lstcrc.starter.driver.jmx.port") ?: "17777")
-        systemProperty("lstcrc.starter.driver.rpc.port", System.getProperty("lstcrc.starter.driver.rpc.port") ?: "24000")
+        System.getProperty("lstcrc.starter.driver.jmx.port")?.let {
+            systemProperty("lstcrc.starter.driver.jmx.port", it)
+        }
+        System.getProperty("lstcrc.starter.driver.rpc.port")?.let {
+            systemProperty("lstcrc.starter.driver.rpc.port", it)
+        }
         systemProperty(
             "allure.results.directory",
             project.layout.buildDirectory.get().asFile.absolutePath + "/allure-results/$allureSubdirectory"
@@ -526,6 +547,13 @@ tasks {
         dependsOn(patchChangelog)
     }
 
+    named<org.gradle.api.tasks.JavaExec>("verifyPlugin") {
+        if (System.getProperty("intellij.plugin.verifier.concurrency.level") == null) {
+            val defaultVerifierConcurrency = if (isCi) "1" else "2"
+            systemProperty("intellij.plugin.verifier.concurrency.level", defaultVerifierConcurrency)
+        }
+    }
+
     // Configure the test task to use JUnit Platform (JUnit 5)
     test {
         useJUnitPlatform {
@@ -566,7 +594,7 @@ tasks {
             excludeTags(starterPerformanceTag)
         }
 
-        timeout.set(Duration.ofMinutes(40))
+        timeout.set(Duration.ofMinutes(starterUiTestTaskTimeoutMinutesProvider.get().toLong()))
     }
 
     register<Test>("starterPerformanceTest") {
@@ -599,8 +627,6 @@ tasks {
 intellijPlatformTesting {
     runIde {
         register("runIdeForUiTests") {
-            localPath.set(preparedSharedUiIdeDir)
-
             task {
                 jvmArgumentProviders += CommandLineArgumentProvider {
                     listOf(

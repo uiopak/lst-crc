@@ -69,8 +69,8 @@ To run a single UI class or method, keep the IDE running and use:
 1. If tests cannot connect to Robot Server, verify port `8082` is open.
 2. If IDE startup is slow, increase the readiness wait with `-Dui.test.server.wait.timeout=180`.
 3. The test-side wait now honors `ui.test.server.wait.timeout` as a floor, but you can still raise `-Dui.test.connection.timeout=180` if you need more slack after preflight.
-3. If you run a UI test from an IDE JUnit configuration, make sure it sets `-DrunUiTests=true`.
-4. Videos are written under `video/` for post-failure inspection.
+4. If you run a UI test from an IDE JUnit configuration, make sure it sets `-DrunUiTests=true`.
+5. Videos are written under `video/` for post-failure inspection.
 
 ## Coverage Rules
 

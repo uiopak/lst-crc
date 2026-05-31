@@ -7,6 +7,7 @@ This file maps each active test method to the capability IDs defined in [plugin-
 | Test | Capability IDs | Notes |
 | --- | --- | --- |
 | `LstCrcFileStatusScopesTest.testDeletedScopeMatchesDeletedPathsWhileChangedExcludesThem` | `C3.4` | Validates deleted-file scope partitioning. |
+| `LstCrcFileStatusScopesTest.testScopesExcludeHeadChangesWhenIncludeHeadInScopesIsDisabled` | `C4.7` | Validates that scopes independently reject HEAD data when `Include HEAD in scopes` is disabled. |
 | `LstCrcSearchScopeProviderTest.testGetDisplayNameAndSearchScopesReturnExpectedLstCrcWrappers` | `C3.3` | Verifies search-scope publishing shape. |
 | `LstCrcSearchScopeProviderTest.testNamedScopeWrapperDelegatesPackageSetBaseContainsAndSearchFlags` | `C3.3` | Verifies wrapper delegation behavior. |
 | `LstCrcSearchScopeProviderTest.testSearchScopesReflectDetailedFileStateMembership` | `C3.3` | Verifies detailed created/modified/moved/changed search-scope membership and deleted omission. |
@@ -64,6 +65,8 @@ This file maps each active test method to the capability IDs defined in [plugin-
 | --- | --- | --- |
 | `LstCrcBranchComparisonStarterUiTest.testGitBranchComparison` | `C1.1`, `C1.2`, `C2.1`, `C3.1` | Starter branch-comparison baseline. |
 | `LstCrcBranchComparisonStarterUiTest.testMultipleComparisonTabs` | `C1.4` | Starter multi-tab flow. |
+| `LstCrcBranchComparisonStarterUiTest.testTreeStatePersistsAcrossTabSwitches` | `C3.9` | Verifies folder expand/collapse state is retained when switching away from and back to a comparison tab. |
+| `LstCrcBranchComparisonUiTest.testTreeStatePersistsAcrossTabSwitches` | `C3.9` | Remote Robot counterpart: same scenario against an IDE started with `runIdeForUiTests`. |
 | `LstCrcFileScopeStarterUiTest.testFileOperations` | `C3.1`, `C3.2`, `C3.3` | Starter scope and tree behavior across file operations. |
 | `LstCrcFileScopeStarterUiTest.testPermanentHeadTabScopesStayEmptyUntilIncludeHeadIsEnabled` | `C1.1`, `C3.3`, `C4.7` | `HEAD` scope gating behavior. |
 | `LstCrcFileScopeStarterUiTest.testIncludeHeadInScopesDoesNotAffectBranchTabScopes` | `C4.7` | Verifies the `Include HEAD in scopes` toggle does not clear created/changed scopes for non-`HEAD` comparison tabs. |

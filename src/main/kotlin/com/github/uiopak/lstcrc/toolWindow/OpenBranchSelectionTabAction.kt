@@ -29,9 +29,8 @@ class OpenBranchSelectionTabAction(
      * Controls the visibility of the action. It is hidden if the "Select Branch" tab is already open.
      */
     override fun update(e: AnActionEvent) {
-        val selectionTabName = LstCrcBundle.message("tab.name.select.branch")
         val contentManager = toolWindow.contentManager
-        val selectionTabExists = contentManager.contents.any { it.displayName == selectionTabName }
+        val selectionTabExists = ToolWindowHelper.findBranchSelectionContent(contentManager) != null
 
         e.presentation.isEnabledAndVisible = !selectionTabExists
     }

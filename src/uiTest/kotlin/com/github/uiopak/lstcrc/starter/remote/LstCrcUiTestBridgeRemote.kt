@@ -19,6 +19,8 @@ interface LstCrcUiTestBridgeRemote {
     fun selectedTabName(): String
     fun selectedRenderedRowsSnapshot(): String
     fun selectedChangesTreeSnapshot(): String
+    fun selectedExpandedTreeNodesSnapshot(): String
+    fun setSelectedTreeNodeExpanded(nodeText: String, expanded: Boolean)
     fun createRevisionTab(revision: String, alias: String?)
     fun updateTabAlias(branchName: String, newAlias: String?)
     fun setBranchAsRepoComparison(branchName: String)
@@ -27,6 +29,7 @@ interface LstCrcUiTestBridgeRemote {
     fun triggerBranchErrorNotificationAction(actionText: String)
     fun selectStatusWidgetEntry(displayName: String)
     fun statusWidgetText(): String
+    fun setContextMenuEnabled(enabled: Boolean)
     fun configureClickActions(
         singleClickAction: String?,
         doubleClickAction: String?,
@@ -40,8 +43,10 @@ interface LstCrcUiTestBridgeRemote {
     fun setDoubleClickDelayMs(delay: Int)
     fun triggerConfiguredChangeInteraction(fileName: String, button: String, clickCount: Int)
     fun contextMenuActionsForFile(fileName: String): String
+    fun invokeContextMenuActionForFile(fileName: String, actionTitle: String)
     fun selectedEditorDescriptor(): String
     fun hasDiffEditorOpen(): Boolean
+    fun diffEditorCount(): Int
     fun closeAllEditors()
     fun openFile(relativePath: String)
     fun writeProjectFile(relativePath: String, content: String)
@@ -52,7 +57,9 @@ interface LstCrcUiTestBridgeRemote {
     fun isToolWindowTitleVisible(): Boolean
     fun setIncludeHeadInScopes(include: Boolean)
     fun setGutterSettings(enableMarkers: Boolean?, enableForNewFiles: Boolean?)
-    fun setTreeContextSettings(showSingleRepo: Boolean?, showCommits: Boolean?)
+    fun setExpandNewFilesInCollapsedDirs(enabled: Boolean)
+    fun setShowUntrackedFilesAsNew(enabled: Boolean)
+    fun setTreeContextSettings(showSingleRepo: Boolean? = null, showCommits: Boolean? = null, showLineStats: Boolean? = null)
     fun setMultiRepoTreeContextSetting(show: Boolean)
     fun isMultiRepoTreeContextEnabled(): Boolean
     fun treeContextSettingsSnapshot(): String
@@ -62,16 +69,17 @@ interface LstCrcUiTestBridgeRemote {
     fun scopeExists(scopeId: String): Boolean
     fun searchScopesSnapshot(): String
     fun searchScopeContains(displayName: String, relativePath: String): Boolean
-    fun branchSelectionTabBranchesSnapshot(): String
     fun openFindInFilesDialog()
     fun findDialogScopeOptionsSnapshot(): String
     fun dismissTransientUi()
+    fun branchSelectionTabBranchesSnapshot(): String
     fun openRepoComparisonDialog()
     fun visibleRepoComparisonDialogTitle(): String
     fun visibleRepoComparisonDialogBranchesSnapshot(): String
     fun selectBranchInVisibleRepoComparisonDialog(branchName: String)
     fun setRepoComparisonForRoot(relativePath: String, targetRevision: String)
     fun selectedTreeFileColor(fileName: String): String
+    fun fileStatusForTreeItem(fileName: String): String
     fun deletedScopeColorSnapshot(): String
     fun visualGutterSummaryForSelectedEditor(): String
 }

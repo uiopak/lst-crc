@@ -13,7 +13,9 @@ import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.service
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.editor.Document
+import com.intellij.openapi.editor.ex.MarkupModelEx
 import com.intellij.openapi.editor.EditorFactory
+import com.intellij.openapi.editor.impl.DocumentMarkupModel
 import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.fileEditor.FileEditorManagerEvent
 import com.intellij.openapi.fileEditor.FileEditorManagerListener
@@ -59,6 +61,13 @@ class VisualTrackerManager(
 
     private val logger = thisLogger()
     private val visualTrackers = ConcurrentHashMap<Document, SimpleLocalLineStatusTracker>()
+    private val updateJobs = ConcurrentHashMap<Document, kotlinx.coroutines.Job>()
+
+    private fun isExpectedMissingFileInRevision(message: String?): Boolean {
+        if (message.isNullOrBlank()) return false
+        return message.contains("does not exist in", ignoreCase = true) ||
+            message.contains("exists on disk, but not in", ignoreCase = true)
+    }
 
     private data class TargetRevisionContext(
         val diffDataService: ProjectActiveDiffDataService,
@@ -74,6 +83,16 @@ class VisualTrackerManager(
             override fun onTrackerAdded(tracker: LineStatusTracker<*>) {
                 if (tracker !is LocalLineStatusTracker<*>) return
                 maybeInterceptTracker(tracker)
+            }
+
+            override fun onTrackerRemoved(tracker: LineStatusTracker<*>) {
+                val document = tracker.document
+                updateJobs.remove(document)?.cancel()
+                val visualTracker = visualTrackers.remove(document)
+                if (visualTracker != null) {
+                    logger.debug("VISUAL_TRACKER: Native tracker removed for ${tracker.virtualFile.name}. Releasing visual tracker.")
+                    visualTracker.release()
+                }
             }
         })
 
@@ -106,12 +125,99 @@ class VisualTrackerManager(
         refreshFileStatuses()
     }
 
+    @Suppress("unused")
+    fun findStandaloneTracker(document: Document): LocalLineStatusTracker<*>? = visualTrackers[document]
+
+    @Suppress("unused")
+    fun debugTrackerSummary(tracker: Any): String {
+        val rangeParts = extractTrackerRangeParts(tracker)
+        val visible = extractTrackerVisibility(tracker)
+        return "${tracker.javaClass.simpleName}|visible=$visible|ranges=${rangeParts.joinToString(",")}"
+    }
+
+    @Suppress("unused")
+    fun debugTrackerSummaryFor(document: Document): String {
+        val tracker = (LineStatusTrackerManager.getInstance(project).getLineStatusTracker(document) as? LocalLineStatusTracker<*>)
+            ?: visualTrackers[document]
+            ?: return "tracker=none"
+        return debugTrackerSummary(tracker)
+    }
+
+    @Suppress("unused")
+    fun debugGutterSummaryFor(document: Document): String {
+        val (highlighterSummary, gutterHighlighterCount) = collectGutterHighlighterSummary(document)
+        return "$highlighterSummary|highlighters=$gutterHighlighterCount|${debugTrackerSummaryFor(document)}"
+    }
+
     private fun refreshFileStatuses() {
         if (project.isDisposed) return
         ApplicationManager.getApplication().invokeLater {
             if (project.isDisposed) return@invokeLater
             FileStatusManager.getInstance(project).fileStatusesChanged()
         }
+    }
+
+    private fun extractTrackerRangeParts(tracker: Any): List<String> {
+        return runCatching {
+            val getRanges = tracker.javaClass.methods.firstOrNull { it.name == "getRanges" && it.parameterCount == 0 }
+            val ranges = (getRanges?.invoke(tracker) as? Collection<*>) ?: emptyList<Any?>()
+            ranges.mapNotNull { range -> range?.let(::describeTrackerRange) }
+        }.getOrDefault(emptyList())
+    }
+
+    private fun collectGutterHighlighterSummary(document: Document): Pair<String, Int> {
+        val markupModel = DocumentMarkupModel.forDocument(document, project, true) as MarkupModelEx
+        val highlighterParts = mutableListOf<String>()
+        var gutterHighlighterCount = 0
+
+        markupModel.allHighlighters.forEach { highlighter ->
+            val renderer = highlighter.gutterIconRenderer ?: highlighter.lineMarkerRenderer ?: return@forEach
+            gutterHighlighterCount += 1
+            val startOffset = highlighter.startOffset
+            val endOffsetExclusive = maxOf(highlighter.endOffset, startOffset + 1)
+            val startLine = document.getLineNumber(startOffset)
+            val endLine = document.getLineNumber(endOffsetExclusive - 1) + 1
+            val rendererName = highlighterRendererName(renderer)
+            highlighterParts.add("$startLine-$endLine:$rendererName")
+        }
+
+        return highlighterParts.joinToString(",") to gutterHighlighterCount
+    }
+
+    private fun highlighterRendererName(renderer: Any): String {
+        return renderer.javaClass.simpleName.ifEmpty { renderer.javaClass.name }
+    }
+
+    private fun describeTrackerRange(rangeObject: Any): String? {
+        val rangeClass = rangeObject::class.java
+        val line1 = (rangeClass.methods.firstOrNull { it.name == "getLine1" }?.invoke(rangeObject) as? Number)?.toInt()
+        val line2 = (rangeClass.methods.firstOrNull { it.name == "getLine2" }?.invoke(rangeObject) as? Number)?.toInt()
+        if (line1 == null || line2 == null) {
+            return null
+        }
+
+        val typeValue = (rangeClass.methods.firstOrNull { it.name == "getType" }?.invoke(rangeObject) as? Number)?.toInt()
+        return "$line1-$line2:${trackerRangeTypeName(typeValue)}"
+    }
+
+    private fun trackerRangeTypeName(typeValue: Int?): String {
+        return when (typeValue) {
+            com.intellij.openapi.vcs.ex.Range.MODIFIED.toInt() -> "MODIFIED"
+            com.intellij.openapi.vcs.ex.Range.INSERTED.toInt() -> "INSERTED"
+            com.intellij.openapi.vcs.ex.Range.DELETED.toInt() -> "DELETED"
+            else -> "UNKNOWN"
+        }
+    }
+
+    private fun extractTrackerVisibility(tracker: Any): String {
+        return runCatching {
+            val mode = tracker.javaClass.methods.firstOrNull { it.name == "getMode" && it.parameterCount == 0 }?.invoke(tracker)
+            if (mode == null) {
+                null
+            } else {
+                mode::class.java.methods.firstOrNull { it.name == "isVisible" && it.parameterCount == 0 }?.invoke(mode)
+            }
+        }.getOrNull()?.toString() ?: "n/a"
     }
 
     /**
@@ -182,6 +288,7 @@ class VisualTrackerManager(
 
     private fun restoreNativeTracker(nativeTracker: LocalLineStatusTracker<*>) {
         val document = nativeTracker.document
+        updateJobs.remove(document)?.cancel()
         
         // Only act if we actually have something to clean up
         if (visualTrackers.containsKey(document)) {
@@ -279,15 +386,22 @@ class VisualTrackerManager(
         }
 
         // 3. Update Content using the PRE-RESOLVED targetRevision
-        coroutineScope.launch {
-            val content = loadTargetContent(file, targetRevision)
-            withContext(dispatchers.ui) {
-                // Double-check tracker is still valid/needed?
-                // We rely on the fact that if it became invalid, refreshAllTrackers would have been called again 
-                // and might conflict, but `visualTracker` is the same instance.
-                visualTracker.setBaseRevision(content)
+        val oldJob = updateJobs.remove(document)
+        oldJob?.cancel()
+
+        val newJob = coroutineScope.launch {
+            try {
+                val content = loadTargetContent(file, targetRevision)
+                withContext(dispatchers.ui) {
+                    if (visualTrackers[document] === visualTracker) {
+                        visualTracker.setBaseRevision(content)
+                    }
+                }
+            } finally {
+                updateJobs.remove(document, coroutineContext[kotlinx.coroutines.Job])
             }
         }
+        updateJobs[document] = newJob
     }
 
     private fun performStandaloneInterception(document: Document, file: VirtualFile, targetRevision: String) {
@@ -296,15 +410,26 @@ class VisualTrackerManager(
             createVisualTracker(document, file)
         }
 
-        coroutineScope.launch {
-            val content = loadTargetContent(file, targetRevision)
-            withContext(dispatchers.ui) {
-                visualTracker.setBaseRevision(content)
+        val oldJob = updateJobs.remove(document)
+        oldJob?.cancel()
+
+        val newJob = coroutineScope.launch {
+            try {
+                val content = loadTargetContent(file, targetRevision)
+                withContext(dispatchers.ui) {
+                    if (visualTrackers[document] === visualTracker) {
+                        visualTracker.setBaseRevision(content)
+                    }
+                }
+            } finally {
+                updateJobs.remove(document, coroutineContext[kotlinx.coroutines.Job])
             }
         }
+        updateJobs[document] = newJob
     }
 
     private fun restoreStandaloneTracker(document: Document, file: VirtualFile) {
+        updateJobs.remove(document)?.cancel()
         if (visualTrackers.containsKey(document)) {
             logger.debug("VISUAL_TRACKER: Releasing standalone visual tracker for ${file.name}.")
             visualTrackers.remove(document)?.release()
@@ -332,7 +457,7 @@ class VisualTrackerManager(
                 gitService.getFileContentForRevision(revision, file)
                     ?: return@withContext fallbackContent()
             } catch (e: VcsException) {
-                if (e.message.contains("does not exist in", ignoreCase = true)) {
+                if (isExpectedMissingFileInRevision(e.message)) {
                     ""
                 } else {
                     logger.warn("VISUAL_TRACKER: Failed to load content for ${file.path}. VcsException Error: ${e.message}")
@@ -342,7 +467,7 @@ class VisualTrackerManager(
                 // Defensive fallback for unexpected non-VcsException errors
                 val rootCause = generateSequence<Throwable>(e) { it.cause }
                     .firstOrNull { it is VcsException } as? VcsException
-                if (rootCause != null && rootCause.message.contains("does not exist in", ignoreCase = true)) {
+                if (rootCause != null && isExpectedMissingFileInRevision(rootCause.message)) {
                     ""
                 } else {
                     logger.warn("VISUAL_TRACKER: Failed to load content for ${file.path}. Unexpected Error: ${(rootCause ?: e).message}")
@@ -353,6 +478,15 @@ class VisualTrackerManager(
     }
 
     override fun dispose() {
+        updateJobs.values.forEach { it.cancel() }
+        updateJobs.clear()
+        visualTrackers.values.forEach { tracker ->
+            try {
+                tracker.release()
+            } catch (e: Exception) {
+                logger.warn("VISUAL_TRACKER: Failed to release tracker during dispose.", e)
+            }
+        }
         visualTrackers.clear()
     }
 }

@@ -1,35 +1,49 @@
 package com.github.uiopak.lstcrc.scopes
 
 import com.github.uiopak.lstcrc.resources.LstCrcBundle
-import com.github.uiopak.lstcrc.services.ProjectActiveDiffDataService
-import com.github.uiopak.lstcrc.services.ToolWindowStateService
-import com.github.uiopak.lstcrc.state.TabInfo
-import com.github.uiopak.lstcrc.state.ToolWindowState
-import com.intellij.icons.AllIcons
-import com.intellij.openapi.actionSystem.DataContext
-import com.intellij.openapi.vfs.VirtualFile
-import com.intellij.openapi.application.ApplicationManager
+import com.github.uiopak.lstcrc.testsupport.categorizedChanges
+import com.github.uiopak.lstcrc.testsupport.flushEdt
+import com.github.uiopak.lstcrc.testsupport.selectComparisonTab
 import com.intellij.openapi.components.service
 import com.intellij.psi.search.SearchScope
-import com.intellij.psi.search.scope.packageSet.NamedScope
-import com.intellij.psi.search.scope.packageSet.NamedScopesHolder
-import com.intellij.psi.search.scope.packageSet.NamedScopeManager
-import com.intellij.psi.search.scope.packageSet.PackageSet
-import com.intellij.psi.search.scope.packageSet.PackageSetBase
-import com.intellij.testFramework.PlatformTestUtil
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 
 class LstCrcSearchScopeProviderTest : BasePlatformTestCase() {
 
-    fun testGetDisplayNameAndSearchScopesReturnExpectedLstCrcWrappers() {
+    fun testProvidedScopesExposeCanonicalIdsOrderAndSearchableSubset() {
+        val customScopes = LstCrcScopeProvider().customScopes
+
+        assertEquals(
+            listOf(
+                "LSTCRC.Created",
+                "LSTCRC.Modified",
+                "LSTCRC.Moved",
+                "LSTCRC.Deleted",
+                "LSTCRC.Changed"
+            ),
+            customScopes.map { it.scopeId }
+        )
+
+        assertEquals(LstCrcProvidedScopes.allScopes, customScopes)
+        assertEquals(
+            listOf(
+                LstCrcProvidedScopes.CREATED_FILES_SCOPE,
+                LstCrcProvidedScopes.MODIFIED_FILES_SCOPE,
+                LstCrcProvidedScopes.MOVED_FILES_SCOPE,
+                LstCrcProvidedScopes.CHANGED_FILES_SCOPE
+            ),
+            LstCrcProvidedScopes.searchableScopes
+        )
+    }
+
+    fun testGetDisplayNameAndSearchScopesReturnExpectedLstCrcScopes() {
         val provider = LstCrcSearchScopeProvider()
 
         assertEquals(LstCrcBundle.message("scope.provider.display.name"), provider.displayName)
 
-        val scopes = provider.getSearchScopes(project, DataContext { null })
+        val scopes = provider.getSearchScopes(project) { null }
 
         assertSize(4, scopes)
-        assertTrue(scopes.all { it is NamedScopeWrapper })
 
         val displayNames = scopes.map(SearchScope::getDisplayName)
         assertEquals(
@@ -44,55 +58,27 @@ class LstCrcSearchScopeProviderTest : BasePlatformTestCase() {
         assertFalse(displayNames.contains(LstCrcProvidedScopes.DELETED_FILES_SCOPE.presentableName))
     }
 
-    fun testNamedScopeWrapperDelegatesPackageSetBaseContainsAndSearchFlags() {
-        val matchingFile = myFixture.addFileToProject("scopes/Match.txt", "alpha\n").virtualFile
-        val otherFile = myFixture.addFileToProject("scopes/Other.txt", "beta\n").virtualFile
-        val holder = NamedScopeManager.getInstance(project)
-        val packageSet = CapturingPackageSetBase("Match.txt")
-        val namedScope = NamedScope(
-            "Test.Scope",
-            { "Synthetic Scope" },
-            AllIcons.General.Add,
-            packageSet
-        )
-
-        val wrapper = NamedScopeWrapper(project, namedScope, holder)
-
-        assertTrue(wrapper.contains(matchingFile))
-        assertFalse(wrapper.contains(otherFile))
-        assertSame(holder, packageSet.lastHolder)
-        assertSame(project, packageSet.lastProject)
-        assertEquals("Synthetic Scope", wrapper.displayName)
-        assertSame(AllIcons.General.Add, wrapper.icon)
-        assertTrue(wrapper.isSearchInModuleContent(module))
-        assertFalse(wrapper.isSearchInLibraries())
-    }
-
     fun testSearchScopesReflectDetailedFileStateMembership() {
         val createdFile = myFixture.addFileToProject("scopes/NewFile.txt", "new\n").virtualFile
         val modifiedFile = myFixture.addFileToProject("scopes/Modified.txt", "modified\n").virtualFile
         val movedFile = myFixture.addFileToProject("scopes/Moved.txt", "moved\n").virtualFile
         val deletedFile = myFixture.addFileToProject("scopes/Deleted.txt", "deleted\n").virtualFile
 
-        project.service<ToolWindowStateService>().loadState(
-            ToolWindowState(
-                openTabs = listOf(TabInfo(branchName = "feature-search-scopes")),
-                selectedTabIndex = 0
-            )
-        )
+        selectComparisonTab(project, "feature-search-scopes")
 
-        project.service<ProjectActiveDiffDataService>().updateActiveDiff(
+        project.service<com.github.uiopak.lstcrc.services.ProjectActiveDiffDataService>().updateActiveDiff(
             "feature-search-scopes",
-            listOf(createdFile),
-            listOf(modifiedFile),
-            listOf(movedFile),
-            listOf(deletedFile),
-            emptyMap()
+            categorizedChanges(
+                createdFiles = listOf(createdFile),
+                modifiedFiles = listOf(modifiedFile),
+                movedFiles = listOf(movedFile),
+                deletedFiles = listOf(deletedFile)
+            )
         )
         flushEdt()
 
         val scopesByName = LstCrcSearchScopeProvider()
-            .getSearchScopes(project, DataContext { null })
+            .getSearchScopes(project) { null }
             .associateBy(SearchScope::getDisplayName)
 
         val createdScope = scopesByName.getValue(LstCrcProvidedScopes.CREATED_FILES_SCOPE.presentableName)
@@ -113,31 +99,5 @@ class LstCrcSearchScopeProviderTest : BasePlatformTestCase() {
         assertTrue(changedScope.contains(modifiedFile))
         assertTrue(changedScope.contains(movedFile))
         assertFalse(changedScope.contains(deletedFile))
-    }
-
-    private fun flushEdt() {
-        PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
-        ApplicationManager.getApplication().invokeAndWait(object : Runnable {
-            override fun run() = Unit
-        })
-    }
-
-    private class CapturingPackageSetBase(
-        private val expectedSuffix: String
-    ) : PackageSetBase() {
-        var lastProject: com.intellij.openapi.project.Project? = null
-        var lastHolder: NamedScopesHolder? = null
-
-        override fun contains(file: VirtualFile, project: com.intellij.openapi.project.Project, holder: NamedScopesHolder?): Boolean {
-            lastProject = project
-            lastHolder = holder
-            return file.path.endsWith(expectedSuffix)
-        }
-
-        override fun createCopy(): PackageSet = CapturingPackageSetBase(expectedSuffix)
-
-        override fun getText(): String = "capturing:$expectedSuffix"
-
-        override fun getNodePriority(): Int = 1
     }
 }

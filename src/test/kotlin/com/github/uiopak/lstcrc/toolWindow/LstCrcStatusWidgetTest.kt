@@ -4,7 +4,7 @@ import com.github.uiopak.lstcrc.resources.LstCrcBundle
 import com.github.uiopak.lstcrc.services.ToolWindowStateService
 import com.github.uiopak.lstcrc.state.TabInfo
 import com.github.uiopak.lstcrc.state.ToolWindowState
-import com.intellij.ide.util.PropertiesComponent
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.service
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 
@@ -12,11 +12,7 @@ class LstCrcStatusWidgetTest : BasePlatformTestCase() {
 
     override fun tearDown() {
         try {
-            PropertiesComponent.getInstance().setValue(
-                ToolWindowSettingsProvider.APP_SHOW_WIDGET_CONTEXT_KEY,
-                ToolWindowSettingsProvider.DEFAULT_SHOW_WIDGET_CONTEXT,
-                ToolWindowSettingsProvider.DEFAULT_SHOW_WIDGET_CONTEXT
-            )
+            ApplicationManager.getApplication().service<LstCrcSettingsService>().resetToDefaults()
         } finally {
             super.tearDown()
         }
@@ -66,11 +62,20 @@ class LstCrcStatusWidgetTest : BasePlatformTestCase() {
         assertEquals(LstCrcBundle.message("plugin.name.short"), widget.getText())
     }
 
-    private fun setShowWidgetContext(show: Boolean) {
-        PropertiesComponent.getInstance().setValue(
-            ToolWindowSettingsProvider.APP_SHOW_WIDGET_CONTEXT_KEY,
-            show,
-            ToolWindowSettingsProvider.DEFAULT_SHOW_WIDGET_CONTEXT
+    fun testPluginXmlStatusWidgetFactoryIdMatchesWidgetConstant() {
+        val pluginXml = javaClass.classLoader.getResourceAsStream("META-INF/plugin.xml")
+            ?.bufferedReader()
+            ?.use { it.readText() }
+            ?: error("Could not load META-INF/plugin.xml from test classpath.")
+
+        assertTrue(
+            "plugin.xml statusBarWidgetFactory id should match LstCrcStatusWidget.ID.",
+            pluginXml.contains("""statusBarWidgetFactory implementation="com.github.uiopak.lstcrc.toolWindow.LstCrcStatusWidgetFactory" id="${LstCrcStatusWidget.ID}"""),
         )
+    }
+
+    @Suppress("SameParameterValue")
+    private fun setShowWidgetContext(show: Boolean) {
+        ApplicationManager.getApplication().service<LstCrcSettingsService>().setShowWidgetContext(show)
     }
 }

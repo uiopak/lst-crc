@@ -62,6 +62,7 @@ class LstCrcVisualUiTest : LstCrcUiTestSupport() {
                 var latestSummary = ""
                 waitFor(gutterTimeout(), interval = Duration.ofMillis(500)) {
                     latestSummary = visualGutterSummaryForSelectedEditor()
+                    System.err.println("GUTTER_SUMMARY for $fileName: $latestSummary")
                     (
                         latestSummary.contains(expectedRangeType) &&
                         latestSummary.contains("highlighters=") &&
@@ -125,6 +126,7 @@ class LstCrcVisualUiTest : LstCrcUiTestSupport() {
             var latestSummary = ""
             waitFor(gutterTimeout(), interval = Duration.ofMillis(500)) {
                 latestSummary = visualGutterSummaryForSelectedEditor()
+                System.err.println("GUTTER_SUMMARY for Local.txt: $latestSummary")
                 latestSummary.contains("INSERTED") && latestSummary.contains("highlighters=") && !latestSummary.endsWith("highlighters=0")
             }
 
@@ -174,6 +176,7 @@ class LstCrcVisualUiTest : LstCrcUiTestSupport() {
             var latestSummary = ""
             waitFor(gutterTimeout(), interval = Duration.ofMillis(500)) {
                 latestSummary = visualGutterSummaryForSelectedEditor()
+                System.err.println("GUTTER_SUMMARY for Main.txt: $latestSummary")
                 latestSummary.contains("MODIFIED") && latestSummary.contains("highlighters=") && !latestSummary.endsWith("highlighters=0")
             }
 

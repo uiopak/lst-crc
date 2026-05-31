@@ -1,15 +1,21 @@
 package com.github.uiopak.lstcrc.plugin
 
 import com.automation.remarks.junit5.Video
+import com.github.uiopak.lstcrc.plugin.pages.IdeaFrame
 import com.github.uiopak.lstcrc.plugin.pages.gitChangesView
 import com.github.uiopak.lstcrc.plugin.pages.branchSelection
 import com.github.uiopak.lstcrc.plugin.pages.idea
 import com.github.uiopak.lstcrc.plugin.steps.PluginUiTestSteps
 import com.intellij.remoterobot.RemoteRobot
+import com.intellij.remoterobot.fixtures.ComponentFixture
+import com.intellij.remoterobot.search.locators.byXpath
 import com.intellij.remoterobot.stepsProcessing.step
+import com.intellij.remoterobot.utils.WaitForConditionTimeoutException
 import com.intellij.remoterobot.utils.keyboard
 import com.intellij.remoterobot.utils.waitFor
-import org.junit.jupiter.api.Assertions
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertNotEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import java.awt.event.KeyEvent
@@ -17,6 +23,64 @@ import java.time.Duration
 
 @LstCrcUiTest
 class LstCrcBranchComparisonUiTest : LstCrcUiTestSupport() {
+
+    @Test
+    @Video
+    fun testBranchComparisonLineStatsIgnoreLineEndingOnlyChanges(remoteRobot: RemoteRobot) = with(remoteRobot) {
+        val uiSteps = PluginUiTestSteps(remoteRobot)
+
+        prepareFreshProject()
+
+        idea {
+            step("Wait for smart mode") {
+                dumbAware(Duration.ofMinutes(5)) {}
+            }
+
+            uiSteps.initializeGitRepository()
+            resetGitChangesViewState()
+
+            uiSteps.createNewFile(".gitattributes", "*.txt -text\n")
+            uiSteps.createNewFile("Main.txt", "alpha\r\nbeta\r\ngamma\r\n")
+            uiSteps.commitChanges("Initial CRLF fixture")
+            val defaultBranch = uiSteps.defaultBranchName()
+
+            uiSteps.createBranch("feature-line-endings")
+            uiSteps.modifyFile("Main.txt", "alpha changed\nbeta\ngamma\n")
+            uiSteps.commitChanges("Feature LF fixture")
+            uiSteps.checkoutBranch(defaultBranch)
+
+            val rawNumstat = uiSteps.runGitCommand("diff", "--numstat", "feature-line-endings")
+            assertTrue(
+                rawNumstat.lineSequence().any { it == "3\t3\tMain.txt" },
+                "Expected raw git numstat to still count CRLF/LF churn, got: $rawNumstat"
+            )
+
+            openGitChangesView()
+            gitChangesView {
+                addTab()
+            }
+            branchSelection {
+                searchAndSelect("feature-line-endings")
+            }
+
+            gitChangesView {
+                selectTab("feature-line-endings")
+            }
+            setTreeContextSettings(showLineStats = true)
+
+            waitForMainFileLineStats(1)
+
+            val renderedMetadata = remoteRobot.renderedMainFileMetadata()
+            assertTrue(
+                renderedMetadata.contains("+1") && renderedMetadata.contains("-1"),
+                "Expected rendered metadata to show +1/-1, got: $renderedMetadata"
+            )
+            assertFalse(
+                renderedMetadata.contains("+3") || renderedMetadata.contains("-3"),
+                "Rendered metadata should ignore line-ending-only churn, got: $renderedMetadata"
+            )
+        }
+    }
 
     @Test
     @Video
@@ -61,7 +125,7 @@ class LstCrcBranchComparisonUiTest : LstCrcUiTestSupport() {
 
             var scopeDebug = ""
             waitFor(Duration.ofSeconds(10), interval = Duration.ofMillis(500)) {
-                scopeDebug = callJs<String>(
+                scopeDebug = callJs(
                     """
                     (function() {
                         const result = new java.util.concurrent.atomic.AtomicReference("projectMissing=true");
@@ -215,7 +279,7 @@ class LstCrcBranchComparisonUiTest : LstCrcUiTestSupport() {
 
             var scopesDebug = ""
             waitFor(Duration.ofSeconds(10), interval = Duration.ofSeconds(1)) {
-                scopesDebug = callJs<String>(
+                scopesDebug = callJs(
                     """
                     const project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
                     const namedScopeManager = com.intellij.psi.search.scope.packageSet.NamedScopeManager.getInstance(project);
@@ -238,7 +302,7 @@ class LstCrcBranchComparisonUiTest : LstCrcUiTestSupport() {
             }
 
             if (scopesDebug.contains("scopeFound=true")) {
-                Assertions.assertTrue(scopesDebug.contains("result=true"), "Custom scopes should be updated with modified files: $scopesDebug")
+                assertTrue(scopesDebug.contains("result=true"), "Custom scopes should be updated with modified files: $scopesDebug")
             }
         }
     }
@@ -291,6 +355,635 @@ class LstCrcBranchComparisonUiTest : LstCrcUiTestSupport() {
                         changesTree.findAllText("Main.txt").isNotEmpty()
                     }
                 }
+            }
+        }
+    }
+
+    @Test
+    @Video
+    fun testRefreshKeepsTreeViewportWhenSelectionIsOffscreen(remoteRobot: RemoteRobot) = with(remoteRobot) {
+        val uiSteps = PluginUiTestSteps(remoteRobot)
+
+        prepareFreshProject()
+
+        idea {
+            step("Wait for smart mode") {
+                dumbAware(Duration.ofMinutes(5)) {}
+            }
+
+            uiSteps.initializeGitRepository()
+            resetGitChangesViewState()
+
+            val baseContent = (1..25).joinToString(separator = "\n", postfix = "\n") { index ->
+                "line $index"
+            }
+            uiSteps.createNewFile("Main.txt", baseContent)
+            uiSteps.commitChanges("Initial commit")
+            val defaultBranch = uiSteps.defaultBranchName()
+
+            uiSteps.createBranch("feature-scroll-refresh")
+            uiSteps.createFilesWithoutStaging(
+                (0 until 25).associate { index ->
+                    "feature/Only${index.toString().padStart(3, '0')}.txt" to "feature $index\n"
+                }
+            )
+            uiSteps.commitChanges("Add many feature files")
+            uiSteps.checkoutBranch(defaultBranch)
+
+            openGitChangesView()
+            gitChangesView { addTab() }
+            branchSelection { searchAndSelect("feature-scroll-refresh") }
+
+            gitChangesView {
+                step("Wait for comparison tree to populate") {
+                    waitFor(Duration.ofSeconds(30)) {
+                        changesTree.findAllText("Only000.txt").isNotEmpty()
+                    }
+                }
+
+                clickChange("Only000.txt")
+                setTreeViewportPosition(y = 120)
+                waitFor(Duration.ofSeconds(5)) {
+                    treeViewportPosition().second >= 80
+                }
+                val beforeRefreshPosition = treeViewportPosition()
+                assertTrue(beforeRefreshPosition.second > 0, "Precondition failed: expected tree viewport to be scrolled")
+
+                uiSteps.updateFileWithoutStaging("Main.txt", "${baseContent}local refresh change\n")
+
+                step("Wait for viewport position to settle after refresh") {
+                    Thread.sleep(2_000)
+                }
+
+                val afterRefreshPosition = treeViewportPosition()
+                assertEquals(
+                    beforeRefreshPosition,
+                    afterRefreshPosition,
+                    "Refreshing diff data should not jump the tree viewport back to the selected node"
+                )
+            }
+        }
+    }
+
+    @Test
+    @Video
+    fun testRefreshDoesNotMoveViewportWhenSelectionIsAtBottomAndViewportIsAtTop(remoteRobot: RemoteRobot) = with(remoteRobot) {
+        val uiSteps = PluginUiTestSteps(remoteRobot)
+
+        prepareFreshProject()
+
+        idea {
+            step("Wait for smart mode") {
+                dumbAware(Duration.ofMinutes(5)) {}
+            }
+
+            uiSteps.initializeGitRepository()
+            resetGitChangesViewState()
+
+            val baseContent = (1..25).joinToString(separator = "\n", postfix = "\n") { index ->
+                "line $index"
+            }
+            uiSteps.createNewFile("Main.txt", baseContent)
+            uiSteps.commitChanges("Initial commit")
+            val defaultBranch = uiSteps.defaultBranchName()
+
+            uiSteps.createBranch("feature-scroll-refresh-top")
+            uiSteps.createFilesWithoutStaging(
+                (0 until 40).associate { index ->
+                    "feature/Only${index.toString().padStart(3, '0')}.txt" to "feature $index\n"
+                }
+            )
+            uiSteps.commitChanges("Add many feature files")
+            uiSteps.checkoutBranch(defaultBranch)
+
+            openGitChangesView()
+            gitChangesView { addTab() }
+            branchSelection { searchAndSelect("feature-scroll-refresh-top") }
+
+            gitChangesView {
+                step("Wait for comparison tree to populate") {
+                    waitFor(Duration.ofSeconds(30)) {
+                        changesTree.findAllText("Only000.txt").isNotEmpty()
+                    }
+                }
+
+                selectChangeInTree("Only039.txt")
+                setTreeViewportPosition(y = 0)
+                waitFor(Duration.ofSeconds(5)) {
+                    treeViewportPosition() == (0 to 0)
+                }
+                val beforeRefreshPosition = treeViewportPosition()
+                assertEquals(0 to 0, beforeRefreshPosition, "Precondition failed: expected tree viewport at the top")
+
+                beginTreeViewportTracking()
+                val viewportHistory = try {
+                    uiSteps.updateFileWithoutStaging("Main.txt", "${baseContent}local refresh change\n")
+                    waitFor(Duration.ofSeconds(5)) {
+                        treeViewportPosition() == beforeRefreshPosition
+                    }
+                    stopTreeViewportTracking()
+                } catch (t: Throwable) {
+                    stopTreeViewportTracking()
+                    throw t
+                }
+
+                assertEquals(
+                    listOf(beforeRefreshPosition),
+                    viewportHistory.distinct(),
+                    "Refreshing diff data should not move the tree viewport while the selected file stays offscreen"
+                )
+            }
+        }
+    }
+
+    @Test
+    @Video
+    fun testHeadRefreshDoesNotMoveViewportWhenSelectionIsAtBottomAndViewportIsAtTop(remoteRobot: RemoteRobot) = with(remoteRobot) {
+        val uiSteps = PluginUiTestSteps(remoteRobot)
+
+        prepareFreshProject()
+
+        idea {
+            step("Wait for smart mode") {
+                dumbAware(Duration.ofMinutes(5)) {}
+            }
+
+            uiSteps.initializeGitRepository()
+            resetGitChangesViewState()
+
+            val initialFiles = buildMap {
+                put("Main.txt", "main line\n")
+                (0 until 40).forEach { index ->
+                    put("Only${index.toString().padStart(3, '0')}.txt", "base $index\n")
+                }
+            }
+            uiSteps.createFilesWithoutStaging(initialFiles)
+            uiSteps.commitChanges("Initial commit")
+
+            uiSteps.createFilesWithoutStaging(
+                buildMap {
+                    put("Main.txt", "main line\nworking tree change\n")
+                    (0 until 40).forEach { index ->
+                        put("Only${index.toString().padStart(3, '0')}.txt", "working tree $index\n")
+                    }
+                }
+            )
+
+            openGitChangesView()
+
+            gitChangesView {
+                selectTab("HEAD")
+
+                step("Wait for HEAD changes tree to populate") {
+                    waitFor(Duration.ofSeconds(30)) {
+                        changesTree.findAllText("Main.txt").isNotEmpty()
+                    }
+                }
+
+                selectChangeInTree("Only039.txt")
+                setTreeViewportPosition(y = 0)
+                waitFor(Duration.ofSeconds(5)) {
+                    treeViewportPosition() == (0 to 0)
+                }
+                val beforeRefreshPosition = treeViewportPosition()
+                assertEquals(0 to 0, beforeRefreshPosition, "Precondition failed: expected HEAD tree viewport at the top")
+
+                beginTreeViewportTracking()
+                val viewportHistory = try {
+                    uiSteps.updateFileWithoutStaging("Main.txt", "main line\nlocal refresh change\n")
+                    waitFor(Duration.ofSeconds(5)) {
+                        treeViewportPosition() == beforeRefreshPosition
+                    }
+                    stopTreeViewportTracking()
+                } catch (t: Throwable) {
+                    stopTreeViewportTracking()
+                    throw t
+                }
+
+                assertEquals(
+                    listOf(beforeRefreshPosition),
+                    viewportHistory.distinct(),
+                    "Refreshing HEAD diff data should not move the tree viewport while the selected file stays offscreen"
+                )
+            }
+        }
+    }
+
+    @Test
+    @Video
+    fun testUnsavedRefreshDoesNotMoveViewportWhenSelectionIsAtBottomAndViewportIsAtTop(remoteRobot: RemoteRobot) = with(remoteRobot) {
+        val uiSteps = PluginUiTestSteps(remoteRobot)
+        val baseContent = "main line\n"
+
+        prepareFreshProject()
+
+        idea {
+            step("Wait for smart mode") {
+                dumbAware(Duration.ofMinutes(5)) {}
+            }
+
+            uiSteps.initializeGitRepository()
+            resetGitChangesViewState()
+
+            uiSteps.createNewFile("Main.txt", baseContent)
+            uiSteps.commitChanges("Initial commit")
+            val defaultBranch = uiSteps.defaultBranchName()
+
+            uiSteps.createBranch("feature-scroll-refresh-unsaved")
+            uiSteps.createFilesWithoutStaging(
+                (0 until 40).associate { index ->
+                    "feature/Only${index.toString().padStart(3, '0')}.txt" to "feature $index\n"
+                }
+            )
+            uiSteps.commitChanges("Add many feature files")
+            uiSteps.checkoutBranch(defaultBranch)
+
+            openGitChangesView()
+            gitChangesView { addTab() }
+            branchSelection { searchAndSelect("feature-scroll-refresh-unsaved") }
+
+            gitChangesView {
+                step("Wait for comparison tree to populate") {
+                    waitFor(Duration.ofSeconds(30)) {
+                        changesTree.findAllText("Only000.txt").isNotEmpty()
+                    }
+                }
+
+                selectChangeInTree("Only039.txt")
+                setTreeViewportPosition(y = 0)
+                waitFor(Duration.ofSeconds(5)) {
+                    treeViewportPosition() == (0 to 0)
+                }
+                val beforeRefreshPosition = treeViewportPosition()
+                assertEquals(0 to 0, beforeRefreshPosition, "Precondition failed: expected comparison tree viewport at the top")
+
+                beginTreeViewportTracking()
+                val viewportHistory = try {
+                    focusEditorFile("Main.txt")
+                    moveCaretToLineEnd(0)
+                    insertSingleCharacterAtCaretWithoutSave()
+                    waitFor(Duration.ofSeconds(5)) {
+                        treeViewportPosition() == beforeRefreshPosition
+                    }
+                    stopTreeViewportTracking()
+                } catch (t: Throwable) {
+                    stopTreeViewportTracking()
+                    throw t
+                }
+
+                assertEquals(
+                    listOf(beforeRefreshPosition),
+                    viewportHistory.distinct(),
+                    "Unsaved comparison refresh should not move the tree viewport while the selected file stays offscreen"
+                )
+            }
+        }
+    }
+
+    @Test
+    @Video
+    fun testRefreshDoesNotChangeTopVisibleEntryWhenSelectionIsAtBottomAndViewportIsAtTop(remoteRobot: RemoteRobot) = with(remoteRobot) {
+        val uiSteps = PluginUiTestSteps(remoteRobot)
+        val baseContent = "main line\n"
+
+        prepareFreshProject()
+
+        idea {
+            step("Wait for smart mode") {
+                dumbAware(Duration.ofMinutes(5)) {}
+            }
+
+            uiSteps.initializeGitRepository()
+            resetGitChangesViewState()
+
+            uiSteps.createNewFile("Main.txt", baseContent)
+            uiSteps.commitChanges("Initial commit")
+            val defaultBranch = uiSteps.defaultBranchName()
+
+            uiSteps.createBranch("feature-scroll-top-visible")
+            uiSteps.createFilesWithoutStaging(
+                (0 until 40).associate { index ->
+                    "feature/Only${index.toString().padStart(3, '0')}.txt" to "feature $index\n"
+                }
+            )
+            uiSteps.commitChanges("Add many feature files")
+            uiSteps.checkoutBranch(defaultBranch)
+
+            openGitChangesView()
+            gitChangesView { addTab() }
+            branchSelection { searchAndSelect("feature-scroll-top-visible") }
+
+            gitChangesView {
+                step("Wait for comparison tree to populate") {
+                    waitFor(Duration.ofSeconds(30)) {
+                        changesTree.findAllText("Only000.txt").isNotEmpty()
+                    }
+                }
+
+                selectChangeInTree("Only039.txt")
+                setTreeViewportPosition(y = 0)
+                waitFor(Duration.ofSeconds(5)) {
+                    treeViewportPosition() == (0 to 0)
+                }
+
+                beginTopVisibleEntryTracking()
+                val topVisibleHistory = try {
+                    uiSteps.updateFileWithoutStaging("Main.txt", "${baseContent}local refresh change\n")
+                    stopTopVisibleEntryTracking()
+                } catch (t: Throwable) {
+                    stopTopVisibleEntryTracking()
+                    throw t
+                }
+
+                assertEquals(
+                    listOf(topVisibleHistory.firstOrNull() ?: ""),
+                    topVisibleHistory.distinct(),
+                    "Refreshing diff data should not change which tree entry is shown at the top of the viewport"
+                )
+            }
+        }
+    }
+
+    @Test
+    @Video
+    fun testClickedScrolledUnsavedRefreshWithLineStatsDoesNotMoveVisibleTreeState(remoteRobot: RemoteRobot) = with(remoteRobot) {
+        val uiSteps = PluginUiTestSteps(remoteRobot)
+        val baseContent = (1..25).joinToString(separator = "\n", postfix = "\n") { index ->
+            "line $index"
+        }
+
+        prepareFreshProject()
+
+        idea {
+            step("Wait for smart mode") {
+                dumbAware(Duration.ofMinutes(5)) {}
+            }
+
+            uiSteps.initializeGitRepository()
+            resetGitChangesViewState()
+
+            uiSteps.createNewFile("Main.txt", baseContent)
+            uiSteps.commitChanges("Initial commit")
+            val defaultBranch = uiSteps.defaultBranchName()
+
+            uiSteps.createBranch("feature-scroll-refresh-clicked-line-stats")
+            uiSteps.createFilesWithoutStaging(
+                (0 until 25).associate { index ->
+                    "feature/Only${index.toString().padStart(3, '0')}.txt" to "feature $index\n"
+                }
+            )
+            uiSteps.commitChanges("Add many feature files")
+            uiSteps.checkoutBranch(defaultBranch)
+
+            openGitChangesView()
+            gitChangesView { addTab() }
+            branchSelection { searchAndSelect("feature-scroll-refresh-clicked-line-stats") }
+
+            gitChangesView {
+                step("Wait for comparison tree to populate") {
+                    waitFor(Duration.ofSeconds(30)) {
+                        changesTree.findAllText("Only000.txt").isNotEmpty()
+                    }
+                }
+
+                clickChange("Only000.txt")
+                step("Wait for click action to settle") {
+                    Thread.sleep(1_000)
+                }
+                setTreeViewportPosition(y = 120)
+                waitFor(Duration.ofSeconds(5)) {
+                    treeViewportPosition().second >= 80
+                }
+            }
+
+            setTreeContextSettings(showLineStats = true)
+
+            gitChangesView {
+                step("Wait for comparison tree to repopulate with line stats enabled") {
+                    waitFor(Duration.ofSeconds(30)) {
+                        // The viewport should remain where the user left it, so the selected row
+                        // can stay offscreen after line-stats refreshes.
+                        treeRowCount() > 0 && selectedChangeEntry().contains("Only000.txt")
+                    }
+                }
+
+                val beforeRefreshPosition = treeViewportPosition()
+                assertTrue(beforeRefreshPosition.second > 0, "Precondition failed: expected clicked tree viewport to be scrolled")
+
+                beginTreeViewportTracking()
+                beginTopVisibleEntryTracking()
+                val viewportHistory: List<Pair<Int, Int>>
+                val topVisibleHistory: List<String>
+                try {
+                    focusEditorFile("Main.txt")
+                    moveCaretToLineEnd(0)
+                    insertSingleCharacterAtCaretWithoutSave()
+                    waitFor(Duration.ofSeconds(5)) {
+                        treeViewportPosition() == beforeRefreshPosition
+                    }
+                    viewportHistory = stopTreeViewportTracking()
+                    topVisibleHistory = stopTopVisibleEntryTracking()
+                } catch (t: Throwable) {
+                    stopTreeViewportTracking()
+                    stopTopVisibleEntryTracking()
+                    throw t
+                }
+
+                assertEquals(
+                    listOf(beforeRefreshPosition),
+                    viewportHistory.distinct(),
+                    "Unsaved clicked-row refresh with line stats should not move the tree viewport"
+                )
+                assertEquals(
+                    listOf(topVisibleHistory.firstOrNull() ?: ""),
+                    topVisibleHistory.distinct(),
+                    "Unsaved clicked-row refresh with line stats should not change the top visible tree entry"
+                )
+            }
+        }
+    }
+
+    @Test
+    @Video
+    fun testEditingSelectedUntrackedFileShownAsNewDoesNotScrollTreeToIt(remoteRobot: RemoteRobot) = with(remoteRobot) {
+        val uiSteps = PluginUiTestSteps(remoteRobot)
+
+        prepareFreshProject()
+
+        idea {
+            step("Wait for smart mode") {
+                dumbAware(Duration.ofMinutes(5)) {}
+            }
+
+            uiSteps.initializeGitRepository()
+            resetGitChangesViewState()
+
+            uiSteps.createNewFile("Main.txt", "main\n")
+            uiSteps.commitChanges("Initial commit")
+            val defaultBranch = uiSteps.defaultBranchName()
+
+            uiSteps.createBranch("feature-untracked-scroll-refresh")
+            uiSteps.createNewFile("Feature.txt", "feature\n")
+            uiSteps.commitChanges("Feature commit")
+            uiSteps.checkoutBranch(defaultBranch)
+
+            setShowUntrackedFilesAsNew(true)
+            uiSteps.createFilesWithoutStaging(
+                (0 until 40).associate { index ->
+                    "Untracked${index.toString().padStart(3, '0')}.txt" to "untracked $index\n"
+                }
+            )
+            setShowUntrackedFilesAsNew(true)
+
+            openGitChangesView()
+            gitChangesView { addTab() }
+            branchSelection { searchAndSelect("feature-untracked-scroll-refresh") }
+
+            gitChangesView {
+                step("Wait for comparison tree to populate") {
+                    waitFor(Duration.ofSeconds(30)) {
+                        changesTree.findAllText("Untracked000.txt").isNotEmpty()
+                    }
+                }
+
+                scrollChangeIntoView("Untracked039.txt")
+                step("Wait for selected untracked file to become visible") {
+                    waitFor(Duration.ofSeconds(10)) {
+                        changesTree.findAllText("Untracked039.txt").isNotEmpty()
+                    }
+                }
+
+                clickChange("Untracked039.txt")
+                step("Wait for selected untracked editor tab to open") {
+                    waitFor(Duration.ofSeconds(10)) {
+                        selectedEditorEndsWith("Untracked039.txt")
+                    }
+                }
+
+                val lastSelectionScrollValue = treeVerticalScrollBarValue()
+                dispatchTreeMouseWheelUp(notches = 3)
+                step("Wait for tree to move upward while the selected untracked file stays offscreen") {
+                    waitFor(Duration.ofSeconds(10)) {
+                        treeVerticalScrollBarValue() in 1 until lastSelectionScrollValue &&
+                            treeViewportPosition().second in 1 until lastSelectionScrollValue &&
+                            changesTree.findAllText("Untracked039.txt").isEmpty()
+                    }
+                }
+                assertTrue(
+                    selectedChangeEntry().contains("Untracked039.txt"),
+                    "Precondition failed: expected the selected untracked file to remain selected after scrolling away from it"
+                )
+
+                val beforeRefreshPosition = treeViewportPosition()
+                assertTrue(
+                    beforeRefreshPosition.first == 0 && beforeRefreshPosition.second in 1 until lastSelectionScrollValue,
+                    "Precondition failed: expected tree viewport to stay in a mid-scroll position before editing the selected untracked file, got $beforeRefreshPosition"
+                )
+
+                beginTreeViewportTracking()
+                beginTopVisibleEntryTracking()
+                val viewportHistory: List<Pair<Int, Int>>
+                val topVisibleHistory: List<String>
+                try {
+                    focusOpenEditorTab("Untracked039.txt", "Untracked039.txt")
+                    step("Wait for selected untracked editor tab to regain focus") {
+                        waitFor(Duration.ofSeconds(10)) {
+                            selectedEditorEndsWith("Untracked039.txt")
+                        }
+                    }
+                    moveCaretToLineEnd(0)
+                    typeSingleCharacterWithoutSave()
+                    step("Let tree refresh settle") {
+                        Thread.sleep(2_000)
+                    }
+                    viewportHistory = stopTreeViewportTracking()
+                    topVisibleHistory = stopTopVisibleEntryTracking()
+                } catch (t: Throwable) {
+                    stopTreeViewportTracking()
+                    stopTopVisibleEntryTracking()
+                    throw t
+                }
+
+                assertEquals(
+                    listOf(beforeRefreshPosition),
+                    viewportHistory.distinct(),
+                    "Editing the selected untracked file should not move the comparison tree viewport back to that file"
+                )
+                assertEquals(
+                    listOf(topVisibleHistory.firstOrNull() ?: ""),
+                    topVisibleHistory.distinct(),
+                    "Editing the selected untracked file should not change the top visible tree entry"
+                )
+                assertTrue(
+                    changesTree.findAllText("Untracked039.txt").isEmpty(),
+                    "Editing the selected untracked file should not scroll the tree to show that file"
+                )
+            }
+        }
+    }
+
+    @Test
+    @Video
+    fun testUnsavedSingleCharacterEditsUpdateLineStatsImmediatelyAcrossMultipleLines(remoteRobot: RemoteRobot) = with(remoteRobot) {
+        val uiSteps = PluginUiTestSteps(remoteRobot)
+
+        prepareFreshProject()
+
+        idea {
+            step("Wait for smart mode") {
+                dumbAware(Duration.ofMinutes(5)) {}
+            }
+
+            uiSteps.initializeGitRepository()
+            resetGitChangesViewState()
+
+            val initialContent = (1..10).joinToString(separator = "\n", postfix = "\n") { index ->
+                "line $index"
+            }
+            uiSteps.createNewFile("Main.txt", initialContent)
+            uiSteps.commitChanges("Initial commit")
+
+            openGitChangesView()
+            gitChangesView {
+                selectTab("HEAD")
+            }
+            setTreeContextSettings(showLineStats = true)
+
+            focusEditorFile("Main.txt")
+
+            step("Type once on line 2 and show one changed line") {
+                moveCaretToLineEnd(1)
+                insertSingleCharacterAtCaretWithoutSave()
+                waitForMainFileLineStats(1)
+            }
+
+            step("Type once on line 4 and show two changed lines") {
+                moveCaretToLineEnd(3)
+                insertSingleCharacterAtCaretWithoutSave()
+                waitForMainFileLineStats(2)
+            }
+
+            step("Type once on line 5 and show three changed lines") {
+                moveCaretToLineEnd(4)
+                insertSingleCharacterAtCaretWithoutSave()
+                waitForMainFileLineStats(3)
+            }
+
+            step("Type once on line 6 and show four changed lines") {
+                moveCaretToLineEnd(5)
+                insertSingleCharacterAtCaretWithoutSave()
+                waitForMainFileLineStats(4)
+            }
+
+            step("Type once on line 7 and show five changed lines") {
+                moveCaretToLineEnd(6)
+                insertSingleCharacterAtCaretWithoutSave()
+                waitForMainFileLineStats(5)
+            }
+
+            step("Type again on line 7 and keep five changed lines") {
+                insertSingleCharacterAtCaretWithoutSave()
+                waitForMainFileLineStats(5)
             }
         }
     }
@@ -516,9 +1209,573 @@ class LstCrcBranchComparisonUiTest : LstCrcUiTestSupport() {
         }
     }
 
+    @Test
+    @Video
+    fun testTreeStatePersistsAcrossTabSwitches(remoteRobot: RemoteRobot) = with(remoteRobot) {
+        val uiSteps = PluginUiTestSteps(remoteRobot)
+
+        prepareFreshProject()
+
+        idea {
+            step("Wait for smart mode") {
+                dumbAware(Duration.ofMinutes(5)) {}
+            }
+
+            uiSteps.initializeGitRepository()
+            resetGitChangesViewState()
+
+            uiSteps.createNewFile("Base.txt", "base\n")
+            uiSteps.commitChanges("Initial commit")
+            val defaultBranch = uiSteps.defaultBranchName()
+
+            uiSteps.createBranch("feature-tree-a")
+            uiSteps.createNewFile("nested/featureA/OnlyA.txt", "only a\n")
+            uiSteps.commitChanges("Branch A nested file")
+            uiSteps.checkoutBranch(defaultBranch)
+
+            uiSteps.createBranch("feature-tree-b")
+            uiSteps.createNewFile("nested/featureB/OnlyB.txt", "only b\n")
+            uiSteps.commitChanges("Branch B nested file")
+            uiSteps.checkoutBranch(defaultBranch)
+
+            openGitChangesView()
+
+            gitChangesView { addTab() }
+            branchSelection { searchAndSelect("feature-tree-a") }
+            gitChangesView {
+                selectTab("feature-tree-a")
+                step("Wait for OnlyA.txt to appear") {
+                    waitFor(Duration.ofSeconds(10)) {
+                        changesTree.findAllText("OnlyA.txt").isNotEmpty()
+                    }
+                }
+            }
+
+            step("Collapse 'nested' on tab A") {
+                setChangesTreeNodeExpanded("nested", false)
+            }
+
+            gitChangesView {
+                step("Verify OnlyA.txt is hidden after collapse") {
+                    waitFor(Duration.ofSeconds(5), interval = Duration.ofMillis(200)) {
+                        changesTree.findAllText("OnlyA.txt").isEmpty()
+                    }
+                    assertTrue(
+                        changesTree.findAllText("OnlyA.txt").isEmpty(),
+                        "OnlyA.txt should be hidden after collapsing 'nested'"
+                    )
+                }
+            }
+
+            gitChangesView { addTab() }
+            branchSelection { searchAndSelect("feature-tree-b") }
+            gitChangesView {
+                selectTab("feature-tree-b")
+                step("Wait for OnlyB.txt to appear on tab B") {
+                    waitFor(Duration.ofSeconds(10)) {
+                        changesTree.findAllText("OnlyB.txt").isNotEmpty()
+                    }
+                }
+            }
+
+            gitChangesView {
+                selectTab("feature-tree-a")
+                step("Wait for tree to stabilize on tab A after switch") {
+                    waitFor(Duration.ofSeconds(10)) {
+                        changesTree.findAllText("OnlyB.txt").isEmpty()
+                    }
+                }
+            }
+
+            gitChangesView {
+                step("Verify collapse state persisted across tab switch") {
+                    val visibleItems = changesTree.findAllText("OnlyA.txt")
+                    assertTrue(
+                        visibleItems.isEmpty(),
+                        "Tree collapse state should be preserved after tab switch: 'nested' should still be collapsed, so OnlyA.txt should not be visible"
+                    )
+                }
+            }
+
+            step("Re-expand 'nested' on tab A") {
+                setChangesTreeNodeExpanded("nested", true)
+            }
+
+            gitChangesView {
+                step("Verify OnlyA.txt is visible after re-expanding") {
+                    waitFor(Duration.ofSeconds(5)) {
+                        changesTree.findAllText("OnlyA.txt").isNotEmpty()
+                    }
+                }
+            }
+        }
+    }
+
+    @Test
+    @Video
+    fun testNewFileInCollapsedDirExpandsDirWhenSettingEnabled(remoteRobot: RemoteRobot) = with(remoteRobot) {
+        val uiSteps = PluginUiTestSteps(remoteRobot)
+
+        prepareFreshProject()
+
+        idea {
+            step("Wait for smart mode") {
+                dumbAware(Duration.ofMinutes(5)) {}
+            }
+
+            uiSteps.initializeGitRepository()
+            resetGitChangesViewState()
+
+            uiSteps.createNewFile("Base.txt", "base\n")
+            uiSteps.commitChanges("Initial commit")
+            val defaultBranch = uiSteps.defaultBranchName()
+
+            uiSteps.createBranch("feature-expand-initial")
+            uiSteps.createNewFile("nested/featureA/ExistingA.txt", "existing\n")
+            uiSteps.commitChanges("Initial nested change")
+            uiSteps.checkoutBranch("feature-expand-initial")
+            uiSteps.createBranch("feature-expand-updated")
+            uiSteps.createNewFile("nested/featureA/NewA.txt", "new\n")
+            uiSteps.commitChanges("Updated nested change")
+            uiSteps.checkoutBranch(defaultBranch)
+
+            openGitChangesView()
+            gitChangesView { addTab() }
+            branchSelection { searchAndSelect("feature-expand-initial") }
+            gitChangesView {
+                selectTab("feature-expand-initial")
+            }
+            waitForInitialNestedFile("ExistingA.txt")
+
+            step("Collapse 'nested' before introducing a new file") {
+                setChangesTreeNodeExpanded("nested", false)
+            }
+
+            gitChangesView {
+                step("Verify ExistingA.txt is hidden after collapse") {
+                    waitFor(Duration.ofSeconds(5), interval = Duration.ofMillis(200)) {
+                        changesTree.findAllText("ExistingA.txt").isEmpty()
+                    }
+                }
+            }
+
+            setExpandNewFilesInCollapsedDirs(true)
+            setBranchAsRepoComparison("feature-expand-updated")
+
+            step("Wait for selected tab comparison map to update") {
+                waitFor(Duration.ofSeconds(10)) {
+                    selectedTabComparisonMap().contains("feature-expand-updated")
+                }
+            }
+
+            var lastSnapshotA = ""
+            step("Wait for active diff to include the newly added file") {
+                val deadline = System.nanoTime() + Duration.ofSeconds(20).toNanos()
+                while (System.nanoTime() < deadline) {
+                    lastSnapshotA = activeDiffSnapshot()
+                    if (lastSnapshotA.contains("NewA.txt")) break
+                    Thread.sleep(1000)
+                }
+                assertTrue(lastSnapshotA.contains("NewA.txt"),
+                    "Active diff never included NewA.txt after 20s. Last snapshot: '$lastSnapshotA'")
+            }
+
+            gitChangesView {
+                step("Verify collapsed directory expands to reveal NewA.txt") {
+                    waitFor(Duration.ofSeconds(10), interval = Duration.ofMillis(200)) {
+                        changesTree.findAllText("NewA.txt").isNotEmpty()
+                    }
+                    assertTrue(
+                        changesTree.findAllText("NewA.txt").isNotEmpty(),
+                        "NewA.txt should be visible when the setting is enabled and a new file appears in a collapsed directory"
+                    )
+                }
+            }
+        }
+    }
+
+    @Test
+    @Video
+    fun testNewFileInCollapsedDirStaysCollapsedWhenSettingDisabled(remoteRobot: RemoteRobot) = with(remoteRobot) {
+        val uiSteps = PluginUiTestSteps(remoteRobot)
+
+        prepareFreshProject()
+
+        idea {
+            step("Wait for smart mode") {
+                dumbAware(Duration.ofMinutes(5)) {}
+            }
+
+            uiSteps.initializeGitRepository()
+            resetGitChangesViewState()
+
+            uiSteps.createNewFile("Base.txt", "base\n")
+            uiSteps.commitChanges("Initial commit")
+            val defaultBranch = uiSteps.defaultBranchName()
+
+            uiSteps.createBranch("feature-collapse-initial")
+            uiSteps.createNewFile("nested/featureB/ExistingB.txt", "existing\n")
+            uiSteps.commitChanges("Initial nested change")
+            uiSteps.checkoutBranch("feature-collapse-initial")
+            uiSteps.createBranch("feature-collapse-updated")
+            uiSteps.createNewFile("nested/featureB/NewB.txt", "new\n")
+            uiSteps.commitChanges("Updated nested change")
+            uiSteps.checkoutBranch(defaultBranch)
+
+            openGitChangesView()
+            gitChangesView { addTab() }
+            branchSelection { searchAndSelect("feature-collapse-initial") }
+            gitChangesView {
+                selectTab("feature-collapse-initial")
+            }
+            waitForInitialNestedFile("ExistingB.txt")
+
+            step("Collapse 'nested' before introducing a new file") {
+                setChangesTreeNodeExpanded("nested", false)
+            }
+
+            gitChangesView {
+                step("Verify ExistingB.txt is hidden after collapse") {
+                    waitFor(Duration.ofSeconds(5), interval = Duration.ofMillis(200)) {
+                        changesTree.findAllText("ExistingB.txt").isEmpty()
+                    }
+                }
+            }
+
+            setExpandNewFilesInCollapsedDirs(false)
+            setBranchAsRepoComparison("feature-collapse-updated")
+
+            step("Wait for selected tab comparison map to update") {
+                waitFor(Duration.ofSeconds(10)) {
+                    selectedTabComparisonMap().contains("feature-collapse-updated")
+                }
+            }
+
+            val branchLog = uiSteps.runGitCommand("diff", "--name-status", "feature-collapse-updated").replace("\n", "|")
+            var lastSnapshotB = ""
+            step("Wait for active diff to include the newly added file") {
+                val deadline = System.nanoTime() + Duration.ofSeconds(20).toNanos()
+                while (System.nanoTime() < deadline) {
+                    lastSnapshotB = activeDiffSnapshot()
+                    if (lastSnapshotB.contains("NewB.txt")) break
+                    Thread.sleep(1000)
+                }
+                assertTrue(lastSnapshotB.contains("NewB.txt"),
+                    "Active diff never included NewB.txt after 20s. " +
+                    "Last snapshot: '$lastSnapshotB'. " +
+                    "feature-collapse-updated log: '$branchLog'")
+            }
+
+            gitChangesView {
+                step("Verify collapsed directory stays collapsed so NewB.txt remains hidden") {
+                    waitFor(Duration.ofSeconds(3), interval = Duration.ofMillis(200)) {
+                        changesTree.findAllText("NewB.txt").isEmpty()
+                    }
+                    assertTrue(
+                        changesTree.findAllText("NewB.txt").isEmpty(),
+                        "NewB.txt should stay hidden when the setting is disabled and a new file appears in a collapsed directory"
+                    )
+                }
+            }
+        }
+    }
+
+    private fun IdeaFrame.waitForInitialNestedFile(fileName: String) {
+        var lastSnapshot = ""
+
+        step("Wait for initial nested file to appear") {
+            waitFor(Duration.ofSeconds(20), interval = Duration.ofMillis(500)) {
+                lastSnapshot = activeDiffSnapshot()
+                lastSnapshot.contains(fileName)
+            }
+
+            gitChangesView {
+                waitFor(Duration.ofSeconds(10), interval = Duration.ofMillis(200)) {
+                    changesTree.findAllText(fileName).isNotEmpty()
+                }
+            }
+
+            gitChangesView {
+                assertTrue(
+                    changesTree.findAllText(fileName).isNotEmpty(),
+                    "Expected initial comparison tree to show $fileName. Last diff snapshot: '$lastSnapshot'"
+                )
+            }
+        }
+    }
+
+    @Test
+    @Video
+    fun testUntrackedFileAppearsWhenSettingEnabled(remoteRobot: RemoteRobot) = with(remoteRobot) {
+        val uiSteps = PluginUiTestSteps(remoteRobot)
+
+        prepareFreshProject()
+
+        idea {
+            step("Wait for smart mode") {
+                dumbAware(Duration.ofMinutes(5)) {}
+            }
+
+            uiSteps.initializeGitRepository()
+            resetGitChangesViewState()
+
+            uiSteps.createNewFile("Base.txt", "base\n")
+            uiSteps.commitChanges("Initial commit")
+            val defaultBranch = uiSteps.defaultBranchName()
+
+            uiSteps.createBranch("feature-untracked-visible")
+            uiSteps.createNewFile("Feature.txt", "feature\n")
+            uiSteps.commitChanges("Feature commit")
+            uiSteps.checkoutBranch(defaultBranch)
+
+            openGitChangesView()
+            gitChangesView {
+                addTab()
+            }
+            branchSelection {
+                searchAndSelect("feature-untracked-visible")
+            }
+            gitChangesView {
+                selectTab("feature-untracked-visible")
+                waitFor(Duration.ofSeconds(10)) {
+                    changesTree.findAllText("Feature.txt").isNotEmpty()
+                }
+            }
+
+            setShowUntrackedFilesAsNew(true)
+            uiSteps.createNewFile("UntrackedEnabled.txt", "enabled\n", stage = false)
+            setShowUntrackedFilesAsNew(true)
+
+            gitChangesView {
+                step("Verify untracked file appears when setting is enabled") {
+                    waitFor(Duration.ofSeconds(20), interval = Duration.ofMillis(300)) {
+                        changesTree.findAllText("UntrackedEnabled.txt").isNotEmpty()
+                    }
+                }
+            }
+        }
+    }
+
+    @Test
+    @Video
+    fun testUntrackedFileStaysHiddenWhenSettingDisabled(remoteRobot: RemoteRobot) = with(remoteRobot) {
+        val uiSteps = PluginUiTestSteps(remoteRobot)
+
+        prepareFreshProject()
+
+        idea {
+            step("Wait for smart mode") {
+                dumbAware(Duration.ofMinutes(5)) {}
+            }
+
+            uiSteps.initializeGitRepository()
+            resetGitChangesViewState()
+
+            uiSteps.createNewFile("Base.txt", "base\n")
+            uiSteps.commitChanges("Initial commit")
+            val defaultBranch = uiSteps.defaultBranchName()
+
+            uiSteps.createBranch("feature-untracked-hidden")
+            uiSteps.createNewFile("Feature.txt", "feature\n")
+            uiSteps.commitChanges("Feature commit")
+            uiSteps.checkoutBranch(defaultBranch)
+
+            openGitChangesView()
+            gitChangesView {
+                addTab()
+            }
+            branchSelection {
+                searchAndSelect("feature-untracked-hidden")
+            }
+            gitChangesView {
+                selectTab("feature-untracked-hidden")
+                waitFor(Duration.ofSeconds(10)) {
+                    changesTree.findAllText("Feature.txt").isNotEmpty()
+                }
+            }
+
+            setShowUntrackedFilesAsNew(false)
+            uiSteps.createNewFile("UntrackedDisabled.txt", "disabled\n", stage = false)
+            setShowUntrackedFilesAsNew(false)
+
+            gitChangesView {
+                step("Verify untracked file stays hidden when setting is disabled") {
+                    waitFor(Duration.ofSeconds(5), interval = Duration.ofMillis(200)) {
+                        changesTree.findAllText("UntrackedDisabled.txt").isEmpty()
+                    }
+                }
+            }
+
+            setShowUntrackedFilesAsNew(true)
+            gitChangesView {
+                step("Verify same file appears after enabling setting") {
+                    waitFor(Duration.ofSeconds(20), interval = Duration.ofMillis(300)) {
+                        changesTree.findAllText("UntrackedDisabled.txt").isNotEmpty()
+                    }
+                }
+            }
+        }
+    }
+
+    @Test
+    @Video
+    fun testUntrackedFileHasUnknownFileStatus(remoteRobot: RemoteRobot) = with(remoteRobot) {
+        val uiSteps = PluginUiTestSteps(remoteRobot)
+
+        prepareFreshProject()
+
+        idea {
+            step("Wait for smart mode") {
+                dumbAware(Duration.ofMinutes(5)) {}
+            }
+
+            uiSteps.initializeGitRepository()
+            resetGitChangesViewState()
+
+            uiSteps.createNewFile("Base.txt", "base\n")
+            uiSteps.commitChanges("Initial commit")
+            val defaultBranch = uiSteps.defaultBranchName()
+
+            uiSteps.createBranch("feature-file-status")
+            uiSteps.createNewFile("TrackedAdded.txt", "tracked\n")
+            uiSteps.commitChanges("Add tracked file")
+            uiSteps.checkoutBranch(defaultBranch)
+
+            openGitChangesView()
+            gitChangesView {
+                addTab()
+            }
+            branchSelection {
+                searchAndSelect("feature-file-status")
+            }
+            gitChangesView {
+                selectTab("feature-file-status")
+                waitFor(Duration.ofSeconds(10)) {
+                    changesTree.findAllText("TrackedAdded.txt").isNotEmpty()
+                }
+            }
+
+            setShowUntrackedFilesAsNew(true)
+            uiSteps.createNewFile("UntrackedStatus.txt", "untracked\n", stage = false)
+            setShowUntrackedFilesAsNew(true)
+
+            gitChangesView {
+                step("Wait for untracked file to appear") {
+                    waitFor(Duration.ofSeconds(20), interval = Duration.ofMillis(300)) {
+                        changesTree.findAllText("UntrackedStatus.txt").isNotEmpty()
+                    }
+                }
+            }
+
+            val untrackedStatus = fileStatusForTreeItem("UntrackedStatus.txt")
+            val addedStatus = fileStatusForTreeItem("TrackedAdded.txt")
+
+            assertEquals("UNKNOWN", untrackedStatus,
+                "Untracked file should have UNKNOWN file status for native text coloring")
+            assertNotEquals(untrackedStatus, addedStatus,
+                "Untracked and added files should have different file statuses")
+        }
+    }
+
+    @Test
+    @Video
+    fun testFileTypeFileStatuses(remoteRobot: RemoteRobot) = with(remoteRobot) {
+        val uiSteps = PluginUiTestSteps(remoteRobot)
+
+        prepareFreshProject()
+
+        idea {
+            step("Wait for smart mode") {
+                dumbAware(Duration.ofMinutes(5)) {}
+            }
+
+            uiSteps.initializeGitRepository()
+            resetGitChangesViewState()
+
+            uiSteps.createNewFile("ToModify.txt", "original\n")
+            uiSteps.createNewFile("ToDelete.txt", "to be deleted\n")
+            uiSteps.createNewFile("ToRename.txt", "to be renamed\n")
+            uiSteps.commitChanges("Initial commit")
+            val defaultBranch = uiSteps.defaultBranchName()
+
+            uiSteps.createBranch("feature-change-types")
+            uiSteps.modifyFile("ToModify.txt", "modified content\n")
+            uiSteps.deleteFile("ToDelete.txt")
+            uiSteps.renameFile("ToRename.txt", "Renamed.txt")
+            uiSteps.createNewFile("NewFile.txt", "brand new\n")
+            uiSteps.commitChanges("All change types")
+            uiSteps.checkoutBranch(defaultBranch)
+
+            openGitChangesView()
+            gitChangesView {
+                addTab()
+            }
+            branchSelection {
+                searchAndSelect("feature-change-types")
+            }
+            gitChangesView {
+                selectTab("feature-change-types")
+                waitFor(Duration.ofSeconds(10)) {
+                    changesTree.findAllText("ToModify.txt").isNotEmpty() &&
+                        changesTree.findAllText("NewFile.txt").isNotEmpty() &&
+                        changesTree.findAllText("ToDelete.txt").isNotEmpty() &&
+                        changesTree.findAllText("ToRename.txt").isNotEmpty()
+                }
+            }
+
+            assertEquals("DELETED", fileStatusForTreeItem("NewFile.txt"),
+                "File only in comparison branch should have DELETED file status (not present in working dir)")
+            assertEquals("MODIFIED", fileStatusForTreeItem("ToModify.txt"),
+                "Modified file should have MODIFIED file status")
+            assertEquals("ADDED", fileStatusForTreeItem("ToDelete.txt"),
+                "File only in working dir should have ADDED file status (deleted in comparison branch)")
+            assertEquals("MODIFIED", fileStatusForTreeItem("ToRename.txt"),
+                "Renamed file should have MODIFIED file status (rename detected)")
+        }
+    }
+
+
+    @Suppress("SameParameterValue")
+    private fun RemoteRobot.setChangesTreeNodeExpanded(nodeText: String, expanded: Boolean) {
+        step("${if (expanded) "Expand" else "Collapse"} tree node '$nodeText'") {
+            val success = callJs<Boolean>(
+                """
+                (function() {
+                    var targetText = ${toJsStringLiteral(nodeText)};
+                    var expand = ${if (expanded) "true" else "false"};
+                    var project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
+                    if (!project) return false;
+
+                    var toolWindow = com.intellij.openapi.wm.ToolWindowManager.getInstance(project).getToolWindow("GitChangesView");
+                    var content = toolWindow ? toolWindow.getContentManager().getSelectedContent() : null;
+                    if (!content) return false;
+
+                    var browser = content.getComponent();
+                    if (!browser || typeof browser.setExpandedForVisibleNodeTextForTest !== "function") {
+                        return false;
+                    }
+
+                    return browser.setExpandedForVisibleNodeTextForTest(targetText, expand);
+                })()
+                """.trimIndent(),
+                true
+            )
+            check(success) { "Could not find tree node '$nodeText' to ${if (expanded) "expand" else "collapse"}" }
+        }
+    }
+
     private fun RemoteRobot.modifyFileWithoutSave(fileName: String, content: String) {
         val typedContent = content.trimEnd('\r', '\n')
 
+        focusEditorFile(fileName)
+
+        keyboard {
+            hotKey(KeyEvent.VK_CONTROL, KeyEvent.VK_A)
+            enterText(typedContent)
+        }
+    }
+
+    private fun RemoteRobot.focusEditorFile(fileName: String) {
         idea {
             openFile(fileName)
         }
@@ -539,13 +1796,291 @@ class LstCrcBranchComparisonUiTest : LstCrcUiTestSupport() {
             """.trimIndent(),
             false
         )
+    }
 
-        keyboard {
-            hotKey(KeyEvent.VK_CONTROL, KeyEvent.VK_A)
-            enterText(typedContent)
+    private fun RemoteRobot.focusOpenEditorTab(tabText: String, expectedRelativePath: String) {
+        step("Focus open editor tab '$tabText'") {
+            val tab = findAll<ComponentFixture>(
+                byXpath("//div[@class='EditorTabLabel' and (contains(@accessiblename,'$tabText') or contains(@visible_text,'$tabText'))]")
+            ).firstOrNull()
+            check(tab != null) { "Could not find open editor tab '$tabText'" }
+            tab.click()
+
+            waitFor(Duration.ofSeconds(10), interval = Duration.ofMillis(250)) {
+                selectedEditorEndsWith(expectedRelativePath)
+            }
+
+            runJs(
+                """
+                const project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
+                if (project) {
+                    com.intellij.openapi.application.ApplicationManager.getApplication().invokeAndWait(new java.lang.Runnable({
+                        run: function() {
+                            const editor = com.intellij.openapi.fileEditor.FileEditorManager.getInstance(project).getSelectedTextEditor();
+                            if (editor) {
+                                editor.getContentComponent().requestFocusInWindow();
+                            }
+                        }
+                    }));
+                }
+                """.trimIndent(),
+                false
+            )
         }
     }
 
+    private fun RemoteRobot.selectedEditorEndsWith(relativePath: String): Boolean {
+        val normalizedPath = relativePath.replace('\\', '/')
+        return callJs(
+            """
+            (function() {
+                const project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
+                if (!project) {
+                    return false;
+                }
+
+                const editor = com.intellij.openapi.fileEditor.FileEditorManager.getInstance(project).getSelectedTextEditor();
+                const file = editor ? editor.getVirtualFile() : null;
+                return file != null && String(file.getPath()).endsWith('/$normalizedPath');
+            })();
+            """.trimIndent(),
+            true
+        )
+    }
+
+    private fun RemoteRobot.moveCaretToLineEnd(lineIndex: Int) {
+        runJs(
+            """
+            const project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
+            if (project) {
+                com.intellij.openapi.application.ApplicationManager.getApplication().invokeAndWait(new java.lang.Runnable({
+                    run: function() {
+                        const editor = com.intellij.openapi.fileEditor.FileEditorManager.getInstance(project).getSelectedTextEditor();
+                        if (!editor) {
+                            return;
+                        }
+
+                        const document = editor.getDocument();
+                        const safeLine = Math.max(0, Math.min($lineIndex, document.getLineCount() - 1));
+                        const offset = document.getLineEndOffset(safeLine);
+                        editor.getCaretModel().moveToOffset(offset);
+                        editor.getScrollingModel().scrollToCaret(com.intellij.openapi.editor.ScrollType.CENTER);
+                        editor.getContentComponent().requestFocusInWindow();
+                    }
+                }));
+            }
+            """.trimIndent(),
+            false
+        )
+    }
+
+    private fun RemoteRobot.insertSingleCharacterAtCaretWithoutSave() {
+        val textLiteral = toJsStringLiteral("a")
+        runJs(
+            """
+            const project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
+            if (project) {
+                com.intellij.openapi.application.ApplicationManager.getApplication().invokeAndWait(new java.lang.Runnable({
+                    run: function() {
+                        const editor = com.intellij.openapi.fileEditor.FileEditorManager.getInstance(project).getSelectedTextEditor();
+                        if (!editor) {
+                            return;
+                        }
+                        const document = editor.getDocument();
+                        const caretModel = editor.getCaretModel();
+                        const offset = caretModel.getOffset();
+                        const text = $textLiteral;
+
+                        com.intellij.openapi.command.WriteCommandAction.runWriteCommandAction(project, new java.lang.Runnable({
+                            run: function() {
+                                document.insertString(offset, text);
+                                caretModel.moveToOffset(offset + text.length);
+                            }
+                        }));
+
+                        editor.getScrollingModel().scrollToCaret(com.intellij.openapi.editor.ScrollType.CENTER);
+                        editor.getContentComponent().requestFocusInWindow();
+                    }
+                }));
+            }
+            """.trimIndent(),
+            false
+        )
+    }
+
+    private fun RemoteRobot.typeSingleCharacterWithoutSave(character: String = "a") {
+        keyboard {
+            enterText(character)
+        }
+    }
+
+    private fun RemoteRobot.currentBrowserLineStatsSnapshot(): String = callJs(
+        """
+        (function() {
+            const project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
+            if (!project) return "project=missing";
+
+            const toolWindow = com.intellij.openapi.wm.ToolWindowManager.getInstance(project).getToolWindow("GitChangesView");
+            const browser = toolWindow && toolWindow.getContentManager().getSelectedContent()
+                ? toolWindow.getContentManager().getSelectedContent().getComponent()
+                : null;
+            if (!browser) return "browser=missing";
+
+            const lineStats = browser.currentLineStatsSnapshot();
+            if (!lineStats) return "currentChanges=null";
+            const entries = [];
+            const it = lineStats.iterator();
+            while (it.hasNext()) {
+                entries.push(String(it.next()));
+            }
+            return entries.join(",");
+        })();
+        """.trimIndent(),
+        true
+    )
+
+    private fun IdeaFrame.waitForMainFileLineStats(changedLineCount: Int) {
+        val fileName = "Main.txt"
+        val expectedAdded = "+$changedLineCount"
+        val expectedRemoved = "-$changedLineCount"
+
+        try {
+            var renderedMetadata: String
+            waitFor(Duration.ofSeconds(10), interval = Duration.ofMillis(100)) {
+                renderedMetadata = remoteRobot.renderedMainFileMetadata()
+                selectedChangesTreeContains(fileName) &&
+                    renderedMetadata.contains(expectedAdded) &&
+                    renderedMetadata.contains(expectedRemoved)
+            }
+        } catch (_: WaitForConditionTimeoutException) {
+            val debugSnapshot = "settings=${treeContextSettingsSnapshot()} diff=${activeDiffSnapshot()} browserStats=${remoteRobot.currentBrowserLineStatsSnapshot()} rendered=${remoteRobot.renderedMainFileMetadata()}"
+            assertTrue(
+                false,
+                "Expected $fileName to render $expectedAdded/$expectedRemoved immediately after the edit. $debugSnapshot"
+            )
+        }
+    }
+
+    private fun RemoteRobot.renderedMainFileMetadata(): String {
+        val fileNameLiteral = toJsStringLiteral("Main.txt")
+        return callJs(
+            """
+            (function() {
+                var result = new java.util.concurrent.atomic.AtomicReference("");
+                function findTree() {
+                    var windows = java.awt.Window.getWindows();
+                    for (var w = 0; w < windows.length; w++) {
+                        var queue = new java.util.LinkedList();
+                        queue.add(windows[w]);
+                        while (!queue.isEmpty()) {
+                            var component = queue.poll();
+                            if (component && component.getClass().getName().endsWith("LstCrcAsyncChangesTree") && component.isShowing()) {
+                                return component;
+                            }
+                            if (!component) continue;
+                            try {
+                                var children = component.getComponents();
+                                if (children) {
+                                    for (var ci = 0; ci < children.length; ci++) {
+                                        queue.add(children[ci]);
+                                    }
+                                }
+                            } catch (ignored) {}
+                        }
+                    }
+                    return null;
+                }
+
+                function findDeclaredField(instance, fieldName) {
+                    var cls = instance.getClass();
+                    while (cls) {
+                        try {
+                            var field = cls.getDeclaredField(fieldName);
+                            field.setAccessible(true);
+                            return field;
+                        } catch (ignored) {
+                            cls = cls.getSuperclass();
+                        }
+                    }
+                    return null;
+                }
+
+                function fragmentText(component) {
+                    if (!component) return "";
+                    var fragmentsField = findDeclaredField(component, "myFragments");
+                    if (!fragmentsField) return "";
+                    var fragments = fragmentsField.get(component);
+                    if (!fragments) return "";
+
+                    var values = [];
+                    var iterator = fragments.iterator();
+                    while (iterator.hasNext()) {
+                        var fragment = iterator.next();
+                        var textField = findDeclaredField(fragment, "myText") || findDeclaredField(fragment, "text");
+                        if (textField) {
+                            values.push(String(textField.get(fragment)));
+                        }
+                    }
+                    return values.join("");
+                }
+
+                com.intellij.openapi.application.ApplicationManager.getApplication().invokeAndWait(new java.lang.Runnable({
+                    run: function() {
+                        var tree = findTree();
+                        if (!tree) {
+                            result.set("tree=missing");
+                            return;
+                        }
+                        var renderer = tree.getCellRenderer();
+                        if (!renderer) {
+                            result.set("renderer=missing");
+                            return;
+                        }
+
+                        for (var row = 0; row < tree.getRowCount(); row++) {
+                            var path = tree.getPathForRow(row);
+                            if (!path) continue;
+                            var node = path.getLastPathComponent();
+                            if (!node) continue;
+                            var userObject = node.getUserObject ? node.getUserObject() : null;
+                            var change = userObject instanceof com.intellij.openapi.vcs.changes.Change ? userObject : null;
+                            if (!change) continue;
+
+                            var candidate = change.getAfterRevision() ? change.getAfterRevision().getFile().getName() : null;
+                            if (!candidate && change.getBeforeRevision()) {
+                                candidate = change.getBeforeRevision().getFile().getName();
+                            }
+                            if (String(candidate || "") !== $fileNameLiteral) continue;
+
+                            renderer.getTreeCellRendererComponent(tree, node, false, tree.isExpanded(row), tree.getModel().isLeaf(node), row, false);
+                            var trailingField = findDeclaredField(renderer, "trailingRenderer");
+                            if (!trailingField) {
+                                result.set("trailing=missing");
+                                return;
+                            }
+                            var trailingRenderer = trailingField.get(renderer);
+                            var fragmentCount = "";
+                            try {
+                                fragmentCount = String(trailingRenderer.getFragmentCount());
+                            } catch (ignored) {
+                                fragmentCount = "unknown";
+                            }
+                            result.set("count=" + fragmentCount + "|text=" + fragmentText(trailingRenderer));
+                            return;
+                        }
+
+                        result.set("row=missing");
+                    }
+                }));
+
+                return result.get();
+            })();
+            """.trimIndent(),
+            true
+        )
+    }
+
+    @Suppress("SameParameterValue")
     private fun RemoteRobot.fileStatusDebug(fileName: String): String = callJs(
         """
         (function() {

@@ -7,12 +7,9 @@ import com.intellij.remoterobot.stepsProcessing.step
 import com.intellij.remoterobot.utils.component
 import com.intellij.remoterobot.utils.waitFor
 import java.nio.file.AccessDeniedException
-import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.FileSystemException
 import java.nio.file.Path
-import java.nio.file.StandardCopyOption
-import java.nio.file.StandardOpenOption
 import java.time.Duration
 
 /**
@@ -46,6 +43,22 @@ class PluginUiTestSteps(private val remoteRobot: RemoteRobot) {
     fun modifyFile(fileName: String, content: String) = step("Modify file: $fileName") {
         writeProjectFile(fileName, content)
         stageAllGitChanges()
+        waitForGitIdle()
+    }
+
+    fun updateFileWithoutStaging(fileName: String, content: String) = step("Update file without staging: $fileName") {
+        writeProjectFile(fileName, content)
+        waitForGitIdle()
+    }
+
+    fun createFilesWithoutStaging(files: Map<String, String>) = step("Create ${files.size} untracked files") {
+        if (files.isEmpty()) return@step
+        files.forEach { (relativePath, content) ->
+            val path = resolveProjectPath(relativePath)
+            path.parent?.let { Files.createDirectories(it) }
+            Files.writeString(path, content)
+        }
+        refreshProjectAfterExternalChange()
         waitForGitIdle()
     }
 
@@ -96,7 +109,6 @@ class PluginUiTestSteps(private val remoteRobot: RemoteRobot) {
 
             repeat(3) { attempt ->
                 val initialized = runCatching {
-                    saveAllDocuments()
                     closeAllEditors()
                     waitForGitIdle()
                     resetProjectFiles()
@@ -143,7 +155,7 @@ class PluginUiTestSteps(private val remoteRobot: RemoteRobot) {
     /**
      * Deletes a file
      */
-    fun deleteFile(fileName: String) = with(remoteRobot) {
+    fun deleteFile(fileName: String) {
         step("Delete file: $fileName") {
             val path = resolveProjectPath(fileName)
             Files.deleteIfExists(path)
@@ -218,8 +230,8 @@ class PluginUiTestSteps(private val remoteRobot: RemoteRobot) {
         }
     }
 
-    private fun currentBranchName(): String = with(remoteRobot) {
-        runGitCommand("rev-parse", "--abbrev-ref", "HEAD")
+    private fun currentBranchName(): String {
+        return runGitCommand("rev-parse", "--abbrev-ref", "HEAD")
     }
 
     private fun enableGitVcsIntegration() = with(remoteRobot) {
@@ -252,12 +264,12 @@ class PluginUiTestSteps(private val remoteRobot: RemoteRobot) {
         )
     }
 
-    private fun configureGitIdentity() = with(remoteRobot) {
+    private fun configureGitIdentity() {
         runGitCommand("config", "user.name", "LST-CRC UI Tests")
         runGitCommand("config", "user.email", "lst-crc-ui-tests@example.invalid")
     }
 
-    private fun runGitCommand(vararg args: String): String = with(remoteRobot) {
+    internal fun runGitCommand(vararg args: String): String = with(remoteRobot) {
         val commandArguments = listOf("git", *args).joinToString(", ") { "\"$it\"" }
         waitForGitIdle()
 
@@ -295,11 +307,11 @@ class PluginUiTestSteps(private val remoteRobot: RemoteRobot) {
             output = result.substringAfter('\n', "").trim()
             val retriedExitCode = result.substringBefore('\n').toIntOrNull()
                 ?: error("Could not parse git command exit code from retry result: $result")
-            check(retriedExitCode == 0) { if (output.isNotBlank()) output else "git ${args.joinToString(" ")} failed with exit code $retriedExitCode" }
+        check(retriedExitCode == 0) { output.ifBlank { "git ${args.joinToString(" ")} failed with exit code $retriedExitCode" } }
             return@with output
         }
 
-        check(exitCode == 0) { if (output.isNotBlank()) output else "git ${args.joinToString(" ")} failed with exit code $exitCode" }
+        check(exitCode == 0) { output.ifBlank { "git ${args.joinToString(" ")} failed with exit code $exitCode" } }
         output
     }
 
@@ -347,42 +359,11 @@ class PluginUiTestSteps(private val remoteRobot: RemoteRobot) {
                 const changeListManagerEx = com.intellij.openapi.vcs.changes.ChangeListManagerEx.getInstanceEx(project);
                 changeListManagerEx.waitForUpdate();
 
-                const pluginId = com.intellij.openapi.extensions.PluginId.getId("com.github.uiopak.lstcrc");
-                const plugin = com.intellij.ide.plugins.PluginManagerCore.getPlugin(pluginId);
-                if (plugin != null) {
-                    const stateServiceClass = plugin.getPluginClassLoader()
-                        .loadClass("com.github.uiopak.lstcrc.services.ToolWindowStateService");
-                    const stateService = project.getService(stateServiceClass);
-                    if (stateService != null) {
-                        stateService.refreshDataForCurrentSelection().join();
-                    }
-                }
+                ${refreshCurrentSelectionScript()}
             }
             """.trimIndent(),
             false
         )
-    }
-
-    private fun gitPath(relativePath: String): String = relativePath.replace('\\', '/')
-
-    private fun waitForGitChange(vararg relativePaths: String) {
-        val normalizedPaths = relativePaths
-            .map(::gitPath)
-            .distinct()
-
-        waitFor(Duration.ofSeconds(30), interval = Duration.ofMillis(500)) {
-            runCatching {
-                val statusOutput = runGitCommand("status", "--porcelain")
-                normalizedPaths.any { path ->
-                    statusOutput.lineSequence().any { line ->
-                        val trimmedLine = line.trim()
-                        trimmedLine.endsWith(path) ||
-                            trimmedLine.contains(" -> $path") ||
-                            trimmedLine.contains("$path -> ")
-                    }
-                }
-            }.getOrDefault(false)
-        }
     }
 
     private fun handleAddFileToGitDialogIfPresent() = with(remoteRobot) {
@@ -425,6 +406,20 @@ class PluginUiTestSteps(private val remoteRobot: RemoteRobot) {
         }
     }
 
+    private fun refreshCurrentSelectionScript(projectVariableName: String = "project"): String =
+        """
+        const pluginId = com.intellij.openapi.extensions.PluginId.getId("com.github.uiopak.lstcrc");
+        const plugin = com.intellij.ide.plugins.PluginManagerCore.getPlugin(pluginId);
+        if (plugin != null) {
+            const stateServiceClass = plugin.getPluginClassLoader()
+                .loadClass("com.github.uiopak.lstcrc.services.ToolWindowStateService");
+            const stateService = $projectVariableName.getService(stateServiceClass);
+            if (stateService != null) {
+                stateService.refreshDataForCurrentSelection().join();
+            }
+        }
+        """.trimIndent()
+
     private fun refreshProjectAfterGitCommand() = with(remoteRobot) {
         runJs(
             """
@@ -437,16 +432,7 @@ class PluginUiTestSteps(private val remoteRobot: RemoteRobot) {
                 const changeListManagerEx = com.intellij.openapi.vcs.changes.ChangeListManagerEx.getInstanceEx(project);
                 changeListManagerEx.waitForUpdate();
 
-                const pluginId = com.intellij.openapi.extensions.PluginId.getId("com.github.uiopak.lstcrc");
-                const plugin = com.intellij.ide.plugins.PluginManagerCore.getPlugin(pluginId);
-                if (plugin != null) {
-                    const stateServiceClass = plugin.getPluginClassLoader()
-                        .loadClass("com.github.uiopak.lstcrc.services.ToolWindowStateService");
-                    const stateService = project.getService(stateServiceClass);
-                    if (stateService != null) {
-                        stateService.refreshDataForCurrentSelection().join();
-                    }
-                }
+                ${refreshCurrentSelectionScript()}
             }
             """,
             false
@@ -484,16 +470,7 @@ class PluginUiTestSteps(private val remoteRobot: RemoteRobot) {
                 const changeListManagerEx = com.intellij.openapi.vcs.changes.ChangeListManagerEx.getInstanceEx(project);
                 changeListManagerEx.waitForUpdate();
 
-                const pluginId = com.intellij.openapi.extensions.PluginId.getId("com.github.uiopak.lstcrc");
-                const plugin = com.intellij.ide.plugins.PluginManagerCore.getPlugin(pluginId);
-                if (plugin != null) {
-                    const stateServiceClass = plugin.getPluginClassLoader()
-                        .loadClass("com.github.uiopak.lstcrc.services.ToolWindowStateService");
-                    const stateService = project.getService(stateServiceClass);
-                    if (stateService != null) {
-                        stateService.refreshDataForCurrentSelection().join();
-                    }
-                }
+                ${refreshCurrentSelectionScript()}
             }
             """.trimIndent(),
             false
@@ -507,24 +484,6 @@ class PluginUiTestSteps(private val remoteRobot: RemoteRobot) {
             if (project) {
                 com.intellij.openapi.fileEditor.FileEditorManager.getInstance(project).closeAllFiles();
             }
-            """.trimIndent(),
-            true
-        )
-    }
-
-    private fun saveAllDocuments() = with(remoteRobot) {
-        runJs(
-            """
-            const project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
-            com.intellij.openapi.application.ApplicationManager.getApplication().invokeAndWait(new java.lang.Runnable({
-                run: function() {
-                    com.intellij.openapi.command.WriteCommandAction.runWriteCommandAction(project, new java.lang.Runnable({
-                        run: function() {
-                            com.intellij.openapi.fileEditor.FileDocumentManager.getInstance().saveAllDocuments();
-                        }
-                    }));
-                }
-            }));
             """.trimIndent(),
             true
         )
@@ -558,7 +517,7 @@ class PluginUiTestSteps(private val remoteRobot: RemoteRobot) {
 
     private fun resetProjectFiles() {
         val basePath = projectBasePath()
-        val projectFileName = "$${'$'}{basePath.fileName}.iml"
+        val projectFileName = $$"${basePath.fileName}.iml"
         Files.list(basePath).use { children ->
             children.forEach { child ->
                 val childName = child.fileName.toString()
@@ -587,13 +546,13 @@ class PluginUiTestSteps(private val remoteRobot: RemoteRobot) {
         var lastFailure: Exception? = null
 
         repeat(20) { attempt ->
-            try {
+            lastFailure = try {
                 Files.deleteIfExists(path)
                 return
             } catch (exception: AccessDeniedException) {
-                lastFailure = exception
+                exception
             } catch (exception: FileSystemException) {
-                lastFailure = exception
+                exception
             }
 
             if (attempt < 19) {
