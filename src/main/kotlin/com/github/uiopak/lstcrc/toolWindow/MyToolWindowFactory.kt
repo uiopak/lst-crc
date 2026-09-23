@@ -134,6 +134,7 @@ class MyToolWindowFactory : ToolWindowFactory {
         val headContent = contentFactory.createContent(headView, LstCrcBundle.message("tab.name.head"), false).apply {
             isCloseable = false
             isPinned = true
+            @Suppress("UsePropertyAccessSyntax") // Content.disposer is a val; the setter is the only API
             setDisposer(headDisposable)
         }
         toolWindow.contentManager.addContent(headContent)

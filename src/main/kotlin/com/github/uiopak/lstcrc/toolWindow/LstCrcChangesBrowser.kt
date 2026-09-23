@@ -72,7 +72,6 @@ import javax.swing.event.TreeModelListener
  * It extends [AsyncChangesBrowserBase] to provide a fully custom asynchronous tree model, and
  * highly customized mouse click handling based on user settings.
  */
-@Suppress("JComponentDataProvider")
 class LstCrcChangesBrowser(
     private val project: Project,
     private val targetBranchToCompare: String,
@@ -240,7 +239,6 @@ class LstCrcChangesBrowser(
      * Extends the standard tree to provide custom colors for deleted files while
      * preserving all native coloring for other file types.
      */
-    @Suppress("JComponentDataProvider")
     private inner class LstCrcAsyncChangesTree(
         project: Project,
         showCheckboxes: Boolean,

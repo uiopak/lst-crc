@@ -262,7 +262,7 @@ class GitService(private val project: Project) {
 
     private fun loadTrackedChangesAgainstWorkingTree(repo: GitRepository, target: String): LoadedChanges {
         val targetRevision = GitRevisionNumber(target)
-        val changes = runGit(repo, GitCommand.DIFF, "--name-status", DIFF_FILTER_PARAM, "-M", target)
+        val changes = runGitDiff(repo, "--name-status", DIFF_FILTER_PARAM, "-M", target)
             .lineSequence()
             .mapNotNull { parseDiffLine(repo, targetRevision, it) }
             .toList()
@@ -279,14 +279,14 @@ class GitService(private val project: Project) {
         target: String
     ): Map<ChangeLineStatsKey, ChangeLineStats> {
         if (changes.isEmpty()) return emptyMap()
-        val output = runGit(repo, GitCommand.DIFF, *trackedLineStatsDiffArgs(target).toTypedArray())
+        val output = runGitDiff(repo, *trackedLineStatsDiffArgs(target).toTypedArray())
         return parseTrackedLineStats(repo, changes, output.lineSequence())
     }
 
-    /** Runs a silent git command in [repo] and returns its stdout, throwing [VcsException] on failure. */
+    /** Runs a silent `git diff` in [repo] and returns its stdout, throwing [VcsException] on failure. */
     @Suppress("UsePropertyAccessSyntax")
-    private fun runGit(repo: GitRepository, command: GitCommand, vararg params: String): String {
-        val handler = GitLineHandler(project, repo.root, command)
+    private fun runGitDiff(repo: GitRepository, vararg params: String): String {
+        val handler = GitLineHandler(project, repo.root, GitCommand.DIFF)
         handler.setSilent(true)
         handler.setStdoutSuppressed(true)
         handler.addParameters(*params)
@@ -624,7 +624,7 @@ internal fun createLiveDocumentContentRevision(file: VirtualFile): ContentRevisi
     }
 
     return object : ContentRevision {
-        override fun getFile(): com.intellij.openapi.vcs.FilePath = filePath
+        override fun getFile(): FilePath = filePath
 
         override fun getContent(): String = content
 
@@ -651,7 +651,7 @@ internal fun createTargetContentRevision(
     }
 
     return object : ContentRevision {
-        override fun getFile(): com.intellij.openapi.vcs.FilePath = filePath
+        override fun getFile(): FilePath = filePath
 
         override fun getContent(): String = content
 

@@ -7,7 +7,7 @@ import com.github.uiopak.lstcrc.state.TabInfo
 import com.github.uiopak.lstcrc.state.ToolWindowState
 import com.github.uiopak.lstcrc.state.displayName
 import com.github.uiopak.lstcrc.toolWindow.SingleRepoBranchSelectionDialog
-import git4idea.GitUtil
+import com.github.uiopak.lstcrc.utils.isCommitHash
 import com.intellij.notification.NotificationGroupManager
 import com.intellij.notification.NotificationType
 import com.intellij.openapi.actionSystem.AnAction
@@ -193,7 +193,7 @@ class ToolWindowStateService(private val project: Project, val coroutineScope: C
         // Filter out failures that are likely commit hashes, as they are not "errors" in the same
         // way a missing branch name is. It's expected a commit hash might not exist in all repos.
         val actualBranchFailures = failures.filter { (_, failedRevision) ->
-            !GitUtil.isHashString(failedRevision, false)
+            !isCommitHash(failedRevision)
         }
 
         if (actualBranchFailures.isEmpty()) {
@@ -257,6 +257,7 @@ class ToolWindowStateService(private val project: Project, val coroutineScope: C
 
         // Set a unique display ID to prevent duplicate notifications for the same tab.
         // This makes the platform replace the old notification instead of showing a new one.
+        @Suppress("UsePropertyAccessSyntax") // displayId is a val; the setter is the only API
         notification.setDisplayId("LST-CRC.BranchError.${tabInfo.branchName}")
 
         // Add an action for each failed repository, allowing the user to fix the configuration.

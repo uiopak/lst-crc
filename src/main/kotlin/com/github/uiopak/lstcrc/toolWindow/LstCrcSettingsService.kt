@@ -143,9 +143,9 @@ class LstCrcSettingsService : PersistentStateComponent<LstCrcSettingsService.Set
     private fun getString(def: StringSettingDefinition): String = getString(def.key, def.defaultValue)
     private fun setString(def: StringSettingDefinition, value: String) = setString(def.key, value)
     private fun getBoolean(def: BooleanSettingDefinition): Boolean = getBoolean(def.key, def.defaultValue)
-    private fun setBoolean(def: BooleanSettingDefinition, value: Boolean) = setBoolean(def.key, value, def.defaultValue)
+    private fun setBoolean(def: BooleanSettingDefinition, value: Boolean) = setBoolean(def.key, value)
     private fun getInt(def: IntSettingDefinition): Int = getInt(def.key, def.defaultValue)
-    private fun setInt(def: IntSettingDefinition, value: Int) = setInt(def.key, value, def.defaultValue)
+    private fun setInt(def: IntSettingDefinition, value: Int) = setInt(def.key, value)
 
     // --- Public typed accessors ---
 
@@ -211,14 +211,14 @@ class LstCrcSettingsService : PersistentStateComponent<LstCrcSettingsService.Set
     fun getBoolean(key: String, default: Boolean): Boolean =
         storedValue(key)?.toBooleanStrictOrNull() ?: default
 
-    fun setBoolean(key: String, value: Boolean, default: Boolean) {
+    fun setBoolean(key: String, value: Boolean) {
         state.values[key] = value.toString()
     }
 
     fun getInt(key: String, default: Int): Int =
         storedValue(key)?.toIntOrNull() ?: default
 
-    fun setInt(key: String, value: Int, default: Int) {
+    fun setInt(key: String, value: Int) {
         state.values[key] = value.toString()
     }
 

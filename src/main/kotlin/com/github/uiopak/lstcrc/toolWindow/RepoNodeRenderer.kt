@@ -6,7 +6,7 @@ import com.github.uiopak.lstcrc.services.ProjectActiveDiffDataService
 import com.github.uiopak.lstcrc.services.ChangeLineStatsKey
 import com.github.uiopak.lstcrc.services.CategorizedChanges
 import com.github.uiopak.lstcrc.services.ToolWindowStateService
-import git4idea.GitUtil
+import com.github.uiopak.lstcrc.utils.isCommitHash
 import com.intellij.dvcs.ui.RepositoryChangesBrowserNode
 import com.intellij.openapi.components.service
 import com.intellij.openapi.project.Project
@@ -52,7 +52,7 @@ class RepoNodeRenderer(
     private fun visibleTargetRevision(targetRevision: String?): String? {
         targetRevision ?: return null
         val showForCommits = ToolWindowSettingsProvider.isShowContextForCommitsEnabled()
-        return targetRevision.takeUnless { GitUtil.isHashString(it, false) && !showForCommits }
+        return targetRevision.takeUnless { isCommitHash(it) && !showForCommits }
     }
 
     private fun configureTrailingRenderer(targetRevision: String?, lineStats: ChangeLineStats?) {

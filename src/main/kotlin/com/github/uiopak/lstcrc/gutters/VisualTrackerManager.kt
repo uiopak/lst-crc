@@ -71,11 +71,11 @@ class VisualTrackerManager(
      */
     private val loadedRevisions = ConcurrentHashMap<Document, String>()
 
-    private fun isExpectedMissingFileInRevision(message: String?): Boolean {
-        if (message.isNullOrBlank()) return false
-        return message.contains("does not exist in", ignoreCase = true) ||
-            message.contains("exists on disk, but not in", ignoreCase = true)
-    }
+    private fun isExpectedMissingFileInRevision(message: String?): Boolean =
+        message != null && (
+            message.contains("does not exist in", ignoreCase = true) ||
+                message.contains("exists on disk, but not in", ignoreCase = true)
+            )
 
     private data class TargetRevisionContext(
         val diffDataService: ProjectActiveDiffDataService,
@@ -352,13 +352,8 @@ class VisualTrackerManager(
     private fun shouldSkipTrackerForNewFile(
         diffDataService: ProjectActiveDiffDataService,
         file: VirtualFile
-    ): Boolean {
-        if (ToolWindowSettingsProvider.isGutterForNewFilesEnabled()) {
-            return false
-        }
-
-        return file.path in diffDataService.createdFilePaths
-    }
+    ): Boolean = !ToolWindowSettingsProvider.isGutterForNewFilesEnabled() &&
+        file.path in diffDataService.createdFilePaths
 
     private fun createVisualTracker(document: Document, file: VirtualFile): SimpleLocalLineStatusTracker {
         val tracker = SimpleLocalLineStatusTracker.createTracker(project, document, file)

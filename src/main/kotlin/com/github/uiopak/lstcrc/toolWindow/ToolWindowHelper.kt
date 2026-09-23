@@ -51,7 +51,6 @@ object ToolWindowHelper {
      * This is the standardized way to create a new branch tab.
      *
      * @param project The current project.
-     * @param toolWindow The tool window instance.
      * @param branchName The branch/revision identifier.
      * @param displayName The text to show on the tab.
      * @param contentManager The content manager to add the tab to.
@@ -70,6 +69,7 @@ object ToolWindowHelper {
         val contentFactory = ContentFactory.getInstance()
         val newContent = contentFactory.createContent(newContentView, displayName, false).apply {
             isCloseable = true
+            @Suppress("UsePropertyAccessSyntax") // Content.disposer is a val; the setter is the only API
             setDisposer(contentDisposable)
             putUserData(LstCrcKeys.BRANCH_NAME_KEY, branchName)
         }
@@ -221,6 +221,7 @@ object ToolWindowHelper {
         logger.info("HELPER: Creating and adding new '$selectionTabName' tab to UI.")
         val newContent = ContentFactory.getInstance().createContent(branchSelectionUi, selectionTabName, true).apply {
             isCloseable = true
+            @Suppress("UsePropertyAccessSyntax") // Content.disposer is a val; the setter is the only API
             setDisposer(branchSelectionUi)
         }
         contentManager.addContent(newContent)
@@ -250,12 +251,11 @@ object ToolWindowHelper {
             return
         }
 
-        replaceSelectionTab(project, toolWindow, stateService, manager, selectionTabContent, selectedBranchName)
+        replaceSelectionTab(project, stateService, manager, selectionTabContent, selectedBranchName)
     }
 
     private fun replaceSelectionTab(
         project: Project,
-        toolWindow: ToolWindow,
         stateService: ToolWindowStateService,
         manager: ContentManager,
         selectionTabContent: Content,
