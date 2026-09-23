@@ -13,25 +13,38 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.vcs.changes.ChangeListListener
 import com.intellij.openapi.vcs.changes.ChangeListManager
 import com.intellij.openapi.vfs.VirtualFile
+import git4idea.repo.GitRepository
+import git4idea.repo.GitRepositoryChangeListener
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlin.time.Duration.Companion.milliseconds
 
 /**
- * Listens for `ChangeListManager` updates to detect when VCS state changes (e.g., local edits,
- * reverts, Undo). It triggers a coalesced data refresh to update all plugin components,
- * decoupling them from the direct source of VCS events.
+ * Quiet period before a burst of edits or VCS events turns into a refresh. Every refresh runs
+ * several git processes, so typing must not trigger one per keystroke.
  */
+private val REFRESH_DEBOUNCE = 300.milliseconds
+
+/**
+ * The single source of automatic refreshes. Listens for `ChangeListManager` updates (local edits,
+ * reverts, Undo), repository changes (commit, checkout, fetch) and unsaved document edits, and
+ * triggers one debounced data refresh for the whole plugin.
+ */
+@OptIn(FlowPreview::class)
 @Service(Service.Level.PROJECT)
 class VcsChangeListener internal constructor(
     private val project: Project,
     coroutineScope: CoroutineScope,
     private val refreshCurrentSelection: () -> Unit,
     private val isRepositoryFile: (VirtualFile) -> Boolean
-) : ChangeListListener, DocumentListener, Disposable {
+) : ChangeListListener, DocumentListener, GitRepositoryChangeListener, Disposable {
 
     companion object {
         @JvmStatic
@@ -52,30 +65,32 @@ class VcsChangeListener internal constructor(
     )
 
     private val logger = thisLogger()
-    private val refreshSignals = MutableSharedFlow<VirtualFile?>(extraBufferCapacity = 1)
+    private val refreshSignals = MutableSharedFlow<VirtualFile?>(
+        extraBufferCapacity = 64,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST
+    )
 
     init {
         logger.info("VCS_CHANGE_LISTENER: Initializing for project ${project.name}")
         ChangeListManager.getInstance(project).addChangeListListener(this, this)
         EditorFactory.getInstance().eventMulticaster.addDocumentListener(this, this)
+        project.messageBus.connect(this).subscribe(GitRepository.GIT_REPO_CHANGE, this)
 
         coroutineScope.launch {
             refreshSignals
-                .collectLatest { file ->
-                    if (project.isDisposed) return@collectLatest
-
-                    val isRepo = file != null && withContext(Dispatchers.IO) {
-                        isRepositoryFile(file)
-                    }
-                    if (file != null && !isRepo) {
-                        logger.debug("VCS_CHANGE_LISTENER: Skipping refresh for non-repository file '${file.path}'.")
-                        return@collectLatest
-                    }
-
-                    logger.info("VCS_CHANGE_LISTENER: Refresh executing.")
+                .filter { file -> file == null || withContext(Dispatchers.IO) { isRepositoryFile(file) } }
+                .debounce(REFRESH_DEBOUNCE)
+                .collect {
+                    if (project.isDisposed) return@collect
+                    logger.debug("VCS_CHANGE_LISTENER: Refresh executing.")
                     refreshCurrentSelection()
                 }
         }
+    }
+
+    override fun repositoryChanged(repository: GitRepository) {
+        logger.debug("VCS_CHANGE_LISTENER: repositoryChanged() detected for '${repository.root.name}', triggering refresh.")
+        triggerRefresh(null)
     }
 
     override fun changeListUpdateDone() {

@@ -1,5 +1,6 @@
 package com.github.uiopak.lstcrc.toolWindow
 
+import com.intellij.ide.util.PropertiesComponent
 import com.intellij.openapi.components.PersistentStateComponent
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.State
@@ -101,6 +102,9 @@ object LstCrcSettingDefinitions {
     )
 
     val intSettings: List<IntSettingDefinition> = listOf(USER_DOUBLE_CLICK_DELAY)
+
+    val allKeys: List<String>
+        get() = stringSettings.map { it.key } + booleanSettings.map { it.key } + intSettings.map { it.key }
 }
 
 @State(name = "LstCrcSettingsService", storages = [Storage("lstCrcSettings.xml")])
@@ -115,6 +119,21 @@ class LstCrcSettingsService : PersistentStateComponent<LstCrcSettingsService.Set
 
     override fun getState(): SettingsState = state
     override fun loadState(state: SettingsState) { this.state = state }
+
+    /**
+     * Earlier plugin versions stored settings in the application-level [PropertiesComponent]
+     * under the same keys. When no settings file exists yet, import those values once so upgrading
+     * users keep their configuration. Legacy keys are left in place so a downgrade still works.
+     */
+    override fun noStateLoaded() {
+        importLegacySettings(PropertiesComponent.getInstance())
+    }
+
+    internal fun importLegacySettings(legacy: PropertiesComponent) {
+        LstCrcSettingDefinitions.allKeys.forEach { key ->
+            legacy.getValue(key)?.takeUnless(String::isBlank)?.let { state.values[key] = it }
+        }
+    }
 
     private fun storedValue(key: String): String? = state.values[key]?.takeUnless(String::isBlank)
 

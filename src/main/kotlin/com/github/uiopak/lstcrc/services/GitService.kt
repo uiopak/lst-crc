@@ -15,6 +15,7 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import com.intellij.openapi.util.text.StringUtil
+import com.intellij.openapi.vcs.FilePath
 import com.intellij.openapi.vcs.FileStatus
 import com.intellij.openapi.vcs.VcsException
 import com.intellij.openapi.vcs.changes.Change
@@ -34,7 +35,6 @@ import git4idea.commands.GitCommand
 import git4idea.commands.GitLineHandler
 import git4idea.repo.GitRepository
 import git4idea.repo.GitRepositoryManager
-import git4idea.GitUtil
 import git4idea.util.GitFileUtils
 import java.nio.charset.Charset
 
@@ -211,7 +211,6 @@ class GitService(private val project: Project) {
         tabInfo: TabInfo?
     ): GetChangesResult {
         val context = ChangeLoadContext()
-        val primaryRevision = tabInfo?.branchName ?: "HEAD"
         for (repo in repositories) {
             val target = resolveComparisonTarget(repo, tabInfo)
             context.comparisonContext[repo.root.path] = target
@@ -219,7 +218,7 @@ class GitService(private val project: Project) {
             val loadedChanges = if (tabInfo == null) {
                 loadLocalChanges(repo)
             } else {
-                loadChangesForTarget(repo, primaryRevision, target, context.failures)
+                loadChangesForTarget(repo, target, context.failures)
             }
             context.allChanges.addAll(loadedChanges.changes)
             context.lineStatsByChange.putAll(loadedChanges.lineStatsByChange)
@@ -227,41 +226,28 @@ class GitService(private val project: Project) {
         return GetChangesResult(buildCategorizedChanges(context.allChanges, context.comparisonContext, context.lineStatsByChange), context.failures)
     }
 
+    /**
+     * Compares the working tree (including untracked files and unsaved documents) of [repo]
+     * against [target]. A per-repository override only changes the target; it is never a
+     * commit-to-commit comparison, so the tree matches what the gutter markers show.
+     */
     private fun loadChangesForTarget(
         repo: GitRepository,
-        primaryRevision: String,
         target: String,
         failures: MutableMap<GitRepository, String>
     ): LoadedChanges {
         repo.update()
+        logLocalComparisonFallback(repo, target)
 
         if (repo.isFresh) {
-            logLocalComparisonFallback(repo, target)
             return loadLocalChanges(repo)
         }
 
-        val primaryRevisionExistsInRepo =
-            target == "HEAD" || target == primaryRevision || revisionExistsInRepo(repo, primaryRevision)
-
-        if (shouldCompareAgainstWorkingTree(primaryRevision, target, primaryRevisionExistsInRepo)) {
-            logLocalComparisonFallback(repo, target)
-            return try {
-                loadChangesAgainstWorkingTree(repo, target)
-            } catch (e: VcsException) {
-                logger.warn(
-                    "git diff (working tree) failed for repo '${repo.root.name}' against target '$target'. " +
-                        "Assuming revision is invalid. Error: ${e.message}"
-                )
-                failures[repo] = target
-                LoadedChanges(emptyList(), emptyMap())
-            }
-        }
-
         return try {
-            loadTrackedChangesBetweenRevisions(repo, primaryRevision, target)
+            loadChangesAgainstWorkingTree(repo, target)
         } catch (e: VcsException) {
             logger.warn(
-                "git diff (between revisions) failed for repo '${repo.root.name}' against target '$target'. " +
+                "git diff failed for repo '${repo.root.name}' against target '$target'. " +
                     "Assuming revision is invalid. Error: ${e.message}"
             )
             failures[repo] = target
@@ -269,44 +255,16 @@ class GitService(private val project: Project) {
         }
     }
 
-    internal fun shouldCompareAgainstWorkingTree(
-        primaryRevision: String,
-        target: String,
-        primaryRevisionExistsInRepo: Boolean = true
-    ): Boolean {
-        return target == "HEAD" || target == primaryRevision || !primaryRevisionExistsInRepo
-    }
-
-    internal fun isExplicitRevisionTarget(target: String): Boolean {
-        return GitUtil.isHashString(target, false)
-    }
-
-    @Suppress("UsePropertyAccessSyntax")
-    private fun revisionExistsInRepo(repo: GitRepository, revision: String): Boolean {
-        val handler = GitLineHandler(project, repo.root, GitCommand.REV_PARSE)
-        handler.setSilent(true)
-        handler.setStdoutSuppressed(true)
-        handler.addParameters("--verify", "--quiet", revision)
-        return Git.getInstance().runCommand(handler).exitCode == 0
-    }
-
     private fun loadChangesAgainstWorkingTree(repo: GitRepository, target: String): LoadedChanges {
         val trackedChanges = loadTrackedChangesAgainstWorkingTree(repo, target)
         return combineWithUntrackedAndUnsaved(repo, target, trackedChanges)
     }
 
-    @Suppress("UsePropertyAccessSyntax")
     private fun loadTrackedChangesAgainstWorkingTree(repo: GitRepository, target: String): LoadedChanges {
-        val handler = GitLineHandler(project, repo.root, GitCommand.DIFF)
-        handler.setSilent(true)
-        handler.setStdoutSuppressed(true)
-        handler.addParameters("--name-status", DIFF_FILTER_PARAM, "-M", target)
-
-        val output = Git.getInstance().runCommand(handler).getOutputOrThrow()
         val targetRevision = GitRevisionNumber(target)
-
-        val changes = output.lineSequence()
-            .mapNotNull { parseWorkingTreeDiffLine(repo, targetRevision, it) }
+        val changes = runGit(repo, GitCommand.DIFF, "--name-status", DIFF_FILTER_PARAM, "-M", target)
+            .lineSequence()
+            .mapNotNull { parseDiffLine(repo, targetRevision, it) }
             .toList()
 
         return LoadedChanges(
@@ -315,44 +273,24 @@ class GitService(private val project: Project) {
         )
     }
 
-    @Suppress("UsePropertyAccessSyntax")
-    private fun loadTrackedChangesBetweenRevisions(
-        repo: GitRepository,
-        baseRevision: String,
-        targetRevision: String
-    ): LoadedChanges {
-        val handler = GitLineHandler(project, repo.root, GitCommand.DIFF)
-        handler.setSilent(true)
-        handler.setStdoutSuppressed(true)
-        handler.addParameters("--name-status", DIFF_FILTER_PARAM, "-M", baseRevision, targetRevision)
-
-        val output = Git.getInstance().runCommand(handler).getOutputOrThrow()
-        val beforeRevision = GitRevisionNumber(baseRevision)
-        val afterRevision = GitRevisionNumber(targetRevision)
-
-        val changes = output.lineSequence()
-            .mapNotNull { parseRevisionDiffLine(repo, beforeRevision, afterRevision, it) }
-            .toList()
-
-        return LoadedChanges(
-            changes = changes,
-            lineStatsByChange = loadTrackedLineStats(repo, changes, baseRevision, targetRevision)
-        )
-    }
-
-    @Suppress("UsePropertyAccessSyntax")
     private fun loadTrackedLineStats(
         repo: GitRepository,
         changes: List<Change>,
-        vararg revisions: String
+        target: String
     ): Map<ChangeLineStatsKey, ChangeLineStats> {
-        val handler = GitLineHandler(project, repo.root, GitCommand.DIFF)
+        if (changes.isEmpty()) return emptyMap()
+        val output = runGit(repo, GitCommand.DIFF, *trackedLineStatsDiffArgs(target).toTypedArray())
+        return parseTrackedLineStats(repo, changes, output.lineSequence())
+    }
+
+    /** Runs a silent git command in [repo] and returns its stdout, throwing [VcsException] on failure. */
+    @Suppress("UsePropertyAccessSyntax")
+    private fun runGit(repo: GitRepository, command: GitCommand, vararg params: String): String {
+        val handler = GitLineHandler(project, repo.root, command)
         handler.setSilent(true)
         handler.setStdoutSuppressed(true)
-        handler.addParameters(*trackedLineStatsDiffArgs(*revisions).toTypedArray())
-
-        val output = Git.getInstance().runCommand(handler).getOutputOrThrow()
-        return parseTrackedLineStats(repo, changes, output.lineSequence())
+        handler.addParameters(*params)
+        return Git.getInstance().runCommand(handler).getOutputOrThrow()
     }
 
     private fun parseTrackedLineStats(
@@ -360,117 +298,46 @@ class GitService(private val project: Project) {
         changes: List<Change>,
         lines: Sequence<String>
     ): Map<ChangeLineStatsKey, ChangeLineStats> {
-        if (changes.isEmpty()) return emptyMap()
-
-        val renameLookup = changes.associate { change ->
-            val key = ChangeLineStatsKey.from(change)
-            key to key
-        }
-        val afterPathLookup = changes
-            .mapNotNull { change ->
-                val afterPath = ChangeLineStatsKey.from(change).afterPath ?: return@mapNotNull null
-                afterPath to ChangeLineStatsKey.from(change)
-            }
-            .toMap()
-        val beforePathLookup = changes
-            .mapNotNull { change ->
-                val beforePath = ChangeLineStatsKey.from(change).beforePath ?: return@mapNotNull null
-                beforePath to ChangeLineStatsKey.from(change)
-            }
-            .toMap()
+        val keys = changes.mapTo(LinkedHashSet(), ChangeLineStatsKey::from)
+        val byAfterPath = keys.filter { it.afterPath != null }.associateBy { it.afterPath!! }
+        val byBeforePath = keys.filter { it.beforePath != null }.associateBy { it.beforePath!! }
 
         return lines.mapNotNull { line ->
-            parseTrackedLineStat(repo, line, renameLookup, afterPathLookup, beforePathLookup)
+            val tokens = line.split('\t')
+            if (tokens.size < 3) return@mapNotNull null
+            val addedLines = tokens[0].toIntOrNull() ?: return@mapNotNull null
+            val removedLines = tokens[1].toIntOrNull() ?: return@mapNotNull null
+            fun path(index: Int) = GitContentRevision.createPathFromEscaped(repo.root, tokens[index]).path
+
+            val key = if (tokens.size >= 4) {
+                ChangeLineStatsKey.fromPaths(path(2), path(3)).takeIf { it in keys }
+            } else {
+                val normalized = path(2).replace('\\', '/')
+                byAfterPath[normalized] ?: byBeforePath[normalized]
+            } ?: return@mapNotNull null
+            key to ChangeLineStats(addedLines = addedLines, removedLines = removedLines)
         }.toMap(linkedMapOf())
     }
 
-    private fun parseTrackedLineStat(
-        repo: GitRepository,
-        line: String,
-        renameLookup: Map<ChangeLineStatsKey, ChangeLineStatsKey>,
-        afterPathLookup: Map<String, ChangeLineStatsKey>,
-        beforePathLookup: Map<String, ChangeLineStatsKey>
-    ): Pair<ChangeLineStatsKey, ChangeLineStats>? {
-        if (line.isBlank()) return null
-
+    /**
+     * Parses one `git diff --name-status <target>` line. The "before" side is [targetRevision],
+     * the "after" side is the current working tree.
+     */
+    private fun parseDiffLine(repo: GitRepository, targetRevision: GitRevisionNumber, line: String): Change? {
         val tokens = line.split('\t')
-        if (tokens.size < 3) return null
+        val parsedStatus = parseDiffStatus(tokens.first()) ?: return null
+        val requiredTokens = if (parsedStatus.changeType == Change.Type.MOVED) 3 else 2
+        if (tokens.size < requiredTokens) return null
 
-        val addedLines = tokens[0].toIntOrNull() ?: return null
-        val removedLines = tokens[1].toIntOrNull() ?: return null
-        val key = if (tokens.size >= 4) {
-            val beforePath = GitContentRevision.createPathFromEscaped(repo.root, tokens[2]).path
-            val afterPath = GitContentRevision.createPathFromEscaped(repo.root, tokens[3]).path
-            renameLookup[ChangeLineStatsKey.fromPaths(beforePath, afterPath)]
-        } else {
-            val path = GitContentRevision.createPathFromEscaped(repo.root, tokens[2]).path
-            afterPathLookup[path.replace('\\', '/')] ?: beforePathLookup[path.replace('\\', '/')]
-        } ?: return null
-
-        return key to ChangeLineStats(addedLines = addedLines, removedLines = removedLines)
-    }
-
-    private fun parseWorkingTreeDiffLine(
-        repo: GitRepository,
-        targetRevision: GitRevisionNumber,
-        line: String
-    ): Change? {
-        return parseDiffLine(
-            repo = repo,
-            line = line,
-            beforeRevisionAt = { path -> GitContentRevision.createRevision(path, targetRevision, project) },
-            afterRevisionAt = { path -> GitContentRevision.createRevision(path, null, project) }
-        )
-    }
-
-    private fun parseRevisionDiffLine(
-        repo: GitRepository,
-        beforeRevisionNumber: GitRevisionNumber,
-        afterRevisionNumber: GitRevisionNumber,
-        line: String
-    ): Change? {
-        return parseDiffLine(
-            repo = repo,
-            line = line,
-            beforeRevisionAt = { path -> GitContentRevision.createRevision(path, beforeRevisionNumber, project) },
-            afterRevisionAt = { path -> GitContentRevision.createRevision(path, afterRevisionNumber, project) }
-        )
-    }
-
-    private fun parseDiffLine(
-        repo: GitRepository,
-        line: String,
-        beforeRevisionAt: (com.intellij.openapi.vcs.FilePath) -> ContentRevision,
-        afterRevisionAt: (com.intellij.openapi.vcs.FilePath) -> ContentRevision
-    ): Change? {
-        if (line.isBlank()) {
-            return null
-        }
-
-        val tokens = line.split('\t')
-        val statusToken = tokens.firstOrNull().orEmpty()
-        val parsedStatus = parseDiffStatus(statusToken) ?: return null
-
-        fun revisionPath(index: Int) = GitContentRevision.createPathFromEscaped(repo.root, tokens[index])
+        fun path(index: Int) = GitContentRevision.createPathFromEscaped(repo.root, tokens[index])
+        fun before(path: FilePath) = GitContentRevision.createRevision(path, targetRevision, project)
+        fun after(path: FilePath) = GitContentRevision.createRevision(path, null, project)
 
         return when (parsedStatus.changeType) {
-            Change.Type.NEW -> {
-                if (tokens.size < 2) return null
-                Change(null, afterRevisionAt(revisionPath(1)), parsedStatus.fileStatus)
-            }
-            Change.Type.DELETED -> {
-                if (tokens.size < 2) return null
-                Change(beforeRevisionAt(revisionPath(1)), null, parsedStatus.fileStatus)
-            }
-            Change.Type.MODIFICATION -> {
-                if (tokens.size < 2) return null
-                val path = revisionPath(1)
-                Change(beforeRevisionAt(path), afterRevisionAt(path), parsedStatus.fileStatus)
-            }
-            Change.Type.MOVED -> {
-                if (tokens.size < 3) return null
-                Change(beforeRevisionAt(revisionPath(1)), afterRevisionAt(revisionPath(2)), parsedStatus.fileStatus)
-            }
+            Change.Type.NEW -> Change(null, after(path(1)), parsedStatus.fileStatus)
+            Change.Type.DELETED -> Change(before(path(1)), null, parsedStatus.fileStatus)
+            Change.Type.MODIFICATION -> path(1).let { Change(before(it), after(it), parsedStatus.fileStatus) }
+            Change.Type.MOVED -> Change(before(path(1)), after(path(2)), parsedStatus.fileStatus)
         }
     }
 

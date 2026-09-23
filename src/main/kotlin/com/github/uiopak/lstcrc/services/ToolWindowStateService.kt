@@ -341,6 +341,8 @@ class ToolWindowStateService(private val project: Project, val coroutineScope: C
 
     fun getSelectedTabInfo(): TabInfo? = selectedTabInfo(myState)
 
+    fun isHeadSelected(): Boolean = myState.let { it.selectedTabIndex == -1 || it.openTabs.isEmpty() }
+
     fun findTabIndex(branchName: String): Int {
         return findTabIndex { it.branchName == branchName }
     }

@@ -88,24 +88,13 @@ class LstCrcStatusWidget(private val project: Project) : StatusBarWidget, Status
      */
     override fun getText(): String {
         if (project.isDisposed) return ""
-        val state = project.service<ToolWindowStateService>().state
-        return selectedTabDisplayText(state)
-    }
-
-    private fun selectedTabDisplayText(state: ToolWindowState): String {
-        val showContext = ToolWindowSettingsProvider.isShowWidgetContext()
-        val prefix = if (showContext) LstCrcBundle.message("widget.context.prefix") else ""
-        val selectedTab = selectedOpenTab(state)
-
-        return when {
-            state.selectedTabIndex == -1 || state.openTabs.isEmpty() -> LstCrcBundle.message("tab.name.head")
-            selectedTab != null -> prefix + selectedTab.displayName.take(20)
-            else -> LstCrcBundle.message("plugin.name.short")
-        }
-    }
-
-    private fun selectedOpenTab(state: ToolWindowState): TabInfo? {
-        return state.openTabs.getOrNull(state.selectedTabIndex)
+        // Read the live selection rather than `state`, which deep-copies all tabs on every status bar repaint.
+        val stateService = project.service<ToolWindowStateService>()
+        val selectedTab = stateService.getSelectedTabInfo() ?: return LstCrcBundle.message(
+            if (stateService.isHeadSelected()) "tab.name.head" else "plugin.name.short"
+        )
+        val prefix = if (ToolWindowSettingsProvider.isShowWidgetContext()) LstCrcBundle.message("widget.context.prefix") else ""
+        return prefix + selectedTab.displayName.take(20)
     }
 
 

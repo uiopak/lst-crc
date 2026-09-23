@@ -165,16 +165,11 @@ class ProjectActiveDiffDataService(private val project: Project) : Disposable {
         }
     }
 
+    /** `fileStatusesChanged()` invalidates every cached status, so per-file notifications would be redundant. */
     private fun notifyAffectedFiles(affectedFiles: Set<VirtualFile>) {
         if (affectedFiles.isEmpty()) return
-        val fileStatusManager = FileStatusManager.getInstance(project)
         logger.debug("EDT: Notifying FileStatusManager for ${affectedFiles.size} affected files.")
-        fileStatusManager.fileStatusesChanged()
-        affectedFiles.forEach { file ->
-            if (file.isValid) {
-                fileStatusManager.fileStatusChanged(file)
-            }
-        }
+        FileStatusManager.getInstance(project).fileStatusesChanged()
     }
 
     /** Must be called on EDT. */

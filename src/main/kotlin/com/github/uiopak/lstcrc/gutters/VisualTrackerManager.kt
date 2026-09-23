@@ -20,7 +20,6 @@ import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.fileEditor.FileEditorManagerEvent
 import com.intellij.openapi.fileEditor.FileEditorManagerListener
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.util.Disposer
 
 import com.intellij.openapi.vcs.FileStatusManager
 import com.intellij.openapi.vcs.VcsException
@@ -31,9 +30,11 @@ import com.intellij.openapi.vcs.ex.SimpleLocalLineStatusTracker
 import com.intellij.openapi.vcs.impl.LineStatusTrackerManager
 import com.intellij.openapi.vfs.VirtualFile
 import git4idea.repo.GitRepository
+import git4idea.repo.GitRepositoryChangeListener
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.coroutines.CoroutineContext
@@ -61,7 +62,14 @@ class VisualTrackerManager(
 
     private val logger = thisLogger()
     private val visualTrackers = ConcurrentHashMap<Document, SimpleLocalLineStatusTracker>()
-    private val updateJobs = ConcurrentHashMap<Document, kotlinx.coroutines.Job>()
+    private val updateJobs = ConcurrentHashMap<Document, Job>()
+
+    /**
+     * The target revision each visual tracker's base content was loaded for (or is loading).
+     * Lets tab switches and edit-driven refreshes skip `git show` when nothing relevant changed.
+     * Cleared on any repository change, because a branch or HEAD may now point elsewhere.
+     */
+    private val loadedRevisions = ConcurrentHashMap<Document, String>()
 
     private fun isExpectedMissingFileInRevision(message: String?): Boolean {
         if (message.isNullOrBlank()) return false
@@ -86,14 +94,14 @@ class VisualTrackerManager(
             }
 
             override fun onTrackerRemoved(tracker: LineStatusTracker<*>) {
-                val document = tracker.document
-                updateJobs.remove(document)?.cancel()
-                val visualTracker = visualTrackers.remove(document)
-                if (visualTracker != null) {
-                    logger.debug("VISUAL_TRACKER: Native tracker removed for ${tracker.virtualFile.name}. Releasing visual tracker.")
-                    visualTracker.release()
+                if (releaseVisualTracker(tracker.document)) {
+                    logger.debug("VISUAL_TRACKER: Native tracker removed for ${tracker.virtualFile.name}. Released visual tracker.")
                 }
             }
+        })
+
+        busConnection.subscribe(GitRepository.GIT_REPO_CHANGE, GitRepositoryChangeListener {
+            loadedRevisions.clear()
         })
 
         // Listen for Diff Data changes (Tab switching)
@@ -274,7 +282,7 @@ class VisualTrackerManager(
                 if (nativeTracker != null) {
                     performInterception(nativeTracker, targetRevision)
                 } else {
-                    performStandaloneInterception(document, file, targetRevision)
+                    ensureVisualTracker(document, file, targetRevision)
                 }
             } else {
                 if (nativeTracker != null) {
@@ -287,27 +295,24 @@ class VisualTrackerManager(
     }
 
     private fun restoreNativeTracker(nativeTracker: LocalLineStatusTracker<*>) {
-        val document = nativeTracker.document
-        updateJobs.remove(document)?.cancel()
-        
-        // Only act if we actually have something to clean up
-        if (visualTrackers.containsKey(document)) {
-            val file = nativeTracker.virtualFile
-            logger.debug("VISUAL_TRACKER: Restoring Native Tracker for ${file.name}. Removing visual markers.")
-
-            // 1. Remove Visual Tracker
-            val visualTracker = visualTrackers.remove(document)
-            visualTracker?.release()
-
-            // 2. Un-hide Native Tracker
-            // Assuming standard trackers are visible by default. 
-            // We set the mode back to a state where it shows gutters.
+        // Only act if we actually had a visual tracker for this document.
+        if (releaseVisualTracker(nativeTracker.document)) {
+            logger.debug("VISUAL_TRACKER: Restored native tracker for ${nativeTracker.virtualFile.name}.")
             nativeTracker.mode = LocalLineStatusTracker.Mode(
                 isVisible = true,
                 showErrorStripeMarkers = true,
                 detectWhitespaceChangedLines = true
             )
         }
+    }
+
+    /** Cancels any pending load and releases the visual tracker for [document]. Returns true if one existed. */
+    private fun releaseVisualTracker(document: Document): Boolean {
+        updateJobs.remove(document)?.cancel()
+        loadedRevisions.remove(document)
+        val visualTracker = visualTrackers.remove(document) ?: return false
+        visualTracker.release()
+        return true
     }
 
     private fun resolveTargetRevision(file: VirtualFile): String? {
@@ -352,7 +357,7 @@ class VisualTrackerManager(
             return false
         }
 
-        return diffDataService.createdFiles.contains(file)
+        return file.path in diffDataService.createdFilePaths
     }
 
     private fun createVisualTracker(document: Document, file: VirtualFile): SimpleLocalLineStatusTracker {
@@ -363,13 +368,12 @@ class VisualTrackerManager(
             showErrorStripeMarkers = true,
             detectWhitespaceChangedLines = true
         )
-        Disposer.register(this) { tracker.release() }
         return tracker
     }
 
     private fun performInterception(nativeTracker: LocalLineStatusTracker<*>, targetRevision: String) {
         val file = nativeTracker.virtualFile
-        
+
         // 1. Hide Native Tracker (Idempotent)
         nativeTracker.mode = LocalLineStatusTracker.Mode(
             isVisible = false,
@@ -377,77 +381,50 @@ class VisualTrackerManager(
             detectWhitespaceChangedLines = false
         )
 
-        val document = nativeTracker.document
-        
-        // 2. Ensure Visual Tracker Exists
-        val visualTracker = visualTrackers.computeIfAbsent(document) {
-            logger.debug("VISUAL_TRACKER: Creating Visual Tracker for ${file.name}")
-            createVisualTracker(document, file)
-        }
-
-        // 3. Update Content using the PRE-RESOLVED targetRevision
-        val oldJob = updateJobs.remove(document)
-        oldJob?.cancel()
-
-        val newJob = coroutineScope.launch {
-            try {
-                val content = loadTargetContent(file, targetRevision)
-                withContext(dispatchers.ui) {
-                    if (visualTrackers[document] === visualTracker) {
-                        visualTracker.setBaseRevision(content)
-                    }
-                }
-            } finally {
-                updateJobs.remove(document, coroutineContext[kotlinx.coroutines.Job])
-            }
-        }
-        updateJobs[document] = newJob
+        ensureVisualTracker(nativeTracker.document, file, targetRevision)
     }
 
-    private fun performStandaloneInterception(document: Document, file: VirtualFile, targetRevision: String) {
+    /**
+     * Makes sure [document] has a visual tracker whose base content is [targetRevision].
+     * Skips the git lookup when that revision is already loaded or loading.
+     */
+    private fun ensureVisualTracker(document: Document, file: VirtualFile, targetRevision: String) {
         val visualTracker = visualTrackers.computeIfAbsent(document) {
-            logger.debug("VISUAL_TRACKER: Creating standalone visual tracker for ${file.name}")
+            logger.debug("VISUAL_TRACKER: Creating visual tracker for ${file.name}")
             createVisualTracker(document, file)
         }
+        if (loadedRevisions.put(document, targetRevision) == targetRevision) return
 
-        val oldJob = updateJobs.remove(document)
-        oldJob?.cancel()
-
-        val newJob = coroutineScope.launch {
+        updateJobs.remove(document)?.cancel()
+        updateJobs[document] = coroutineScope.launch {
             try {
                 val content = loadTargetContent(file, targetRevision)
+                if (content == null) loadedRevisions.remove(document, targetRevision)
+                val baseContent = content ?: readActionBlocking { document.text }
                 withContext(dispatchers.ui) {
                     if (visualTrackers[document] === visualTracker) {
-                        visualTracker.setBaseRevision(content)
+                        visualTracker.setBaseRevision(baseContent)
                     }
                 }
             } finally {
-                updateJobs.remove(document, coroutineContext[kotlinx.coroutines.Job])
+                updateJobs.remove(document, coroutineContext[Job])
             }
         }
-        updateJobs[document] = newJob
     }
 
     private fun restoreStandaloneTracker(document: Document, file: VirtualFile) {
-        updateJobs.remove(document)?.cancel()
-        if (visualTrackers.containsKey(document)) {
-            logger.debug("VISUAL_TRACKER: Releasing standalone visual tracker for ${file.name}.")
-            visualTrackers.remove(document)?.release()
+        if (releaseVisualTracker(document)) {
+            logger.debug("VISUAL_TRACKER: Released standalone visual tracker for ${file.name}.")
         }
     }
 
-    private suspend fun loadTargetContent(file: VirtualFile, revision: String?): CharSequence {
-        suspend fun fallbackContent(): CharSequence =
-            readActionBlocking { FileDocumentManager.getInstance().getDocument(file)?.text ?: "" }
-
-        if (revision == null) {
-            return fallbackContent()
-        }
-
-        // Optimization: If a file is explicitly new in our diff data, return empty immediately.
-        // This avoids an unnecessary Git lookup that would throw/fail anyway.
-        val isNewFile = project.service<ProjectActiveDiffDataService>().createdFiles.contains(file)
-        if (isNewFile) {
+    /**
+     * Loads [file]'s content at [revision]. Returns "" when the file does not exist there,
+     * or null when loading failed (the caller then shows no changes and retries next refresh).
+     */
+    private suspend fun loadTargetContent(file: VirtualFile, revision: String): CharSequence? {
+        // A file that is new in the comparison has no content in the target revision.
+        if (file.path in project.service<ProjectActiveDiffDataService>().createdFilePaths) {
             return ""
         }
 
@@ -455,23 +432,13 @@ class VisualTrackerManager(
         return withContext(dispatchers.io) {
             try {
                 gitService.getFileContentForRevision(revision, file)
-                    ?: return@withContext fallbackContent()
-            } catch (e: VcsException) {
-                if (isExpectedMissingFileInRevision(e.message)) {
-                    ""
-                } else {
-                    logger.warn("VISUAL_TRACKER: Failed to load content for ${file.path}. VcsException Error: ${e.message}")
-                    fallbackContent()
-                }
             } catch (e: Exception) {
-                // Defensive fallback for unexpected non-VcsException errors
-                val rootCause = generateSequence<Throwable>(e) { it.cause }
-                    .firstOrNull { it is VcsException } as? VcsException
-                if (rootCause != null && isExpectedMissingFileInRevision(rootCause.message)) {
+                val vcsError = generateSequence<Throwable>(e) { it.cause }.firstOrNull { it is VcsException }
+                if (isExpectedMissingFileInRevision(vcsError?.message)) {
                     ""
                 } else {
-                    logger.warn("VISUAL_TRACKER: Failed to load content for ${file.path}. Unexpected Error: ${(rootCause ?: e).message}")
-                    fallbackContent()
+                    logger.warn("VISUAL_TRACKER: Failed to load content for ${file.path}: ${(vcsError ?: e).message}")
+                    null
                 }
             }
         }
@@ -480,6 +447,7 @@ class VisualTrackerManager(
     override fun dispose() {
         updateJobs.values.forEach { it.cancel() }
         updateJobs.clear()
+        loadedRevisions.clear()
         visualTrackers.values.forEach { tracker ->
             try {
                 tracker.release()

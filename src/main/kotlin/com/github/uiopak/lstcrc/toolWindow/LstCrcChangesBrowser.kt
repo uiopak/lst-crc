@@ -51,16 +51,10 @@ import com.intellij.ui.render.RenderingHelper
 import com.intellij.ui.treeStructure.Tree
 import com.intellij.util.ui.JBUI
 import javax.swing.plaf.basic.BasicTreeUI
-import git4idea.repo.GitRepository
-import git4idea.repo.GitRepositoryChangeListener
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.flow.collectLatest
-import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.time.Duration.Companion.milliseconds
@@ -79,12 +73,11 @@ import javax.swing.event.TreeModelListener
  * highly customized mouse click handling based on user settings.
  */
 @Suppress("JComponentDataProvider")
-@OptIn(FlowPreview::class)
 class LstCrcChangesBrowser(
     private val project: Project,
     private val targetBranchToCompare: String,
     parentDisposable: Disposable
-) : AsyncChangesBrowserBase(project, false, true), Disposable, GitRepositoryChangeListener, UiDataProvider {
+) : AsyncChangesBrowserBase(project, false, true), Disposable, UiDataProvider {
 
 
     private companion object {
@@ -138,8 +131,7 @@ class LstCrcChangesBrowser(
     }
 
     private val logger = thisLogger()
-    private val debounceScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-    private val repositoryChangeSignals = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    private val clickScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     // This field will hold the changes and context for the async tree model builder.
     private var currentChanges: CategorizedChanges? = null
@@ -178,20 +170,6 @@ class LstCrcChangesBrowser(
         // Preserve user expansion/collapse state while still revealing newly added nodes.
         viewer.treeStateStrategy = ExpandNewNodesStateStrategy()
 
-        debounceScope.launch {
-            repositoryChangeSignals
-                .debounce(100.milliseconds)
-                .collectLatest {
-                    if (!project.isDisposed) {
-                        withContext(Dispatchers.EDT) {
-                            if (!project.isDisposed) {
-                                requestRefreshData()
-                            }
-                        }
-                    }
-                }
-        }
-
         viewer.setCellRenderer(
             RepoNodeRenderer(
                 project,
@@ -204,7 +182,6 @@ class LstCrcChangesBrowser(
         viewer.emptyText.text = LstCrcBundle.message("changes.browser.loading")
         
         val connection = project.messageBus.connect(this)
-        connection.subscribe(GitRepository.GIT_REPO_CHANGE, this)
         connection.subscribe(DIFF_DATA_CHANGED_TOPIC, object : ActiveDiffDataChangedListener {
             override fun onDiffDataChanged() {
                 if (project.isDisposed) return
@@ -721,20 +698,9 @@ class LstCrcChangesBrowser(
         }
     }
 
-    override fun repositoryChanged(repository: GitRepository) {
-        if (repository.project == project) {
-            logger.debug("GIT_REPO_CHANGE: repositoryChanged event received in browser, triggering debounced refresh.")
-            triggerDebouncedDataRefresh()
-        }
-    }
-
-    private fun triggerDebouncedDataRefresh() {
-        repositoryChangeSignals.tryEmit(Unit)
-    }
-
     override fun dispose() {
         pendingClickJob?.cancel()
-        debounceScope.cancel()
+        clickScope.cancel()
         shutdown()
         logger.info("LstCrcChangesBrowser for branch '$targetBranchToCompare' disposed.")
     }
@@ -777,7 +743,7 @@ class LstCrcChangesBrowser(
             // Otherwise, delay to see if a double click comes
             val delayMs = ToolWindowSettingsProvider.getUserDoubleClickDelayMs().toLong()
             pendingClickJob?.cancel()
-            pendingClickJob = debounceScope.launch {
+            pendingClickJob = clickScope.launch {
                 kotlinx.coroutines.delay(delayMs.milliseconds)
                 withContext(Dispatchers.EDT) {
                     performConfiguredAction(change, singleAction)

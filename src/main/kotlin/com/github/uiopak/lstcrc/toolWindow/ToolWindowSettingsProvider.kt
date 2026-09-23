@@ -17,8 +17,7 @@ import javax.swing.UIManager
 /**
  * Provides the actions for the tool window's "gear" (options) menu. This class centralizes
  * all user-configurable settings. Values are read and written through [LstCrcSettingsService],
- * which persists them in application-level state and mirrors legacy PropertiesComponent keys
- * during the staged migration.
+ * which persists them in application-level state.
  */
 object ToolWindowSettingsProvider {
 
