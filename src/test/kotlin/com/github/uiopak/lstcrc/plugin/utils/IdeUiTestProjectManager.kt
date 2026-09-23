@@ -97,7 +97,7 @@ fun RemoteRobot.createFreshProjectFromWelcomeScreen() {
                                 const existingEntries = rootModel.getContentEntries();
                                 let hasProjectRoot = false;
                                 for (let i = 0; i < existingEntries.length; i++) {
-                                    const entryFile = existingEntries[i].getFile();
+                                    var entryFile = existingEntries[i].getFile();
                                     if (entryFile != null && entryFile.equals(projectRoot)) {
                                         hasProjectRoot = true;
                                         break;

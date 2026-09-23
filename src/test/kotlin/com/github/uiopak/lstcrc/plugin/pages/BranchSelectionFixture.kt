@@ -86,7 +86,7 @@ class BranchSelectionFixture(remoteRobot: RemoteRobot, remoteComponent: RemoteCo
                         if (!root.getComponents) return null;
                         const children = root.getComponents();
                         for (let i = 0; i < children.length; i++) {
-                            const match = findComponent(children[i], classNameSuffix);
+                            var match = findComponent(children[i], classNameSuffix);
                             if (match != null) return match;
                         }
                         return null;

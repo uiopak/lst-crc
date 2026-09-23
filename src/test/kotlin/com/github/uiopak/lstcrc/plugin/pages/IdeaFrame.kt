@@ -419,7 +419,7 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
                     if (manager) {
                         const allEditors = manager.getAllEditors();
                         for (let i = 0; i < allEditors.length; i++) {
-                            const editor = allEditors[i];
+                            var editor = allEditors[i];
                             if (editor.getClass().getName().toLowerCase().includes("diff")) {
                                 return true;
                             }
@@ -427,10 +427,10 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
 
                         const openFiles = manager.getOpenFiles();
                         for (let i = 0; i < openFiles.length; i++) {
-                            const file = openFiles[i];
-                            const className = file.getClass().getName();
-                            const fileType = file.getFileType();
-                            const fileTypeName = fileType ? fileType.getName() : "";
+                            var file = openFiles[i];
+                            var className = file.getClass().getName();
+                            var fileType = file.getFileType();
+                            var fileTypeName = fileType ? fileType.getName() : "";
                             if (className.toLowerCase().includes("diff") || fileTypeName.toLowerCase().includes("diff")) {
                                 return true;
                             }
@@ -439,7 +439,7 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
 
                     const windows = java.awt.Window.getWindows();
                     for (let i = 0; i < windows.length; i++) {
-                        const window = windows[i];
+                        var window = windows[i];
                         if (!window.isShowing()) continue;
                         if (window.getClass().getName().toLowerCase().includes("diff")) {
                             return true;
@@ -616,8 +616,8 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
                         for (let x = Math.max(1, statusBarComponent.getWidth() - 2); x >= 1; x -= step) {
                             var widgetProbeCandidate = javax.swing.SwingUtilities.getDeepestComponentAt(statusBarComponent, x, probeY);
                             if (!widgetProbeCandidate || !widgetProbeCandidate.isShowing || !widgetProbeCandidate.isShowing()) continue;
-                            const text = safeText(widgetProbeCandidate);
-                            const tooltip = safeTooltip(widgetProbeCandidate);
+                            var text = safeText(widgetProbeCandidate);
+                            var tooltip = safeTooltip(widgetProbeCandidate);
                             let score = 0;
                             if (widgetText.length > 0 && text === widgetText) score += 100;
                             else if (widgetText.length > 0 && text.indexOf(widgetText) >= 0) score += 50;
@@ -1026,7 +1026,7 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
                         if (!paths) return "";
                         const items = [];
                         const it = paths.iterator();
-                        while (it.hasNext()) { const p = String(it.next()); items.push(p); }
+                        while (it.hasNext()) { var p = String(it.next()); items.push(p); }
                         items.sort();
                         return items.join(",");
                     }
@@ -1244,7 +1244,7 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
                     if (openTabs && displayName.length > 0) {
                         const tabsIterator = openTabs.iterator();
                         while (tabsIterator.hasNext()) {
-                            const candidate = tabsIterator.next();
+                            var candidate = tabsIterator.next();
                             if (candidate.getBranchName() === displayName || candidate.getAlias() === displayName) {
                                 tabInfo = candidate;
                                 break;
@@ -1257,7 +1257,7 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
                     const entries = [];
                     const entriesIterator = tabInfo.getComparisonMap().entrySet().iterator();
                     while (entriesIterator.hasNext()) {
-                        const entry = entriesIterator.next();
+                        var entry = entriesIterator.next();
                         entries.push(entry.getKey() + "=" + entry.getValue());
                     }
                     entries.sort();

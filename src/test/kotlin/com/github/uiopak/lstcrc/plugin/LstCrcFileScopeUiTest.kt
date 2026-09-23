@@ -85,7 +85,7 @@ class LstCrcFileScopeUiTest : LstCrcUiTestSupport() {
                                     function findBySuffix(files, suffix) {
                                         if (!files) return null;
                                         for (let i = 0; i < files.size(); i++) {
-                                            const candidate = files.get(i);
+                                            var candidate = files.get(i);
                                             if (String(candidate.getPath()).endsWith("/" + suffix) || String(candidate.getPath()).endsWith("\\" + suffix)) {
                                                 return candidate;
                                             }
