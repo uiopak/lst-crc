@@ -1,6 +1,6 @@
 # File Catalog
 
-This document lists each current `src/main` file separately and explains why it exists, what role it performs, and what it depends on. That includes the IDE Starter test bridge file, which lives under `src/main` for service discovery but is excluded from ordinary main builds unless `starterUiTest` or `includeTestBridge` enables it.
+This document lists each current `src/main` file separately and explains why it exists, what role it performs, and what it depends on. IDE Starter bridge code lives under `src/testBridge` and is included only for `starterUiTest` / `starterPerformanceTest` (or when `-PincludeTestBridge=true` is passed).
 
 ## Entry And Resource Files
 
@@ -48,18 +48,6 @@ This document lists each current `src/main` file separately and explains why it 
 - Connected to: `ToolWindowHelper`, `MyToolWindowFactory`, `LstCrcStatusWidget`, and `RenameTabAction`.
 - Why it exists: It keeps tab metadata type-safe and avoids ad-hoc string keys.
 
-### RevisionUtils.kt
-- Role: Small utility for deciding whether a revision string looks like a Git commit hash.
-- Depends on: Kotlin string logic only.
-- Connected to: `ToolWindowStateService` branch-failure handling and `RepoNodeRenderer` context-display logic.
-- Why it exists: The plugin needs one consistent definition of commit-like revisions to avoid wrong failure handling and noisy UI labels.
-
-### TreeUtils.kt
-- Role: Tree-click helper that resolves a `TreePath` only when the mouse is actually over a visible row.
-- Depends on: Swing tree APIs.
-- Connected to: `LstCrcChangesBrowser` and `BranchSelectionPanel` mouse handling.
-- Why it exists: It prevents clicks on whitespace from being treated like clicks on tree nodes.
-
 ## Listeners And State
 
 ### PluginStartupActivity.kt
@@ -101,9 +89,9 @@ This document lists each current `src/main` file separately and explains why it 
 - Why it exists: The plugin needs one shared cache so every surface reads the same active diff instead of recomputing Git state.
 
 ### ToolWindowStateService.kt
-- Role: Main orchestration service for tab state, refresh sequencing, persistence, notifications, and active-browser updates.
-- Depends on: `PersistentStateComponent`, `GitService`, `ProjectActiveDiffDataService`, notifications, settings, and tool-window APIs.
-- Connected to: Almost every runtime surface, especially the factory, widget, actions, and active-diff consumers.
+- Role: Main orchestration service for tab state, refresh sequencing, persistence, and notifications. Acts as a pure data pipeline that always pushes real changes into `ProjectActiveDiffDataService`, regardless of the `Include HEAD in scopes` setting.
+- Depends on: `PersistentStateComponent`, `GitService`, `ProjectActiveDiffDataService`, notifications, and tool-window APIs.
+- Connected to: Almost every runtime surface, especially the factory, widget, actions, and active-diff consumers. The browser is no longer updated directly; it reacts to `DIFF_DATA_CHANGED_TOPIC`.
 - Why it exists: The plugin needs one authoritative owner for tab lifecycle and refresh ordering.
 
 ### VfsListenerService.kt
@@ -115,8 +103,8 @@ This document lists each current `src/main` file separately and explains why it 
 ## Scope And Search Integration
 
 ### FileStatusScopes.kt
-- Role: Definitions for created, modified, moved, deleted, and changed scopes backed by the active-diff cache.
-- Depends on: `ProjectActiveDiffDataService`, `LstCrcBundle`, `NamedScope`, `PackageSetBase`, and `VcsVirtualFile` handling.
+- Role: Definitions for created, modified, moved, deleted, and changed scopes backed by the active-diff cache. Independently checks `ToolWindowSettingsProvider.isIncludeHeadInScopes()` to exclude HEAD data from scopes when the setting is disabled.
+- Depends on: `ProjectActiveDiffDataService`, `ToolWindowSettingsProvider`, `LstCrcBundle`, `NamedScope`, `PackageSetBase`, and `VcsVirtualFile` handling.
 - Connected to: `LstCrcScopeProvider`, `LstCrcSearchScopeProvider` for the non-deleted search scopes, `LstCrcChangesBrowser` for deleted-file coloring, and IDE scope consumers.
 - Why it exists: The plugin exposes the active comparison as reusable IDE named scopes, not just as a custom tree. The `Changed` scope intentionally excludes deleted files.
 
@@ -128,15 +116,9 @@ This document lists each current `src/main` file separately and explains why it 
 
 ### LstCrcSearchScopeProvider.kt
 - Role: `SearchScopeProvider` that wraps the plugin scopes for Find/Search scope pickers.
-- Depends on: `LstCrcProvidedScopes`, `NamedScopeWrapper`, and `NamedScopeManager`.
-- Connected to: Find/Search UI and `NamedScopeWrapper`.
+- Depends on: `LstCrcProvidedScopes`, `NamedScopeManager`, and `GlobalSearchScopesCore.filterScope(...)`.
+- Connected to: Find/Search UI and platform search-scope infrastructure.
 - Why it exists: Search-scope integration is a separate platform extension point from custom scope registration, and this provider re-exposes the same named-scope data for Find/Search UI. It intentionally exposes only created, modified, moved, and changed. Deleted files remain available only as a named scope because the current search integration path does not enumerate those revision-backed virtual files correctly.
-
-### NamedScopeWrapper.kt
-- Role: Adapter that turns a `NamedScope` into a `GlobalSearchScope` suitable for search UIs.
-- Depends on: `GlobalSearchScope`, `NamedScope`, `PackageSetBase`, `NamedScopeManager`, and PSI fallback lookup.
-- Connected to: `LstCrcSearchScopeProvider` and search infrastructure.
-- Why it exists: The plugin needs custom behavior, especially library exclusion, beyond the default platform wrapper shape.
 
 ## Gutter And Visual Tracking
 
@@ -156,9 +138,9 @@ This document lists each current `src/main` file separately and explains why it 
 
 ### ExpandNewNodesStateStrategy.kt
 - Role: Tree-state strategy that preserves user expansion state while auto-expanding parents of newly added changes.
-- Depends on: Changes-tree state APIs and `TreeUtil`.
+- Depends on: Changes-tree state APIs, `TreeUtil`, `VirtualFile`, `FilePath`, and `File` for typed node identity resolution.
 - Connected to: `LstCrcChangesBrowser` tree rebuilding.
-- Why it exists: The browser needs to surface newly introduced files without discarding the user's manual tree state.
+- Why it exists: The browser needs to surface newly introduced files without discarding the user's manual tree state, and it must restore selection without `TreeState.applyTo()` so offscreen selections do not recenter the viewport.
 
 ### BranchSelectionPanel.kt
 - Role: Searchable tree UI for choosing a branch or revision target.
@@ -167,9 +149,9 @@ This document lists each current `src/main` file separately and explains why it 
 - Why it exists: Branch selection is a real workflow of its own and needs a reusable, testable UI component.
 
 ### LstCrcChangesBrowser.kt
-- Role: Main per-tab changes browser that renders categorized changes, configures gestures, and integrates toolbars, renderers, and repository refresh handling.
-- Depends on: `AsyncChangesBrowserBase`, tree models, `ToolWindowSettingsProvider`, diff actions, `RepoNodeRenderer`, and `ExpandNewNodesStateStrategy`.
-- Connected to: `ToolWindowStateService`, `ToolWindowHelper`, test bridge helpers, and active repository refreshes.
+- Role: Main per-tab changes browser that renders categorized changes, configures gestures, and integrates toolbars, renderers, and repository refresh handling. Reactively subscribes to `DIFF_DATA_CHANGED_TOPIC` to update its display instead of being called directly by `ToolWindowStateService`.
+- Depends on: `AsyncChangesBrowserBase`, tree models, `ToolWindowSettingsProvider`, `ProjectActiveDiffDataService`, `DIFF_DATA_CHANGED_TOPIC`, diff actions, `RepoNodeRenderer`, and `ExpandNewNodesStateStrategy`. Uses coroutine-based debouncing for configurable click handling.
+- Connected to: `ToolWindowHelper`, test bridge helpers, and active repository refreshes.
 - Why it exists: It is the primary user-facing comparison UI and the place where active diff data becomes an interactive tree.
 
 ### MyToolWindowFactory.kt
@@ -186,7 +168,7 @@ This document lists each current `src/main` file separately and explains why it 
 
 ### ToolWindowSettingsProvider.kt
 - Role: Central settings holder and gear-menu builder for click behavior, gutter options, context visibility, widget display, and scope-related toggles.
-- Depends on: `PropertiesComponent`, toggle-action APIs, message bus, and a few tool-window internals for title visibility.
+- Depends on: `LstCrcSettingsService`, toggle-action APIs, message bus, and a few tool-window internals for title visibility.
 - Connected to: `MyToolWindowFactory`, `VisualTrackerManager`, `LstCrcChangesBrowser`, `LstCrcStatusWidget`, and the UI test bridge.
 - Why it exists: The plugin exposes many interaction toggles and needs one authoritative settings source.
 
@@ -238,4 +220,4 @@ This document lists each current `src/main` file separately and explains why it 
 - Role: Application-level bridge that exposes plugin state and operations to IDE Starter UI tests.
 - Depends on: Core plugin services, editors, scopes, VCS services, and test-only path helpers.
 - Connected to: IDE Starter remote test clients and UI-test task wiring.
-- Why it exists: The plugin's advanced UI flows need reliable programmatic hooks during automated UI testing. It is kept under `src/main` for IDE Starter service discovery, but ordinary main builds exclude it unless `starterUiTest` or `includeTestBridge` enables it.
+- Why it exists: The plugin's advanced UI flows need reliable programmatic hooks during automated UI testing. It is implemented in `src/testBridge` and wired into `main` source only for starter test tasks or explicit `-PincludeTestBridge=true` runs.

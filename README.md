@@ -1,51 +1,42 @@
-# lst-crc
+# LST-CRC
 
 ![Build](https://github.com/uiopak/lst-crc/workflows/Build/badge.svg)
-[![Version](https://img.shields.io/jetbrains/plugin/v/MARKETPLACE_ID.svg)](https://plugins.jetbrains.com/plugin/MARKETPLACE_ID)
-[![Downloads](https://img.shields.io/jetbrains/plugin/d/MARKETPLACE_ID.svg)](https://plugins.jetbrains.com/plugin/MARKETPLACE_ID)
 
-## Template ToDo list
-- [x] Create a new [IntelliJ Platform Plugin Template][template] project.
-- [ ] Get familiar with the [template documentation][template].
-- [ ] Adjust the [pluginGroup](./gradle.properties) and [pluginName](./gradle.properties), as well as the [id](./src/main/resources/META-INF/plugin.xml) and [sources package](./src/main/kotlin).
-- [ ] Adjust the plugin description in `README` (see [Tips][docs:plugin-description])
-- [ ] Review the [Legal Agreements](https://plugins.jetbrains.com/docs/marketplace/legal-agreements.html?from=IJPluginTemplate).
-- [ ] [Publish a plugin manually](https://plugins.jetbrains.com/docs/intellij/publishing-plugin.html?from=IJPluginTemplate) for the first time.
-- [ ] Set the `MARKETPLACE_ID` in the above README badges. You can get it once the plugin is published to JetBrains Marketplace.
-- [ ] Set the [Plugin Signing](https://plugins.jetbrains.com/docs/intellij/plugin-signing.html?from=IJPluginTemplate) related [secrets](https://github.com/JetBrains/intellij-platform-plugin-template#environment-variables).
-- [ ] Set the [Deployment Token](https://plugins.jetbrains.com/docs/marketplace/plugin-upload.html?from=IJPluginTemplate).
-- [ ] Click the <kbd>Watch</kbd> button on the top of the [IntelliJ Platform Plugin Template][template] to be notified about releases containing new features and fixes.
+LST-CRC is an IntelliJ Platform plugin that keeps one active Git comparison in sync across a dedicated changes tool window, IDE named scopes, search scopes, a status bar widget, and custom gutter overlays.
 
 <!-- Plugin description -->
-This Fancy IntelliJ Platform Plugin is going to be your implementation of the brilliant ideas that you have.
+LST-CRC adds a comparison-focused Git workflow to the IDE.
 
-This specific section is a source for the [plugin.xml](/src/main/resources/META-INF/plugin.xml) file which will be extracted by the [Gradle](/build.gradle.kts) during the build process.
+With it, you can compare the current working tree against `HEAD`, branches, or specific revisions in a dedicated tool window, keep multiple comparison tabs open, and expose the active comparison through IDE scopes, search scopes, a status bar widget, and custom gutter markers.
 
-To keep everything working, do not remove `<!-- ... -->` sections. 
+The plugin is built for branch-heavy and multi-repository work where the current question is not only "what changed from HEAD?" but "what changed against this exact branch or revision target?"
 <!-- Plugin description end -->
+
+## Highlights
+
+- Compare the working tree against `HEAD`, branch tips, or Git Log revisions.
+- Keep multiple comparison tabs open, including per-tab aliases and per-repository overrides.
+- Reuse the active comparison in named scopes, Find/Search scopes, the status bar widget, and gutter overlays.
+- Surface repository-specific comparison context directly in the changes tree.
+- Preserve comparison state across IDE restarts.
+
+## Build And Test
+
+- Build the plugin ZIP: `./gradlew.bat buildPlugin`
+- Verify plugin structure and compatibility: `./gradlew.bat verifyPlugin`
+- Run non-UI tests: `./gradlew.bat test`
+- Run IDE Starter UI tests: `./gradlew.bat starterUiTest`
+- Run Starter performance smoke coverage: `./gradlew.bat starterPerformanceTest`
+
+Additional architecture notes and test mapping live in [docs/README.md](./docs/README.md).
 
 ## Installation
 
-- Using the IDE built-in plugin system:
-  
-  <kbd>Settings/Preferences</kbd> > <kbd>Plugins</kbd> > <kbd>Marketplace</kbd> > <kbd>Search for "lst-crc"</kbd> >
-  <kbd>Install</kbd>
-  
-- Using JetBrains Marketplace:
+- Build a plugin ZIP with `./gradlew.bat buildPlugin` and install it from disk via <kbd>Settings/Preferences</kbd> > <kbd>Plugins</kbd> > <kbd>⚙</kbd> > <kbd>Install plugin from disk...</kbd>
+- Or download the latest packaged artifact from the repository releases page when a release is published.
 
-  Go to [JetBrains Marketplace](https://plugins.jetbrains.com/plugin/MARKETPLACE_ID) and install it by clicking the <kbd>Install to ...</kbd> button in case your IDE is running.
+## Development Notes
 
-  You can also download the [latest release](https://plugins.jetbrains.com/plugin/MARKETPLACE_ID/versions) from JetBrains Marketplace and install it manually using
-  <kbd>Settings/Preferences</kbd> > <kbd>Plugins</kbd> > <kbd>⚙️</kbd> > <kbd>Install plugin from disk...</kbd>
-
-- Manually:
-
-  Download the [latest release](https://github.com/uiopak/lst-crc/releases/latest) and install it manually using
-  <kbd>Settings/Preferences</kbd> > <kbd>Plugins</kbd> > <kbd>⚙️</kbd> > <kbd>Install plugin from disk...</kbd>
-
-
----
-Plugin based on the [IntelliJ Platform Plugin Template][template].
-
-[template]: https://github.com/JetBrains/intellij-platform-plugin-template
-[docs:plugin-description]: https://plugins.jetbrains.com/docs/intellij/plugin-user-experience.html#plugin-description-and-presentation
+- The plugin description in `src/main/resources/META-INF/plugin.xml` is extracted from the marked README block above during the Gradle build.
+- Internal design and capability documentation lives in [docs/](./docs/).
+- IDE Starter bridge code is isolated under `src/testBridge` and included only for Starter test tasks or explicit `-PincludeTestBridge=true` runs.

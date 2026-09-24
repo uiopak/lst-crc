@@ -1,9 +1,6 @@
 package com.github.uiopak.lstcrc.starter
 
-import com.intellij.driver.sdk.ui.components.common.ideFrame
-import com.intellij.driver.sdk.ui.components.elements.actionButton
-import com.intellij.driver.sdk.ui.components.elements.dialog
-import com.intellij.driver.sdk.ui.components.elements.tree
+import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Tag
@@ -80,11 +77,52 @@ class LstCrcInteractionStarterUiTest : LstCrcStarterUiTestBase() {
         waitForSelectedTab("feature-context")
         waitForTreeContains("Main.txt")
 
-        ui.configureClickActions(null, null, null, null, null, null, true)
+        ui.setContextMenuEnabled(true)
         val actions = ui.contextMenuActionsForFile("Main.txt")
         assertTrue(actions.contains("Show Diff"))
         assertTrue(actions.contains("Open Source"))
         assertTrue(actions.contains("Show in Project Tree"))
+    }
+
+    @Test
+    fun testContextMenuOpenSourceWinsOverFocusedDiffAndReusesDiff() = runStarterUiTest {
+        prepareLstCrc()
+        initializeGitRepository()
+
+        createNewFile("Main.txt", "Base line\n")
+        commitChanges("Initial commit")
+        val defaultBranch = defaultBranchName()
+
+        createBranch("feature-context-focus")
+        modifyFile("Main.txt", "Feature context focus line\n")
+        commitChanges("Feature context focus commit")
+        checkoutBranch(defaultBranch)
+
+        openGitChangesView()
+        ui.createAndSelectTab("feature-context-focus")
+        waitForSelectedTab("feature-context-focus")
+        waitForTreeContains("Main.txt")
+
+        ui.setContextMenuEnabled(true)
+
+        ui.invokeContextMenuActionForFile("Main.txt", "Show Diff")
+        waitUntil(15.seconds) { ui.diffEditorCount() > 0 }
+        val firstDiffCount = ui.diffEditorCount()
+        assertTrue(firstDiffCount > 0, "Show Diff should open a diff editor")
+
+        ui.invokeContextMenuActionForFile("Main.txt", "Show Diff")
+        waitUntil(5.seconds) { ui.diffEditorCount() >= firstDiffCount }
+        assertEquals(firstDiffCount, ui.diffEditorCount(), "Show Diff on the same change should focus the existing diff instead of opening another one")
+
+        ui.invokeContextMenuActionForFile("Main.txt", "Open Source")
+        waitUntil(15.seconds) {
+            val descriptor = ui.selectedEditorDescriptor()
+            descriptor.contains("Main.txt") && !descriptor.lowercase().contains("diff")
+        }
+
+        val selectedEditor = ui.selectedEditorDescriptor()
+        assertTrue(selectedEditor.contains("Main.txt"), "Open Source should select Main.txt after the diff was focused")
+        assertFalse(selectedEditor.lowercase().contains("diff"), "Open Source should activate a text editor, not keep the diff selected: $selectedEditor")
     }
 
     @Test
@@ -294,56 +332,23 @@ class LstCrcInteractionStarterUiTest : LstCrcStarterUiTestBase() {
 
         val dialogTitle = "Select Branch for ${project.path.fileName}"
 
-        driver.ideFrame {
-            actionButton { byAccessibleName("Comparison Context") }.click()
-        }
+        ui.openRepoComparisonDialog()
         waitUntil {
-            runCatching {
-                var branches = emptyList<String>()
-                driver.ideFrame {
-                    dialog(title = dialogTitle) {
-                        val branchesTree = tree()
-                        branchesTree.expandAll()
-                        branches = branchesTree.collectExpandedPathsAsStrings()
-                    }
-                }
-                branches.any { it.contains("override-target") }
-            }.getOrDefault(false)
+            ui.visibleRepoComparisonDialogTitle() == dialogTitle &&
+                ui.visibleRepoComparisonDialogBranchesSnapshot().contains("override-target")
         }
 
-        driver.ideFrame {
-            dialog(title = dialogTitle) {
-                val branchesTree = tree()
-                branchesTree.expandAll()
-                branchesTree.clickPath("Local", "override-target")
-            }
-        }
+        ui.selectBranchInVisibleRepoComparisonDialog("override-target")
         waitUntil(15.seconds) {
             ui.selectedTabComparisonMap().contains("=override-target") &&
                 ui.selectedRenderedRowsSnapshot().contains("(vs override-target)")
         }
 
-        driver.ideFrame {
-            actionButton { byAccessibleName("Comparison Context") }.click()
-        }
+        ui.openRepoComparisonDialog()
         waitUntil {
-            runCatching {
-                var dialogOpened = false
-                driver.ideFrame {
-                    dialog(title = dialogTitle) {
-                        dialogOpened = true
-                    }
-                }
-                dialogOpened
-            }.getOrDefault(false)
+            ui.visibleRepoComparisonDialogTitle() == dialogTitle
         }
-        driver.ideFrame {
-            dialog(title = dialogTitle) {
-                val branchesTree = tree()
-                branchesTree.expandAll()
-                branchesTree.clickPath("Local", "feature-repo-dialog")
-            }
-        }
+        ui.selectBranchInVisibleRepoComparisonDialog("feature-repo-dialog")
         waitUntil(15.seconds) { ui.selectedTabComparisonMap().isBlank() }
     }
 }

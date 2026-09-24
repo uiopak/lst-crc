@@ -41,16 +41,6 @@ This document correlates each production file with the JetBrains Platform APIs a
 - Keep assessment: Keep it; the indirection is valuable despite the file being small.
 - Simplify or remove: No worthwhile change.
 
-### RevisionUtils.kt
-- JetBrains correlation: Lightweight Git-specific heuristic that does not need a heavier platform dependency.
-- Keep assessment: Keep it; both failure handling and UI rendering depend on consistent commit-hash detection.
-- Simplify or remove: No meaningful simplification.
-
-### TreeUtils.kt
-- JetBrains correlation: Small Swing helper filling a gap left by `getClosestRowForLocation()` semantics.
-- Keep assessment: Keep it; it prevents false-positive tree interactions.
-- Simplify or remove: No meaningful simplification.
-
 ## Listeners And State
 
 ### PluginStartupActivity.kt
@@ -88,7 +78,7 @@ This document correlates each production file with the JetBrains Platform APIs a
 ### ToolWindowStateService.kt
 - JetBrains correlation: Standard project-level `PersistentStateComponent`, message-bus publishing, tool-window lookup, notifications, and background refresh orchestration.
 - Keep assessment: Keep it; it is the plugin's real coordination layer and should stay authoritative.
-- Simplify or remove: Extract dense branches such as failure handling, refresh queue management, and some guard logic into smaller helpers. A coroutine channel or clearer queue abstraction could replace part of the manual CAS-based refresh coordination if the team wants a larger cleanup.
+- Simplify or remove: The service was simplified to act as a pure data pipeline that always pushes real changes into `ProjectActiveDiffDataService`. The previous `includeHeadInScopes` branching that cleared the diff cache was removed, with scope gating moved to `FileStatusScopes` and `VisualTrackerManager`. Remaining cleanup targets include extracting dense branches such as failure handling and refresh queue management into smaller helpers.
 
 ### VfsListenerService.kt
 - JetBrains correlation: Correctly uses `BulkFileListener` plus `VcsDirtyScopeManager` to bridge raw file events into VCS refreshes.
@@ -98,7 +88,7 @@ This document correlates each production file with the JetBrains Platform APIs a
 ## Scope And Search Integration
 
 ### FileStatusScopes.kt
-- JetBrains correlation: Standard `PackageSetBase`, `NamedScope`, and `VcsVirtualFile` integration, with plugin-specific handling for deleted-file edge cases.
+- JetBrains correlation: Standard `PackageSetBase`, `NamedScope`, and `VcsVirtualFile` integration, with plugin-specific handling for deleted-file edge cases. Now independently checks `ToolWindowSettingsProvider.isIncludeHeadInScopes()` to gate HEAD data from scopes.
 - Keep assessment: Keep it; these scopes are a core capability and are implemented against the right platform abstractions.
 - Simplify or remove: The main cleanup candidates are path-handling asymmetry, the special-case deleted-file logic shape, and verifying whether the current `VcsVirtualFile` fallback can be pushed deeper into the data source. Do not remove `LSTCRC.Deleted`; it also supports non-search UI behavior such as deleted-file coloring.
 
@@ -109,16 +99,11 @@ This document correlates each production file with the JetBrains Platform APIs a
 
 ### LstCrcSearchScopeProvider.kt
 - JetBrains correlation: Correct `SearchScopeProvider` usage for search UI integration.
-- Keep assessment: Keep it for the current search behavior because it groups the LST-CRC search scopes, intentionally omits deleted-file search, and pairs with `NamedScopeWrapper` to avoid library-backed results.
-- Simplify or remove: Small cleanup only. The scope-wrapping logic could be shared more explicitly with `LstCrcScopeProvider` or cached, but replacing this provider would need to preserve the deleted-file omission and current library-search behavior.
-
-### NamedScopeWrapper.kt
-- JetBrains correlation: Reimplements the platform's named-scope-to-search-scope adapter. The real public baseline is `GlobalSearchScopesCore.filterScope(...)`; `DefaultSearchScopeProviders.wrapNamedScope(...)` is the IDE's own internal convenience wrapper built on top of that adapter. The plugin keeps its own wrapper to preserve named-scope matching while forcing `isSearchInLibraries() = false`.
-- Keep assessment: Keep it while that custom behavior matters.
-- Simplify or remove: Re-evaluate whether the platform adapter can be reused if library exclusion is enforced elsewhere. If not, this file is justified.
+- Keep assessment: Keep it for the current search behavior because it groups the LST-CRC search scopes, intentionally omits deleted-file search, and now uses platform `GlobalSearchScopesCore.filterScope(...)` directly.
+- Simplify or remove: Small cleanup only. The scope construction logic could be cached or shared more explicitly with `LstCrcScopeProvider`, but replacing this provider would still need to preserve the deleted-file omission and current `myAllScope` behavior.
 
 ### Search-Scope Limitation
-- JetBrains correlation: Deleted-file revisions are materialized as VCS-backed virtual files, but the current Find/Search integration path treats the plugin wrapper as a plain `GlobalSearchScope`, not as a file enumeration source.
+- JetBrains correlation: Deleted-file revisions are materialized as VCS-backed virtual files, but the current Find/Search integration path treats the filtered named scope as a plain `GlobalSearchScope`, not as a file enumeration source.
 - Keep assessment: Keep the current limitation explicit in the docs. The plugin can classify and color deleted files, but it should not claim deleted-file search support through Find in Files. The same search scopes are also empty on `HEAD` unless `Include HEAD in scopes` is enabled.
 - Simplify or remove: If deleted-file search is ever revisited, it needs a different enumeration strategy rather than simply adding `DeletedFilesScope` to `LstCrcSearchScopeProvider`. The platform VCS path that supports change-scoped searching uses a VCS-specific local scope with explicit virtual-file and range enumeration, which deleted revisions do not fit cleanly.
 
@@ -137,9 +122,9 @@ This document correlates each production file with the JetBrains Platform APIs a
 - Simplify or remove: Only very small helpers could be inlined. The branch-selection tab flow is complex enough to justify the helper object.
 
 ### ExpandNewNodesStateStrategy.kt
-- JetBrains correlation: Clean use of `TreeState` and changes-tree strategy hooks.
+- JetBrains correlation: Clean use of changes-tree strategy hooks, with one intentional manual restore path to avoid IntelliJ's generic selected-row recentering.
 - Keep assessment: Keep it; it solves a real UX problem in the changes browser.
-- Simplify or remove: Only micro-optimizations are worth considering, such as trimming redundant tree traversals.
+- Simplify or remove: Do not collapse it back to `TreeState.applyTo()`. Only local cleanup, like trimming redundant traversals, is a safe simplification target.
 
 ### BranchSelectionPanel.kt
 - JetBrains correlation: Standard Swing and IntelliJ tree/search controls, implemented in an idiomatic reusable panel.
@@ -147,9 +132,9 @@ This document correlates each production file with the JetBrains Platform APIs a
 - Simplify or remove: Search currently rebuilds cloned tree structures on each keystroke. If performance becomes noticeable, that filtering algorithm is the best refactor candidate.
 
 ### LstCrcChangesBrowser.kt
-- JetBrains correlation: Properly extends `AsyncChangesBrowserBase` and related changes-tree infrastructure instead of reinventing the whole browser.
+- JetBrains correlation: Properly extends `AsyncChangesBrowserBase` and related changes-tree infrastructure. Reactively subscribes to `DIFF_DATA_CHANGED_TOPIC` for display updates. Uses coroutine-based debouncing for configurable click handling and standard `PopupHandler` for context menus.
 - Keep assessment: Keep it; this is the core user-facing comparison surface.
-- Simplify or remove: Good cleanup candidates exist inside the file only: collapse duplicated click-state handling, separate some test-only helper methods, and revisit manual toolbar-border/layout work.
+- Simplify or remove: The previous click-state handling using `Alarm`/`ClickState` has been replaced with coroutine-based debouncing. The browser is now decoupled from `ToolWindowStateService` through the message bus. Remaining cleanup candidates are limited to internal test-only helper methods and toolbar layout work.
 
 ### MyToolWindowFactory.kt
 - JetBrains correlation: Standard `ToolWindowFactory` plus `ContentManagerListener` wiring and restored content creation.
@@ -162,9 +147,9 @@ This document correlates each production file with the JetBrains Platform APIs a
 - Simplify or remove: The popup-building code can be extracted into smaller helpers, but the behavior itself is justified.
 
 ### ToolWindowSettingsProvider.kt
-- JetBrains correlation: Standard `PropertiesComponent` storage and toggle-action menu building, with one contained use of internal tool-window UI classes.
+- JetBrains correlation: Typed app-level settings storage via `LstCrcSettingsService` plus toggle-action menu building, with one contained use of internal tool-window UI classes.
 - Keep assessment: Keep it; centralized settings are the right design.
-- Simplify or remove: The strongest cleanup targets are repetitive toggle factories and direct access from tests. The internal `ToolWindowContentUi` coupling should be watched during IDE upgrades.
+- Simplify or remove: The strongest cleanup targets are repetitive toggle factories and direct access from tests. The remaining internal tool-window UI coupling is now isolated behind `ToolWindowUiCompatibility` and should be watched during IDE upgrades.
 
 ### OpenBranchSelectionTabAction.kt
 - JetBrains correlation: Straightforward `DumbAwareAction` used in a tool-window toolbar.
@@ -197,13 +182,13 @@ This document correlates each production file with the JetBrains Platform APIs a
 - Simplify or remove: No significant simplification stood out. The current branching mostly reflects genuine single-repo versus multi-repo behavior.
 
 ### RenameTabAction.kt
-- JetBrains correlation: Standard action plus popup balloon usage, but it also reaches into an internal tab-label class.
+- JetBrains correlation: Standard action plus popup balloon usage, with internal tab-label lookup delegated through `ToolWindowUiCompatibility`.
 - Keep assessment: Keep the feature, not necessarily the exact implementation.
-- Simplify or remove: This is one of the clearer cleanup candidates. Replacing the custom inline balloon with a more standard input flow would reduce reliance on `BaseLabel` and internal component traversal.
+- Simplify or remove: This is one of the clearer cleanup candidates. Replacing the custom inline balloon with a more standard input flow would further reduce reliance on internal tab-label traversal.
 
 ## Test Support
 
 ### LstCrcUiTestBridge.kt
 - JetBrains correlation: Uses application services, editors, scopes, VCS APIs, and some reflection-heavy inspection to support IDE Starter tests. It is intentionally excluded from the published plugin in normal builds.
 - Keep assessment: Keep it for UI testing; the test suite needs a bridge with broad reach.
-- Simplify or remove: The best cleanup targets are reflection-heavy tracker inspection, repeated `PropertiesComponent` lookups, and consolidating repeated path and tab-manipulation helpers. Because it is test-only, these are maintainability issues rather than product risks.
+- Simplify or remove: The best cleanup targets are reflection-heavy tracker inspection and consolidating repeated path/tab-manipulation helpers. Settings access has already moved to `LstCrcSettingsService`, reducing direct string-key coupling.

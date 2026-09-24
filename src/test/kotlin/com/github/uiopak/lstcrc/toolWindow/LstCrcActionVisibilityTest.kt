@@ -260,15 +260,15 @@ class LstCrcActionVisibilityTest : BasePlatformTestCase() {
     }
 
     private fun defaultValue(returnType: Class<*>): Any? {
-        return when {
-            returnType == java.lang.Boolean.TYPE -> false
-            returnType == java.lang.Integer.TYPE -> 0
-            returnType == java.lang.Long.TYPE -> 0L
-            returnType == java.lang.Float.TYPE -> 0f
-            returnType == java.lang.Double.TYPE -> 0.0
-            returnType == java.lang.Character.TYPE -> '\u0000'
-            returnType == java.lang.Short.TYPE -> 0.toShort()
-            returnType == java.lang.Byte.TYPE -> 0.toByte()
+        return when (returnType) {
+            Boolean::class.javaPrimitiveType, Boolean::class.java -> false
+            Int::class.javaPrimitiveType, Int::class.java -> 0
+            Long::class.javaPrimitiveType, Long::class.java -> 0L
+            Float::class.javaPrimitiveType, Float::class.java -> 0f
+            Double::class.javaPrimitiveType, Double::class.java -> 0.0
+            Char::class.javaPrimitiveType, Char::class.java -> '\u0000'
+            Short::class.javaPrimitiveType, Short::class.java -> 0.toShort()
+            Byte::class.javaPrimitiveType, Byte::class.java -> 0.toByte()
             else -> null
         }
     }

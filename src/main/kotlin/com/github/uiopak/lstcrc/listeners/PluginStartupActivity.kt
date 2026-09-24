@@ -3,7 +3,6 @@ package com.github.uiopak.lstcrc.listeners
 import com.github.uiopak.lstcrc.services.GitService
 import com.github.uiopak.lstcrc.services.ProjectActiveDiffDataService
 import com.github.uiopak.lstcrc.services.ToolWindowStateService
-import com.github.uiopak.lstcrc.services.VfsListenerService
 import com.github.uiopak.lstcrc.toolWindow.LstCrcStatusWidget
 import com.intellij.openapi.application.EDT
 import com.intellij.openapi.components.service
@@ -11,7 +10,7 @@ import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.project.DumbService
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.startup.ProjectActivity
-import com.intellij.openapi.wm.WindowManager
+import git4idea.repo.GitRepositoryManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.future.await
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -25,6 +24,16 @@ import kotlin.coroutines.resume
  */
 class PluginStartupActivity : ProjectActivity {
     private val logger = thisLogger()
+
+    private suspend fun syncUiAfterRefresh(project: Project, stateService: ToolWindowStateService) {
+        withContext(Dispatchers.EDT) {
+            if (project.isDisposed) return@withContext
+            logger.info("STARTUP_LOGIC: Broadcasting ToolWindowState to sync all UI components.")
+            stateService.broadcastCurrentState()
+            LstCrcStatusWidget.refresh(project)
+            logger.info("STARTUP_LOGIC: Sent direct update request to status bar widget '${LstCrcStatusWidget.ID}'.")
+        }
+    }
 
     /**
      * Suspends the coroutine until the project is in smart mode, using the stable, public API.
@@ -40,9 +49,6 @@ class PluginStartupActivity : ProjectActivity {
     override suspend fun execute(project: Project) {
         logger.info("STARTUP_LOGIC: ProjectActivity executing for project: ${project.name}")
 
-        // Eagerly initialize services that need to listen to events from the start to ensure
-        // features like gutter markers and VFS-triggered refreshes work correctly.
-        project.service<VfsListenerService>()
         project.service<VcsChangeListener>()
         project.service<com.github.uiopak.lstcrc.gutters.VisualTrackerManager>().init()
         logger.info("STARTUP_LOGIC: Background services initialized.")
@@ -73,14 +79,14 @@ class PluginStartupActivity : ProjectActivity {
         val toolWindowStateService = project.service<ToolWindowStateService>()
 
         if (currentRepo == null) {
-            logger.warn("STARTUP_LOGIC: Git repository still not found after smart mode for project: ${project.name}. Tab coloring may not function correctly.")
-            // If git isn't ready, still broadcast the state to update the widget from "LST-CRC"
-            // to whatever is persisted (e.g., "HEAD").
-            withContext(Dispatchers.EDT) {
-                if (project.isDisposed) return@withContext
-                logger.info("STARTUP_LOGIC: Broadcasting ToolWindowState to sync UI components even though Git repo was not found.")
-                toolWindowStateService.broadcastCurrentState()
+            val hasAnyGitRepositories = GitRepositoryManager.getInstance(project).repositories.isNotEmpty()
+            if (hasAnyGitRepositories) {
+                logger.warn("STARTUP_LOGIC: Git repository still not found after smart mode for project: ${project.name}. Tab coloring may not function correctly.")
+            } else {
+                logger.info("STARTUP_LOGIC: No Git repository configured for project: ${project.name}. Skipping startup diff load.")
             }
+            // If git isn't ready, still sync persisted state to UI.
+            syncUiAfterRefresh(project, toolWindowStateService)
             return
         }
         logger.info("STARTUP_LOGIC: Git repository found after smart mode: ${currentRepo.root.path}. Proceeding with initial diff load.")
@@ -93,18 +99,6 @@ class PluginStartupActivity : ProjectActivity {
             logger.warn("STARTUP_LOGIC: Initial diff load failed.", e)
         }
 
-
-        withContext(Dispatchers.EDT) {
-            // After all initial data loadings are confirmed complete, ensure all UI components are synced.
-            if (project.isDisposed) return@withContext
-            logger.info("STARTUP_LOGIC: Broadcasting final ToolWindowState to sync all UI components.")
-            toolWindowStateService.broadcastCurrentState()
-
-            // Also, send a direct update request to the status bar for our widget.
-            // This is a more robust way to ensure it refreshes on startup.
-            val statusBar = WindowManager.getInstance().getStatusBar(project)
-            statusBar?.updateWidget(LstCrcStatusWidget.ID)
-            logger.info("STARTUP_LOGIC: Sent direct update request to status bar widget '${LstCrcStatusWidget.ID}'.")
-        }
+        syncUiAfterRefresh(project, toolWindowStateService)
     }
 }

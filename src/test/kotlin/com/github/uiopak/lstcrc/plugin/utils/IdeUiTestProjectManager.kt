@@ -1,8 +1,5 @@
 package com.github.uiopak.lstcrc.plugin.utils
 
-import com.github.uiopak.lstcrc.plugin.pages.DialogFixture
-import com.github.uiopak.lstcrc.plugin.pages.WelcomeFrame
-import com.github.uiopak.lstcrc.plugin.pages.welcomeFrame
 import com.intellij.remoterobot.RemoteRobot
 import com.intellij.remoterobot.fixtures.ComponentFixture
 import com.intellij.remoterobot.search.locators.byXpath
@@ -14,10 +11,6 @@ import java.time.Duration
 
 private val welcomeFrameLocator = byXpath("Welcome frame", "//div[@class='FlatWelcomeFrame']")
 private val ideaFrameLocator = byXpath("Idea frame", "//div[@class='IdeFrameImpl']")
-private val newProjectButtonLocator = byXpath(
-    "New Project button",
-    "//div[(@class='MainButton' and @text='New Project') or (@accessiblename='New Project' and @class='JButton')]"
-)
 private val newUsersOnboardingDialogLocator = byXpath(
     "New users onboarding dialog",
     "//div[@accessiblename.key='newUiOnboarding.dialog.title' or @text.key='newUiOnboarding.dialog.title']"
@@ -104,7 +97,7 @@ fun RemoteRobot.createFreshProjectFromWelcomeScreen() {
                                 const existingEntries = rootModel.getContentEntries();
                                 let hasProjectRoot = false;
                                 for (let i = 0; i < existingEntries.length; i++) {
-                                    const entryFile = existingEntries[i].getFile();
+                                    var entryFile = existingEntries[i].getFile();
                                     if (entryFile != null && entryFile.equals(projectRoot)) {
                                         hasProjectRoot = true;
                                         break;

@@ -22,8 +22,8 @@ LST-CRC is organized around one central idea: one selected comparison tab produc
 1. A startup hook, UI action, tab-selection event, repository change, VFS event, or changelist event asks `ToolWindowStateService` to refresh the current selection.
 2. `ToolWindowStateService` chooses the active tab, resolves its `TabInfo`, and calls `GitService.getChanges(...)` for the heavy diff work off the EDT.
 3. `GitService` computes categorized changes across one or more repositories and returns both file buckets and comparison-context metadata.
-4. `ToolWindowStateService` applies the result on the EDT, updates `ProjectActiveDiffDataService`, and asks the active `LstCrcChangesBrowser` to render the new changes.
-5. `VisualTrackerManager` reacts through `DIFF_DATA_CHANGED_TOPIC`, while scopes and tree renderers consume `ProjectActiveDiffDataService` lazily when the IDE evaluates scope membership or repaints the tree. `TOOL_WINDOW_STATE_TOPIC` is broadcast on state load, tab-state changes, and explicit startup synchronization, not on every diff refresh.
+4. `ToolWindowStateService` applies the result on the EDT and updates `ProjectActiveDiffDataService`. The diff data is always pushed regardless of the `Include HEAD in scopes` setting, keeping the active-diff cache populated for all consumers.
+5. `LstCrcChangesBrowser` reactively subscribes to `DIFF_DATA_CHANGED_TOPIC` and updates its tree display when new diff data arrives. `VisualTrackerManager` also reacts through this topic. Scopes and tree renderers consume `ProjectActiveDiffDataService` lazily when the IDE evaluates scope membership or repaints the tree. Individual consumers (scopes, gutter tracker) independently check settings like `isIncludeHeadInScopes()` to decide whether to use the data. `TOOL_WINDOW_STATE_TOPIC` is broadcast on state load, tab-state changes, and explicit startup synchronization, not on every diff refresh.
 
 ## State Model
 
@@ -34,7 +34,7 @@ LST-CRC is organized around one central idea: one selected comparison tab produc
 
 ## UI Layers
 
-- `LstCrcChangesBrowser` is the per-tab viewer. It renders categorized changes, translates mouse gestures into configured actions, rebuilds the tree, and exposes a small internal test surface.
+- `LstCrcChangesBrowser` is the per-tab viewer. It reactively subscribes to `DIFF_DATA_CHANGED_TOPIC` to render categorized changes, translates mouse gestures into configured actions using coroutine-based debouncing, rebuilds the tree, and exposes a small internal test surface.
 - `RepoNodeRenderer` decorates tree nodes with comparison-context text so users can see what each repository or grouping node is being compared against.
 - `BranchSelectionPanel` and `SingleRepoBranchSelectionDialog` provide the searchable branch-selection flows used by the tool window and by branch-failure recovery.
 - `LstCrcStatusWidget` mirrors the selected tab label or alias in the status bar and provides a quick popup for switching or adding tabs.
@@ -59,7 +59,7 @@ LST-CRC is organized around one central idea: one selected comparison tab produc
 ## Startup And HEAD Semantics
 
 - Startup is multi-phase. In the normal repo-ready path, `PluginStartupActivity` initializes listeners first, refreshes current colorings before smart mode, then waits for smart mode, triggers the initial refresh, rebroadcasts tool-window state, and explicitly asks the status bar widget to update. If Git is still unavailable after smart mode, it rebroadcasts tool-window state and returns without the normal refresh path.
-- `HEAD` is a special case. The permanent `HEAD` tab is always selectable, but the active diff cache is cleared on that tab unless `Include HEAD in scopes` is enabled. That setting affects scopes, custom gutter overlays, and repository-context labels in the changes tree more than the visible tab itself.
+- `HEAD` is a special case. The permanent `HEAD` tab is always selectable, and the active diff cache is always populated with real data (even on the `HEAD` tab). The `Include HEAD in scopes` setting is checked independently by `FileStatusScopes` and `VisualTrackerManager` to decide whether to include HEAD data in their outputs. This separation ensures the browser always displays changes correctly while scopes, gutter markers, and file coloring are gated by user preference.
 
 ## Why The Split Matters
 

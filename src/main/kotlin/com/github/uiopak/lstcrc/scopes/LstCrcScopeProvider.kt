@@ -1,5 +1,8 @@
 package com.github.uiopak.lstcrc.scopes
 
+import com.intellij.openapi.project.Project
+import com.intellij.psi.search.GlobalSearchScopesCore
+import com.intellij.psi.search.SearchScope
 import com.intellij.psi.search.scope.packageSet.CustomScopesProvider
 import com.intellij.psi.search.scope.packageSet.NamedScope
 
@@ -15,6 +18,19 @@ object LstCrcProvidedScopes {
     val MOVED_FILES_SCOPE by lazy { MovedFilesScope() }
     val DELETED_FILES_SCOPE by lazy { DeletedFilesScope() }
     val CHANGED_FILES_SCOPE by lazy { ChangedFilesScope() }
+
+    val allScopes: List<NamedScope> = listOf(
+        CREATED_FILES_SCOPE,
+        MODIFIED_FILES_SCOPE,
+        MOVED_FILES_SCOPE,
+        DELETED_FILES_SCOPE,
+        CHANGED_FILES_SCOPE
+    )
+
+    val searchableScopes: List<NamedScope> = allScopes.filterNot { it === DELETED_FILES_SCOPE }
+
+    fun searchScopes(project: Project): List<SearchScope> =
+        searchableScopes.map { scope -> GlobalSearchScopesCore.filterScope(project, scope) }
 }
 
 /**
@@ -25,13 +41,5 @@ object LstCrcProvidedScopes {
  */
 class LstCrcScopeProvider : CustomScopesProvider {
 
-    override fun getCustomScopes(): List<NamedScope> {
-        return listOf(
-            LstCrcProvidedScopes.CREATED_FILES_SCOPE,
-            LstCrcProvidedScopes.MODIFIED_FILES_SCOPE,
-            LstCrcProvidedScopes.MOVED_FILES_SCOPE,
-            LstCrcProvidedScopes.DELETED_FILES_SCOPE,
-            LstCrcProvidedScopes.CHANGED_FILES_SCOPE
-        )
-    }
+    override fun getCustomScopes(): List<NamedScope> = LstCrcProvidedScopes.allScopes
 }

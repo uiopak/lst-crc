@@ -1,17 +1,10 @@
 package com.github.uiopak.lstcrc.utils
 
-object RevisionUtils {
-    /**
-     * A heuristic to identify what looks like a commit hash.
-     * We explicitly check for "HEAD" to ensure it's never considered a hash. A full hash is
-     * 40 hex characters, while a short hash is typically 7-12. We check for a minimum length
-     * and that all characters are hexadecimal.
-     *
-     * @param revision The revision string to check.
-     * @return `true` if the string resembles a commit hash, `false` otherwise.
-     */
-    fun isCommitHash(revision: String): Boolean {
-        if (revision.equals("HEAD", ignoreCase = true)) return false
-        return revision.length >= 7 && revision.all { it.isDigit() || it in 'a'..'f' || it in 'A'..'F' }
-    }
-}
+/**
+ * Returns true when [revision] looks like a full or abbreviated commit hash (7–40 hex characters).
+ *
+ * Kept local instead of using `git4idea.GitUtil.isHashString`, which is not available in every
+ * supported IDE version (removed in 263) and would fail with `NoSuchMethodError` at runtime.
+ */
+internal fun isCommitHash(revision: String): Boolean =
+    revision.length in 7..40 && revision.all { it in '0'..'9' || it in 'a'..'f' || it in 'A'..'F' }

@@ -50,6 +50,7 @@ LST-CRC is an IntelliJ Platform plugin for comparing the current working tree ag
 	- Renames and moves appear as moved entries.
 	- Missing files relative to the selected target appear as deleted entries.
 	- Mixed-state tabs can surface several file states at once across one active comparison.
+	- Displayed added/removed line counters intentionally ignore CRLF/LF-only churn so the browser metadata stays aligned with the visible diff and gutter ranges instead of raw Git `numstat` noise.
 - `C3.2` Custom named scopes.
 	- The plugin publishes named scopes for Created, Modified, Moved, Deleted, and Changed files from the active diff.
 	- `Created` tracks new files.
@@ -78,6 +79,9 @@ LST-CRC is an IntelliJ Platform plugin for comparing the current working tree ag
 	- Unsaved editor content participates in the active diff, including preserving `NEW` versus `MODIFIED` semantics when overlays merge into comparison data.
 	- Unsaved edits can appear before save.
 	- Unsaved edits to already-new files must stay `NEW`/`ADDED`, not degrade into ordinary modifications.
+- `C3.9` Tree expansion-state persistence.
+	- The comparison tree keeps user expand/collapse decisions when the active comparison tab changes and later returns.
+	- New nodes can still be revealed without forcing previously collapsed nodes open.
 
 ### C4. Interaction model and presentation settings
 
@@ -95,8 +99,9 @@ LST-CRC is an IntelliJ Platform plugin for comparing the current working tree ag
 	- Context labels are configurable separately for single-repo tabs, multi-repo tabs, and revision/commit tabs.
 	- The multi-repo label toggle is distinct from the single-repo label toggle.
 - `C4.7` `Include HEAD in scopes` setting.
-	- Scopes and other HEAD-backed consumers can be configured to stay empty on the `HEAD` tab unless the user explicitly includes `HEAD`.
-	- The setting changes both named-scope and search-scope behavior for `HEAD`.
+	- When disabled, named scopes and search scopes stay empty on the `HEAD` tab. The active diff cache remains populated so the tool window browser always displays changes correctly.
+	- Each consumer (scopes, gutter tracker) independently checks the setting to decide whether to use HEAD data, rather than the data being cleared centrally.
+	- The setting changes named-scope, search-scope, and gutter behavior for `HEAD` without affecting the browser display.
 - `C4.8` Gutter settings.
 	- Gutter markers can be enabled or disabled globally, and new-file gutter handling has a separate setting.
 	- New-file gutter behavior is a separate decision path from modified/deleted gutter behavior.
@@ -123,7 +128,7 @@ LST-CRC is an IntelliJ Platform plugin for comparing the current working tree ag
 ## Scope Of The Plugin
 
 - The plugin is Git-focused and depends on the `Git4Idea` integration supplied by the JetBrains IDE.
-- The active comparison is tied to the currently selected LST-CRC tab, but some consumers are settings-dependent. In particular, scopes and other `HEAD`-backed consumers stay empty on the `HEAD` tab unless `Include HEAD in scopes` is enabled.
+- The active comparison is tied to the currently selected LST-CRC tab. The active diff cache is always populated with real data, but some consumers are settings-dependent. In particular, scopes and gutter markers independently check `Include HEAD in scopes` and stay inactive on the `HEAD` tab unless the setting is enabled. The tool window browser always displays changes regardless of this setting.
 - Deleted-file handling, multi-repo overrides, linked-worktree roots, and unsaved-editor overlays are first-class behaviors, not edge-case add-ons.
 - The `Changed` scope intentionally excludes deleted files. Deleted files have their own named scope and dedicated UI handling.
 - Find/Search intentionally omits deleted-file scopes even though deleted named scopes exist.

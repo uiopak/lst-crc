@@ -23,10 +23,12 @@ import com.intellij.ide.starter.runner.IDERunContext
 import com.intellij.ide.starter.runner.CurrentTestMethod
 import com.intellij.ide.starter.runner.Starter
 import com.intellij.ide.starter.runner.events.IdeLaunchEvent
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.ide.starter.utils.PortUtil.getAvailablePort
 import com.intellij.tools.ide.performanceTesting.commands.CommandChain
 import com.intellij.tools.ide.performanceTesting.commands.MarshallableCommand
 import com.intellij.tools.ide.starter.bus.EventsBus
+import com.intellij.util.ui.UIUtil
 import org.junit.jupiter.api.Assertions.assertTrue
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -35,6 +37,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import java.security.MessageDigest
 import kotlin.io.path.Path
+import kotlin.io.path.createDirectories
 import kotlin.io.path.exists
 import kotlin.io.path.readText
 import kotlin.time.Duration
@@ -43,6 +46,10 @@ import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 
 abstract class LstCrcStarterUiTestBase {
+
+    init {
+        initializeTestApplicationManager()
+    }
 
     /**
      * Returns the [com.intellij.ide.starter.models.IdeInfo] to use for the test IDE.
@@ -57,10 +64,10 @@ abstract class LstCrcStarterUiTestBase {
      * The locally resolved IDE is IntelliJ IDEA Ultimate (`IU`) because that is what
      * the IntelliJ Platform Gradle Plugin resolves via `intellijIdea(platformVersion)`.
      */
-    private fun resolveIdeInfo() =
+    private fun resolveIdeInfo(testName: String) =
         System.getProperty("local.ide.path")?.let { localIdePath ->
             IdeProductProvider.IU.copy(
-                getInstaller = { SharedLocalIdeInstaller(Path(localIdePath)) }
+                getInstaller = { SharedLocalIdeInstaller(Path(localIdePath), testName) }
             )
         } ?: IdeProductProvider.IC
 
@@ -72,7 +79,7 @@ abstract class LstCrcStarterUiTestBase {
         context.runLstCrcIdeWithDriver().useDriverAndCloseIde {
             waitForIndicators(5.minutes)
             val bridge = service<LstCrcUiTestBridgeRemote>()
-            val starterContext = LstCrcStarterContext(project, bridge, this)
+            val starterContext = LstCrcStarterContext(project, bridge)
             starterContext.waitForSmartMode()
             block(starterContext)
         }
@@ -86,7 +93,7 @@ abstract class LstCrcStarterUiTestBase {
         return Starter
             .newContext(
                 testName,
-                TestCase(resolveIdeInfo(), LocalProjectInfo(project.path))
+                TestCase(resolveIdeInfo(testName), LocalProjectInfo(project.path))
             )
             .apply {
                 PluginConfigurator(this).installPluginFromPath(pluginPath)
@@ -96,6 +103,7 @@ abstract class LstCrcStarterUiTestBase {
                 addSystemProperty("jb.consents.confirmation.enabled", false)
                 addSystemProperty("jb.privacy.policy.text", "<!--999.999-->")
                 addSystemProperty("ide.show.tips.on.startup.default.value", false)
+                addSystemProperty("intellij.startup.wizard", false)
                 addSystemProperty("junit.jupiter.extensions.autodetection.enabled", true)
                 addSystemProperty("shared.indexes.download.auto.consent", true)
                 addSystemProperty("ide.experimental.ui", true)
@@ -118,7 +126,9 @@ abstract class LstCrcStarterUiTestBase {
         collectNativeThreads: Boolean = false,
         configure: suspend IDERunContext.() -> Unit = {}
     ): BackgroundRun {
+        val testName = CurrentTestMethod.hyphenateWithClass()
         val driverOptions = createDriverOptions()
+        preparePerTestVmOptions(testName, driverOptions)
         val driver = Driver.create(JmxHost(address = driverOptions.address))
         val process = CompletableDeferred<IDEHandle>()
 
@@ -137,11 +147,6 @@ abstract class LstCrcStarterUiTestBase {
                 expectedExitCode = expectedExitCode,
                 collectNativeThreads = collectNativeThreads,
             ) {
-                addVMOptionsPatch {
-                    driverOptions.systemProperties.forEach { (key, value) ->
-                        addSystemProperty(key, value)
-                    }
-                }
                 configure()
             }
         }
@@ -149,9 +154,30 @@ abstract class LstCrcStarterUiTestBase {
         return BackgroundRun(runResult, driver, kotlinx.coroutines.runBlocking { process.await() })
     }
 
+    private fun IDETestContext.preparePerTestVmOptions(testName: String, driverOptions: DriverOptions) {
+        val vmOptionsDirectory = Path(System.getProperty("java.io.tmpdir"), "lstcrc-starter-ui-vmoptions")
+            .createDirectories()
+        val vmOptionsFile = vmOptionsDirectory.resolve("$testName.vmoptions")
+        vmOptionsFile.parent.createDirectories()
+        val ideaLogDirectory = Path(System.getProperty("user.dir"), "out", "ide-tests", "logs", testName)
+            .createDirectories()
+
+        ide.vmOptions.withEnv("IDEA_VM_OPTIONS", vmOptionsFile.toAbsolutePath().toString())
+        ide.vmOptions.addSystemProperty("idea.log.path", ideaLogDirectory.toAbsolutePath().toString())
+        driverOptions.systemProperties.forEach { (key, value) ->
+            ide.vmOptions.addSystemProperty(key, value)
+        }
+        ide.vmOptions.writeIntelliJVmOptionFile(vmOptionsFile)
+    }
+
     private fun createDriverOptions(): DriverOptions {
-        val jmxPort = getAvailablePort(proposedPort = configuredPort("lstcrc.starter.driver.jmx.port", 17777))
-        val rpcPort = getAvailablePort(proposedPort = configuredPort("lstcrc.starter.driver.rpc.port", 24000))
+        val testName = CurrentTestMethod.hyphenateWithClass()
+        val jmxPort = getAvailablePort(
+            proposedPort = configuredPort("lstcrc.starter.driver.jmx.port", derivedPort(testName, 17777))
+        )
+        val rpcPort = getAvailablePort(
+            proposedPort = configuredPort("lstcrc.starter.driver.rpc.port", derivedPort(testName, 24000))
+        )
         return DriverOptions(port = jmxPort, webServerPort = rpcPort)
     }
 
@@ -159,20 +185,43 @@ abstract class LstCrcStarterUiTestBase {
         return System.getProperty(propertyName)?.toIntOrNull() ?: defaultValue
     }
 
+    private fun derivedPort(testName: String, basePort: Int): Int {
+        val offset = (testName.hashCode().toUInt().toLong() % 10_000L).toInt()
+        return basePort + offset
+    }
+
     private companion object {
         val starterDriverScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
+        private fun initializeTestApplicationManager() {
+            runCatching {
+                Class.forName("com.intellij.testFramework.common.TestEnvironmentKt")
+                    .getMethod("initializeTestEnvironment")
+                    .invoke(null)
+                Class.forName("com.intellij.testFramework.common.TestApplicationKt")
+                    .getMethod("initTestApplication")
+                    .invoke(null)
+                val application = ApplicationManager.getApplication()
+                if (application.isDispatchThread) {
+                    UIUtil.getRegularPanelInsets()
+                } else {
+                    application.invokeAndWait { UIUtil.getRegularPanelInsets() }
+                }
+            }
+        }
     }
 
     /**
      * Reuses the already installed local IDE directly instead of copying it into
      * `build/starter-ui-ides/`.
      *
-     * The returned `installId` is stable across runs for the same IDE build, which keeps
-     * the `out/ide-tests/` output paths stable while still invalidating them automatically
-     * when the underlying IDE changes.
+     * The returned `installId` is stable for the same IDE build and test name, which keeps
+     * a deterministic per-test `out/ide-tests/` workspace while isolating concurrent Starter
+     * forks from one another.
      */
     private class SharedLocalIdeInstaller(
-        private val installedIdePath: java.nio.file.Path
+        private val installedIdePath: java.nio.file.Path,
+        private val testName: String
     ) : IdeInstaller {
         override suspend fun install(ideInfo: IdeInfo): Pair<String, InstalledIde> {
             val sourceProductInfo = installedIdePath.resolve("product-info.json")
@@ -183,7 +232,7 @@ abstract class LstCrcStarterUiTestBase {
             } else {
                 "unknown"
             }
-            val installId = "shared-local-ide-$fingerprint"
+            val installId = "shared-local-ide-$fingerprint-$testName"
             return installId to DefaultIdeDistributionFactory.installIDE(
                 installedIdePath.parent.toFile(),
                 ideInfo.executableFileName,
@@ -194,8 +243,7 @@ abstract class LstCrcStarterUiTestBase {
 
 class LstCrcStarterContext(
     val project: LstCrcStarterProject,
-    val ui: LstCrcUiTestBridgeRemote,
-    val driver: Driver
+    val ui: LstCrcUiTestBridgeRemote
 ) {
 
     fun prepareLstCrc() {
@@ -256,10 +304,6 @@ class LstCrcStarterContext(
         ui.deleteProjectFile(relativePath)
     }
 
-    fun deleteFileInRepo(repoRelativePath: String, relativePath: String) {
-        project.deleteFileInRepo(repoRelativePath, relativePath)
-        ui.refreshProjectAfterExternalChange()
-    }
 
     fun commitChanges(message: String) {
         project.commitAll(message)
@@ -296,10 +340,6 @@ class LstCrcStarterContext(
         ui.refreshProjectAfterExternalChange()
     }
 
-    fun deleteBranchInRepo(repoRelativePath: String, branchName: String) {
-        project.deleteBranchInRepo(repoRelativePath, branchName)
-        ui.refreshProjectAfterExternalChange()
-    }
 
     fun defaultBranchName(): String = project.defaultBranchName()
 
@@ -307,7 +347,6 @@ class LstCrcStarterContext(
 
     fun gitRevision(reference: String): String = project.gitRevision(reference)
 
-    fun gitRevisionInRepo(repoRelativePath: String, reference: String): String = project.gitRevisionInRepo(repoRelativePath, reference)
 
     fun waitForSmartMode(timeout: Duration = 5.minutes) {
         waitUntil(timeout) { !ui.isDumbMode() }
@@ -336,6 +375,7 @@ class LstCrcStarterContext(
         }
     }
 
+    @Suppress("SameParameterValue")
     fun waitForTreeNotContains(vararg texts: String, timeout: Duration = 20.seconds) {
         waitUntil(timeout) {
             val snapshot = ui.selectedChangesTreeSnapshot()

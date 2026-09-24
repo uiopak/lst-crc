@@ -4,13 +4,15 @@ package com.github.uiopak.lstcrc.toolWindow
 
 import com.github.uiopak.lstcrc.resources.LstCrcBundle
 import com.github.uiopak.lstcrc.services.GitService
-import com.github.uiopak.lstcrc.services.ToolWindowStateService
+import com.github.uiopak.lstcrc.state.TabInfo
 import com.intellij.icons.AllIcons
 import com.intellij.ide.DataManager
 import com.intellij.openapi.actionSystem.*
 import com.intellij.openapi.components.service
+import com.intellij.openapi.project.Project
 import com.intellij.openapi.project.DumbAwareAction
 import com.intellij.openapi.ui.popup.JBPopupFactory
+import git4idea.repo.GitRepository
 
 /**
  * Action to open a popup showing the current comparison context for each repository
@@ -27,39 +29,35 @@ internal class ShowRepoComparisonInfoAction : DumbAwareAction(
             e.presentation.isEnabledAndVisible = false
             return
         }
-        val stateService = project.service<ToolWindowStateService>()
-        e.presentation.isEnabledAndVisible = stateService.getSelectedTabInfo() != null
+        e.presentation.isEnabledAndVisible = selectedLstCrcTab(project) != null
     }
 
     override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
 
     override fun actionPerformed(e: AnActionEvent) {
         val project = e.project ?: return
-        val stateService = project.service<ToolWindowStateService>()
         val gitService = project.service<GitService>()
-        val tabInfo = stateService.getSelectedTabInfo() ?: return
+        val tabInfo = selectedLstCrcTab(project) ?: return
 
         val repositories = gitService.getRepositories()
 
         if (repositories.size == 1) {
-            SingleRepoBranchSelectionDialog(project, repositories.first(), tabInfo).show()
+            showRepoComparisonDialog(project, repositories.first(), tabInfo)
             return
         }
 
-        val actionGroup = DefaultActionGroup()
+        showMultiRepoComparisonPopup(project, repositories, tabInfo, e)
+    }
 
-        for (repo in repositories.sortedBy { it.root.name }) {
-            val currentTarget = tabInfo.comparisonMap[repo.root.path] ?: tabInfo.branchName
-            val actionText = LstCrcBundle.message("changes.browser.repo.node.full.comparison.text", repo.root.name, currentTarget)
+    private fun showMultiRepoComparisonPopup(
+        project: Project,
+        repositories: List<GitRepository>,
+        tabInfo: TabInfo,
+        event: AnActionEvent
+    ) {
+        val actionGroup = createRepoSelectionActionGroup(project, repositories, tabInfo)
 
-            actionGroup.add(object : AnAction(actionText) {
-                override fun actionPerformed(e: AnActionEvent) {
-                    SingleRepoBranchSelectionDialog(project, repo, tabInfo).show()
-                }
-            })
-        }
-
-        val dataContext = DataManager.getInstance().getDataContext(e.inputEvent?.component)
+        val dataContext = DataManager.getInstance().getDataContext(event.inputEvent?.component)
         val popup = JBPopupFactory.getInstance().createActionGroupPopup(
             LstCrcBundle.message("action.configure.repos.popup.title"),
             actionGroup,
@@ -68,5 +66,40 @@ internal class ShowRepoComparisonInfoAction : DumbAwareAction(
             true
         )
         popup.showInBestPositionFor(dataContext)
+    }
+
+    private fun createRepoSelectionActionGroup(
+        project: Project,
+        repositories: List<GitRepository>,
+        tabInfo: TabInfo
+    ): DefaultActionGroup {
+        val actionGroup = DefaultActionGroup()
+        for (repo in repositories.sortedBy { it.root.name }) {
+            actionGroup.add(repoSelectionAction(project, repo, tabInfo))
+        }
+        return actionGroup
+    }
+
+    private fun repoSelectionAction(
+        project: Project,
+        repo: GitRepository,
+        tabInfo: TabInfo
+    ): AnAction {
+        val currentTarget = tabInfo.comparisonMap[repo.root.path] ?: tabInfo.branchName
+        val actionText = LstCrcBundle.message("changes.browser.repo.node.full.comparison.text", repo.root.name, currentTarget)
+
+        return object : AnAction(actionText) {
+            override fun actionPerformed(e: AnActionEvent) {
+                showRepoComparisonDialog(project, repo, tabInfo)
+            }
+        }
+    }
+
+    private fun showRepoComparisonDialog(
+        project: Project,
+        repo: GitRepository,
+        tabInfo: TabInfo
+    ) {
+        SingleRepoBranchSelectionDialog(project, repo, tabInfo).show()
     }
 }

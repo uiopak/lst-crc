@@ -28,13 +28,13 @@ class LstCrcSettingsStarterUiTest : LstCrcStarterUiTestBase() {
         ui.createAndSelectTab("feature-tree")
         waitForSelectedTab("feature-tree")
 
-        assertTrue(ui.treeContextSettingsSnapshot().startsWith("true|false"))
+        assertTrue(ui.treeContextSettingsSnapshot() == "true|false|false")
 
         ui.setTreeContextSettings(showSingleRepo = false, showCommits = null)
-        waitUntil { ui.treeContextSettingsSnapshot() == "false|false" }
+        waitUntil { ui.treeContextSettingsSnapshot() == "false|false|false" }
 
         ui.setTreeContextSettings(showSingleRepo = true, showCommits = null)
-        waitUntil { ui.treeContextSettingsSnapshot() == "true|false" }
+        waitUntil { ui.treeContextSettingsSnapshot() == "true|false|false" }
 
         assertFalse(ui.isToolWindowTitleVisible())
         ui.setShowToolWindowTitle(true)
@@ -46,10 +46,10 @@ class LstCrcSettingsStarterUiTest : LstCrcStarterUiTestBase() {
         waitUntil { ui.selectedTabName() == "feature-tree-revision" }
 
         ui.setTreeContextSettings(showSingleRepo = null, showCommits = false)
-        waitUntil { ui.treeContextSettingsSnapshot() == "true|false" }
+        waitUntil { ui.treeContextSettingsSnapshot() == "true|false|false" }
 
         ui.setTreeContextSettings(showSingleRepo = null, showCommits = true)
-        waitUntil { ui.treeContextSettingsSnapshot() == "true|true" }
+        waitUntil { ui.treeContextSettingsSnapshot() == "true|true|false" }
     }
 
     @Test
@@ -143,12 +143,12 @@ class LstCrcSettingsStarterUiTest : LstCrcStarterUiTestBase() {
         prepareLstCrc()
         initializeGitRepository()
 
-        createNewFile("Main.txt", "Base line\n")
+        createNewFile("nested/Main.txt", "Base line\n")
         commitChanges("Initial commit")
         val defaultBranch = defaultBranchName()
 
         createBranch("feature-tree-labels")
-        modifyFile("Main.txt", "Feature tree line\n")
+        modifyFile("nested/Main.txt", "Feature tree line\n")
         commitChanges("Feature tree label commit")
         val featureRevision = gitRevision("HEAD")
         checkoutBranch(defaultBranch)
@@ -159,6 +159,19 @@ class LstCrcSettingsStarterUiTest : LstCrcStarterUiTestBase() {
         waitForTreeContains("Main.txt")
 
         waitUntil { ui.selectedRenderedRowsSnapshot().contains("(vs feature-tree-labels)") }
+
+        ui.setTreeContextSettings(showSingleRepo = null, showCommits = null, showLineStats = true)
+        waitUntil {
+            val rows = ui.selectedRenderedRowsSnapshot()
+            rows.lineSequence().any { row ->
+                row.contains("Main.txt") && row.contains("+1") && row.contains("-1")
+            } && rows.lineSequence().any { row ->
+                row.startsWith("nested") && !row.contains("Main.txt") && row.contains("+1") && row.contains("-1")
+            }
+        }
+
+        ui.setTreeContextSettings(showSingleRepo = null, showCommits = null, showLineStats = false)
+        waitUntil { ui.treeContextSettingsSnapshot() == "true|false|false" }
 
         ui.setTreeContextSettings(showSingleRepo = false, showCommits = null)
         waitUntil { !ui.selectedRenderedRowsSnapshot().contains("(vs feature-tree-labels)") }

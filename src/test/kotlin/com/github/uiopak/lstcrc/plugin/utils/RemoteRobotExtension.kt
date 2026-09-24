@@ -16,7 +16,6 @@ import org.junit.jupiter.api.extension.ParameterResolver
 import java.awt.image.BufferedImage
 import java.io.ByteArrayOutputStream
 import java.io.File
-import java.lang.IllegalStateException
 import java.lang.reflect.Method
 import java.time.Duration
 import javax.imageio.ImageIO
@@ -51,7 +50,7 @@ class RemoteRobotExtension : AfterTestExecutionCallback, ParameterResolver {
     private val client = OkHttpClient()
 
     override fun supportsParameter(parameterContext: ParameterContext, extensionContext: ExtensionContext): Boolean {
-        return parameterContext.parameter?.type?.equals(RemoteRobot::class.java) ?: false
+        return parameterContext.parameter.type == RemoteRobot::class.java
     }
 
     override fun resolveParameter(parameterContext: ParameterContext, extensionContext: ExtensionContext): Any {
@@ -60,19 +59,15 @@ class RemoteRobotExtension : AfterTestExecutionCallback, ParameterResolver {
     }
 
     override fun afterTestExecution(context: ExtensionContext) {
-        val testMethod: Method = context.requiredTestMethod ?: throw IllegalStateException("test method is null")
+        val testMethod: Method = context.requiredTestMethod
         val testMethodName = testMethod.name
-        val testFailed: Boolean = context.executionException?.isPresent ?: false
+        val testFailed: Boolean = context.executionException.isPresent
         if (testFailed) {
-//            saveScreenshot(testMethodName)
             saveIdeaFrames(testMethodName)
             saveHierarchy(testMethodName)
         }
     }
 
-    private fun saveScreenshot(testName: String) {
-        fetchScreenShot().save(testName)
-    }
 
     private fun saveHierarchy(testName: String) {
         val hierarchySnapshot =
@@ -84,11 +79,13 @@ class RemoteRobotExtension : AfterTestExecutionCallback, ParameterResolver {
     }
 
     private fun saveFile(url: String, folder: String, name: String): File {
-        val response = client.newCall(Request.Builder().url(url).build()).execute()
-        return File(folder).apply {
-            mkdirs()
-        }.resolve(name).apply {
-            writeText(response.body?.string() ?: "")
+        client.newCall(Request.Builder().url(url).build()).execute().use { response ->
+            val bodyText = response.body.string()
+            return File(folder).apply {
+                mkdirs()
+            }.resolve(name).apply {
+                writeText(bodyText)
+            }
         }
     }
 
@@ -131,26 +128,6 @@ class RemoteRobotExtension : AfterTestExecutionCallback, ParameterResolver {
         }
     }
 
-    private fun fetchScreenShot(): BufferedImage {
-        return remoteRobot.callJs<ByteArray>(
-            """
-            importPackage(java.io)
-            importPackage(javax.imageio)
-            const screenShot = new java.awt.Robot().createScreenCapture(new Rectangle(Toolkit.getDefaultToolkit().getScreenSize()));
-            let pictureBytes;
-            const baos = new ByteArrayOutputStream();
-            try {
-                ImageIO.write(screenShot, "png", baos);
-                pictureBytes = baos.toByteArray();
-            } finally {
-              baos.close();
-            }
-            pictureBytes;
-        """
-        ).inputStream().use {
-            ImageIO.read(it)
-        }
-    }
 
     private fun waitForRemoteRobot() {
         val endpoint = url.trimEnd('/') + "/"

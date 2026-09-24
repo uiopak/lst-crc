@@ -5,15 +5,12 @@ import com.intellij.util.xmlb.annotations.MapAnnotation
 
 data class TabInfo(
     @field:Attribute("branchName")
-    var branchName: String = "",
+    val branchName: String = "",
     @field:Attribute("alias")
-    var alias: String? = null,
+    val alias: String? = null,
     @get:MapAnnotation(sortBeforeSave = false)
-    var comparisonMap: MutableMap<String, String> = mutableMapOf()
-) {
-    fun deepCopy(): TabInfo = TabInfo(
-        branchName = branchName,
-        alias = alias,
-        comparisonMap = comparisonMap.toMutableMap()
-    )
-}
+    var comparisonMap: Map<String, String> = emptyMap()
+)
+
+val TabInfo.displayName: String
+    get() = alias ?: branchName

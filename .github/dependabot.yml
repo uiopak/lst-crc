@@ -8,8 +8,18 @@ updates:
     directory: "/"
     schedule:
       interval: "daily"
+    # One PR per ecosystem instead of one per library; also keeps related
+    # artifacts (e.g. the JUnit Jupiter/Platform modules) on the same version.
+    groups:
+      gradle-dependencies:
+        patterns:
+          - "*"
   # Maintain dependencies for GitHub Actions
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "daily"
+    groups:
+      github-actions:
+        patterns:
+          - "*"
