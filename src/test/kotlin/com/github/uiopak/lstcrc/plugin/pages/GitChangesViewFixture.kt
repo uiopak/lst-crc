@@ -175,8 +175,16 @@ class GitChangesViewFixture(remoteRobot: RemoteRobot, remoteComponent: RemoteCom
         }
     }
 
+    /**
+     * The changes tree of the selected tab. Uses a longer lookup timeout than Remote Robot's 2 s default:
+     * a failed lookup throws, and `waitFor` does not retry on exceptions, so a tab that takes a little
+     * longer to build its tree (slow CI runners) would otherwise abort the whole surrounding wait.
+     */
     val changesTree: ContainerFixture
-        get() = remoteRobot.find(byXpath("//div[@class='LstCrcAsyncChangesTree' or @class='ChangesTree']"))
+        get() = remoteRobot.find(
+            byXpath("//div[@class='LstCrcAsyncChangesTree' or @class='ChangesTree']"),
+            Duration.ofSeconds(10)
+        )
 
     fun clickChange(fileName: String, button: MouseButton = MouseButton.LEFT_BUTTON) {
         step("Click '$fileName' with $button") {

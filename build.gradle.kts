@@ -132,7 +132,10 @@ dependencies {
     add("uiTestRuntimeOnly", libs.junit.platform.launcher)
     add("uiTestRuntimeOnly", libs.slf4j.simple)
     add("uiTestImplementation", "org.kodein.di:kodein-di-jvm:7.33.0")
-    add("uiTestImplementation", "org.jetbrains.kotlinx:kotlinx-coroutines-core-jvm:1.11.0")
+    // The 2026.2+ test framework relies on JetBrains' coroutines fork (IntellijCoroutines) and reports
+    // test metadata through TeamCity service messages; neither is a declared Starter dependency.
+    add("uiTestImplementation", "org.jetbrains.intellij.deps.kotlinx:kotlinx-coroutines-core-jvm:1.10.2-intellij-2")
+    add("uiTestRuntimeOnly", "org.jetbrains.teamcity:serviceMessages:2024.07")
 
     // IntelliJ Platform Gradle Plugin Dependencies Extension - read more: https://plugins.jetbrains.com/docs/intellij/tools-intellij-platform-gradle-plugin-dependencies-extension.html
     intellijPlatform {
