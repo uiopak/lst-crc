@@ -2,6 +2,8 @@ import org.jetbrains.changelog.Changelog
 import org.jetbrains.changelog.markdownToHTML
 import org.jetbrains.intellij.platform.gradle.TestFrameworkType
 import org.jetbrains.kotlin.gradle.dsl.JvmDefaultMode
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import org.jetbrains.kotlin.gradle.tasks.KotlinJvmCompile
 import java.net.URI
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
@@ -38,6 +40,11 @@ kotlin {
     }
 }
 
+// The IDE Starter / Driver test libraries for 2026.2+ are compiled for Java 25, so the `uiTest`
+// source set (and the tasks that run it) need a Java 25 toolchain. The plugin itself stays on 21.
+val starterJavaVersion = JavaLanguageVersion.of(25)
+val starterJavaLauncher = javaToolchains.launcherFor { languageVersion.set(starterJavaVersion) }
+
 // Configure project's dependencies
 repositories {
     mavenCentral()
@@ -54,6 +61,14 @@ sourceSets {
         compileClasspath += sourceSets.main.get().output + sourceSets.test.get().output
         runtimeClasspath += sourceSets.main.get().output + sourceSets.test.get().output
     }
+}
+
+tasks.named<KotlinJvmCompile>("compileUiTestKotlin") {
+    kotlinJavaToolchain.toolchain.use(starterJavaLauncher)
+    compilerOptions.jvmTarget.set(JvmTarget.JVM_25)
+}
+tasks.named<JavaCompile>("compileUiTestJava") {
+    javaCompiler.set(javaToolchains.compilerFor { languageVersion.set(starterJavaVersion) })
 }
 
 idea {
@@ -314,6 +329,7 @@ tasks {
 
     fun Test.configureStarterIdeTestTask(allureSubdirectory: String) {
         configureCommonTestTask()
+        javaLauncher.set(starterJavaLauncher)
 
         notCompatibleWithConfigurationCache("Starter UI test discovery is unstable when this task is restored from configuration cache.")
 

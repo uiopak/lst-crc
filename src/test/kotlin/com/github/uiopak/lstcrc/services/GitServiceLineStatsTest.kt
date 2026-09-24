@@ -2,13 +2,13 @@ package com.github.uiopak.lstcrc.services
 
 import com.intellij.openapi.command.WriteCommandAction
 import com.intellij.openapi.fileEditor.FileDocumentManager
-import com.intellij.testFramework.fixtures.BasePlatformTestCase
+import com.github.uiopak.lstcrc.testsupport.LstCrcTestCase
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.TimeUnit
 
-class GitServiceLineStatsTest : BasePlatformTestCase() {
+class GitServiceLineStatsTest : LstCrcTestCase() {
 
     fun testCalculateLineStatsIgnoresLineEndingOnlyDifferences() {
         val stats = calculateLineStats("First\r\nSecond\r\n", "First\nSecond\n")

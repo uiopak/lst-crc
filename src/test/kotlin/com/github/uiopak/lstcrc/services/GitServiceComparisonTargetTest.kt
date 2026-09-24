@@ -2,10 +2,10 @@ package com.github.uiopak.lstcrc.services
 
 import com.github.uiopak.lstcrc.state.TabInfo
 import com.intellij.testFramework.LightVirtualFile
-import com.intellij.testFramework.fixtures.BasePlatformTestCase
+import com.github.uiopak.lstcrc.testsupport.LstCrcTestCase
 import git4idea.repo.GitRepository
 
-class GitServiceComparisonTargetTest : BasePlatformTestCase() {
+class GitServiceComparisonTargetTest : LstCrcTestCase() {
 
     fun testResolveComparisonTargetPrecedence() {
         val gitService = GitService(project)

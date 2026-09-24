@@ -11,9 +11,9 @@ import com.intellij.openapi.editor.impl.DocumentMarkupModel
 import com.intellij.testFramework.LightVirtualFile
 import com.intellij.testFramework.PlatformTestUtil
 import com.intellij.openapi.components.service
-import com.intellij.testFramework.fixtures.BasePlatformTestCase
+import com.github.uiopak.lstcrc.testsupport.LstCrcTestCase
 
-class VisualTrackerManagerBehaviorTest : BasePlatformTestCase() {
+class VisualTrackerManagerBehaviorTest : LstCrcTestCase() {
 
     fun testUnderlyingTrackerReportsInsertedRangeForPartialInsertionAgainstExistingBase() {
         val tracker = createTracker(text = "alpha\nbeta\n", baseText = "alpha\n")

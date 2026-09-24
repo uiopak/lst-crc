@@ -5,9 +5,9 @@ import com.github.uiopak.lstcrc.testsupport.flushEdt
 import com.github.uiopak.lstcrc.testsupport.selectComparisonTab
 import com.github.uiopak.lstcrc.testsupport.selectHeadTab
 import com.intellij.openapi.components.service
-import com.intellij.testFramework.fixtures.BasePlatformTestCase
+import com.github.uiopak.lstcrc.testsupport.LstCrcTestCase
 
-class ProjectActiveDiffDataServiceTest : BasePlatformTestCase() {
+class ProjectActiveDiffDataServiceTest : LstCrcTestCase() {
 
     fun testAcceptsHeadUpdateWhenHeadTabIsSelected() {
         val diffDataService = project.service<ProjectActiveDiffDataService>()

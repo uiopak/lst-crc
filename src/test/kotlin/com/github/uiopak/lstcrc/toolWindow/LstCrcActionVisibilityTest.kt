@@ -17,7 +17,7 @@ import com.intellij.openapi.vcs.history.VcsRevisionNumber
 import com.intellij.openapi.wm.ToolWindow
 import com.intellij.openapi.wm.impl.content.BaseLabel
 import com.intellij.openapi.wm.impl.content.ToolWindowContentUi
-import com.intellij.testFramework.fixtures.BasePlatformTestCase
+import com.github.uiopak.lstcrc.testsupport.LstCrcTestCase
 import com.intellij.ui.content.Content
 import com.intellij.ui.content.ContentFactory
 import com.intellij.ui.content.ContentManager
@@ -27,7 +27,7 @@ import sun.misc.Unsafe
 import java.lang.reflect.Proxy
 import javax.swing.JPanel
 
-class LstCrcActionVisibilityTest : BasePlatformTestCase() {
+class LstCrcActionVisibilityTest : LstCrcTestCase() {
 
     fun testShowRepoComparisonInfoActionHiddenOnHeadAndVisibleForComparisonTab() {
         val action = ShowRepoComparisonInfoAction()

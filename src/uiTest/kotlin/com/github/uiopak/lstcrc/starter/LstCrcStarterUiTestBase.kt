@@ -1,7 +1,7 @@
 package com.github.uiopak.lstcrc.starter
 
 import com.github.uiopak.lstcrc.starter.remote.LstCrcUiTestBridgeRemote
-import com.intellij.driver.client.Driver
+import com.intellij.driver.client.impl.DriverImpl
 import com.intellij.driver.client.service
 import com.intellij.driver.client.impl.JmxHost
 import com.intellij.driver.sdk.waitForIndicators
@@ -11,7 +11,6 @@ import com.intellij.ide.starter.ide.DefaultIdeDistributionFactory
 import com.intellij.ide.starter.ide.IdeInstaller
 import com.intellij.ide.starter.ide.InstalledIde
 import com.intellij.ide.starter.ide.IDETestContext
-import com.intellij.ide.starter.ide.IdeProductProvider
 import com.intellij.ide.starter.junit5.hyphenateWithClass
 import com.intellij.ide.starter.models.IdeInfo
 import com.intellij.ide.starter.models.TestCase
@@ -28,6 +27,8 @@ import com.intellij.ide.starter.utils.PortUtil.getAvailablePort
 import com.intellij.tools.ide.performanceTesting.commands.CommandChain
 import com.intellij.tools.ide.performanceTesting.commands.MarshallableCommand
 import com.intellij.tools.ide.starter.bus.EventsBus
+import com.intellij.tools.ide.starter.product.idea.community.IdeaCommunity
+import com.intellij.tools.ide.starter.product.idea.ultimate.IdeaUltimate
 import com.intellij.util.ui.UIUtil
 import org.junit.jupiter.api.Assertions.assertTrue
 import kotlinx.coroutines.CompletableDeferred
@@ -66,10 +67,10 @@ abstract class LstCrcStarterUiTestBase {
      */
     private fun resolveIdeInfo(testName: String) =
         System.getProperty("local.ide.path")?.let { localIdePath ->
-            IdeProductProvider.IU.copy(
+            IdeInfo.IdeaUltimate.copy(
                 getInstaller = { SharedLocalIdeInstaller(Path(localIdePath), testName) }
             )
-        } ?: IdeProductProvider.IC
+        } ?: IdeInfo.IdeaCommunity
 
     protected fun runStarterUiTest(block: LstCrcStarterContext.() -> Unit) {
         val testName = CurrentTestMethod.hyphenateWithClass()
@@ -129,7 +130,7 @@ abstract class LstCrcStarterUiTestBase {
         val testName = CurrentTestMethod.hyphenateWithClass()
         val driverOptions = createDriverOptions()
         preparePerTestVmOptions(testName, driverOptions)
-        val driver = Driver.create(JmxHost(address = driverOptions.address))
+        val driver = DriverImpl(JmxHost(address = driverOptions.address), isRemDevMode = false)
         val process = CompletableDeferred<IDEHandle>()
 
         EventsBus.subscribeOnce(process) { event: IdeLaunchEvent ->
@@ -234,7 +235,7 @@ abstract class LstCrcStarterUiTestBase {
             }
             val installId = "shared-local-ide-$fingerprint-$testName"
             return installId to DefaultIdeDistributionFactory.installIDE(
-                installedIdePath.parent.toFile(),
+                installedIdePath.parent,
                 ideInfo.executableFileName,
             )
         }

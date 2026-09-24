@@ -10,9 +10,9 @@ import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.service
 import com.intellij.psi.search.scope.packageSet.NamedScopeManager
 import com.intellij.psi.search.scope.packageSet.PackageSetBase
-import com.intellij.testFramework.fixtures.BasePlatformTestCase
+import com.github.uiopak.lstcrc.testsupport.LstCrcTestCase
 
-class LstCrcFileStatusScopesTest : BasePlatformTestCase() {
+class LstCrcFileStatusScopesTest : LstCrcTestCase() {
 
     fun testDeletedScopeMatchesDeletedPathsWhileChangedExcludesThem() {
         enableIncludeHeadInScopes(true)

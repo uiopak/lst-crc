@@ -1,6 +1,6 @@
 package com.github.uiopak.lstcrc.listeners
 
-import com.intellij.testFramework.fixtures.BasePlatformTestCase
+import com.github.uiopak.lstcrc.testsupport.LstCrcTestCase
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -8,7 +8,7 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
 
-class VcsChangeListenerTest : BasePlatformTestCase() {
+class VcsChangeListenerTest : LstCrcTestCase() {
 
     fun testHandleDocumentChangeTriggersRefreshForRepositoryFiles() {
         val trackedFile = myFixture.addFileToProject("tracked.txt", "tracked\n").virtualFile
