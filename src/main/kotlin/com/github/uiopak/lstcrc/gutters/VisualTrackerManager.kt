@@ -40,6 +40,12 @@ import kotlinx.coroutines.withContext
 import kotlin.coroutines.CoroutineContext
 import java.util.concurrent.ConcurrentHashMap
 
+private val VISIBLE_MODE = LocalLineStatusTracker.Mode(
+    isVisible = true,
+    showErrorStripeMarkers = true,
+    detectWhitespaceChangedLines = true
+)
+
 data class VisualTrackerDispatchers(
     val background: CoroutineDispatcher = Dispatchers.Default,
     val io: CoroutineDispatcher = Dispatchers.IO,
@@ -77,12 +83,6 @@ class VisualTrackerManager(
                 message.contains("exists on disk, but not in", ignoreCase = true)
             )
 
-    private data class TargetRevisionContext(
-        val diffDataService: ProjectActiveDiffDataService,
-        val repository: GitRepository,
-        val targetRevision: String
-    )
-
     fun init() {
         val busConnection = project.messageBus.connect(this)
 
@@ -118,9 +118,6 @@ class VisualTrackerManager(
         })
 
     }
-
-    private fun isOurGutterMarkersEnabled(): Boolean =
-        ToolWindowSettingsProvider.isGutterMarkersEnabled()
 
     /**
      * Called from settings when the user toggles any gutter marker feature.
@@ -242,7 +239,7 @@ class VisualTrackerManager(
             if (project.isDisposed) return@invokeLater
 
             val documents = EditorFactory.getInstance().allEditors.map { it.document }.distinct()
-            val gutterEnabled = isOurGutterMarkersEnabled()
+            val gutterEnabled = ToolWindowSettingsProvider.isGutterMarkersEnabled()
             coroutineScope.launch(dispatchers.background) {
                 documents.forEach { document ->
                     refreshTracker(document, gutterEnabled)
@@ -252,7 +249,7 @@ class VisualTrackerManager(
     }
 
     private fun maybeInterceptTracker(nativeTracker: LocalLineStatusTracker<*>) {
-        if (!isOurGutterMarkersEnabled()) return
+        if (!ToolWindowSettingsProvider.isGutterMarkersEnabled()) return
 
         val file = nativeTracker.virtualFile
         if (nativeTracker !is PartialLocalLineStatusTracker) return
@@ -287,8 +284,8 @@ class VisualTrackerManager(
             } else {
                 if (nativeTracker != null) {
                     restoreNativeTracker(nativeTracker)
-                } else {
-                    restoreStandaloneTracker(document, file)
+                } else if (releaseVisualTracker(document)) {
+                    logger.debug("VISUAL_TRACKER: Released standalone visual tracker for ${file.name}.")
                 }
             }
         }
@@ -298,11 +295,7 @@ class VisualTrackerManager(
         // Only act if we actually had a visual tracker for this document.
         if (releaseVisualTracker(nativeTracker.document)) {
             logger.debug("VISUAL_TRACKER: Restored native tracker for ${nativeTracker.virtualFile.name}.")
-            nativeTracker.mode = LocalLineStatusTracker.Mode(
-                isVisible = true,
-                showErrorStripeMarkers = true,
-                detectWhitespaceChangedLines = true
-            )
+            nativeTracker.mode = VISIBLE_MODE
         }
     }
 
@@ -315,31 +308,25 @@ class VisualTrackerManager(
         return true
     }
 
+    /** The revision [file]'s visual tracker compares against, or null to leave it to the native tracker. */
     private fun resolveTargetRevision(file: VirtualFile): String? {
-        val context = resolveTargetRevisionContext(file) ?: run {
+        val diffDataService = project.service<ProjectActiveDiffDataService>()
+        val repository = project.service<GitService>().getRepositoryForFile(file)
+        val targetRevision = repository?.let { diffDataService.activeComparisonContext[it.root.path] ?: diffDataService.activeBranchName }
+        if (repository == null || targetRevision == null) {
             logger.debug("VISUAL_TRACKER: Yielding. Target revision is null for ${file.name}.")
             return null
         }
 
-        if (shouldSkipTrackerForCurrentRevision(context.repository, context.targetRevision)) {
+        if (shouldSkipTrackerForCurrentRevision(repository, targetRevision)) {
             return null
         }
 
-        if (shouldSkipTrackerForNewFile(context.diffDataService, file)) {
+        if (shouldSkipTrackerForNewFile(diffDataService, file)) {
             return null
         }
 
-        return context.targetRevision
-    }
-
-    private fun resolveTargetRevisionContext(file: VirtualFile): TargetRevisionContext? {
-        val diffDataService = project.service<ProjectActiveDiffDataService>()
-        val branchName = diffDataService.activeBranchName
-        val gitService = project.service<GitService>()
-        val repository = gitService.getRepositoryForFile(file) ?: return null
-        val comparisonContext = diffDataService.activeComparisonContext
-        val targetRevision = comparisonContext[repository.root.path] ?: branchName ?: return null
-        return TargetRevisionContext(diffDataService, repository, targetRevision)
+        return targetRevision
     }
 
     private fun shouldSkipTrackerForCurrentRevision(repository: GitRepository, targetRevision: String): Boolean {
@@ -358,11 +345,7 @@ class VisualTrackerManager(
     private fun createVisualTracker(document: Document, file: VirtualFile): SimpleLocalLineStatusTracker {
         val tracker = SimpleLocalLineStatusTracker.createTracker(project, document, file)
         val stableTracker: LocalLineStatusTracker<*> = tracker
-        stableTracker.mode = LocalLineStatusTracker.Mode(
-            isVisible = true,
-            showErrorStripeMarkers = true,
-            detectWhitespaceChangedLines = true
-        )
+        stableTracker.mode = VISIBLE_MODE
         return tracker
     }
 
@@ -404,12 +387,6 @@ class VisualTrackerManager(
             } finally {
                 updateJobs.remove(document, coroutineContext[Job])
             }
-        }
-    }
-
-    private fun restoreStandaloneTracker(document: Document, file: VirtualFile) {
-        if (releaseVisualTracker(document)) {
-            logger.debug("VISUAL_TRACKER: Released standalone visual tracker for ${file.name}.")
         }
     }
 

@@ -85,7 +85,7 @@ internal class ShowRepoComparisonInfoAction : DumbAwareAction(
         repo: GitRepository,
         tabInfo: TabInfo
     ): AnAction {
-        val currentTarget = tabInfo.comparisonMap[repo.root.path] ?: tabInfo.branchName
+        val currentTarget = project.service<GitService>().resolveComparisonTarget(repo, tabInfo)
         val actionText = LstCrcBundle.message("changes.browser.repo.node.full.comparison.text", repo.root.name, currentTarget)
 
         return object : AnAction(actionText) {

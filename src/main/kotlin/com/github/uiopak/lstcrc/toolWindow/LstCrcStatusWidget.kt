@@ -13,7 +13,6 @@ import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.DefaultActionGroup
 import com.intellij.openapi.actionSystem.Separator
 import com.intellij.openapi.components.service
-import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.popup.JBPopupFactory
 import com.intellij.openapi.wm.StatusBar
@@ -24,7 +23,6 @@ import com.intellij.ui.content.Content
 import com.intellij.ui.content.ContentManager
 import com.intellij.ui.awt.RelativePoint
 import com.intellij.util.Consumer
-import com.intellij.util.messages.MessageBusConnection
 import java.awt.Component
 import java.awt.Point
 import java.awt.event.MouseEvent
@@ -48,8 +46,6 @@ class LstCrcStatusWidgetFactory : StatusBarWidgetFactory {
 class LstCrcStatusWidget(private val project: Project) : StatusBarWidget, StatusBarWidget.TextPresentation {
 
     private var statusBar: StatusBar? = null
-    private var messageBusConnection: MessageBusConnection? = null
-    private val logger = thisLogger()
 
     companion object {
         const val ID = "LstCrcStatusWidget"
@@ -65,11 +61,10 @@ class LstCrcStatusWidget(private val project: Project) : StatusBarWidget, Status
 
     override fun install(statusBar: StatusBar) {
         this.statusBar = statusBar
-        messageBusConnection = project.messageBus.connect(this)
 
         // The listener's only job is to tell the status bar to re-query our presentation.
-        // It does not need to manage any internal state itself.
-        messageBusConnection?.subscribe(TOOL_WINDOW_STATE_TOPIC, object : ToolWindowStateListener {
+        // The connection is disposed together with the widget.
+        project.messageBus.connect(this).subscribe(TOOL_WINDOW_STATE_TOPIC, object : ToolWindowStateListener {
             override fun stateChanged(newState: ToolWindowState) {
                 this@LstCrcStatusWidget.statusBar?.updateWidget(ID())
             }
@@ -77,8 +72,6 @@ class LstCrcStatusWidget(private val project: Project) : StatusBarWidget, Status
     }
 
     override fun dispose() {
-        messageBusConnection?.disconnect()
-        messageBusConnection = null
         statusBar = null
     }
 
@@ -136,57 +129,24 @@ class LstCrcStatusWidget(private val project: Project) : StatusBarWidget, Status
         return actions
     }
 
-    private fun selectContent(
-        contentManager: ContentManager,
-        content: Content?,
-        successMessage: String,
-        failureMessage: String
-    ) {
-        if (content != null) {
-            contentManager.setSelectedContent(content, true)
-            logger.info(successMessage)
-            return
-        }
-        logger.warn(failureMessage)
-    }
-
-    private fun selectToolWindowContent(
-        contentFinder: (ContentManager) -> Content?,
-        successMessage: String,
-        failureMessage: String
-    ) {
+    /** Activates the tool window and selects the tab [findContent] returns, if any. */
+    private fun selectToolWindowContent(findContent: (ContentManager) -> Content?) {
         ToolWindowHelper.activateToolWindow(project) { toolWindow ->
             val contentManager = toolWindow.contentManager
-            selectContent(
-                contentManager,
-                contentFinder(contentManager),
-                successMessage,
-                failureMessage
-            )
+            findContent(contentManager)?.let { contentManager.setSelectedContent(it, true) }
         }
     }
 
     private inner class SelectHeadTabAction : AnAction(LstCrcBundle.message("tab.name.head")) {
-        override fun actionPerformed(e: AnActionEvent) {
-            selectToolWindowContent(
-                contentFinder = ToolWindowHelper::findHeadContent,
-                successMessage = "Requested UI tab selection for 'HEAD' from status widget.",
-                failureMessage = "Could not find HEAD content (non-closable tab) in tool window to select from widget."
-            )
-        }
+        override fun actionPerformed(e: AnActionEvent) = selectToolWindowContent(ToolWindowHelper::findHeadContent)
     }
 
     private inner class SelectTabAction(
         displayName: String,
         private val branchName: String
     ) : AnAction(displayName) {
-        override fun actionPerformed(e: AnActionEvent) {
-            selectToolWindowContent(
-                contentFinder = { contentManager -> ToolWindowHelper.findContentByBranchName(contentManager, branchName) },
-                successMessage = "Requested UI tab selection for '$branchName' from status widget.",
-                failureMessage = "Could not find content for tab '$branchName' in tool window to select from widget."
-            )
-        }
+        override fun actionPerformed(e: AnActionEvent) =
+            selectToolWindowContent { ToolWindowHelper.findContentByBranchName(it, branchName) }
     }
 
     private inner class AddTabAction : AnAction(LstCrcBundle.message("widget.action.add.tab")) {

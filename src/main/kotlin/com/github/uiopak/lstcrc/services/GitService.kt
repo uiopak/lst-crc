@@ -120,13 +120,6 @@ class GitService(private val project: Project) {
         val fileStatus: FileStatus
     )
 
-    private data class ChangeLoadContext(
-        val allChanges: MutableList<Change> = mutableListOf(),
-        val comparisonContext: MutableMap<String, String> = mutableMapOf(),
-        val lineStatsByChange: MutableMap<ChangeLineStatsKey, ChangeLineStats> = linkedMapOf(),
-        val failures: MutableMap<GitRepository, String> = mutableMapOf()
-    )
-
     private data class LoadedChanges(
         val changes: List<Change>,
         val lineStatsByChange: Map<ChangeLineStatsKey, ChangeLineStats>
@@ -136,15 +129,10 @@ class GitService(private val project: Project) {
         }
     }
 
-    internal fun getRepositoryForFile(file: VirtualFile): GitRepository? {
-        val repositoryManager = GitRepositoryManager.getInstance(project)
-        return repositoryManager.getRepositoryForFile(file)
-    }
+    internal fun getRepositoryForFile(file: VirtualFile): GitRepository? =
+        GitRepositoryManager.getInstance(project).getRepositoryForFile(file)
 
-    fun getRepositories(): List<GitRepository> {
-        val repositoryManager = GitRepositoryManager.getInstance(project)
-        return repositoryManager.repositories
-    }
+    fun getRepositories(): List<GitRepository> = GitRepositoryManager.getInstance(project).repositories
 
     /**
      * Gets the "primary" repository for the project. This is useful for context where a single
@@ -220,19 +208,21 @@ class GitService(private val project: Project) {
         tabInfo: TabInfo?,
         includeLineStats: Boolean
     ): GetChangesResult {
-        val context = ChangeLoadContext()
+        val allChanges = mutableListOf<Change>()
+        val comparisonContext = mutableMapOf<String, String>()
+        val lineStatsByChange = linkedMapOf<ChangeLineStatsKey, ChangeLineStats>()
+        // Only comparison tabs report missing targets; the HEAD tab never has one.
+        val failures = if (tabInfo == null) null else mutableMapOf<GitRepository, String>()
         for (repo in repositories) {
             val target = resolveComparisonTarget(repo, tabInfo)
-            context.comparisonContext[repo.root.path] = target
+            comparisonContext[repo.root.path] = target
             logger.debug("Repo '${repo.root.path}': using target '$target'")
-            // Only comparison tabs report missing targets; the HEAD tab never has one.
-            val failures = if (tabInfo == null) null else context.failures
             val loadedChanges = loadChanges(repo, target, includeLineStats, failures)
-            context.allChanges.addAll(loadedChanges.changes)
-            context.lineStatsByChange.putAll(loadedChanges.lineStatsByChange)
+            allChanges.addAll(loadedChanges.changes)
+            lineStatsByChange.putAll(loadedChanges.lineStatsByChange)
         }
-        val categorizedChanges = buildCategorizedChanges(context.allChanges, context.comparisonContext, context.lineStatsByChange)
-        return GetChangesResult(categorizedChanges.copy(lineStatsIncluded = includeLineStats), context.failures)
+        val categorizedChanges = buildCategorizedChanges(allChanges, comparisonContext, lineStatsByChange)
+        return GetChangesResult(categorizedChanges.copy(lineStatsIncluded = includeLineStats), failures.orEmpty())
     }
 
     /**
@@ -259,12 +249,11 @@ class GitService(private val project: Project) {
             loadTrackedChangesAgainstWorkingTree(repo, target, includeLineStats)
         } catch (e: VcsException) {
             logger.warn("git diff failed for repo '${repo.root.name}' against target '$target': ${e.message}")
-            if (failures == null) {
-                LoadedChanges.EMPTY
-            } else {
+            if (failures != null) {
                 failures[repo] = target
                 return LoadedChanges.EMPTY
             }
+            LoadedChanges.EMPTY
         }
         return combineWithUntrackedAndUnsaved(repo, target, trackedChanges, includeLineStats)
     }
@@ -411,7 +400,7 @@ class GitService(private val project: Project) {
         trackedChanges: LoadedChanges,
         includeLineStats: Boolean
     ): LoadedChanges {
-        val untrackedChanges = loadOptionalUntrackedChanges(repo)
+        val untrackedChanges = if (ToolWindowSettingsProvider.isShowUntrackedFilesAsNew()) loadUntrackedChanges(repo) else emptyList()
         val unsavedChanges = collectUnsavedDocumentChanges(repo, target)
         val allChanges = overlayUnsavedDocumentChanges(trackedChanges.changes + untrackedChanges, unsavedChanges)
         if (!includeLineStats) return LoadedChanges(allChanges, emptyMap())
@@ -423,14 +412,6 @@ class GitService(private val project: Project) {
                 forceRecompute = unsavedChanges.mapTo(linkedSetOf()) { ChangeLineStatsKey.from(it) }
             )
         )
-    }
-
-    private fun loadOptionalUntrackedChanges(repo: GitRepository): List<Change> {
-        return if (ToolWindowSettingsProvider.isShowUntrackedFilesAsNew()) {
-            loadUntrackedChanges(repo)
-        } else {
-            emptyList()
-        }
     }
 
     @Suppress("UsePropertyAccessSyntax")
@@ -555,16 +536,10 @@ class GitService(private val project: Project) {
     }
 
     private fun createDeletedVirtualFile(beforeRevision: ContentRevision): VirtualFile? {
-        return try {
-            logger.debug("Prepared lazy deleted-file virtual file for '${beforeRevision.file.path}'.")
-            ContentRevisionVirtualFile.create(beforeRevision)
-        } catch (e: Exception) {
-            logger.warn("Failed to create VcsVirtualFile for deleted file: ${beforeRevision.file.path}", e)
-            null
-        }
+        return runCatching { ContentRevisionVirtualFile.create(beforeRevision) }
+            .onFailure { logger.warn("Failed to create VcsVirtualFile for deleted file: ${beforeRevision.file.path}", it) }
+            .getOrNull()
     }
-
-
 
     fun getFileContentForRevision(revision: String, file: VirtualFile): String? {
         val repository = getRepositoryForFile(file)
