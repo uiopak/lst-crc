@@ -174,7 +174,7 @@ fun RemoteRobot.isGitRepositoryDetected(): Boolean = callJs(
     """
     (function() {
         $PROJECT_AND_PLUGIN_LOOKUP
-        return service("com.github.uiopak.lstcrc.services.GitService").getPrimaryRepository() != null;
+        return !service("com.github.uiopak.lstcrc.services.GitService").getRepositories().isEmpty();
     })();
     """.trimIndent(),
     true
