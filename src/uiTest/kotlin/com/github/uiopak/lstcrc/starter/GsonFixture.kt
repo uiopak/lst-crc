@@ -26,7 +26,7 @@ object GsonFixture {
     const val CHECKED_OUT = "gson-2.13.1"
 
     // Bump the version when the fixture layout changes, so stale caches are rebuilt.
-    private val cacheDirectory: Path = Path.of("build", "test-repos", "gson-v1")
+    private val cacheDirectory: Path = Path.of("build", "test-repos", "gson-v2")
 
     /** Copies the fixture (working tree and `.git`) into the empty project directory [target]. */
     @Synchronized
@@ -60,6 +60,9 @@ object GsonFixture {
 
     /**
      * A minimal IntelliJ project: one module whose content root is the repository, mapped to Git.
+     * For module files inside `.idea`, IntelliJ resolves `${'$'}MODULE_DIR${'$'}` to the project directory,
+     * so the content root is `${'$'}MODULE_DIR${'$'}` itself (not its parent, which would pull in sibling
+     * test projects and their repositories).
      * Without it, a directory containing gson's pom.xml would be opened as a Maven import
      * (downloading dependencies), and an empty `.idea` would leave the files outside any module.
      */
@@ -82,7 +85,7 @@ object GsonFixture {
             <?xml version="1.0" encoding="UTF-8"?>
             <module type="JAVA_MODULE" version="4">
               <component name="NewModuleRootManager">
-                <content url="file://${'$'}MODULE_DIR${'$'}/.." />
+                <content url="file://${'$'}MODULE_DIR${'$'}" />
                 <orderEntry type="sourceFolder" forTests="false" />
               </component>
             </module>
