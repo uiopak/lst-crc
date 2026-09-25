@@ -22,8 +22,8 @@ class ProjectActiveDiffDataServiceTest : LstCrcTestCase() {
         flushEdt()
 
         assertEquals("HEAD", diffDataService.activeBranchName)
-        assertTrue(diffDataService.createdFilesSet.contains(headFile))
-        assertTrue(diffDataService.changedFilesSet.contains(headFile))
+        assertTrue(diffDataService.createdFilePaths.contains(headFile.path))
+        assertTrue(diffDataService.changedFilePaths.contains(headFile.path))
         assertTrue(diffDataService.createdFilePaths.contains(headFile.path))
     }
 
@@ -48,10 +48,10 @@ class ProjectActiveDiffDataServiceTest : LstCrcTestCase() {
 
         assertEquals("selected-branch", diffDataService.activeBranchName)
         assertEquals(listOf(selectedFile), diffDataService.createdFiles)
-        assertTrue(diffDataService.createdFilesSet.contains(selectedFile))
-        assertFalse(diffDataService.createdFilesSet.contains(staleFile))
-        assertTrue(diffDataService.changedFilesSet.contains(selectedFile))
-        assertFalse(diffDataService.changedFilesSet.contains(staleFile))
+        assertTrue(diffDataService.createdFilePaths.contains(selectedFile.path))
+        assertFalse(diffDataService.createdFilePaths.contains(staleFile.path))
+        assertTrue(diffDataService.changedFilePaths.contains(selectedFile.path))
+        assertFalse(diffDataService.changedFilePaths.contains(staleFile.path))
         assertTrue(diffDataService.createdFilePaths.contains(selectedFile.path))
         assertFalse(diffDataService.createdFilePaths.contains(staleFile.path))
     }
@@ -77,10 +77,10 @@ class ProjectActiveDiffDataServiceTest : LstCrcTestCase() {
 
         assertEquals("selected-branch", diffDataService.activeBranchName)
         assertEquals(listOf(selectedFile), diffDataService.createdFiles)
-        assertTrue(diffDataService.createdFilesSet.contains(selectedFile))
-        assertFalse(diffDataService.createdFilesSet.contains(headFile))
-        assertTrue(diffDataService.changedFilesSet.contains(selectedFile))
-        assertFalse(diffDataService.changedFilesSet.contains(headFile))
+        assertTrue(diffDataService.createdFilePaths.contains(selectedFile.path))
+        assertFalse(diffDataService.createdFilePaths.contains(headFile.path))
+        assertTrue(diffDataService.changedFilePaths.contains(selectedFile.path))
+        assertFalse(diffDataService.changedFilePaths.contains(headFile.path))
         assertTrue(diffDataService.createdFilePaths.contains(selectedFile.path))
         assertFalse(diffDataService.createdFilePaths.contains(headFile.path))
     }

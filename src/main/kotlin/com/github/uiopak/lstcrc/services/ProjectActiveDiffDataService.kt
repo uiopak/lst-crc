@@ -21,50 +21,30 @@ import com.intellij.openapi.vfs.VirtualFile
 class ProjectActiveDiffDataService(private val project: Project) : Disposable {
     private val logger = thisLogger()
 
+    /**
+     * The active comparison plus path sets derived from it. Scopes and gutters query these on every
+     * file-status/colour lookup, so they are computed once per update. Paths are used rather than
+     * [VirtualFile]s because deleted and revision-backed files have no stable local instance.
+     */
     private data class ActiveDiffSnapshot(
         val activeBranchName: String?,
-        val categorizedChanges: CategorizedChanges,
-        val createdFilesSet: Set<VirtualFile>,
-        val createdFilePaths: Set<String>,
-        val modifiedFilesSet: Set<VirtualFile>,
-        val modifiedFilePaths: Set<String>,
-        val movedFilesSet: Set<VirtualFile>,
-        val movedFilePaths: Set<String>,
-        val deletedFilePaths: Set<String>,
-        val changedFilesSet: Set<VirtualFile>,
-        val changedFilePaths: Set<String>
+        val categorizedChanges: CategorizedChanges
     ) {
-        val allFiles: Set<VirtualFile>
-            get() = createdFilesSet + modifiedFilesSet + movedFilesSet + categorizedChanges.deletedFiles.toSet()
+        val createdFilePaths: Set<String> = categorizedChanges.createdFiles.pathSet()
+        val modifiedFilePaths: Set<String> = categorizedChanges.modifiedFiles.pathSet()
+        val movedFilePaths: Set<String> = categorizedChanges.movedFiles.pathSet()
+        val deletedFilePaths: Set<String> = categorizedChanges.deletedFiles.pathSet()
+        val changedFilePaths: Set<String> = createdFilePaths + modifiedFilePaths + movedFilePaths
+
+        /** True when replacing this snapshot can change some file's status (it lists at least one file). */
+        fun hasFiles(): Boolean = with(categorizedChanges) {
+            createdFiles.isNotEmpty() || modifiedFiles.isNotEmpty() || movedFiles.isNotEmpty() || deletedFiles.isNotEmpty()
+        }
+
+        private fun List<VirtualFile>.pathSet(): Set<String> = mapTo(HashSet(size)) { it.path }
 
         companion object {
-            fun from(
-                activeBranchName: String?,
-                categorizedChanges: CategorizedChanges
-            ): ActiveDiffSnapshot {
-                val createdSet = categorizedChanges.createdFiles.toSet()
-                val modifiedSet = categorizedChanges.modifiedFiles.toSet()
-                val movedSet = categorizedChanges.movedFiles.toSet()
-                val createdPaths = categorizedChanges.createdFiles.mapTo(HashSet()) { it.path }
-                val modifiedPaths = categorizedChanges.modifiedFiles.mapTo(HashSet()) { it.path }
-                val movedPaths = categorizedChanges.movedFiles.mapTo(HashSet()) { it.path }
-                val deletedPaths = categorizedChanges.deletedFiles.mapTo(HashSet()) { it.path }
-                return ActiveDiffSnapshot(
-                    activeBranchName = activeBranchName,
-                    categorizedChanges = categorizedChanges,
-                    createdFilesSet = createdSet,
-                    createdFilePaths = createdPaths,
-                    modifiedFilesSet = modifiedSet,
-                    modifiedFilePaths = modifiedPaths,
-                    movedFilesSet = movedSet,
-                    movedFilePaths = movedPaths,
-                    deletedFilePaths = deletedPaths,
-                    changedFilesSet = createdSet + modifiedSet + movedSet,
-                    changedFilePaths = createdPaths + modifiedPaths + movedPaths
-                )
-            }
-
-            fun empty(): ActiveDiffSnapshot = from(
+            val EMPTY = ActiveDiffSnapshot(
                 activeBranchName = null,
                 categorizedChanges = CategorizedChanges(emptyList(), emptyList(), emptyList(), emptyList(), emptyList(), emptyMap(), emptyMap())
             )
@@ -72,13 +52,14 @@ class ProjectActiveDiffDataService(private val project: Project) : Disposable {
     }
 
     @Volatile
-    private var snapshot: ActiveDiffSnapshot = ActiveDiffSnapshot.empty()
+    private var snapshot: ActiveDiffSnapshot = ActiveDiffSnapshot.EMPTY
 
     val activeBranchName: String?
         get() = snapshot.activeBranchName
     val categorizedChanges: CategorizedChanges?
         get() = snapshot.categorizedChanges.takeIf { it.allChanges.isNotEmpty() || snapshot.activeBranchName != null }
 
+    // The file lists are read by UI tests through Remote Robot.
     val createdFiles: List<VirtualFile>
         get() = snapshot.categorizedChanges.createdFiles
     @get:Suppress("unused")
@@ -94,22 +75,14 @@ class ProjectActiveDiffDataService(private val project: Project) : Disposable {
         get() = snapshot.categorizedChanges.comparisonContext
     val lineStatsByChange: Map<ChangeLineStatsKey, ChangeLineStats>
         get() = snapshot.categorizedChanges.lineStatsByChange
-    val createdFilesSet: Set<VirtualFile>
-        get() = snapshot.createdFilesSet
     val createdFilePaths: Set<String>
         get() = snapshot.createdFilePaths
-    val modifiedFilesSet: Set<VirtualFile>
-        get() = snapshot.modifiedFilesSet
     val modifiedFilePaths: Set<String>
         get() = snapshot.modifiedFilePaths
-    val movedFilesSet: Set<VirtualFile>
-        get() = snapshot.movedFilesSet
     val movedFilePaths: Set<String>
         get() = snapshot.movedFilePaths
     val deletedFilePaths: Set<String>
         get() = snapshot.deletedFilePaths
-    val changedFilesSet: Set<VirtualFile>
-        get() = snapshot.changedFilesSet
     val changedFilePaths: Set<String>
         get() = snapshot.changedFilePaths
 
@@ -130,19 +103,16 @@ class ProjectActiveDiffDataService(private val project: Project) : Disposable {
                 if (project.isDisposed) return@invokeLater
                 logger.debug("EDT: Updating active data for '$branchNameFromEvent'.")
 
-                val newSnapshot = ActiveDiffSnapshot.from(
-                    activeBranchName = branchNameFromEvent,
-                    categorizedChanges = categorizedChanges
-                )
+                val newSnapshot = ActiveDiffSnapshot(branchNameFromEvent, categorizedChanges)
                 if (snapshot == newSnapshot) {
                     logger.debug("EDT: Snapshot is identical. Skipping refresh triggers.")
                     return@invokeLater
                 }
 
-                val previousFiles = snapshot.allFiles
+                val hadFiles = snapshot.hasFiles()
                 snapshot = newSnapshot
 
-                notifyAffectedFiles(previousFiles + snapshot.allFiles)
+                notifyFileStatusesChanged(hadFiles || newSnapshot.hasFiles())
                 project.messageBus.syncPublisher(DIFF_DATA_CHANGED_TOPIC).onDiffDataChanged()
                 triggerEditorTabColorRefresh()
             }
@@ -156,20 +126,18 @@ class ProjectActiveDiffDataService(private val project: Project) : Disposable {
             if (project.isDisposed) return@invokeLater
             logger.debug("EDT: clearActiveDiff called. Clearing activeBranchName and file lists.")
 
-            val previousFiles = snapshot.allFiles
-            snapshot = ActiveDiffSnapshot.empty()
+            val hadFiles = snapshot.hasFiles()
+            snapshot = ActiveDiffSnapshot.EMPTY
 
-            notifyAffectedFiles(previousFiles)
+            notifyFileStatusesChanged(hadFiles)
             project.messageBus.syncPublisher(DIFF_DATA_CHANGED_TOPIC).onDiffDataChanged()
             triggerEditorTabColorRefresh()
         }
     }
 
-    /** `fileStatusesChanged()` invalidates every cached status, so per-file notifications would be redundant. */
-    private fun notifyAffectedFiles(affectedFiles: Set<VirtualFile>) {
-        if (affectedFiles.isEmpty()) return
-        logger.debug("EDT: Notifying FileStatusManager for ${affectedFiles.size} affected files.")
-        FileStatusManager.getInstance(project).fileStatusesChanged()
+    /** `fileStatusesChanged()` invalidates every cached status, so per-file notifications are unnecessary. */
+    private fun notifyFileStatusesChanged(anyFileAffected: Boolean) {
+        if (anyFileAffected) FileStatusManager.getInstance(project).fileStatusesChanged()
     }
 
     /** Must be called on EDT. */
@@ -194,6 +162,6 @@ class ProjectActiveDiffDataService(private val project: Project) : Disposable {
 
     override fun dispose() {
         logger.info("Disposing ProjectActiveDiffDataService for project ${project.name}, clearing data.")
-        snapshot = ActiveDiffSnapshot.empty()
+        snapshot = ActiveDiffSnapshot.EMPTY
     }
 }

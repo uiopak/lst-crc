@@ -1,6 +1,7 @@
 package com.github.uiopak.lstcrc.toolWindow
 
 import com.github.uiopak.lstcrc.resources.LstCrcBundle
+import com.github.uiopak.lstcrc.scopes.DELETED_SCOPE_ID
 import com.github.uiopak.lstcrc.services.CategorizedChanges
 import com.github.uiopak.lstcrc.services.ProjectActiveDiffDataService
 import com.github.uiopak.lstcrc.services.ToolWindowStateService
@@ -272,20 +273,10 @@ class LstCrcChangesBrowser(
             return null
         }
 
-        private fun getScopeColorForDeletedFile(project: Project): Color {
-            // Use the existing DeletedFilesScope directly for zero memory overhead
-            val fileColorManager = FileColorManager.getInstance(project)
-
-            // Get the color configured for the "LSTCRC.Deleted" scope
-            // This uses your existing DeletedFilesScope infrastructure
-            val deletedScopeColor = fileColorManager.getScopeColor("LSTCRC.Deleted")
-            if (deletedScopeColor != null) {
-                return deletedScopeColor
-            }
-
-            // Fallback to default rose color if scope color is not configured
-            return JBColor.namedColor("FileColor.Rose", JBColor(Color(255, 235, 236), Color(71, 43, 43)))
-        }
+        /** The colour configured for the deleted-files scope, or the default rose if none is set. */
+        private fun getScopeColorForDeletedFile(project: Project): Color =
+            FileColorManager.getInstance(project).getScopeColor(DELETED_SCOPE_ID)
+                ?: JBColor.namedColor("FileColor.Rose", JBColor(Color(255, 235, 236), Color(71, 43, 43)))
 
 
     }
