@@ -48,6 +48,7 @@ class LstCrcStarterPerformanceTest : LstCrcStarterUiTestBase() {
                 bridge.openGitChangesView()
             }
             // Sanity threshold — catches hangs, not subtle regressions
+            LstCrcPerformanceReport.record("synthetic-21-files", "open tool window", openToolWindowTime)
             assertTrue(
                 openToolWindowTime < 10.seconds,
                 "Opening the tool window took $openToolWindowTime (expected < 10s)"
@@ -68,6 +69,7 @@ class LstCrcStarterPerformanceTest : LstCrcStarterUiTestBase() {
             }
             // Sanity threshold — catches hangs, not subtle regressions.
             // For real perf budgets, calibrate from observed CI P95 + margin.
+            LstCrcPerformanceReport.record("synthetic-21-files", "create and load tab (21 changes)", createTabTime)
             assertTrue(
                 createTabTime < 60.seconds,
                 "Creating branch tab and loading 21 changes took $createTabTime (expected < 60s)"
@@ -84,6 +86,7 @@ class LstCrcStarterPerformanceTest : LstCrcStarterUiTestBase() {
                         bridge.selectedChangesTreeSnapshot().contains("Main.txt")
                 }
             }
+            LstCrcPerformanceReport.record("synthetic-21-files", "switch to branch tab", tabSwitchTime)
             assertTrue(
                 tabSwitchTime < 30.seconds,
                 "Switching to branch tab took $tabSwitchTime (expected < 30s)"
@@ -101,6 +104,7 @@ class LstCrcStarterPerformanceTest : LstCrcStarterUiTestBase() {
                     bridge.selectedChangesTreeSnapshot().contains("extra.txt")
                 }
             }
+            LstCrcPerformanceReport.record("synthetic-21-files", "refresh after external commit", refreshTime)
             assertTrue(
                 refreshTime < 60.seconds,
                 "Refreshing after external change took $refreshTime (expected < 60s)"

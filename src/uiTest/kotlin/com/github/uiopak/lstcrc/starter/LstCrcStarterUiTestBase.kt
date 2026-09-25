@@ -72,9 +72,17 @@ abstract class LstCrcStarterUiTestBase {
             )
         } ?: IdeInfo.IdeaCommunity
 
-    protected fun runStarterUiTest(block: LstCrcStarterContext.() -> Unit) {
+    /**
+     * Starts the IDE on a fresh project and runs [block]. [prepareProject] runs before the IDE opens
+     * the project directory, e.g. to copy in a repository fixture.
+     */
+    protected fun runStarterUiTest(
+        prepareProject: LstCrcStarterProject.() -> Unit = {},
+        block: LstCrcStarterContext.() -> Unit
+    ) {
         val testName = CurrentTestMethod.hyphenateWithClass()
         val project = LstCrcStarterProject.create(testName)
+        project.prepareProject()
         val context = createTestContext(project, testName)
 
         context.runLstCrcIdeWithDriver().useDriverAndCloseIde {
@@ -112,6 +120,8 @@ abstract class LstCrcStarterUiTestBase {
                 addSystemProperty("NEW_USERS_ONBOARDING_DIALOG_SHOWN", true)
                 addSystemProperty("apple.laf.useScreenMenuBar", false)
                 addSystemProperty("jbScreenMenuBar.enabled", false)
+                // Repository fixtures contain build files (e.g. gson's pom.xml); don't import them.
+                addSystemProperty("external.system.auto.import.disabled", true)
             }
             .addProjectToTrustedLocations()
     }
