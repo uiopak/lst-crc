@@ -29,7 +29,6 @@ import com.intellij.vcsUtil.VcsUtil
 import com.github.uiopak.lstcrc.toolWindow.ToolWindowSettingsProvider
 import git4idea.GitContentRevision
 import git4idea.GitRevisionNumber
-import git4idea.changes.GitChangeUtils
 import git4idea.commands.Git
 import git4idea.commands.GitCommand
 import git4idea.commands.GitLineHandler
@@ -59,7 +58,9 @@ data class CategorizedChanges(
     val movedFiles: List<VirtualFile>,
     val deletedFiles: List<VirtualFile>,
     val comparisonContext: Map<String, String>,
-    val lineStatsByChange: Map<ChangeLineStatsKey, ChangeLineStats>
+    val lineStatsByChange: Map<ChangeLineStatsKey, ChangeLineStats>,
+    /** False when the load skipped line stats because "Show line stats" was off. */
+    val lineStatsIncluded: Boolean = true
 )
 
 data class ChangeLineStats(
@@ -130,6 +131,8 @@ class GitService(private val project: Project) {
         val lineStatsByChange: Map<ChangeLineStatsKey, ChangeLineStats>
     )
 
+    private val NO_CHANGES = LoadedChanges(emptyList(), emptyMap())
+
     internal fun getRepositoryForFile(file: VirtualFile): GitRepository? {
         val repositoryManager = GitRepositoryManager.getInstance(project)
         return repositoryManager.getRepositoryForFile(file)
@@ -194,9 +197,12 @@ class GitService(private val project: Project) {
             )
         }
 
+        // Line stats cost an extra `git diff --numstat` per repository plus in-process diffs of
+        // untracked/unsaved files, so they are only computed while the tree shows them.
+        val includeLineStats = ToolWindowSettingsProvider.isShowLineStatsInTree()
         return withBackgroundProgress(project, LstCrcBundle.message("git.task.loading.changes")) {
             withContext(dispatcher) {
-                loadChangesResult(repositories, tabInfo)
+                loadChangesResult(repositories, tabInfo, includeLineStats)
             }
         }
     }
@@ -208,59 +214,59 @@ class GitService(private val project: Project) {
 
     private fun loadChangesResult(
         repositories: List<GitRepository>,
-        tabInfo: TabInfo?
+        tabInfo: TabInfo?,
+        includeLineStats: Boolean
     ): GetChangesResult {
         val context = ChangeLoadContext()
         for (repo in repositories) {
             val target = resolveComparisonTarget(repo, tabInfo)
             context.comparisonContext[repo.root.path] = target
             logger.debug("Repo '${repo.root.path}': using target '$target'")
-            val loadedChanges = if (tabInfo == null) {
-                loadLocalChanges(repo)
-            } else {
-                loadChangesForTarget(repo, target, context.failures)
-            }
+            // Only comparison tabs report missing targets; the HEAD tab never has one.
+            val failures = if (tabInfo == null) null else context.failures
+            val loadedChanges = loadChanges(repo, target, includeLineStats, failures)
             context.allChanges.addAll(loadedChanges.changes)
             context.lineStatsByChange.putAll(loadedChanges.lineStatsByChange)
         }
-        return GetChangesResult(buildCategorizedChanges(context.allChanges, context.comparisonContext, context.lineStatsByChange), context.failures)
+        val categorizedChanges = buildCategorizedChanges(context.allChanges, context.comparisonContext, context.lineStatsByChange)
+        return GetChangesResult(categorizedChanges.copy(lineStatsIncluded = includeLineStats), context.failures)
     }
 
     /**
      * Compares the working tree (including untracked files and unsaved documents) of [repo]
-     * against [target]. A per-repository override only changes the target; it is never a
-     * commit-to-commit comparison, so the tree matches what the gutter markers show.
+     * against [target] (HEAD for the HEAD tab). A per-repository override only changes the target;
+     * it is never a commit-to-commit comparison, so the tree matches what the gutter markers show.
+     *
+     * If `git diff` fails, a comparison tab records [target] in [failures] and shows nothing for the
+     * repository; the HEAD tab ([failures] == null) still shows untracked files and unsaved edits.
      */
-    private fun loadChangesForTarget(
+    private fun loadChanges(
         repo: GitRepository,
         target: String,
-        failures: MutableMap<GitRepository, String>
+        includeLineStats: Boolean,
+        failures: MutableMap<GitRepository, String>?
     ): LoadedChanges {
         repo.update()
-        logLocalComparisonFallback(repo, target)
-
         if (repo.isFresh) {
-            return loadLocalChanges(repo)
+            logger.info("Repo '${repo.root.name}' is fresh. Showing only untracked files and unsaved edits for target '$target'.")
+            return combineWithUntrackedAndUnsaved(repo, "HEAD", NO_CHANGES, includeLineStats)
         }
 
-        return try {
-            loadChangesAgainstWorkingTree(repo, target)
+        val trackedChanges = try {
+            loadTrackedChangesAgainstWorkingTree(repo, target, includeLineStats)
         } catch (e: VcsException) {
-            logger.warn(
-                "git diff failed for repo '${repo.root.name}' against target '$target'. " +
-                    "Assuming revision is invalid. Error: ${e.message}"
-            )
-            failures[repo] = target
-            LoadedChanges(emptyList(), emptyMap())
+            logger.warn("git diff failed for repo '${repo.root.name}' against target '$target': ${e.message}")
+            if (failures == null) {
+                NO_CHANGES
+            } else {
+                failures[repo] = target
+                return NO_CHANGES
+            }
         }
+        return combineWithUntrackedAndUnsaved(repo, target, trackedChanges, includeLineStats)
     }
 
-    private fun loadChangesAgainstWorkingTree(repo: GitRepository, target: String): LoadedChanges {
-        val trackedChanges = loadTrackedChangesAgainstWorkingTree(repo, target)
-        return combineWithUntrackedAndUnsaved(repo, target, trackedChanges)
-    }
-
-    private fun loadTrackedChangesAgainstWorkingTree(repo: GitRepository, target: String): LoadedChanges {
+    private fun loadTrackedChangesAgainstWorkingTree(repo: GitRepository, target: String, includeLineStats: Boolean): LoadedChanges {
         val targetRevision = GitRevisionNumber(target)
         val changes = runGitDiff(repo, "--name-status", DIFF_FILTER_PARAM, "-M", target)
             .lineSequence()
@@ -269,7 +275,7 @@ class GitService(private val project: Project) {
 
         return LoadedChanges(
             changes = changes,
-            lineStatsByChange = loadTrackedLineStats(repo, changes, target)
+            lineStatsByChange = if (includeLineStats) loadTrackedLineStats(repo, changes, target) else emptyMap()
         )
     }
 
@@ -351,54 +357,50 @@ class GitService(private val project: Project) {
         }
     }
 
-    private fun logLocalComparisonFallback(repo: GitRepository, target: String) {
-        if (repo.isFresh) logger.info("Repo '${repo.root.name}' is fresh. Falling back to comparing against HEAD for target '$target'.")
-        else logger.debug("Repo '${repo.root.name}' is targeting HEAD. Comparing against local changes.")
-    }
-
+    /** Splits changes into created/modified/moved/deleted files in one pass. */
     private fun buildCategorizedChanges(
         allChanges: List<Change>,
         comparisonContext: Map<String, String>,
         lineStatsByChange: Map<ChangeLineStatsKey, ChangeLineStats>
     ): CategorizedChanges {
-        val created = allChanges.filter { it.beforeRevision == null && it.afterRevision != null }
-            .mapNotNull { createComparisonVirtualFile(it.afterRevision!!) }
-            .distinct()
-
-        val deleted = allChanges.filter { it.beforeRevision != null && it.afterRevision == null }
-            .mapNotNull { createDeletedVirtualFile(it.beforeRevision!!) }
-            .distinct()
-
-        val movedAndModified = allChanges.filter { it.beforeRevision != null && it.afterRevision != null }
-
-        val moved = movedAndModified.filter { it.beforeRevision!!.file.path != it.afterRevision!!.file.path }
-            .mapNotNull { createComparisonVirtualFile(it.afterRevision!!) }
-            .distinct()
-
-        val modified = movedAndModified.filter { it.beforeRevision!!.file.path == it.afterRevision!!.file.path }
-            .mapNotNull { createComparisonVirtualFile(it.afterRevision!!) }
-            .distinct()
+        val created = LinkedHashSet<VirtualFile>()
+        val modified = LinkedHashSet<VirtualFile>()
+        val moved = LinkedHashSet<VirtualFile>()
+        val deleted = LinkedHashSet<VirtualFile>()
+        for (change in allChanges) {
+            val before = change.beforeRevision
+            val after = change.afterRevision
+            when {
+                before == null && after != null -> createComparisonVirtualFile(after)?.let(created::add)
+                before != null && after == null -> createDeletedVirtualFile(before)?.let(deleted::add)
+                before != null && after != null -> {
+                    val target = if (before.file.path == after.file.path) modified else moved
+                    createComparisonVirtualFile(after)?.let(target::add)
+                }
+            }
+        }
 
         return CategorizedChanges(
             allChanges = allChanges.distinct(),
-            createdFiles = created,
-            modifiedFiles = modified,
-            movedFiles = moved,
-            deletedFiles = deleted,
+            createdFiles = created.toList(),
+            modifiedFiles = modified.toList(),
+            movedFiles = moved.toList(),
+            deletedFiles = deleted.toList(),
             comparisonContext = comparisonContext,
             lineStatsByChange = lineStatsByChange
         )
     }
 
-    private fun loadLocalChanges(repo: GitRepository): LoadedChanges {
-        val trackedChanges = loadTrackedChangesAgainstHead(repo)
-        return combineWithUntrackedAndUnsaved(repo, "HEAD", trackedChanges)
-    }
-
-    private fun combineWithUntrackedAndUnsaved(repo: GitRepository, target: String, trackedChanges: LoadedChanges): LoadedChanges {
+    private fun combineWithUntrackedAndUnsaved(
+        repo: GitRepository,
+        target: String,
+        trackedChanges: LoadedChanges,
+        includeLineStats: Boolean
+    ): LoadedChanges {
         val untrackedChanges = loadOptionalUntrackedChanges(repo)
         val unsavedChanges = collectUnsavedDocumentChanges(repo, target)
         val allChanges = overlayUnsavedDocumentChanges(trackedChanges.changes + untrackedChanges, unsavedChanges)
+        if (!includeLineStats) return LoadedChanges(allChanges, emptyMap())
         return LoadedChanges(
             changes = allChanges,
             lineStatsByChange = buildLineStats(
@@ -414,25 +416,6 @@ class GitService(private val project: Project) {
             loadUntrackedChanges(repo)
         } else {
             emptyList()
-        }
-    }
-
-    private fun loadTrackedChangesAgainstHead(repo: GitRepository): LoadedChanges {
-        repo.update()
-
-        if (repo.isFresh) {
-            return LoadedChanges(emptyList(), emptyMap())
-        }
-
-        return try {
-            val changes = GitChangeUtils.getDiffWithWorkingDir(project, repo.root, "HEAD", null, false, true).toList()
-            LoadedChanges(
-                changes = changes,
-                lineStatsByChange = buildLineStats(changes, emptyMap(), emptySet())
-            )
-        } catch (e: VcsException) {
-            logger.warn("Failed to load tracked local changes for repo '${repo.root.name}' against HEAD: ${e.message}")
-            LoadedChanges(emptyList(), emptyMap())
         }
     }
 

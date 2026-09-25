@@ -614,6 +614,10 @@ class LstCrcChangesBrowser(
      * Rebuilds the tree view. Called when a display setting (like showing comparison context) is changed.
      */
     fun rebuildView() {
+        // Line stats are only computed while shown; after switching them on, reload the data first.
+        if (ToolWindowSettingsProvider.isShowLineStatsInTree() && currentChanges?.lineStatsIncluded == false) {
+            requestRefreshData()
+        }
         ApplicationManager.getApplication().invokeLater {
             if (!project.isDisposed) {
                 rebuildTreePreservingViewport()
