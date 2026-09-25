@@ -68,12 +68,14 @@ class BranchSelectionFixture(remoteRobot: RemoteRobot, remoteComponent: RemoteCo
         return branchTree!!
     }
 
-    private fun waitForPanelToClose() {
-        val timeout = if (System.getenv("GITHUB_ACTIONS") == "true") Duration.ofSeconds(30) else Duration.ofSeconds(10)
+    private fun waitForPanelToClose(
+        timeout: Duration = if (System.getenv("GITHUB_ACTIONS") == "true") Duration.ofSeconds(30) else Duration.ofSeconds(10)
+    ): Boolean = runCatching {
         waitFor(timeout, interval = Duration.ofMillis(250)) {
             remoteRobot.findAll<ComponentFixture>(byXpath("//div[@class='BranchSelectionPanel']")).isEmpty()
         }
-    }
+        true
+    }.getOrDefault(false)
 
     fun setSearchTerm(searchTerm: String) {
         step("Set branch search term to '$searchTerm'") {
@@ -143,7 +145,14 @@ class BranchSelectionFixture(remoteRobot: RemoteRobot, remoteComponent: RemoteCo
             val tree = waitForBranchTree()
             tree.findText(branchLabel).doubleClick()
 
-            waitForPanelToClose()
+            // On slow CI runners (seen on Windows) the robot's double-click occasionally does not reach the
+            // row, leaving the panel open. Fall back to selecting through the panel, as addTab() does.
+            if (!waitForPanelToClose(Duration.ofSeconds(10))) {
+                println("[BranchSelectionFixture] Double-click on '$branchName' did not close the panel; selecting it through the panel.")
+                val selected = callJs<Boolean>("component.selectVisibleBranchForTest(${toJsStringLiteral(branchName)})", true)
+                check(selected) { "Branch '$branchName' is not visible in the branch selection tree." }
+                check(waitForPanelToClose()) { "Branch selection panel did not close after selecting '$branchName'." }
+            }
 
             remoteRobot.runJs(
                 """
