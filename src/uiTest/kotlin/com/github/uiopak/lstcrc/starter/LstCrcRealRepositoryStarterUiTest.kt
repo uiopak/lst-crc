@@ -101,7 +101,7 @@ class LstCrcRealRepositoryStarterUiTest : LstCrcStarterUiTestBase() {
     private fun LstCrcStarterContext.measureUntil(
         test: String,
         step: String,
-        detail: String = "",
+        detail: () -> String = { "" },
         timeout: Duration = 180.seconds,
         action: () -> Unit = {},
         condition: () -> Boolean
@@ -109,7 +109,7 @@ class LstCrcRealRepositoryStarterUiTest : LstCrcStarterUiTestBase() {
         val start = TimeSource.Monotonic.markNow()
         action()
         waitUntil(timeout, 100.milliseconds, condition)
-        return start.elapsedNow().also { LstCrcPerformanceReport.record(test, step, it, detail) }
+        return start.elapsedNow().also { LstCrcPerformanceReport.record(test, step, it, detail()) }
     }
 
     private fun LstCrcStarterContext.assertComparisonMatchesGit(
@@ -119,10 +119,11 @@ class LstCrcRealRepositoryStarterUiTest : LstCrcStarterUiTestBase() {
         step: String = "load tab vs $target",
         action: () -> Unit = {}
     ) {
-        val expected = git.entries(target).map(GitOracle.Entry::line)
+        // Asked after [action], which may move the working copy (checkout, local edits).
+        val expected by lazy { git.entries(target).map(GitOracle.Entry::line) }
         var actual = emptyList<String>()
         val matched = runCatching {
-            measureUntil(test, step, "${expected.size} changes", action = action) {
+            measureUntil(test, step, detail = { "${expected.size} changes" }, action = action) {
                 val lines = ui.activeDiffEntries().lines()
                 actual = lines.drop(1).filterNot { it.startsWith("S\t") }
                 lines.first().startsWith("branch=$target|") && actual == expected
