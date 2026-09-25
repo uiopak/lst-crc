@@ -3,9 +3,9 @@ package com.github.uiopak.lstcrc.toolWindow
 import com.intellij.ide.util.PropertiesComponent
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.service
-import com.intellij.testFramework.fixtures.BasePlatformTestCase
+import com.github.uiopak.lstcrc.testsupport.LstCrcTestCase
 
-class LstCrcSettingsServiceTest : BasePlatformTestCase() {
+class LstCrcSettingsServiceTest : LstCrcTestCase() {
 
     fun testResetToDefaultsRestoresRepresentativeValues() {
         val settings = ApplicationManager.getApplication().service<LstCrcSettingsService>()

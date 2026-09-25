@@ -5,10 +5,10 @@ import com.intellij.openapi.vcs.FileStatus
 import com.intellij.openapi.vcs.history.VcsRevisionNumber
 import com.intellij.openapi.vcs.changes.Change
 import com.intellij.openapi.vcs.changes.ContentRevision
-import com.intellij.testFramework.fixtures.BasePlatformTestCase
+import com.github.uiopak.lstcrc.testsupport.LstCrcTestCase
 import com.intellij.vcsUtil.VcsUtil
 
-class GitServiceOverlayMergeTest : BasePlatformTestCase() {
+class GitServiceOverlayMergeTest : LstCrcTestCase() {
 
     fun testPreservesNewChangeTypeWhenUnsavedOverlayIsApplied() {
         val existingChange = Change(null, StubRevision("C:/repo/Local.txt"), FileStatus.ADDED)

@@ -9,13 +9,13 @@ import com.intellij.openapi.vcs.changes.Change
 import com.intellij.openapi.vcs.changes.ContentRevision
 import com.intellij.openapi.vcs.history.VcsRevisionNumber
 import com.intellij.ui.SimpleTextAttributes
-import com.intellij.testFramework.fixtures.BasePlatformTestCase
+import com.github.uiopak.lstcrc.testsupport.LstCrcTestCase
 import com.intellij.util.FontUtil
 import com.intellij.util.ui.UIUtil
 import com.intellij.vcsUtil.VcsUtil
 import javax.swing.tree.DefaultMutableTreeNode
 
-class RepoNodeRendererTest : BasePlatformTestCase() {
+class RepoNodeRendererTest : LstCrcTestCase() {
 
     fun testAddedLineStatsUseBuiltInSuccessForeground() {
         assertEquals(UIUtil.getLabelSuccessForeground(), ADDED_LINE_STATS_ATTRIBUTES.fgColor)

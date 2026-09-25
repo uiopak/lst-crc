@@ -6,7 +6,7 @@ import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.service
 import com.intellij.openapi.util.Disposer
 import com.intellij.testFramework.PlatformTestUtil
-import com.intellij.testFramework.fixtures.BasePlatformTestCase
+import com.github.uiopak.lstcrc.testsupport.LstCrcTestCase
 import com.intellij.ui.SearchTextField
 import com.intellij.ui.treeStructure.Tree
 import java.awt.Component
@@ -14,7 +14,7 @@ import java.awt.Container
 import java.awt.event.KeyEvent
 import javax.swing.tree.DefaultMutableTreeNode
 
-class BranchSelectionPanelTest : BasePlatformTestCase() {
+class BranchSelectionPanelTest : LstCrcTestCase() {
 
     fun testFilterSelectsFirstMatchingBranchFromStableSnapshot() {
         val panel = createPanel(

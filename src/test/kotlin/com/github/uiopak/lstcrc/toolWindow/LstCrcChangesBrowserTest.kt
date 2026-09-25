@@ -11,7 +11,7 @@ import com.intellij.openapi.vcs.changes.Change
 import com.intellij.openapi.vcs.changes.ContentRevision
 import com.intellij.openapi.vcs.history.VcsRevisionNumber
 import com.intellij.testFramework.PlatformTestUtil
-import com.intellij.testFramework.fixtures.BasePlatformTestCase
+import com.github.uiopak.lstcrc.testsupport.LstCrcTestCase
 import com.intellij.vcsUtil.VcsUtil
 import java.awt.BorderLayout
 import java.awt.Dimension
@@ -21,7 +21,7 @@ import javax.swing.JScrollPane
 import javax.swing.JTree
 import javax.swing.event.ChangeListener
 
-class LstCrcChangesBrowserTest : BasePlatformTestCase() {
+class LstCrcChangesBrowserTest : LstCrcTestCase() {
 
     private data class BrowserFixture(
         val browser: LstCrcChangesBrowser,

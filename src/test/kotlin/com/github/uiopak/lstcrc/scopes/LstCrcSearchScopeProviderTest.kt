@@ -6,9 +6,9 @@ import com.github.uiopak.lstcrc.testsupport.flushEdt
 import com.github.uiopak.lstcrc.testsupport.selectComparisonTab
 import com.intellij.openapi.components.service
 import com.intellij.psi.search.SearchScope
-import com.intellij.testFramework.fixtures.BasePlatformTestCase
+import com.github.uiopak.lstcrc.testsupport.LstCrcTestCase
 
-class LstCrcSearchScopeProviderTest : BasePlatformTestCase() {
+class LstCrcSearchScopeProviderTest : LstCrcTestCase() {
 
     fun testProvidedScopesExposeCanonicalIdsOrderAndSearchableSubset() {
         val customScopes = LstCrcScopeProvider().customScopes

@@ -3,9 +3,9 @@ package com.github.uiopak.lstcrc.services
 import com.github.uiopak.lstcrc.state.TabInfo
 import com.github.uiopak.lstcrc.state.ToolWindowState
 import com.intellij.openapi.components.service
-import com.intellij.testFramework.fixtures.BasePlatformTestCase
+import com.github.uiopak.lstcrc.testsupport.LstCrcTestCase
 
-class ToolWindowStateServicePersistenceTest : BasePlatformTestCase() {
+class ToolWindowStateServicePersistenceTest : LstCrcTestCase() {
 
     fun testAddTabDeduplicatesAndRemoveTabKeepsOtherTabs() {
         val service = project.service<ToolWindowStateService>()

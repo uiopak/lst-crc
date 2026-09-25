@@ -175,8 +175,16 @@ class GitChangesViewFixture(remoteRobot: RemoteRobot, remoteComponent: RemoteCom
         }
     }
 
+    /**
+     * The changes tree of the selected tab. Uses a longer lookup timeout than Remote Robot's 2 s default:
+     * a failed lookup throws, and `waitFor` does not retry on exceptions, so a tab that takes a little
+     * longer to build its tree (slow CI runners) would otherwise abort the whole surrounding wait.
+     */
     val changesTree: ContainerFixture
-        get() = remoteRobot.find(byXpath("//div[@class='LstCrcAsyncChangesTree' or @class='ChangesTree']"))
+        get() = remoteRobot.find(
+            byXpath("//div[@class='LstCrcAsyncChangesTree' or @class='ChangesTree']"),
+            Duration.ofSeconds(10)
+        )
 
     fun clickChange(fileName: String, button: MouseButton = MouseButton.LEFT_BUTTON) {
         step("Click '$fileName' with $button") {
@@ -888,14 +896,24 @@ class GitChangesViewFixture(remoteRobot: RemoteRobot, remoteComponent: RemoteCom
     fun addTab() {
         step("Click 'Add Tab' button") {
             val addTabLocator = byXpath("//div[@accessiblename='Add Tab']")
-            waitFor(Duration.ofSeconds(10), interval = Duration.ofMillis(250)) {
-                remoteRobot.findAll<ComponentFixture>(addTabLocator).isNotEmpty()
+            fun waitForAddTabButton(timeout: Duration): Boolean = runCatching {
+                waitFor(timeout, interval = Duration.ofMillis(250)) {
+                    remoteRobot.findAll<ComponentFixture>(addTabLocator).isNotEmpty()
+                }
+                true
+            }.getOrDefault(false)
+
+            // The new UI only shows tool window header actions (including "+") while the tool window is
+            // active or hovered. If focus went elsewhere, hover the HEAD tab to reveal them.
+            var buttonFound = waitForAddTabButton(Duration.ofSeconds(10))
+            if (!buttonFound) {
+                runCatching { remoteRobot.findAll<ComponentFixture>(tabLocator("HEAD")).firstOrNull()?.moveMouse() }
+                buttonFound = waitForAddTabButton(Duration.ofSeconds(5))
             }
 
-            remoteRobot.find<ComponentFixture>(addTabLocator).click()
-
             val branchSelectionOpenTimeout = if (System.getenv("GITHUB_ACTIONS") == "true") Duration.ofSeconds(30) else Duration.ofSeconds(10)
-            val openedFromClick = runCatching {
+            val openedFromClick = buttonFound && runCatching {
+                remoteRobot.find<ComponentFixture>(addTabLocator).click()
                 waitFor(branchSelectionOpenTimeout, interval = Duration.ofMillis(250)) {
                     remoteRobot.findAll<ComponentFixture>(branchSelectionPanelLocator).isNotEmpty()
                 }
@@ -903,6 +921,7 @@ class GitChangesViewFixture(remoteRobot: RemoteRobot, remoteComponent: RemoteCom
             }.getOrDefault(false)
 
             if (!openedFromClick) {
+                println("[GitChangesViewFixture] ${if (buttonFound) "'Add Tab' click did not open the branch selection tab" else "'Add Tab' button not shown"}; opening the tab through ToolWindowHelper.")
                 remoteRobot.runJs(
                     """
                     (function() {

@@ -6,9 +6,9 @@ import com.github.uiopak.lstcrc.state.TabInfo
 import com.github.uiopak.lstcrc.state.ToolWindowState
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.service
-import com.intellij.testFramework.fixtures.BasePlatformTestCase
+import com.github.uiopak.lstcrc.testsupport.LstCrcTestCase
 
-class LstCrcStatusWidgetTest : BasePlatformTestCase() {
+class LstCrcStatusWidgetTest : LstCrcTestCase() {
 
     override fun tearDown() {
         try {
