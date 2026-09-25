@@ -22,7 +22,9 @@ import git4idea.repo.GitRepository
 import java.awt.BorderLayout
 import java.awt.Component
 import javax.swing.JTree
+import java.util.IdentityHashMap
 import javax.swing.tree.DefaultMutableTreeNode
+import javax.swing.tree.TreeNode
 
 /**
  * Custom renderer for the LST-CRC changes tree.
@@ -45,8 +47,24 @@ class RepoNodeRenderer(
         iconTextGap = 0
     }
 
+    // Per-tree caches. The renderer runs for every visible row on every repaint, so work that only
+    // changes when the tree is rebuilt (new root node) or the line stats change is done once.
+    private var cachedRoot: Any? = null
+    private var cachedLineStats: Map<ChangeLineStatsKey, ChangeLineStats>? = null
+    private var cachedIsMultiRepo = false
+    private val aggregateCache = IdentityHashMap<TreeNode, ChangeLineStats?>()
+
     init {
         add(trailingRenderer, BorderLayout.EAST)
+    }
+
+    private fun refreshCachesIfStale(tree: JTree, lineStatsByChange: Map<ChangeLineStatsKey, ChangeLineStats>) {
+        val root = tree.model?.root
+        if (root === cachedRoot && lineStatsByChange === cachedLineStats) return
+        cachedRoot = root
+        cachedLineStats = lineStatsByChange
+        cachedIsMultiRepo = gitService.getRepositories().size > 1
+        aggregateCache.clear()
     }
 
     private fun visibleTargetRevision(targetRevision: String?): String? {
@@ -98,10 +116,10 @@ class RepoNodeRenderer(
 
         val node = value as? ChangesBrowserNode<*> ?: return this
         val lineStatsByChange = currentLineStatsByChange()
+        refreshCachesIfStale(tree, lineStatsByChange)
 
         val targetRevision = visibleTargetRevision(resolveTargetRevision(tree, node))
-        val lineStats = (node.userObject as? Change)?.let { lineStatsByChange[ChangeLineStatsKey.from(it)] }
-            ?: aggregateLineStatsForNode(node, lineStatsByChange)
+        val lineStats = aggregateLineStatsForNode(node, lineStatsByChange, aggregateCache)
 
         configureTrailingRenderer(targetRevision, lineStats)
         updateRendererInsets(trailingRenderer.isVisible)
@@ -130,7 +148,7 @@ class RepoNodeRenderer(
     }
 
     private fun resolveTargetRevision(tree: JTree, node: ChangesBrowserNode<*>): String? {
-        val isMultiRepo = gitService.getRepositories().size > 1
+        val isMultiRepo = cachedIsMultiRepo
         if (!shouldShowContext(isMultiRepo)) {
             return null
         }
@@ -255,22 +273,33 @@ internal fun buildTrailingMetadataText(
         ?.joinToString(FontUtil.spaceAndThinSpace()) { it.text }
 }
 
+/**
+ * Line stats of a change node, or the sum over all changes below a directory/group node; null when none
+ * have stats. Pass a [cache] shared across calls on the same tree so each node is summed only once.
+ */
 internal fun aggregateLineStatsForNode(
     node: DefaultMutableTreeNode,
-    lineStatsByChange: Map<ChangeLineStatsKey, ChangeLineStats>
+    lineStatsByChange: Map<ChangeLineStatsKey, ChangeLineStats>,
+    cache: MutableMap<TreeNode, ChangeLineStats?> = IdentityHashMap()
 ): ChangeLineStats? {
-    var addedLines = 0
-    var removedLines = 0
-    var foundAny = false
+    if (cache.containsKey(node)) return cache[node]
 
-    TreeUtil.treeNodeTraverser(node).forEach { treeNode ->
-        val descendantNode = treeNode as? DefaultMutableTreeNode ?: return@forEach
-        val change = descendantNode.userObject as? Change ?: return@forEach
-        val stats = lineStatsByChange[ChangeLineStatsKey.from(change)] ?: return@forEach
-        addedLines += stats.addedLines
-        removedLines += stats.removedLines
-        foundAny = true
+    val change = node.userObject as? Change
+    val result = if (change != null) {
+        lineStatsByChange[ChangeLineStatsKey.from(change)]
+    } else {
+        var addedLines = 0
+        var removedLines = 0
+        var foundAny = false
+        for (child in node.children()) {
+            val stats = aggregateLineStatsForNode(child as? DefaultMutableTreeNode ?: continue, lineStatsByChange, cache) ?: continue
+            addedLines += stats.addedLines
+            removedLines += stats.removedLines
+            foundAny = true
+        }
+        if (foundAny) ChangeLineStats(addedLines = addedLines, removedLines = removedLines) else null
     }
 
-    return if (foundAny) ChangeLineStats(addedLines = addedLines, removedLines = removedLines) else null
+    cache[node] = result
+    return result
 }
