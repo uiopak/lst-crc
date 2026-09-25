@@ -69,6 +69,9 @@ interface LstCrcUiTestBridgeRemote {
     fun scopeExists(scopeId: String): Boolean
     fun searchScopesSnapshot(): String
     fun searchScopeContains(displayName: String, relativePath: String): Boolean
+    fun activeDiffEntries(): String
+    fun filesMatchingScope(scopeId: String, relativePaths: String): String
+    fun findInFilesPaths(text: String, scopeDisplayName: String): String
     fun openFindInFilesDialog()
     fun findDialogScopeOptionsSnapshot(): String
     fun dismissTransientUi()

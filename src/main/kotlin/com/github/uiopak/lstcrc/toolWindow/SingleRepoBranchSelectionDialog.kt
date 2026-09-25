@@ -1,5 +1,6 @@
 package com.github.uiopak.lstcrc.toolWindow
 
+import com.github.uiopak.lstcrc.resources.LstCrcBundle
 import com.github.uiopak.lstcrc.services.GitService
 import com.github.uiopak.lstcrc.services.ToolWindowStateService
 import com.github.uiopak.lstcrc.state.TabInfo
@@ -21,7 +22,7 @@ class SingleRepoBranchSelectionDialog(
     private var selectedBranchName: String? = null
 
     init {
-        title = "Select Branch for ${repository.root.name}"
+        title = LstCrcBundle.message("dialog.select.branch.for.repo.title", repository.root.name)
         init()
     }
 

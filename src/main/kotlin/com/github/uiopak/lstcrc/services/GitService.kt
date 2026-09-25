@@ -19,6 +19,7 @@ import com.intellij.openapi.vcs.FilePath
 import com.intellij.openapi.vcs.FileStatus
 import com.intellij.openapi.vcs.VcsException
 import com.intellij.openapi.vcs.changes.Change
+import com.intellij.openapi.vcs.changes.ChangesUtil
 import com.intellij.openapi.vcs.changes.ContentRevision
 import com.intellij.openapi.vcs.history.VcsRevisionNumber
 import com.intellij.openapi.vcs.vfs.ContentRevisionVirtualFile
@@ -288,7 +289,7 @@ class GitService(private val project: Project) {
     ): Map<ChangeLineStatsKey, ChangeLineStats> {
         if (changes.isEmpty()) return emptyMap()
         val output = runGitDiff(repo, *trackedLineStatsDiffArgs(target).toTypedArray())
-        return parseTrackedLineStats(repo, changes, output.lineSequence())
+        return parseTrackedLineStats(repo, changes, output)
     }
 
     /** Runs a silent `git diff` in [repo] and returns its stdout, throwing [VcsException] on failure. */
@@ -301,30 +302,41 @@ class GitService(private val project: Project) {
         return Git.getInstance().runCommand(handler).getOutputOrThrow()
     }
 
+    /**
+     * Parses `git diff --numstat -z` output. Each record is `added<TAB>removed<TAB>path<NUL>`, or for
+     * renames `added<TAB>removed<TAB><NUL>old<NUL>new<NUL>`; binary files report `-` counts and are
+     * skipped. Paths are unquoted with `-z`, so renames map to their [Change] instead of falling back
+     * to an in-process diff (without `-z` git writes them as `dir/{old => new}`).
+     */
     private fun parseTrackedLineStats(
         repo: GitRepository,
         changes: List<Change>,
-        lines: Sequence<String>
+        output: String
     ): Map<ChangeLineStatsKey, ChangeLineStats> {
         val keys = changes.mapTo(LinkedHashSet(), ChangeLineStatsKey::from)
         val byAfterPath = keys.filter { it.afterPath != null }.associateBy { it.afterPath!! }
         val byBeforePath = keys.filter { it.beforePath != null }.associateBy { it.beforePath!! }
+        val root = repo.root.path
 
-        return lines.mapNotNull { line ->
-            val tokens = line.split('\t')
-            if (tokens.size < 3) return@mapNotNull null
-            val addedLines = tokens[0].toIntOrNull() ?: return@mapNotNull null
-            val removedLines = tokens[1].toIntOrNull() ?: return@mapNotNull null
-            fun path(index: Int) = GitContentRevision.createPathFromEscaped(repo.root, tokens[index]).path
-
-            val key = if (tokens.size >= 4) {
-                ChangeLineStatsKey.fromPaths(path(2), path(3)).takeIf { it in keys }
+        val result = linkedMapOf<ChangeLineStatsKey, ChangeLineStats>()
+        val fields = output.split('\u0000').iterator()
+        while (fields.hasNext()) {
+            val tokens = fields.next().trim('\n').split('\t')
+            if (tokens.size < 3) continue
+            val key = if (tokens[2].isEmpty()) {
+                // Rename or copy: the old and new paths follow as separate fields.
+                val oldPath = if (fields.hasNext()) fields.next() else break
+                val newPath = if (fields.hasNext()) fields.next() else break
+                ChangeLineStatsKey.fromPaths("$root/$oldPath", "$root/$newPath").takeIf { it in keys }
             } else {
-                val normalized = path(2).replace('\\', '/')
-                byAfterPath[normalized] ?: byBeforePath[normalized]
-            } ?: return@mapNotNull null
-            key to ChangeLineStats(addedLines = addedLines, removedLines = removedLines)
-        }.toMap(linkedMapOf())
+                val path = "$root/${tokens[2]}".replace('\\', '/')
+                byAfterPath[path] ?: byBeforePath[path]
+            } ?: continue
+            val addedLines = tokens[0].toIntOrNull() ?: continue
+            val removedLines = tokens[1].toIntOrNull() ?: continue
+            result[key] = ChangeLineStats(addedLines = addedLines, removedLines = removedLines)
+        }
+        return result
     }
 
     /**
@@ -457,14 +469,12 @@ class GitService(private val project: Project) {
         baseChanges: List<Change>,
         unsavedChanges: List<Change>
     ): List<Change> {
-        val mergedChanges = LinkedHashMap<String, Change>()
-        baseChanges.forEach { change ->
-            mergedChanges[unsavedOverlayKey(change.afterRevision?.file?.path ?: change.beforeRevision?.file?.path.orEmpty())] = change
-        }
+        // FilePath equality follows the file system's case sensitivity.
+        val mergedChanges = LinkedHashMap<FilePath, Change>()
+        baseChanges.forEach { change -> mergedChanges[ChangesUtil.getFilePath(change)] = change }
 
         unsavedChanges.forEach { change ->
-            val path = change.afterRevision?.file?.path ?: change.beforeRevision?.file?.path.orEmpty()
-            val key = unsavedOverlayKey(path)
+            val key = ChangesUtil.getFilePath(change)
             mergedChanges[key] = mergeUnsavedOverlayChange(mergedChanges[key], change)
         }
 
@@ -536,8 +546,6 @@ class GitService(private val project: Project) {
         }
     }
 
-    private fun unsavedOverlayKey(path: String): String = path.lowercase()
-
     private fun createComparisonVirtualFile(afterRevision: ContentRevision): VirtualFile? {
         return afterRevision.file.virtualFile
             ?: LocalFileSystem.getInstance().refreshAndFindFileByPath(afterRevision.file.path)
@@ -595,6 +603,7 @@ internal fun calculateLineStats(beforeContent: String, afterContent: String): Ch
 
 internal fun trackedLineStatsDiffArgs(vararg revisions: String): List<String> = buildList {
     add("--numstat")
+    add("-z")
     add(DIFF_FILTER_PARAM)
     add("-M")
     add(IGNORE_CR_AT_EOL_PARAM)

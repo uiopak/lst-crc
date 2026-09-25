@@ -1,6 +1,10 @@
 package com.github.uiopak.lstcrc.testing
 
 import com.github.uiopak.lstcrc.LstCrcConstants
+import com.intellij.find.FindModel
+import com.intellij.find.impl.FindInProjectUtil
+import com.intellij.usages.FindUsagesProcessPresentation
+import com.intellij.usages.UsageViewPresentation
 import com.github.uiopak.lstcrc.resources.LstCrcBundle
 import com.github.uiopak.lstcrc.gutters.VisualTrackerManager
 import com.github.uiopak.lstcrc.scopes.LstCrcProvidedScopes
@@ -723,6 +727,85 @@ class LstCrcUiTestBridge {
             ?: return@onEdtResult false
 
         scope.contains(file)
+    }
+
+    /**
+     * The active comparison as git-like lines, with paths relative to the project root, sorted:
+     * `A<TAB>path`, `M<TAB>path`, `D<TAB>path`, `R<TAB>old<TAB>new`, then line stats as
+     * `S<TAB>before<TAB>after<TAB>added<TAB>removed` (empty side for added/deleted files).
+     * The first line is `branch=<active branch>|lineStats=<included>`.
+     */
+    fun activeDiffEntries(): String {
+        val project = project()
+        val basePath = project.basePath?.replace('\\', '/')?.trimEnd('/') ?: return ""
+        fun relative(path: String?): String = path?.replace('\\', '/')?.removePrefix("$basePath/").orEmpty()
+
+        val diffDataService = project.service<ProjectActiveDiffDataService>()
+        val changes = diffDataService.categorizedChanges ?: return "branch=${diffDataService.activeBranchName}|lineStats=false"
+        val entries = changes.allChanges.map { change ->
+            val before = relative(change.beforeRevision?.file?.path).takeIf { change.beforeRevision != null }
+            val after = relative(change.afterRevision?.file?.path).takeIf { change.afterRevision != null }
+            when {
+                before == null -> "A\t$after"
+                after == null -> "D\t$before"
+                before == after -> "M\t$after"
+                else -> "R\t$before\t$after"
+            }
+        }.sorted()
+        val stats = changes.lineStatsByChange.map { (key, value) ->
+            "S\t${relative(key.beforePath)}\t${relative(key.afterPath)}\t${value.addedLines}\t${value.removedLines}"
+        }.sorted()
+        val header = "branch=${diffDataService.activeBranchName}|lineStats=${changes.lineStatsIncluded}"
+        return (listOf(header) + entries + stats).joinToString("\n")
+    }
+
+    /** Returns the subset of [relativePaths] (newline-separated) that the LSTCRC scope [scopeId] contains. */
+    fun filesMatchingScope(scopeId: String, relativePaths: String): String = onEdtResult {
+        val project = project()
+        val scope = lstCrcScopes().firstOrNull { it.scopeId == scopeId } ?: error("Unknown LSTCRC scope '$scopeId'")
+        val packageSet = scope.value as? PackageSetBase ?: error("Scope '$scopeId' has no PackageSetBase")
+        val holder = NamedScopeManager.getInstance(project)
+        val basePath = project.basePath ?: return@onEdtResult ""
+        relativePaths.lineSequence()
+            .map(String::trim)
+            .filter(String::isNotEmpty)
+            .filter { relativePath ->
+                val absolutePath = projectFilePath(basePath, relativePath)
+                val file = LocalFileSystem.getInstance().findFileByPath(absolutePath)
+                    ?: findActiveDiffFile(project, absolutePath)
+                    ?: return@filter false
+                packageSet.contains(file, project, holder)
+            }
+            .sorted()
+            .joinToString("\n")
+    }
+
+    /**
+     * Runs a real "Find in Files" search for [text] (case-sensitive, plain text) limited to the search
+     * scope named [scopeDisplayName] and returns the matching files relative to the project root, sorted.
+     */
+    fun findInFilesPaths(text: String, scopeDisplayName: String): String {
+        val project = project()
+        val scope = onEdtResult {
+            LstCrcSearchScopeProvider()
+                .getSearchScopes(project, DataContext.EMPTY_CONTEXT)
+                .firstOrNull { it.displayName == scopeDisplayName }
+        } ?: error("Unknown search scope '$scopeDisplayName'")
+        val basePath = project.basePath?.replace('\\', '/')?.trimEnd('/').orEmpty()
+
+        val model = FindModel().apply {
+            stringToFind = text
+            isCaseSensitive = true
+            isProjectScope = false
+            isCustomScope = true
+            customScope = scope
+        }
+        val files = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+        FindInProjectUtil.findUsages(model, project, { usage ->
+            usage.virtualFile?.path?.let { files += it.replace('\\', '/').removePrefix("$basePath/") }
+            true
+        }, FindUsagesProcessPresentation(UsageViewPresentation()))
+        return files.sorted().joinToString("\n")
     }
 
     fun openFindInFilesDialog() {

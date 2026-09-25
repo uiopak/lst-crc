@@ -55,7 +55,7 @@ class GitServiceLineStatsTest : LstCrcTestCase() {
             val normalizedDiff = runGit(repoPath, "diff", *trackedLineStatsDiffArgs("feature-line-endings").toTypedArray())
 
             assertTrue(noisyDiff, noisyDiff.lineSequence().any { it == "3\t3\tMain.txt" })
-            assertTrue(normalizedDiff, normalizedDiff.lineSequence().any { it == "1\t1\tMain.txt" })
+            assertTrue(normalizedDiff, normalizedDiff.split('\u0000').any { it.trim() == "1\t1\tMain.txt" })
         } finally {
             repoPath.toFile().deleteRecursively()
         }

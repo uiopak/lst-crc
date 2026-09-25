@@ -9,7 +9,12 @@
 
 name: Run UI Tests
 on:
-  workflow_dispatch
+  workflow_dispatch:
+    inputs:
+      tests:
+        description: 'Optional Gradle --tests filter, e.g. *LstCrcRealRepositoryUiTest'
+        required: false
+        default: ''
 
 jobs:
   run-ui-test:
@@ -20,6 +25,7 @@ jobs:
       UI_TEST_TIMEOUT: 900
       UI_TEST_IDE_RUNTIME_WARMUP_TIMEOUT: 1200
       UI_TEST_IDE_RUNTIME_RETRY_DELAY: 60
+      UI_TEST_FILTER: ${{ inputs.tests }}
       ORG_GRADLE_PROJECT_org.jetbrains.intellij.platform.useCacheRedirector: false
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     strategy:
@@ -37,7 +43,7 @@ jobs:
               ./gradlew runIdeForUiTests --info --stacktrace --scan &> build/reports/idea.log &
             runTests: |
               export DISPLAY=:99.0
-              ./gradlew uiTest --info --stacktrace -Dui.test.connection.timeout=${UI_TEST_CONNECTION_TIMEOUT} -Dui.test.timeout=${UI_TEST_TIMEOUT}
+              ./gradlew uiTest ${UI_TEST_FILTER:+--tests "$UI_TEST_FILTER"} --info --stacktrace -Dui.test.connection.timeout=${UI_TEST_CONNECTION_TIMEOUT} -Dui.test.timeout=${UI_TEST_TIMEOUT}
             cleanup: |
               ./gradlew stopUiTestProcesses --stacktrace || true
               ./gradlew --stop || true
@@ -48,7 +54,7 @@ jobs:
             uiTestIdeRuntimeWarmupTimeout: 1800
             prepareIdeRuntime: ./gradlew runIdeForUiTests --dry-run --stacktrace
             runIde: ./gradlew runIdeForUiTests --info --stacktrace --scan &> build/reports/idea.log &
-            runTests: ./gradlew uiTest --no-configuration-cache --info --stacktrace -Dui.test.connection.timeout=${UI_TEST_CONNECTION_TIMEOUT} -Dui.test.timeout=${UI_TEST_TIMEOUT}
+            runTests: ./gradlew uiTest ${UI_TEST_FILTER:+--tests "$UI_TEST_FILTER"} --no-configuration-cache --info --stacktrace -Dui.test.connection.timeout=${UI_TEST_CONNECTION_TIMEOUT} -Dui.test.timeout=${UI_TEST_TIMEOUT}
             cleanup: |
               ./gradlew stopUiTestProcesses --stacktrace || true
               ./gradlew --stop || true
@@ -73,6 +79,9 @@ jobs:
                 "-Dui.test.connection.timeout=$($env:UI_TEST_CONNECTION_TIMEOUT)",
                 "-Dui.test.timeout=$($env:UI_TEST_TIMEOUT)"
               )
+              if ($env:UI_TEST_FILTER) {
+                $gradleArgs += @("--tests", $env:UI_TEST_FILTER)
+              }
               & .\gradlew.bat @gradleArgs
             cleanup: |
               & .\gradlew.bat stopUiTestProcesses --stacktrace
@@ -409,6 +418,20 @@ jobs:
         if: runner.os == 'Windows'
         shell: powershell
         run: ${{ matrix.runTests }}
+
+      - name: Publish UI test timings
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          results=build/reports/lstcrc-performance/results.jsonl
+          [ -f "$results" ] || exit 0
+          {
+            echo "### LST-CRC UI test timings (${{ matrix.os }})"
+            echo
+            echo "| Test | Step | Time (ms) | Detail |"
+            echo "|---|---|---:|---|"
+            jq -r '"| \(.test) | \(.step) | \(.ms) | \(.detail) |"' "$results"
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Move video
         if: ${{ failure() }}

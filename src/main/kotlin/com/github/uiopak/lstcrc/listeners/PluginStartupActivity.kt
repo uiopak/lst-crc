@@ -7,9 +7,9 @@ import com.github.uiopak.lstcrc.toolWindow.LstCrcStatusWidget
 import com.intellij.openapi.application.EDT
 import com.intellij.openapi.components.service
 import com.intellij.openapi.diagnostic.thisLogger
-import com.intellij.openapi.project.DumbService
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.startup.ProjectActivity
+import com.intellij.openapi.vcs.ProjectLevelVcsManager
 import git4idea.repo.GitRepositoryManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.future.await
@@ -36,11 +36,14 @@ class PluginStartupActivity : ProjectActivity {
     }
 
     /**
-     * Suspends the coroutine until the project is in smart mode, using the stable, public API.
+     * Suspends until the VCS subsystem is initialized, which includes the initial detection of Git
+     * repositories. (`ProjectLevelVcsManager.awaitInitialization` does this directly, from 2025.3.)
+     * The manager is looked up as a service: from 2025.3 `getInstance` is on a Kotlin companion,
+     * which 2025.1/2025.2 do not have.
      */
-    private suspend fun awaitSmartMode(project: Project) {
+    private suspend fun awaitVcsInitialization(project: Project) {
         suspendCancellableCoroutine { continuation ->
-            DumbService.getInstance(project).runWhenSmart {
+            project.service<ProjectLevelVcsManager>().runAfterInitialization {
                 if (continuation.isActive) continuation.resume(Unit)
             }
         }
@@ -63,14 +66,14 @@ class PluginStartupActivity : ProjectActivity {
             project.service<ProjectActiveDiffDataService>().refreshCurrentColorings()
         }
 
-        logger.info("STARTUP_LOGIC: Waiting for smart mode before initial diff load to ensure Git is ready.")
-        // Wait for the IDE to finish indexing and other startup activities. This is a robust way
-        // to avoid race conditions with Git4Idea initialization, replacing a fixed-time delay.
-        awaitSmartMode(project)
-        logger.info("STARTUP_LOGIC: Project is in smart mode. Executing initial diff load for project: ${project.name}")
+        // The diff load only needs Git repositories, not indexes, so it does not wait for indexing
+        // (which can take minutes on a large project).
+        logger.info("STARTUP_LOGIC: Waiting for VCS initialization before initial diff load.")
+        awaitVcsInitialization(project)
+        logger.info("STARTUP_LOGIC: VCS initialized. Executing initial diff load for project: ${project.name}")
 
         if (project.isDisposed) {
-            logger.info("STARTUP_LOGIC: Project ${project.name} is disposed after smart mode, skipping initial diff load.")
+            logger.info("STARTUP_LOGIC: Project ${project.name} is disposed after VCS initialization, skipping initial diff load.")
             return
         }
 
@@ -81,7 +84,7 @@ class PluginStartupActivity : ProjectActivity {
         if (currentRepo == null) {
             val hasAnyGitRepositories = GitRepositoryManager.getInstance(project).repositories.isNotEmpty()
             if (hasAnyGitRepositories) {
-                logger.warn("STARTUP_LOGIC: Git repository still not found after smart mode for project: ${project.name}. Tab coloring may not function correctly.")
+                logger.warn("STARTUP_LOGIC: Git repository still not found after VCS initialization for project: ${project.name}. Tab coloring may not function correctly.")
             } else {
                 logger.info("STARTUP_LOGIC: No Git repository configured for project: ${project.name}. Skipping startup diff load.")
             }
@@ -89,7 +92,7 @@ class PluginStartupActivity : ProjectActivity {
             syncUiAfterRefresh(project, toolWindowStateService)
             return
         }
-        logger.info("STARTUP_LOGIC: Git repository found after smart mode: ${currentRepo.root.path}. Proceeding with initial diff load.")
+        logger.info("STARTUP_LOGIC: Git repository found after VCS initialization: ${currentRepo.root.path}. Proceeding with initial diff load.")
 
         // This single call orchestrates fetching data and updating services. We now await its completion.
         try {
