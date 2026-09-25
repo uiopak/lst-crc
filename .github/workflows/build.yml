@@ -40,7 +40,7 @@ jobs:
       - name: Maximize Build Space
         uses: jlumbroso/free-disk-space@main
         with:
-          tool-cache: true
+          preinstalled-runtimes: true
           large-packages: true
 
       # Check out the current repository
@@ -107,7 +107,7 @@ jobs:
       - name: Maximize Build Space
         uses: jlumbroso/free-disk-space@main
         with:
-          tool-cache: true
+          preinstalled-runtimes: true
           large-packages: true
 
       # Check out the current repository
@@ -158,7 +158,7 @@ jobs:
       - name: Maximize Build Space
         uses: jlumbroso/free-disk-space@main
         with:
-          tool-cache: true
+          preinstalled-runtimes: true
           large-packages: true
 
       # Check out the current repository
@@ -199,7 +199,7 @@ jobs:
       - name: Maximize Build Space
         uses: jlumbroso/free-disk-space@main
         with:
-          tool-cache: true
+          preinstalled-runtimes: true
           large-packages: true
 
       # Check out the current repository
@@ -251,7 +251,7 @@ jobs:
       - name: Maximize Build Space
         uses: jlumbroso/free-disk-space@main
         with:
-          tool-cache: true
+          preinstalled-runtimes: true
           large-packages: true
 
       # Check out the current repository

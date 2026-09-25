@@ -40,11 +40,8 @@ private class LstCrcPackageSet(private val descriptor: ScopeDescriptor) : Packag
         val branchName = diffDataService.activeBranchName ?: return false
 
         // HEAD-tab changes only count when "Include HEAD tab changes in file scopes" is enabled.
-        if (branchName == "HEAD" && !ToolWindowSettingsProvider.isIncludeHeadInScopes()) {
-            return false
-        }
-
-        return file.path in descriptor.paths(diffDataService)
+        val scopesActive = branchName != "HEAD" || ToolWindowSettingsProvider.isIncludeHeadInScopes()
+        return scopesActive && file.path in descriptor.paths(diffDataService)
     }
 
     override fun createCopy(): PackageSet = LstCrcPackageSet(descriptor)

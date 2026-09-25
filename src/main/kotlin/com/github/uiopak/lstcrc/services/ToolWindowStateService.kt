@@ -12,7 +12,6 @@ import com.intellij.notification.NotificationGroupManager
 import com.intellij.notification.NotificationType
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
-import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.PersistentStateComponent
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.State
@@ -26,6 +25,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.future.asCompletableFuture
 import kotlinx.coroutines.withContext
 import java.util.concurrent.CompletableFuture
@@ -193,11 +193,11 @@ class ToolWindowStateService(private val project: Project, val coroutineScope: C
             // Update the state, but do NOT trigger another refresh to avoid loops within this call stack.
             updateTabComparisonMap(tabInfo.branchName, newComparisonMap, triggerRefresh = false)
 
-            // The current refresh cycle detected the error and corrected the state.
-            // Now, schedule a *new* refresh cycle to load the data for the now-valid state.
-            // We use invokeLater to ensure this runs after the current refresh cycle completes and releases its lock.
-            ApplicationManager.getApplication().invokeLater {
-                if (project.isDisposed) return@invokeLater
+            // The current refresh detected the error and corrected the state; load the data for the
+            // corrected state as a separate task. If this refresh is still running, the request is
+            // queued and runs as its next cycle.
+            coroutineScope.launch(Dispatchers.EDT) {
+                if (project.isDisposed) return@launch
                 // We must check if the tab that was corrected is still the active one.
                 // The user might have switched tabs while the refresh was running.
                 if (getSelectedTabInfo()?.branchName == tabInfo.branchName) {

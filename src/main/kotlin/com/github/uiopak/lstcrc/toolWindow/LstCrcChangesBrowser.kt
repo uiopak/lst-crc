@@ -729,7 +729,7 @@ class LstCrcChangesBrowser(
             
             // If double action is NONE, fire immediately
             if (doubleAction == ToolWindowSettingsProvider.ACTION_NONE) {
-                performConfiguredAction(change, singleAction)
+                performConfiguredActionLater(change, singleAction)
                 return
             }
 
@@ -739,26 +739,31 @@ class LstCrcChangesBrowser(
             pendingClickJob = clickScope.launch {
                 kotlinx.coroutines.delay(delayMs.milliseconds)
                 withContext(Dispatchers.EDT) {
-                    performConfiguredAction(change, singleAction)
+                    if (!project.isDisposed) performConfiguredAction(change, singleAction)
                 }
             }
         } else if (clickCount == 2) {
             pendingClickJob?.cancel()
             if (doubleAction != ToolWindowSettingsProvider.ACTION_NONE) {
-                performConfiguredAction(change, doubleAction)
+                performConfiguredActionLater(change, doubleAction)
             }
         }
     }
 
-    private fun performConfiguredAction(change: Change, actionType: String) {
+    /** Runs the configured action after the current mouse event has been fully processed. */
+    private fun performConfiguredActionLater(change: Change, actionType: String) {
         ApplicationManager.getApplication().invokeLater {
-            if (project.isDisposed) return@invokeLater
-            val changes = listOf(change)
-            resolveBrowserChangeActionBySetting(actionType)
-                ?.takeIf { it.isEnabled(changes) }
-                ?.action
-                ?.invoke(changes)
+            if (!project.isDisposed) performConfiguredAction(change, actionType)
         }
+    }
+
+    /** Must be called on the EDT. */
+    private fun performConfiguredAction(change: Change, actionType: String) {
+        val changes = listOf(change)
+        resolveBrowserChangeActionBySetting(actionType)
+            ?.takeIf { it.isEnabled(changes) }
+            ?.action
+            ?.invoke(changes)
     }
 
     private fun configuredActionForButton(button: Int, doubleClick: Boolean): String {

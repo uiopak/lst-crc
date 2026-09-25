@@ -129,9 +129,11 @@ class GitService(private val project: Project) {
     private data class LoadedChanges(
         val changes: List<Change>,
         val lineStatsByChange: Map<ChangeLineStatsKey, ChangeLineStats>
-    )
-
-    private val NO_CHANGES = LoadedChanges(emptyList(), emptyMap())
+    ) {
+        companion object {
+            val EMPTY = LoadedChanges(emptyList(), emptyMap())
+        }
+    }
 
     internal fun getRepositoryForFile(file: VirtualFile): GitRepository? {
         val repositoryManager = GitRepositoryManager.getInstance(project)
@@ -249,7 +251,7 @@ class GitService(private val project: Project) {
         repo.update()
         if (repo.isFresh) {
             logger.info("Repo '${repo.root.name}' is fresh. Showing only untracked files and unsaved edits for target '$target'.")
-            return combineWithUntrackedAndUnsaved(repo, "HEAD", NO_CHANGES, includeLineStats)
+            return combineWithUntrackedAndUnsaved(repo, "HEAD", LoadedChanges.EMPTY, includeLineStats)
         }
 
         val trackedChanges = try {
@@ -257,10 +259,10 @@ class GitService(private val project: Project) {
         } catch (e: VcsException) {
             logger.warn("git diff failed for repo '${repo.root.name}' against target '$target': ${e.message}")
             if (failures == null) {
-                NO_CHANGES
+                LoadedChanges.EMPTY
             } else {
                 failures[repo] = target
-                return NO_CHANGES
+                return LoadedChanges.EMPTY
             }
         }
         return combineWithUntrackedAndUnsaved(repo, target, trackedChanges, includeLineStats)
