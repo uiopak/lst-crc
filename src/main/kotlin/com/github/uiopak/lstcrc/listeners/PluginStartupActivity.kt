@@ -38,10 +38,12 @@ class PluginStartupActivity : ProjectActivity {
     /**
      * Suspends until the VCS subsystem is initialized, which includes the initial detection of Git
      * repositories. (`ProjectLevelVcsManager.awaitInitialization` does this directly, from 2025.3.)
+     * The manager is looked up as a service: from 2025.3 `getInstance` is on a Kotlin companion,
+     * which 2025.1/2025.2 do not have.
      */
     private suspend fun awaitVcsInitialization(project: Project) {
         suspendCancellableCoroutine { continuation ->
-            ProjectLevelVcsManager.getInstance(project).runAfterInitialization {
+            project.service<ProjectLevelVcsManager>().runAfterInitialization {
                 if (continuation.isActive) continuation.resume(Unit)
             }
         }
