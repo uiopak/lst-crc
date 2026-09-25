@@ -27,9 +27,7 @@ class LstCrcRealRepositoryStarterUiTest : LstCrcStarterUiTestBase() {
         startOnGsonFixture()
         val git = GitOracle(project)
 
-        measureUntil(test, "open tool window", action = { openGitChangesView() }) {
-            ui.selectedTabName() == "HEAD"
-        }
+        openToolWindowOnHead(test)
 
         // 2.11.0 -> 2.13.1: ~200 changes including 30 renames.
         assertComparisonMatchesGit(test, "gson-2.11.0", git, action = { ui.createAndSelectTab("gson-2.11.0") })
@@ -56,8 +54,7 @@ class LstCrcRealRepositoryStarterUiTest : LstCrcStarterUiTestBase() {
         val test = "gson-checkout-and-edits"
         startOnGsonFixture()
         val git = GitOracle(project)
-        openGitChangesView()
-        waitForSelectedTab("HEAD", 60.seconds)
+        openToolWindowOnHead(test)
 
         assertComparisonMatchesGit(test, "gson-2.11.0", git, action = { ui.createAndSelectTab("gson-2.11.0") })
 
@@ -88,6 +85,16 @@ class LstCrcRealRepositoryStarterUiTest : LstCrcStarterUiTestBase() {
         ui.activateGitVcsIntegration()
         waitUntil(60.seconds) { ui.isGitVcsActive() }
         ui.refreshProjectAfterExternalChange()
+    }
+
+    /**
+     * Opens the tool window and selects HEAD. The fixture is already a git repository when the IDE
+     * opens it, so on first open the plugin also creates and selects a tab for the current branch.
+     */
+    private fun LstCrcStarterContext.openToolWindowOnHead(test: String) {
+        measureUntil(test, "open tool window", action = { openGitChangesView() }) { ui.hasTab("HEAD") }
+        ui.selectTab("HEAD")
+        waitForSelectedTab("HEAD", 60.seconds)
     }
 
     /** Runs [action], waits until [condition] holds and records how long that took. */
