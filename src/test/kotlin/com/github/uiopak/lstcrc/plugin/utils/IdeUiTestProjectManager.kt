@@ -1,5 +1,6 @@
 package com.github.uiopak.lstcrc.plugin.utils
 
+import com.github.uiopak.lstcrc.fixtures.GsonFixture
 import com.intellij.remoterobot.RemoteRobot
 import com.intellij.remoterobot.fixtures.ComponentFixture
 import com.intellij.remoterobot.search.locators.byXpath
@@ -129,10 +130,48 @@ fun RemoteRobot.createFreshProjectFromWelcomeScreen() {
     }
 }
 
-private fun createFreshProjectDirectory(): Path {
+/**
+ * Opens a copy of the [GsonFixture] repository (a git repository with an IntelliJ project and a Git
+ * mapping already configured) and returns its directory.
+ */
+fun RemoteRobot.openGsonFixtureProject(): Path {
+    resetIdeToWelcomeScreen()
+
+    return step("Open a copy of the gson fixture repository") {
+        suppressNewUsersOnboarding()
+
+        val projectDir = createFreshProjectDirectory("remote-ui-gson-")
+        GsonFixture.copyInto(projectDir)
+
+        runJs(
+            """
+            com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater(new java.lang.Runnable({
+                run: function() {
+                    var projectManager = com.intellij.openapi.project.ex.ProjectManagerEx.getInstanceEx();
+                    var projectDir = java.nio.file.Paths.get(${toJsStringLiteral(projectDir.toString())});
+                    if (projectManager.openProject(projectDir, com.intellij.ide.impl.OpenProjectTask.build()) == null) {
+                        throw new java.lang.IllegalStateException("Failed to open project at " + projectDir);
+                    }
+                }
+            }));
+            """.trimIndent(),
+            true
+        )
+
+        waitFor(Duration.ofMinutes(2), interval = Duration.ofSeconds(1)) {
+            findAll<ComponentFixture>(ideaFrameLocator).isNotEmpty() &&
+                findAll<ComponentFixture>(welcomeFrameLocator).isEmpty()
+        }
+
+        dismissNewUsersOnboardingIfPresent()
+        projectDir
+    }
+}
+
+private fun createFreshProjectDirectory(prefix: String = "remote-ui-project-"): Path {
     val root = Path.of("build", "remote-ui-projects").toAbsolutePath().normalize()
     Files.createDirectories(root)
-    return Files.createTempDirectory(root, "remote-ui-project-")
+    return Files.createTempDirectory(root, prefix)
 }
 
 private fun toJsStringLiteral(value: String): String {

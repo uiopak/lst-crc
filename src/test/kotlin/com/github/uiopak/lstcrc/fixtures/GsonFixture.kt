@@ -1,4 +1,4 @@
-package com.github.uiopak.lstcrc.starter
+package com.github.uiopak.lstcrc.fixtures
 
 import java.nio.file.Path
 import kotlin.io.path.createDirectories
@@ -6,9 +6,10 @@ import kotlin.io.path.exists
 import kotlin.io.path.writeText
 
 /**
- * A real repository for scenario and performance tests: google/gson at release commits pinned by
- * SHA, so every diff git reports between them is fixed. Only those commits are fetched
- * (`--depth=1`, about 1 MB), once per build directory; each test gets its own copy.
+ * A real repository for scenario and performance tests in both UI suites (Remote Robot and IDE
+ * Starter): google/gson at release commits pinned by SHA, so every diff git reports between them is
+ * fixed. Only those commits are fetched (`--depth=1`, about 1 MB), once per build directory; each
+ * test gets its own copy.
  *
  * The working copy is on [CHECKED_OUT]; every release in [RELEASES] is a local branch.
  */

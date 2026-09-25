@@ -1,5 +1,6 @@
 package com.github.uiopak.lstcrc.starter
 
+import com.github.uiopak.lstcrc.fixtures.LstCrcPerformanceReport
 import com.github.uiopak.lstcrc.starter.remote.LstCrcUiTestBridgeRemote
 import com.intellij.driver.client.service
 import com.intellij.driver.sdk.waitForIndicators

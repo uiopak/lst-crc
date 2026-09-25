@@ -410,6 +410,20 @@ jobs:
         shell: powershell
         run: ${{ matrix.runTests }}
 
+      - name: Publish UI test timings
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          results=build/reports/lstcrc-performance/results.jsonl
+          [ -f "$results" ] || exit 0
+          {
+            echo "### LST-CRC UI test timings (${{ matrix.os }})"
+            echo
+            echo "| Test | Step | Time (ms) | Detail |"
+            echo "|---|---|---:|---|"
+            jq -r '"| \(.test) | \(.step) | \(.ms) | \(.detail) |"' "$results"
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Move video
         if: ${{ failure() }}
         run: |

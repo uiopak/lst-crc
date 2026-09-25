@@ -1,4 +1,4 @@
-package com.github.uiopak.lstcrc.starter
+package com.github.uiopak.lstcrc.fixtures
 
 import java.nio.file.Path
 import java.nio.file.StandardOpenOption

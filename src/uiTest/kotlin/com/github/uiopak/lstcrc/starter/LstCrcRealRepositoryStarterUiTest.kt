@@ -1,9 +1,11 @@
 package com.github.uiopak.lstcrc.starter
 
+import com.github.uiopak.lstcrc.fixtures.GitDiffOracle
+import com.github.uiopak.lstcrc.fixtures.GsonFixture
+import com.github.uiopak.lstcrc.fixtures.LstCrcPerformanceReport
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Test
-import kotlin.io.path.isRegularFile
 import kotlin.io.path.readText
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
@@ -13,10 +15,12 @@ import kotlin.time.TimeSource
 /**
  * Scenario tests on a real repository ([GsonFixture]: google/gson at pinned release commits).
  *
- * Every expectation is computed from git itself (`git diff --name-status -M`, `--numstat -z`), so the
- * tests check that the plugin reports exactly what git reports: created/modified/moved/deleted files,
- * line stats, scope membership and search results. Each step is also timed into
- * [LstCrcPerformanceReport]; timings never fail a test, only the hang-level timeouts do.
+ * Every expectation is computed from git itself ([GitDiffOracle]), so the tests check that the plugin
+ * reports exactly what git reports: created/modified/moved/deleted files, line stats, scope membership
+ * and search results. Each step is also timed into [LstCrcPerformanceReport]; timings never fail a
+ * test, only the hang-level timeouts do.
+ *
+ * The Remote Robot suite runs the same scenarios on Linux, Windows and macOS (`LstCrcRealRepositoryUiTest`).
  */
 @Tag("starter")
 class LstCrcRealRepositoryStarterUiTest : LstCrcStarterUiTestBase() {
@@ -25,7 +29,7 @@ class LstCrcRealRepositoryStarterUiTest : LstCrcStarterUiTestBase() {
     fun testBranchComparisonsMatchGit() = runStarterUiTest(prepareProject = { GsonFixture.copyInto(path) }) {
         val test = "gson-branch-comparisons"
         startOnGsonFixture()
-        val git = GitOracle(project)
+        val git = GitDiffOracle(project.path)
 
         openToolWindowOnHead(test)
 
@@ -53,7 +57,7 @@ class LstCrcRealRepositoryStarterUiTest : LstCrcStarterUiTestBase() {
     fun testCheckoutAndLocalEditsUpdateComparison() = runStarterUiTest(prepareProject = { GsonFixture.copyInto(path) }) {
         val test = "gson-checkout-and-edits"
         startOnGsonFixture()
-        val git = GitOracle(project)
+        val git = GitDiffOracle(project.path)
         openToolWindowOnHead(test)
 
         assertComparisonMatchesGit(test, "gson-2.11.0", git, action = { ui.createAndSelectTab("gson-2.11.0") })
@@ -115,12 +119,12 @@ class LstCrcRealRepositoryStarterUiTest : LstCrcStarterUiTestBase() {
     private fun LstCrcStarterContext.assertComparisonMatchesGit(
         test: String,
         target: String,
-        git: GitOracle,
+        git: GitDiffOracle,
         step: String = "load tab vs $target",
         action: () -> Unit = {}
     ) {
         // Asked after [action], which may move the working copy (checkout, local edits).
-        val expected by lazy { git.entries(target).map(GitOracle.Entry::line) }
+        val expected by lazy { git.entries(target).map(GitDiffOracle.Entry::line) }
         var actual = emptyList<String>()
         val matched = runCatching {
             measureUntil(test, step, detail = { "${expected.size} changes" }, action = action) {
@@ -134,13 +138,14 @@ class LstCrcRealRepositoryStarterUiTest : LstCrcStarterUiTestBase() {
         }
     }
 
-    private fun LstCrcStarterContext.assertLineStatsMatchGit(target: String, git: GitOracle) {
+    private fun LstCrcStarterContext.assertLineStatsMatchGit(target: String, git: GitDiffOracle) {
         val expected = git.lineStats(target)
+        val binary = git.binaryPaths(target)
         var actual = emptyList<String>()
         val matched = runCatching {
             waitUntil(120.seconds, 100.milliseconds) {
                 val lines = ui.activeDiffEntries().lines()
-                actual = lines.filter { it.startsWith("S\t") && it.split('\t').let { f -> f[1] !in git.binaryPaths(target) && f[2] !in git.binaryPaths(target) } }
+                actual = lines.filter { it.startsWith("S\t") && it.split('\t').let { f -> f[1] !in binary && f[2] !in binary } }
                 lines.first().startsWith("branch=$target|lineStats=true") && actual == expected
             }
         }.isSuccess
@@ -149,98 +154,21 @@ class LstCrcRealRepositoryStarterUiTest : LstCrcStarterUiTestBase() {
         }
     }
 
-    private fun LstCrcStarterContext.assertScopesMatchGit(target: String, git: GitOracle) {
-        val entries = git.entries(target)
-        val candidates = entries.flatMap { listOfNotNull(it.before, it.after) }.distinct().joinToString("\n")
-        fun inScope(scopeId: String) = ui.filesMatchingScope(scopeId, candidates).lines().filter(String::isNotBlank).toSet()
-        fun afterPaths(vararg statuses: Char) = entries.filter { it.status in statuses }.mapNotNull { it.after }.toSet()
-
-        assertEquals(afterPaths('A'), inScope("LSTCRC.Created"), "Created scope vs $target")
-        assertEquals(afterPaths('M'), inScope("LSTCRC.Modified"), "Modified scope vs $target")
-        assertEquals(afterPaths('R'), inScope("LSTCRC.Moved"), "Moved scope vs $target")
-        assertEquals(entries.filter { it.status == 'D' }.mapNotNull { it.before }.toSet(), inScope("LSTCRC.Deleted"), "Deleted scope vs $target")
-        assertEquals(afterPaths('A', 'M', 'R'), inScope("LSTCRC.Changed"), "Changed scope vs $target")
+    private fun LstCrcStarterContext.assertScopesMatchGit(target: String, git: GitDiffOracle) {
+        val candidates = git.scopeCandidates(target).joinToString("\n")
+        git.expectedScopes(target).forEach { (scopeId, expected) ->
+            val actual = ui.filesMatchingScope(scopeId, candidates).lines().filter(String::isNotBlank).toSet()
+            assertEquals(expected, actual, "$scopeId scope vs $target")
+        }
     }
 
-    private fun LstCrcStarterContext.assertFindInFilesMatchesGit(test: String, target: String, git: GitOracle, text: String) {
-        val binary = git.binaryPaths(target)
-        val expected = git.entries(target)
-            .filter { it.status != 'D' }
-            .mapNotNull { it.after }
-            .filter { it !in binary }
-            .filter { path -> project.path.resolve(path).let { it.isRegularFile() && text in it.readText() } }
-            .sorted()
+    private fun LstCrcStarterContext.assertFindInFilesMatchesGit(test: String, target: String, git: GitDiffOracle, text: String) {
+        val expected = git.expectedFindInFiles(target, text)
 
         val start = TimeSource.Monotonic.markNow()
         val actual = ui.findInFilesPaths(text, "LSTCRC: Changed Files").lines().filter(String::isNotBlank)
         LstCrcPerformanceReport.record(test, "find in files '$text' in changed files vs $target", start.elapsedNow(), "${actual.size} files")
 
         assertEquals(expected.joinToString("\n"), actual.joinToString("\n"), "Find in Files '$text' in 'LSTCRC: Changed Files' vs $target")
-    }
-
-    /** Expected results computed with the git CLI, using the same diff options as the plugin. */
-    private class GitOracle(private val project: LstCrcStarterProject) {
-
-        /** One change as the bridge reports it: `A path`, `M path`, `D path` or `R old new`. */
-        data class Entry(val status: Char, val before: String?, val after: String?) {
-            val line: String
-                get() = when (status) {
-                    'A' -> "A\t$after"
-                    'D' -> "D\t$before"
-                    'M' -> "M\t$after"
-                    else -> "R\t$before\t$after"
-                }
-        }
-
-        fun entries(target: String): List<Entry> =
-            project.runGit("diff", "--name-status", "-M", "--diff-filter=ADCMRUXT", target)
-                .lineSequence()
-                .filter(String::isNotBlank)
-                .mapNotNull { line ->
-                    val fields = line.split('\t')
-                    when (fields[0].first()) {
-                        'A' -> Entry('A', null, fields[1])
-                        'D' -> Entry('D', fields[1], null)
-                        'M', 'T', 'U', 'X' -> Entry('M', fields[1], fields[1])
-                        'R', 'C' -> Entry('R', fields[1], fields[2])
-                        else -> null
-                    }
-                }
-                .sortedBy(Entry::line)
-                .toList()
-
-        /** `S<TAB>before<TAB>after<TAB>added<TAB>removed` lines, sorted; binary files are skipped. */
-        fun lineStats(target: String): List<String> {
-            val byPath = entries(target).flatMap { entry -> listOfNotNull(entry.before, entry.after).map { it to entry } }.toMap()
-            return numstat(target)
-                .filter { it.added != null && it.removed != null }
-                .mapNotNull { record ->
-                    val entry = if (record.oldPath != null) Entry('R', record.oldPath, record.path) else byPath[record.path] ?: return@mapNotNull null
-                    "S\t${entry.before.orEmpty()}\t${entry.after.orEmpty()}\t${record.added}\t${record.removed}"
-                }
-                .sorted()
-        }
-
-        fun binaryPaths(target: String): Set<String> =
-            numstat(target).filter { it.added == null }.flatMap { listOfNotNull(it.oldPath, it.path) }.toSet()
-
-        private data class NumstatRecord(val added: Int?, val removed: Int?, val oldPath: String?, val path: String)
-
-        private fun numstat(target: String): List<NumstatRecord> {
-            val fields = project.runGit("diff", "--numstat", "-z", "-M", "--diff-filter=ADCMRUXT", "--ignore-cr-at-eol", target)
-                .split('\u0000')
-                .iterator()
-            val records = mutableListOf<NumstatRecord>()
-            while (fields.hasNext()) {
-                val header = fields.next().trim('\n').split('\t')
-                if (header.size < 3) continue
-                records += if (header[2].isEmpty()) {
-                    NumstatRecord(header[0].toIntOrNull(), header[1].toIntOrNull(), fields.next(), fields.next())
-                } else {
-                    NumstatRecord(header[0].toIntOrNull(), header[1].toIntOrNull(), null, header[2])
-                }
-            }
-            return records
-        }
     }
 }
