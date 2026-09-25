@@ -1,194 +1,40 @@
-# File Refactor Audit
+# Refactor Audit
 
-This document correlates each production file with the JetBrains Platform APIs and source code it depends on and records realistic opportunities to simplify, remove, or refactor code without dropping plugin capabilities.
+This file lists refactoring opportunities in `src/main` that were checked against the code, plus the code that looks removable but must stay. Update it when you act on an item or find a new one. Every change must keep all plugin capabilities ([plugin-capabilities.md](plugin-capabilities.md)) and pass both UI suites (see `CLAUDE.md`).
 
-## Entry And Resource Files
+## Open Opportunities
 
-### plugin.xml
-- JetBrains correlation: Standard plugin descriptor using the `toolWindow`, `customScopesProvider`, `searchScopesProvider`, `statusBarWidgetFactory`, and `postStartupActivity` registrations plus the descriptor's notification-group and action declarations.
-- Keep assessment: Necessary and already lean; it is the correct place for platform registrations and action metadata.
-- Simplify or remove: No meaningful removal opportunity beyond keeping registrations aligned with actual classes.
+1. **Settings accessor duplication.**
+   - `LstCrcSettingsService` has a typed getter and setter for each of its 19 settings (38 methods), and `ToolWindowSettingsProvider` re-exposes 18 of the getters unchanged.
+   - A generic `get(definition)` / `set(definition, value)` would remove about 55 lines.
+   - The unit tests, the Remote Robot JavaScript (`IdeaFrame` calls setters such as `setSingleClickAction` by name) and the Starter bridge all use the typed accessors, so they have to change in the same PR.
+2. **INFO logging on hot paths.**
+   - `ToolWindowStateService.loadDataForTab` writes two `INFO` lines per refresh, and a refresh runs after every 300 ms pause in typing.
+   - `GitService.getFileContentForRevision` writes one per gutter load, and several tab-state changes log the whole state.
+   - These fill `idea.log` and belong at `debug`. No test reads these log lines.
+3. **Redundant widget refresh at startup.** `PluginStartupActivity.syncUiAfterRefresh` publishes `TOOL_WINDOW_STATE_TOPIC`, which already makes `LstCrcStatusWidget` update itself, and then calls `LstCrcStatusWidget.refresh` as well.
+4. **Double EDT hop per refresh.**
+   - `ToolWindowStateService.loadDataForTab` switches to the EDT, and `ProjectActiveDiffDataService.updateActiveDiff` then schedules another `invokeLater`.
+   - Applying the snapshot directly when already on the EDT saves one event-queue round trip per refresh.
+   - This changes event ordering slightly, so run both UI suites.
+5. **Internal `BaseLabel` in `RenameTabAction`.**
+   - The action reads the internal `BaseLabel` class directly to find the clicked tab, although its KDoc says it goes through `ToolWindowUiCompatibility`.
+   - Either move the lookup into `ToolWindowUiCompatibility`, so all internal tool-window calls stay in one file, or replace the balloon with a standard input dialog like `CreateTabFromRevisionAction` uses.
+   - `LstCrcActionVisibilityTest` covers the lookup.
+6. **`hasSingleSelectedCommit` duplicates `singleSelectedCommit`.** `LstCrcActionVisibilityTest` fakes the Git Log selection with strings, and replacing the size check with `singleSelectedCommit(e) != null` casts them and fails. Only change this together with the test fake.
 
-### pluginIcon.svg
-- JetBrains correlation: Uses the documented `META-INF/pluginIcon.svg` convention instead of explicit descriptor wiring.
-- Keep assessment: Keep it; otherwise the plugin falls back to a generic icon.
-- Simplify or remove: The only worthwhile improvement is adding `pluginIcon_dark.svg` or replacing the placeholder-style artwork with final branding.
+## Looks Removable, Must Stay
 
-### LstCrcMessages.properties
-- JetBrains correlation: Standard `DynamicBundle` resource bundle declared in `plugin.xml` and consumed through `LstCrcBundle`.
-- Keep assessment: Keep it; the keys are active through code or descriptor-based action lookups.
-- Simplify or remove: No dead-string cleanup stood out. The suppression comments for descriptor-only keys are legitimate.
+- **`*ForTest` methods and the snapshot/debug accessors** (`currentLineStatsSnapshot`, `debugGutterSummaryFor`, `findTabByDisplayName`, ...). The Remote Robot JavaScript, the Starter bridge or unit tests call them by name.
+- **Members reached by reflection:** the private `LstCrcChangesBrowser.displayChanges(CategorizedChanges, String)` signature, `ToolWindowUiCompatibility.setToolWindowTitleVisible` / `isToolWindowTitleVisible`, the `LstCrcProvidedScopes` fields, and the concrete scope classes (`ModifiedFilesScope`, ...).
+- **No Kotlin `internal` on those members.** The JVM name is mangled and the JavaScript cannot find it.
+- **`project.service<ProjectLevelVcsManager>()`** instead of `getInstance`. It is a Kotlin companion only from 2025.3, and only `verifyPlugin` catches the difference.
+- **`isCommitHash` in `RevisionUtils.kt`.** `GitUtil.isHashString` is not available in every supported IDE version.
+- **The manual selection restore in `ExpandNewNodesStateStrategy`.** `TreeState.applyTo()` recenters the selected row and breaks the viewport guarantees (`C3.12`).
+- **`clearActiveDiff` always publishes**, even when the cache is already empty. The browser relies on it to show its "error loading" text.
+- **Deleted files stay out of Find/Search scopes.** Find in Files cannot enumerate revision-backed virtual files.
+- **Defensive copies in `ToolWindowStateService`.** Listeners and callers must not be able to mutate the persisted tab state.
 
-## Root And Shared Support
+## Done
 
-### LstCrcConstants.kt
-- JetBrains correlation: Simple constant holder that supports repeated tool-window lookups across platform APIs.
-- Keep assessment: Keep it as the canonical id source.
-- Simplify or remove: No worthwhile simplification.
-
-### LstCrcBundle.kt
-- JetBrains correlation: Idiomatic `DynamicBundle` wrapper with `@PropertyKey` support.
-- Keep assessment: Keep it; it matches standard JetBrains localization practice.
-- Simplify or remove: No meaningful simplification. Inlining bundle access would make the codebase worse.
-
-### LstCrcTopics.kt
-- JetBrains correlation: Standard message-bus topic registry using `Topic.create()` and listener interfaces.
-- Keep assessment: Keep it; centralized topics are the right platform pattern.
-- Simplify or remove: No meaningful simplification because each topic represents a distinct event stream.
-
-### LstCrcKeys.kt
-- JetBrains correlation: Uses IntelliJ `Key<T>` as intended for component metadata.
-- Keep assessment: Keep it; the indirection is valuable despite the file being small.
-- Simplify or remove: No worthwhile change.
-
-## Listeners And State
-
-### PluginStartupActivity.kt
-- JetBrains correlation: Standard post-startup hook plus smart-mode coordination and service initialization.
-- Keep assessment: Keep it; startup sequencing is necessary for reliable first render.
-- Simplify or remove: Re-check for redundant widget updates or overlapping state broadcasts during startup. Those are the main candidates, not the activity itself.
-
-### VcsChangeListener.kt
-- JetBrains correlation: Uses `ChangeListListener.changeListUpdateDone()` and `Alarm`, which are the intended APIs for debounced VCS refreshes.
-- Keep assessment: Keep it; this is a stable post-VCS-update refresh signal.
-- Simplify or remove: Compare its debounce/refresh role with the browser's repository-change listener to see whether some refresh paths can be unified.
-
-### TabInfo.kt
-- JetBrains correlation: XMLB-friendly serialized data object with annotated attributes and map serialization.
-- Keep assessment: Keep it; multi-repo comparison overrides need a persistent per-tab model.
-- Simplify or remove: Only minor opportunities, such as reviewing whether `sortBeforeSave = false` is still necessary and whether copy behavior could move out of the data class.
-
-### ToolWindowState.kt
-- JetBrains correlation: Plain XMLB persistence container used by `PersistentStateComponent`.
-- Keep assessment: Keep it; it is the minimal persisted state boundary.
-- Simplify or remove: The only realistic improvement is reducing `deepCopy()` overhead by making the state graph more strongly immutable.
-
-## Core Services
-
-### GitService.kt
-- JetBrains correlation: Heavy user of Git4Idea, VCS `Change` APIs, content-revision loading, and low-level Git fallbacks. This is the correct abstraction boundary for that API surface.
-- Keep assessment: Keep it; the plugin needs one place that owns Git logic, multi-repo fallback behavior, and categorized change generation.
-- Simplify or remove: The best opportunities are internal cleanup only: split helper data holders, reduce logging noise, and extract some categorization or content-loading helpers to shrink the file without changing responsibilities.
-
-### ProjectActiveDiffDataService.kt
-- JetBrains correlation: Uses `FileStatusManager` and `FileEditorManager` the standard way to invalidate IDE file presentation after diff changes.
-- Keep assessment: Keep it; scopes, gutter tracking, and tree decorators need a shared active-diff cache.
-- Simplify or remove: Revisit `notifyAffectedFiles()`. The broad `fileStatusesChanged()` call may make the per-file `fileStatusChanged(file)` loop redundant, but verify that no listeners depend on the distinction between global and per-file notifications before removing either call.
-
-### ToolWindowStateService.kt
-- JetBrains correlation: Standard project-level `PersistentStateComponent`, message-bus publishing, tool-window lookup, notifications, and background refresh orchestration.
-- Keep assessment: Keep it; it is the plugin's real coordination layer and should stay authoritative.
-- Simplify or remove: The service was simplified to act as a pure data pipeline that always pushes real changes into `ProjectActiveDiffDataService`. The previous `includeHeadInScopes` branching that cleared the diff cache was removed, with scope gating moved to `FileStatusScopes` and `VisualTrackerManager`. Remaining cleanup targets include extracting dense branches such as failure handling and refresh queue management into smaller helpers.
-
-### VfsListenerService.kt
-- JetBrains correlation: Correctly uses `BulkFileListener` plus `VcsDirtyScopeManager` to bridge raw file events into VCS refreshes.
-- Keep assessment: Keep it; external file changes and saves still need to reach the VCS pipeline.
-- Simplify or remove: Review whether the path-prefix fallback adds real value beyond `ProjectFileIndex.isInContent()`; that is the only realistic simplification target.
-
-## Scope And Search Integration
-
-### FileStatusScopes.kt
-- JetBrains correlation: Standard `PackageSetBase`, `NamedScope`, and `VcsVirtualFile` integration, with plugin-specific handling for deleted-file edge cases. Now independently checks `ToolWindowSettingsProvider.isIncludeHeadInScopes()` to gate HEAD data from scopes.
-- Keep assessment: Keep it; these scopes are a core capability and are implemented against the right platform abstractions.
-- Simplify or remove: The main cleanup candidates are path-handling asymmetry, the special-case deleted-file logic shape, and verifying whether the current `VcsVirtualFile` fallback can be pushed deeper into the data source. Do not remove `LSTCRC.Deleted`; it also supports non-search UI behavior such as deleted-file coloring.
-
-### LstCrcScopeProvider.kt
-- JetBrains correlation: Minimal `CustomScopesProvider` implementation.
-- Keep assessment: Keep it; the extension point itself is required.
-- Simplify or remove: No meaningful simplification.
-
-### LstCrcSearchScopeProvider.kt
-- JetBrains correlation: Correct `SearchScopeProvider` usage for search UI integration.
-- Keep assessment: Keep it for the current search behavior because it groups the LST-CRC search scopes, intentionally omits deleted-file search, and now uses platform `GlobalSearchScopesCore.filterScope(...)` directly.
-- Simplify or remove: Small cleanup only. The scope construction logic could be cached or shared more explicitly with `LstCrcScopeProvider`, but replacing this provider would still need to preserve the deleted-file omission and current `myAllScope` behavior.
-
-### Search-Scope Limitation
-- JetBrains correlation: Deleted-file revisions are materialized as VCS-backed virtual files, but the current Find/Search integration path treats the filtered named scope as a plain `GlobalSearchScope`, not as a file enumeration source.
-- Keep assessment: Keep the current limitation explicit in the docs. The plugin can classify and color deleted files, but it should not claim deleted-file search support through Find in Files. The same search scopes are also empty on `HEAD` unless `Include HEAD in scopes` is enabled.
-- Simplify or remove: If deleted-file search is ever revisited, it needs a different enumeration strategy rather than simply adding `DeletedFilesScope` to `LstCrcSearchScopeProvider`. The platform VCS path that supports change-scoped searching uses a VCS-specific local scope with explicit virtual-file and range enumeration, which deleted revisions do not fit cleanly.
-
-## Gutter And Visual Tracking
-
-### VisualTrackerManager.kt
-- JetBrains correlation: Works against line-status tracker infrastructure and active editor presentation in a way the default Git gutter does not cover.
-- Keep assessment: Keep it; this is how the plugin projects the active comparison into the editor gutter.
-- Simplify or remove: The realistic targets are internal structure only, such as extracting tracker-interception helpers or revisiting refresh/debounce granularity. The capability itself should not be removed.
-
-## Tool Window UI And Actions
-
-### ToolWindowHelper.kt
-- JetBrains correlation: Wrapper around content-manager and tool-window APIs, not a custom platform workaround.
-- Keep assessment: Keep it; it prevents duplicated tab-creation workflows.
-- Simplify or remove: Only very small helpers could be inlined. The branch-selection tab flow is complex enough to justify the helper object.
-
-### ExpandNewNodesStateStrategy.kt
-- JetBrains correlation: Clean use of changes-tree strategy hooks, with one intentional manual restore path to avoid IntelliJ's generic selected-row recentering.
-- Keep assessment: Keep it; it solves a real UX problem in the changes browser.
-- Simplify or remove: Do not collapse it back to `TreeState.applyTo()`. Only local cleanup, like trimming redundant traversals, is a safe simplification target.
-
-### BranchSelectionPanel.kt
-- JetBrains correlation: Standard Swing and IntelliJ tree/search controls, implemented in an idiomatic reusable panel.
-- Keep assessment: Keep it; branch selection is a first-class workflow.
-- Simplify or remove: Search currently rebuilds cloned tree structures on each keystroke. If performance becomes noticeable, that filtering algorithm is the best refactor candidate.
-
-### LstCrcChangesBrowser.kt
-- JetBrains correlation: Properly extends `AsyncChangesBrowserBase` and related changes-tree infrastructure. Reactively subscribes to `DIFF_DATA_CHANGED_TOPIC` for display updates. Uses coroutine-based debouncing for configurable click handling and standard `PopupHandler` for context menus.
-- Keep assessment: Keep it; this is the core user-facing comparison surface.
-- Simplify or remove: The previous click-state handling using `Alarm`/`ClickState` has been replaced with coroutine-based debouncing. The browser is now decoupled from `ToolWindowStateService` through the message bus. Remaining cleanup candidates are limited to internal test-only helper methods and toolbar layout work.
-
-### MyToolWindowFactory.kt
-- JetBrains correlation: Standard `ToolWindowFactory` plus `ContentManagerListener` wiring and restored content creation.
-- Keep assessment: Keep it; the factory is mandatory and the current responsibilities are appropriate.
-- Simplify or remove: The only meaningful cleanup is trimming repeated guard checks and reviewing whether the state-change subscription is still the best place for alias-sync behavior.
-
-### LstCrcStatusWidget.kt
-- JetBrains correlation: Standard status-bar widget plus popup-action composition and message-bus refresh subscription.
-- Keep assessment: Keep it; the widget is a useful lightweight entry point.
-- Simplify or remove: The popup-building code can be extracted into smaller helpers, but the behavior itself is justified.
-
-### ToolWindowSettingsProvider.kt
-- JetBrains correlation: Typed app-level settings storage via `LstCrcSettingsService` plus toggle-action menu building, with one contained use of internal tool-window UI classes.
-- Keep assessment: Keep it; centralized settings are the right design.
-- Simplify or remove: The strongest cleanup targets are repetitive toggle factories and direct access from tests. The remaining internal tool-window UI coupling is now isolated behind `ToolWindowUiCompatibility` and should be watched during IDE upgrades.
-
-### OpenBranchSelectionTabAction.kt
-- JetBrains correlation: Straightforward `DumbAwareAction` used in a tool-window toolbar.
-- Keep assessment: Keep it; users need a direct add-tab entry point.
-- Simplify or remove: The file could be inlined into the factory if the team wanted fewer classes, but that would trade clarity for only a tiny reduction in file count.
-
-### CreateTabFromRevisionAction.kt
-- JetBrains correlation: Standard VCS log action using `VcsDataKeys` and dialog input.
-- Keep assessment: Keep it; it is one of the plugin's main Git Log integrations.
-- Simplify or remove: No meaningful simplification beyond cosmetic extraction.
-
-### SetRevisionAsRepoComparisonAction.kt
-- JetBrains correlation: Standard VCS log action using commit-selection data and repository resolution.
-- Keep assessment: Keep it; multi-repo revision overrides need this integration path.
-- Simplify or remove: No meaningful simplification beyond tiny helper extraction.
-
-### ShowRepoComparisonInfoAction.kt
-- JetBrains correlation: Toolbar action plus popup/action-group construction built from standard IntelliJ UI APIs.
-- Keep assessment: Keep it; it exposes the multi-repo comparison model to users.
-- Simplify or remove: The popup-building loop could move into a helper, but there is no compelling removal opportunity.
-
-### SingleRepoBranchSelectionDialog.kt
-- JetBrains correlation: Straightforward `DialogWrapper` usage with a reusable panel.
-- Keep assessment: Keep it; the recovery and repo-specific selection flow need a dedicated dialog.
-- Simplify or remove: Only tiny cleanups, such as trimming defensive dialog guards or centralizing override normalization.
-
-### RepoNodeRenderer.kt
-- JetBrains correlation: Correct use of changes-tree renderers and grouping support to append context labels.
-- Keep assessment: Keep it; inline comparison context is useful, especially in multi-repo tabs.
-- Simplify or remove: No significant simplification stood out. The current branching mostly reflects genuine single-repo versus multi-repo behavior.
-
-### RenameTabAction.kt
-- JetBrains correlation: Standard action plus popup balloon usage, with internal tab-label lookup delegated through `ToolWindowUiCompatibility`.
-- Keep assessment: Keep the feature, not necessarily the exact implementation.
-- Simplify or remove: This is one of the clearer cleanup candidates. Replacing the custom inline balloon with a more standard input flow would further reduce reliance on internal tab-label traversal.
-
-## Test Support
-
-### LstCrcUiTestBridge.kt
-- JetBrains correlation: Uses application services, editors, scopes, VCS APIs, and some reflection-heavy inspection to support IDE Starter tests. It is intentionally excluded from the published plugin in normal builds.
-- Keep assessment: Keep it for UI testing; the test suite needs a bridge with broad reach.
-- Simplify or remove: The best cleanup targets are reflection-heavy tracker inspection and consolidating repeated path/tab-manipulation helpers. Settings access has already moved to `LstCrcSettingsService`, reducing direct string-key coupling.
+- PR #85 removed dead code and single-use indirection across 10 files (−211 lines). It simplified branch filtering in `BranchSelectionPanel`, `openSource` and viewport handling in `LstCrcChangesBrowser`, the status widget's connection handling and tab selection, the shared snapshot swap in `ProjectActiveDiffDataService`, and helpers in `GitService` and `VisualTrackerManager`.

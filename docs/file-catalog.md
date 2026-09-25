@@ -27,7 +27,7 @@ This document lists each current `src/main` file separately and explains why it 
 ### LstCrcConstants.kt
 - Role: Central constant holder for shared identifiers, especially the tool-window id.
 - Depends on: No runtime services; only Kotlin constants.
-- Connected to: Tool-window lookups across the factory, actions, widget, and services.
+- Connected to: Tool-window lookups in `ToolWindowHelper`, `CreateTabFromRevisionAction`, and `RenameTabAction`.
 - Why it exists: It keeps the tool-window id canonical and avoids string drift between platform registrations and runtime lookups.
 
 ### LstCrcBundle.kt
@@ -37,30 +37,36 @@ This document lists each current `src/main` file separately and explains why it 
 - Why it exists: It provides one typed access point for localization and enables IDE inspections for missing message keys.
 
 ### LstCrcTopics.kt
-- Role: Message-bus topic registry for active diff, settings, and tool-window state changes.
+- Role: Message-bus topics for active-diff changes (`DIFF_DATA_CHANGED_TOPIC`) and tool-window state changes (`TOOL_WINDOW_STATE_TOPIC`), with their listener interfaces.
 - Depends on: `Topic` and listener interfaces.
-- Connected to: Publishers in `ProjectActiveDiffDataService`, `ToolWindowStateService`, and `ToolWindowSettingsProvider`; subscribers in the widget, factory, and visual-tracking code.
+- Connected to: Publishers `ProjectActiveDiffDataService` and `ToolWindowStateService`; subscribers `LstCrcChangesBrowser` and `VisualTrackerManager` (diff data), `LstCrcStatusWidget` and `MyToolWindowFactory` (tab state).
 - Why it exists: It is the decoupling layer that lets multiple plugin surfaces react to the same state changes.
 
 ### LstCrcKeys.kt
-- Role: Typed `Key` definitions attached to tool-window content tabs.
+- Role: Typed `Key` definitions attached to tool-window content tabs (the tab's branch or revision).
 - Depends on: IntelliJ `Key` and `Content` metadata support.
-- Connected to: `ToolWindowHelper`, `MyToolWindowFactory`, `LstCrcStatusWidget`, and `RenameTabAction`.
+- Connected to: `ToolWindowHelper`, `MyToolWindowFactory`, and `RenameTabAction`.
 - Why it exists: It keeps tab metadata type-safe and avoids ad-hoc string keys.
+
+### RevisionUtils.kt
+- Role: `isCommitHash`, which tells commit hashes (7 to 40 hex characters) from branch names.
+- Depends on: Nothing; it is kept local because `GitUtil.isHashString` is not available in every supported IDE version.
+- Connected to: `ToolWindowStateService` (missing commits do not trigger the branch-repair flow) and `RepoNodeRenderer` (the commit context-label setting).
+- Why it exists: Both callers need the same rule for what counts as a commit.
 
 ## Listeners And State
 
 ### PluginStartupActivity.kt
-- Role: Early startup bootstrap that initializes listeners, visual tracking, and the first refresh after smart mode.
-- Depends on: Project startup lifecycle, `ToolWindowStateService`, `ProjectActiveDiffDataService`, listener services, and widget update calls.
-- Connected to: `VfsListenerService`, `VcsChangeListener`, `VisualTrackerManager`, and the initial active-diff load.
-- Why it exists: The plugin needs deterministic initialization so scopes, widget text, gutter state, and the tool window start in sync.
+- Role: Startup bootstrap. It initializes `VcsChangeListener` and `VisualTrackerManager`, refreshes editor tab colors, waits for VCS initialization (not smart mode), runs the first diff load, then rebroadcasts the tool-window state and updates the status bar widget.
+- Depends on: `ProjectActivity`, `ProjectLevelVcsManager` (looked up as a service, see `CLAUDE.md`), `GitService`, `ToolWindowStateService`, `ProjectActiveDiffDataService`, and `LstCrcStatusWidget`.
+- Connected to: `VcsChangeListener`, `VisualTrackerManager`, and the initial active-diff load.
+- Why it exists: The plugin needs deterministic initialization so scopes, widget text, gutter state, and the tool window start in sync, without waiting for indexing.
 
 ### VcsChangeListener.kt
-- Role: Debounced `ChangeListListener` that refreshes the active comparison after IDE VCS updates finish.
-- Depends on: `ChangeListManager`, `Alarm`, and `ToolWindowStateService`.
-- Connected to: repository-change events, the browser refresh pipeline, and indirectly to `VfsListenerService` through `VcsDirtyScopeManager` and `ChangeListManager` updates.
-- Why it exists: It is the stable VCS-side signal that a file-status batch is complete and safe to consume.
+- Role: The only source of automatic refreshes. It listens to `ChangeListManager` updates, `GitRepository.GIT_REPO_CHANGE` and document edits in repository files, and turns bursts of them into one refresh after a 300 ms debounce (a coroutine `Flow`).
+- Depends on: `ChangeListManager`, `EditorFactory` document events, the Git repository topic, `ToolWindowStateService`, and `GitService` (to check whether an edited file is in a repository, off the EDT).
+- Connected to: The refresh pipeline in `ToolWindowStateService`.
+- Why it exists: Local edits, saves, external changes, checkouts and commits all need to refresh the comparison, but typing must not run git on every keystroke.
 
 ### TabInfo.kt
 - Role: Per-tab state object containing the main comparison target, optional alias, and per-repository override map.
@@ -89,36 +95,30 @@ This document lists each current `src/main` file separately and explains why it 
 - Why it exists: The plugin needs one shared cache so every surface reads the same active diff instead of recomputing Git state.
 
 ### ToolWindowStateService.kt
-- Role: Main orchestration service for tab state, refresh sequencing, persistence, and notifications. Acts as a pure data pipeline that always pushes real changes into `ProjectActiveDiffDataService`, regardless of the `Include HEAD in scopes` setting.
-- Depends on: `PersistentStateComponent`, `GitService`, `ProjectActiveDiffDataService`, notifications, and tool-window APIs.
-- Connected to: Almost every runtime surface, especially the factory, widget, actions, and active-diff consumers. The browser is no longer updated directly; it reacts to `DIFF_DATA_CHANGED_TOPIC`.
+- Role: Main orchestration service for tab state, refresh sequencing, persistence (`gitTabsIdeaPluginState.xml`), and missing-branch notifications. It merges concurrent refresh requests into one coroutine cycle and always pushes real changes into `ProjectActiveDiffDataService`, regardless of the `Include HEAD in scopes` setting.
+- Depends on: `PersistentStateComponent`, `GitService`, `ProjectActiveDiffDataService`, notifications, and `SingleRepoBranchSelectionDialog` (the repair action).
+- Connected to: Almost every runtime surface, especially the factory, widget, actions, and active-diff consumers. The browser is not updated directly; it reacts to `DIFF_DATA_CHANGED_TOPIC`.
 - Why it exists: The plugin needs one authoritative owner for tab lifecycle and refresh ordering.
-
-### VfsListenerService.kt
-- Role: VFS-event bridge that marks VCS state dirty when relevant project files change.
-- Depends on: `BulkFileListener`, `ProjectFileIndex`, `VcsDirtyScopeManager`, and message-bus subscription to `VFS_CHANGES`.
-- Connected to: `PluginStartupActivity`, `VcsChangeListener`, test flows, and the refresh pipeline.
-- Why it exists: It closes the gap between raw file-system events and the IDE's higher-level VCS refresh cycle.
 
 ## Scope And Search Integration
 
 ### FileStatusScopes.kt
-- Role: Definitions for created, modified, moved, deleted, and changed scopes backed by the active-diff cache. Independently checks `ToolWindowSettingsProvider.isIncludeHeadInScopes()` to exclude HEAD data from scopes when the setting is disabled.
-- Depends on: `ProjectActiveDiffDataService`, `ToolWindowSettingsProvider`, `LstCrcBundle`, `NamedScope`, `PackageSetBase`, and `VcsVirtualFile` handling.
-- Connected to: `LstCrcScopeProvider`, `LstCrcSearchScopeProvider` for the non-deleted search scopes, `LstCrcChangesBrowser` for deleted-file coloring, and IDE scope consumers.
-- Why it exists: The plugin exposes the active comparison as reusable IDE named scopes, not just as a custom tree. The `Changed` scope intentionally excludes deleted files.
+- Role: Definitions for created, modified, moved, deleted, and changed scopes backed by the active-diff cache. Membership is by file path, so revision-backed deleted files match too. It independently checks `ToolWindowSettingsProvider.isIncludeHeadInScopes()` to exclude `HEAD` data from scopes when the setting is disabled.
+- Depends on: `ProjectActiveDiffDataService` path sets, `ToolWindowSettingsProvider`, `LstCrcBundle`, `NamedScope`, and `PackageSetBase`.
+- Connected to: `LstCrcScopeProvider`, `LstCrcSearchScopeProvider` for the non-deleted search scopes, `LstCrcChangesBrowser` for deleted-file coloring (`DELETED_SCOPE_ID`), and IDE scope consumers.
+- Why it exists: The plugin exposes the active comparison as reusable IDE named scopes, not just as a custom tree. The `Changed` scope intentionally excludes deleted files. The concrete scope classes are kept because UI tests load them by name.
 
 ### LstCrcScopeProvider.kt
-- Role: `CustomScopesProvider` that contributes the plugin's named scopes to the IDE.
-- Depends on: The scope instances declared in `FileStatusScopes.kt`.
-- Connected to: `plugin.xml` registration and scope consumers across the IDE.
+- Role: `CustomScopesProvider` that contributes the plugin's named scopes to the IDE. The file also holds `LstCrcProvidedScopes`, the single set of scope instances and their search-scope wrappers.
+- Depends on: The scope classes declared in `FileStatusScopes.kt`.
+- Connected to: `plugin.xml` registration, `LstCrcSearchScopeProvider`, and scope consumers across the IDE.
 - Why it exists: IntelliJ needs a dedicated provider to surface plugin-defined scopes in the global scope system.
 
 ### LstCrcSearchScopeProvider.kt
-- Role: `SearchScopeProvider` that wraps the plugin scopes for Find/Search scope pickers.
-- Depends on: `LstCrcProvidedScopes`, `NamedScopeManager`, and `GlobalSearchScopesCore.filterScope(...)`.
+- Role: `SearchScopeProvider` that lists the plugin scopes, as `GlobalSearchScopesCore.filterScope(...)` wrappers, in Find/Search scope pickers.
+- Depends on: `LstCrcProvidedScopes`.
 - Connected to: Find/Search UI and platform search-scope infrastructure.
-- Why it exists: Search-scope integration is a separate platform extension point from custom scope registration, and this provider re-exposes the same named-scope data for Find/Search UI. It intentionally exposes only created, modified, moved, and changed. Deleted files remain available only as a named scope because the current search integration path does not enumerate those revision-backed virtual files correctly.
+- Why it exists: Search-scope integration is a separate platform extension point from custom scope registration. It intentionally exposes only created, modified, moved, and changed. Deleted files remain available only as a named scope, because Find in Files cannot enumerate those revision-backed virtual files.
 
 ## Gutter And Visual Tracking
 
@@ -143,15 +143,15 @@ This document lists each current `src/main` file separately and explains why it 
 - Why it exists: The browser needs to surface newly introduced files without discarding the user's manual tree state, and it must restore selection without `TreeState.applyTo()` so offscreen selections do not recenter the viewport.
 
 ### BranchSelectionPanel.kt
-- Role: Searchable tree UI for choosing a branch or revision target.
-- Depends on: `GitService`, Swing and IntelliJ tree/search components, localized strings, and `TreeUtils`.
-- Connected to: `ToolWindowHelper`, `SingleRepoBranchSelectionDialog`, and branch-selection UI tests.
+- Role: Searchable tree UI for choosing a branch. Typing filters the tree (rebuilt from the matching branch names) and selects the first match; Enter or a click picks the branch.
+- Depends on: `GitService` or a pre-fetched `BranchSnapshot`, Swing and IntelliJ tree/search components, and localized strings. It never runs git itself, so it can be built on the EDT.
+- Connected to: `ToolWindowHelper`, `SingleRepoBranchSelectionDialog`, and branch-selection tests.
 - Why it exists: Branch selection is a real workflow of its own and needs a reusable, testable UI component.
 
 ### LstCrcChangesBrowser.kt
-- Role: Main per-tab changes browser that renders categorized changes, configures gestures, and integrates toolbars, renderers, and repository refresh handling. Reactively subscribes to `DIFF_DATA_CHANGED_TOPIC` to update its display instead of being called directly by `ToolWindowStateService`.
-- Depends on: `AsyncChangesBrowserBase`, tree models, `ToolWindowSettingsProvider`, `ProjectActiveDiffDataService`, `DIFF_DATA_CHANGED_TOPIC`, diff actions, `RepoNodeRenderer`, and `ExpandNewNodesStateStrategy`. Uses coroutine-based debouncing for configurable click handling.
-- Connected to: `ToolWindowHelper`, test bridge helpers, and active repository refreshes.
+- Role: Main per-tab changes browser. It subscribes to `DIFF_DATA_CHANGED_TOPIC`, rebuilds the tree while keeping the viewport, handles the configured mouse gestures and context menu, colors deleted rows, reuses open diff tabs, and exposes `*ForTest` hooks for the UI tests.
+- Depends on: `AsyncChangesBrowserBase`, tree models, `ToolWindowSettingsProvider`, `ProjectActiveDiffDataService`, diff APIs, `RepoNodeRenderer`, and `ExpandNewNodesStateStrategy`. Uses a coroutine-based delay to tell single from double clicks.
+- Connected to: `ToolWindowHelper`, `MyToolWindowFactory`, `ToolWindowSettingsProvider` (view rebuilds), and the UI tests.
 - Why it exists: It is the primary user-facing comparison UI and the place where active diff data becomes an interactive tree.
 
 ### MyToolWindowFactory.kt
@@ -167,20 +167,38 @@ This document lists each current `src/main` file separately and explains why it 
 - Why it exists: It gives users lightweight access to the plugin without forcing the tool window to be visible.
 
 ### ToolWindowSettingsProvider.kt
-- Role: Central settings holder and gear-menu builder for click behavior, gutter options, context visibility, widget display, and scope-related toggles.
-- Depends on: `LstCrcSettingsService`, toggle-action APIs, message bus, and a few tool-window internals for title visibility.
-- Connected to: `MyToolWindowFactory`, `VisualTrackerManager`, `LstCrcChangesBrowser`, `LstCrcStatusWidget`, and the UI test bridge.
-- Why it exists: The plugin exposes many interaction toggles and needs one authoritative settings source.
+- Role: Read accessors for every setting plus the gear-menu builder for click behavior, gutter options, context labels, line stats, untracked files, widget display, and `Include HEAD in scopes`. When a toggle changes it calls the affected component directly (browser rebuild, tracker refresh, data refresh, widget refresh).
+- Depends on: `LstCrcSettingsService` for storage, toggle-action APIs, and `ToolWindowUiCompatibility` for title visibility.
+- Connected to: `MyToolWindowFactory`, `VisualTrackerManager`, `LstCrcChangesBrowser`, `LstCrcStatusWidget`, `GitService`, scopes, and the UI test bridge.
+- Why it exists: The plugin exposes many interaction toggles and needs one place that builds them and reads their values.
+
+### LstCrcSettingsService.kt
+- Role: Application-level `PersistentStateComponent` holding every setting as a string map in `lstCrcSettings.xml`, with typed getters and setters. `LstCrcSettingDefinitions` lists each key and its default.
+- Depends on: `PersistentStateComponent`; `PropertiesComponent` only for the one-time import of settings saved by earlier versions.
+- Connected to: `ToolWindowSettingsProvider`, and the unit tests, Remote Robot JavaScript and Starter bridge, which call the typed accessors by name.
+- Why it exists: Settings need typed, testable storage with defaults, and upgrades must keep the user's configuration.
+
+### ToolWindowUiCompatibility.kt
+- Role: The calls into internal tool-window classes: showing or hiding the tool-window title and setting the tab actions.
+- Depends on: `ToolWindowEx`, `ToolWindowContentUi` and `ContentManagerImpl` (internal).
+- Connected to: `MyToolWindowFactory`, `ToolWindowSettingsProvider`, and the Remote Robot tests (which call `setToolWindowTitleVisible` / `isToolWindowTitleVisible` by reflection).
+- Why it exists: The public API cannot hide the tool-window title after creation; keeping the internal calls here makes them easy to find on IDE upgrades.
+
+### LstCrcActionContext.kt
+- Role: Small helpers for actions: the selected LST-CRC tab, and the single selected revision or commit in the Git Log.
+- Depends on: `ToolWindowStateService`, `VcsDataKeys`, and `VcsLogDataKeys`.
+- Connected to: `CreateTabFromRevisionAction`, `SetRevisionAsRepoComparisonAction`, and `ShowRepoComparisonInfoAction`.
+- Why it exists: Several actions need the same selection lookups.
 
 ### OpenBranchSelectionTabAction.kt
 - Role: Toolbar action that opens the temporary branch-selection tab.
 - Depends on: `DumbAwareAction`, localized text, and `ToolWindowHelper`.
-- Connected to: `MyToolWindowFactory` toolbar setup and status-widget popup actions.
+- Connected to: `MyToolWindowFactory` toolbar setup. The status-widget popup opens the same tab through `ToolWindowHelper`.
 - Why it exists: Adding comparison tabs needs a discoverable toolbar entry point.
 
 ### CreateTabFromRevisionAction.kt
-- Role: VCS log action that opens a new comparison tab from a selected revision.
-- Depends on: Action-system VCS log data, `ToolWindowHelper`, `ToolWindowStateService`, and `Messages` input UI.
+- Role: VCS Log action that asks for a tab name and opens a comparison tab for the selected revision.
+- Depends on: Git Log selection (`LstCrcActionContext`), `ToolWindowHelper`, and `Messages` input UI.
 - Connected to: `plugin.xml` action registration and Git log context menus.
 - Why it exists: It links the Git log directly into the plugin's comparison-tab workflow.
 
@@ -191,26 +209,26 @@ This document lists each current `src/main` file separately and explains why it 
 - Why it exists: Per-repository overrides are a core multi-repo capability, and the Git log is a natural source for those revisions.
 
 ### ShowRepoComparisonInfoAction.kt
-- Role: Toolbar action that shows current repository comparison targets and opens per-repository selection dialogs.
-- Depends on: `GitService`, `ToolWindowStateService`, popup APIs, and `SingleRepoBranchSelectionDialog`.
-- Connected to: The browser toolbar, notification recovery flow, and multi-repo configuration UI.
+- Role: Toolbar action (placed right after "Group By") that shows each repository's current comparison target and opens `SingleRepoBranchSelectionDialog` to change it. In a single-repository project it opens the dialog directly.
+- Depends on: `GitService`, the selected tab (`LstCrcActionContext`), popup APIs, and `SingleRepoBranchSelectionDialog`.
+- Connected to: The browser toolbar and multi-repo configuration UI.
 - Why it exists: Users need a visible way to inspect and edit per-repository comparison targets.
 
 ### SingleRepoBranchSelectionDialog.kt
-- Role: Modal wrapper around `BranchSelectionPanel` for choosing a target for one repository.
+- Role: Modal wrapper around `BranchSelectionPanel` for choosing a target for one repository. Choosing the tab's own target removes the override.
 - Depends on: `DialogWrapper`, `BranchSelectionPanel`, `GitService`, and `ToolWindowStateService`.
-- Connected to: `ShowRepoComparisonInfoAction` and branch-failure recovery notifications.
+- Connected to: `ShowRepoComparisonInfoAction` and the missing-branch notification in `ToolWindowStateService`.
 - Why it exists: Multi-repo target repair needs a focused single-repo selection flow.
 
 ### RepoNodeRenderer.kt
-- Role: Tree-cell renderer that appends comparison-context text to repository and grouping nodes.
-- Depends on: Changes-tree renderers, `ProjectActiveDiffDataService`, settings, `GitService`, and `RevisionUtils`.
+- Role: Tree-cell renderer that appends comparison-context text ("(vs target)") to repository and grouping nodes, and added/removed line counts to change, folder and group rows.
+- Depends on: Changes-tree renderers, `ProjectActiveDiffDataService`, settings, `GitService`, and `isCommitHash`.
 - Connected to: `LstCrcChangesBrowser` rendering and settings-driven visibility rules.
-- Why it exists: Users need to see what each subtree is being compared against, especially in multi-repo tabs.
+- Why it exists: Users need to see what each subtree is being compared against, especially in multi-repo tabs, and how much changed.
 
 ### RenameTabAction.kt
-- Role: Context-menu action that renames a closable comparison tab.
-- Depends on: Action APIs, popup UI classes, `LstCrcKeys`, and `ToolWindowStateService`.
+- Role: Tab context-menu action that renames a closable comparison tab through an inline balloon.
+- Depends on: Action APIs, popup UI classes, `LstCrcKeys`, `ToolWindowHelper`, and the internal `BaseLabel` class to find the clicked tab.
 - Connected to: Tool-window tab context menus, persisted aliases, and widget display text.
 - Why it exists: Tab aliases are important when multiple revisions or similar branch names are open at once.
 
