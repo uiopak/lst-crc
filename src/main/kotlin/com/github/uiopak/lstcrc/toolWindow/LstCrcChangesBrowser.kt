@@ -80,15 +80,6 @@ class LstCrcChangesBrowser(
 ) : AsyncChangesBrowserBase(project, false, true), Disposable, UiDataProvider {
 
 
-    private companion object {
-        const val OPEN_SOURCE_ERROR_TITLE_KEY = "changes.browser.open.source.error.title"
-        const val OPEN_SOURCE_ERROR_MESSAGE_KEY = "changes.browser.open.source.error.message"
-    }
-
-    private data class TreeViewportState(
-        val viewPosition: Point
-    )
-
     private data class DiffChangeKey(
         val type: Change.Type,
         val beforePath: String?,
@@ -367,38 +358,14 @@ class LstCrcChangesBrowser(
         }
     }
 
+    /** Opens the local file, or for deleted and missing files the content of the revision. */
     private fun openSource(change: Change) {
-        if (change.type == Change.Type.DELETED) {
-            val beforeRevision = change.beforeRevision
-            if (beforeRevision != null) {
-                try {
-                    openRevisionSource(beforeRevision)
-                } catch (_: Exception) {
-                    showOpenSourceError(beforeRevision.file.path)
-                }
-            }
-            return
-        }
-
         val fileToOpen = getFileFromChange(change)
-        if (fileToOpen != null && fileToOpen.isValid && !fileToOpen.isDirectory) {
+        if (change.type != Change.Type.DELETED && fileToOpen != null && fileToOpen.isValid && !fileToOpen.isDirectory) {
             FileEditorManager.getInstance(project).openTextEditor(OpenFileDescriptor(project, fileToOpen), true)
             return
         }
-
-        val revisionToOpen = change.afterRevision ?: change.beforeRevision
-        if (revisionToOpen != null) {
-            try {
-                openRevisionSource(revisionToOpen)
-                return
-            } catch (_: Exception) {
-                showOpenSourceWarning(revisionToOpen.file.path)
-                return
-            }
-        } else {
-            val pathForMessage = (change.afterRevision?.file ?: change.beforeRevision?.file)?.path ?: LstCrcBundle.message("changes.browser.open.source.error.unknown.path")
-            showOpenSourceWarning(pathForMessage)
-        }
+        openRevisionSource(change.afterRevision ?: change.beforeRevision ?: return)
     }
 
     private fun openRevisionSource(revision: ContentRevision) {
@@ -422,14 +389,12 @@ class LstCrcChangesBrowser(
     }
 
     private fun showOpenSourceWarning(path: String) {
-        Messages.showWarningDialog(project, LstCrcBundle.message(OPEN_SOURCE_ERROR_MESSAGE_KEY, path), openSourceErrorTitle())
+        Messages.showWarningDialog(
+            project,
+            LstCrcBundle.message("changes.browser.open.source.error.message", path),
+            LstCrcBundle.message("changes.browser.open.source.error.title")
+        )
     }
-
-    private fun showOpenSourceError(path: String) {
-        Messages.showErrorDialog(project, LstCrcBundle.message(OPEN_SOURCE_ERROR_MESSAGE_KEY, path), openSourceErrorTitle())
-    }
-
-    private fun openSourceErrorTitle(): String = LstCrcBundle.message(OPEN_SOURCE_ERROR_TITLE_KEY)
 
     @Suppress("unused")
     fun viewerTree(): Tree = viewer
@@ -582,9 +547,6 @@ class LstCrcChangesBrowser(
      * Updates the browser with a new set of changes, preserving the user's scroll and expansion state.
      */
     private fun displayChanges(categorizedChanges: CategorizedChanges?, forBranchName: String) {
-        if (forBranchName != targetBranchToCompare) {
-            return
-        }
         ApplicationManager.getApplication().invokeLater {
             if (project.isDisposed) return@invokeLater
 
@@ -626,9 +588,9 @@ class LstCrcChangesBrowser(
     }
 
     private fun rebuildTreePreservingViewport() {
-        val viewportState = snapshotTreeViewportState()
-        if (viewportState == null) {
-            rebuildTreeWithoutScrollingSelection()
+        val viewPosition = (viewer.parent as? JViewport)?.viewPosition
+        if (viewPosition == null) {
+            viewer.rebuildTree()
             return
         }
 
@@ -642,7 +604,7 @@ class LstCrcChangesBrowser(
             model?.removeTreeModelListener(listener)
             ApplicationManager.getApplication().invokeLater {
                 if (!project.isDisposed) {
-                    restoreTreeViewport(viewportState)
+                    restoreTreeViewport(viewPosition)
                 }
             }
         }
@@ -658,7 +620,7 @@ class LstCrcChangesBrowser(
         }
 
         model?.addTreeModelListener(listener)
-        rebuildTreeWithoutScrollingSelection()
+        viewer.rebuildTree()
 
         ApplicationManager.getApplication().invokeLater {
             if (!restoreScheduled) {
@@ -668,23 +630,14 @@ class LstCrcChangesBrowser(
         }
     }
 
-    private fun rebuildTreeWithoutScrollingSelection() {
-        viewer.rebuildTree()
-    }
-
-    private fun snapshotTreeViewportState(): TreeViewportState? {
-        val viewport = viewer.parent as? JViewport ?: return null
-        return TreeViewportState(Point(viewport.viewPosition))
-    }
-
-    private fun restoreTreeViewport(state: TreeViewportState) {
+    private fun restoreTreeViewport(viewPosition: Point) {
         val viewport = viewer.parent as? JViewport ?: return
         val view = viewport.view ?: return
         val maxX = (view.width - viewport.extentSize.width).coerceAtLeast(0)
         val maxY = (view.height - viewport.extentSize.height).coerceAtLeast(0)
         val clampedPosition = Point(
-            state.viewPosition.x.coerceIn(0, maxX),
-            state.viewPosition.y.coerceIn(0, maxY)
+            viewPosition.x.coerceIn(0, maxX),
+            viewPosition.y.coerceIn(0, maxY)
         )
         if (viewport.viewPosition != clampedPosition) {
             viewport.viewPosition = clampedPosition

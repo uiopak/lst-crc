@@ -90,54 +90,36 @@ class ProjectActiveDiffDataService(private val project: Project) : Disposable {
         branchNameFromEvent: String,
         categorizedChanges: CategorizedChanges
     ) {
-        val currentToolWindowBranch = project.service<ToolWindowStateService>().getSelectedTabBranchName()
-        logger.debug("updateActiveDiff called. Event branch: '$branchNameFromEvent'. Current tool window branch: '$currentToolWindowBranch'.")
-
-        val isHeadSelectedInToolWindow = currentToolWindowBranch == null
-        val isEventForHead = branchNameFromEvent == "HEAD"
-        val isDirectBranchMatch = branchNameFromEvent == currentToolWindowBranch
-
-        if (isDirectBranchMatch || (isEventForHead && isHeadSelectedInToolWindow)) {
-            logger.debug("updateActiveDiff - Update ACCEPTED. Proceeding to update service state.")
-            ApplicationManager.getApplication().invokeLater {
-                if (project.isDisposed) return@invokeLater
-                logger.debug("EDT: Updating active data for '$branchNameFromEvent'.")
-
-                val newSnapshot = ActiveDiffSnapshot(branchNameFromEvent, categorizedChanges)
-                if (snapshot == newSnapshot) {
-                    logger.debug("EDT: Snapshot is identical. Skipping refresh triggers.")
-                    return@invokeLater
-                }
-
-                val hadFiles = snapshot.hasFiles()
-                snapshot = newSnapshot
-
-                notifyFileStatusesChanged(hadFiles || newSnapshot.hasFiles())
-                project.messageBus.syncPublisher(DIFF_DATA_CHANGED_TOPIC).onDiffDataChanged()
-                triggerEditorTabColorRefresh()
-            }
-        } else {
+        // A null selection is the HEAD tab, whose loads are reported as "HEAD".
+        val currentToolWindowBranch = project.service<ToolWindowStateService>().getSelectedTabBranchName() ?: "HEAD"
+        if (branchNameFromEvent != currentToolWindowBranch) {
             logger.debug("updateActiveDiff - Update REJECTED as stale. Event branch '$branchNameFromEvent' does NOT match current tool window branch '$currentToolWindowBranch'.")
+            return
+        }
+
+        ApplicationManager.getApplication().invokeLater {
+            if (project.isDisposed) return@invokeLater
+            val newSnapshot = ActiveDiffSnapshot(branchNameFromEvent, categorizedChanges)
+            if (snapshot != newSnapshot) replaceSnapshot(newSnapshot)
         }
     }
 
     fun clearActiveDiff() {
         ApplicationManager.getApplication().invokeLater {
-            if (project.isDisposed) return@invokeLater
-            logger.debug("EDT: clearActiveDiff called. Clearing activeBranchName and file lists.")
-
-            val hadFiles = snapshot.hasFiles()
-            snapshot = ActiveDiffSnapshot.EMPTY
-
-            notifyFileStatusesChanged(hadFiles)
-            project.messageBus.syncPublisher(DIFF_DATA_CHANGED_TOPIC).onDiffDataChanged()
-            triggerEditorTabColorRefresh()
+            if (!project.isDisposed) replaceSnapshot(ActiveDiffSnapshot.EMPTY)
         }
     }
 
-    /** `fileStatusesChanged()` invalidates every cached status, so per-file notifications are unnecessary. */
-    private fun notifyFileStatusesChanged(anyFileAffected: Boolean) {
+    /**
+     * Must be called on EDT. Publishes the new data and refreshes file statuses (only when some file's
+     * status can change; `fileStatusesChanged()` invalidates every cached status) and editor tab colours.
+     */
+    private fun replaceSnapshot(newSnapshot: ActiveDiffSnapshot) {
+        val anyFileAffected = snapshot.hasFiles() || newSnapshot.hasFiles()
+        snapshot = newSnapshot
         if (anyFileAffected) FileStatusManager.getInstance(project).fileStatusesChanged()
+        project.messageBus.syncPublisher(DIFF_DATA_CHANGED_TOPIC).onDiffDataChanged()
+        triggerEditorTabColorRefresh()
     }
 
     /** Must be called on EDT. */

@@ -12,12 +12,11 @@ import com.intellij.psi.search.scope.packageSet.NamedScope
  * which is discouraged by the platform linter.
  */
 object LstCrcProvidedScopes {
-    // These are lazy to ensure they are created only when first accessed.
-    val CREATED_FILES_SCOPE by lazy { CreatedFilesScope() }
-    val MODIFIED_FILES_SCOPE by lazy { ModifiedFilesScope() }
-    val MOVED_FILES_SCOPE by lazy { MovedFilesScope() }
-    val DELETED_FILES_SCOPE by lazy { DeletedFilesScope() }
-    val CHANGED_FILES_SCOPE by lazy { ChangedFilesScope() }
+    val CREATED_FILES_SCOPE = CreatedFilesScope()
+    val MODIFIED_FILES_SCOPE = ModifiedFilesScope()
+    val MOVED_FILES_SCOPE = MovedFilesScope()
+    val DELETED_FILES_SCOPE = DeletedFilesScope()
+    val CHANGED_FILES_SCOPE = ChangedFilesScope()
 
     val allScopes: List<NamedScope> = listOf(
         CREATED_FILES_SCOPE,

@@ -41,8 +41,8 @@ class RepoNodeRenderer(
     private val gitService = project.service<GitService>()
     private val diffDataService = project.service<ProjectActiveDiffDataService>()
     private val stateService = project.service<ToolWindowStateService>()
+    // Its border is set per row in updateRendererInsets.
     private val trailingRenderer = SimpleColoredComponent().apply {
-        border = JBUI.Borders.emptyLeft(TRAILING_METADATA_LEFT_GAP)
         isOpaque = false
         iconTextGap = 0
     }
@@ -191,15 +191,11 @@ class RepoNodeRenderer(
     }
 
     private fun currentComparisonContext(): Map<String, String> {
-        return currentCategorizedChanges()?.comparisonContext ?: diffDataService.activeComparisonContext
+        return categorizedChangesProvider()?.comparisonContext ?: diffDataService.activeComparisonContext
     }
 
     private fun currentLineStatsByChange(): Map<ChangeLineStatsKey, ChangeLineStats> {
-        return currentCategorizedChanges()?.lineStatsByChange ?: diffDataService.lineStatsByChange
-    }
-
-    private fun currentCategorizedChanges(): CategorizedChanges? {
-        return categorizedChangesProvider()
+        return categorizedChangesProvider()?.lineStatsByChange ?: diffDataService.lineStatsByChange
     }
 
     private fun shouldAnnotateSingleRepoNode(tree: JTree, node: ChangesBrowserNode<*>): Boolean {
@@ -231,7 +227,6 @@ internal val ADDED_LINE_STATS_ATTRIBUTES: SimpleTextAttributes =
 
 internal val REMOVED_LINE_STATS_ATTRIBUTES: SimpleTextAttributes = SimpleTextAttributes.ERROR_ATTRIBUTES
 
-private const val TRAILING_METADATA_LEFT_GAP = 0
 private const val TRAILING_METADATA_RIGHT_GAP = 10
 private const val RENDERER_RIGHT_PADDING = 10
 

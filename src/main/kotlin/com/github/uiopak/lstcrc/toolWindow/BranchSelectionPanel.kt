@@ -36,15 +36,16 @@ import javax.swing.tree.TreeNode
  * @param onBranchSelected A callback invoked with the name of the branch when the user selects it.
  */
 class BranchSelectionPanel(
-    private val gitService: GitService,
-    private val repository: GitRepository?,
-    private val branchSnapshot: BranchSnapshot? = null,
+    gitService: GitService,
+    repository: GitRepository?,
+    branchSnapshot: BranchSnapshot? = null,
     private val onBranchSelected: (branchName: String) -> Unit
 ) : JBPanel<BranchSelectionPanel>(BorderLayout()), Disposable {
 
     private val searchTextField = SearchTextField(false)
+    private val localBranches: List<String>
+    private val remoteBranches: List<String>
     private val tree: Tree
-    private val fullTreeModel: DefaultTreeModel
     private val filterDocumentListener = object : DocumentListener {
         override fun insertUpdate(e: DocumentEvent?) = filterTree()
 
@@ -59,7 +60,12 @@ class BranchSelectionPanel(
     private enum class BranchCategoryType { LOCAL, REMOTE }
 
     init {
-        fullTreeModel = buildFullBranchTreeModel()
+        // Use the pre-fetched snapshot if available; otherwise fall back to the
+        // Git4Idea repository model which is already cached in memory (no I/O).
+        // This constructor may run on the EDT, so it must never run git commands.
+        val targetRepo = repository ?: gitService.getPrimaryRepository()
+        localBranches = resolvedBranches(branchSnapshot?.localBranches, targetRepo?.branches?.localBranches?.map { it.name })
+        remoteBranches = resolvedBranches(branchSnapshot?.remoteBranches, targetRepo?.branches?.remoteBranches?.map { it.name })
         tree = createBranchSelectionTree()
 
         searchTextField.addDocumentListener(filterDocumentListener)
@@ -76,65 +82,9 @@ class BranchSelectionPanel(
         val searchTerm = searchTextField.text
         tree.putClientProperty("search.term", searchTerm)
 
-        tree.model = buildFilteredModel(searchTerm)
+        tree.model = buildBranchTreeModel(searchTerm)
         TreeUtil.expandAll(tree)
         refreshSearchSelection(searchTerm)
-    }
-
-    private fun buildFilteredModel(searchTerm: String): DefaultTreeModel {
-        return if (searchTerm.isBlank()) {
-            fullTreeModel
-        } else {
-            DefaultTreeModel(buildFilteredRoot(searchTerm))
-        }
-    }
-
-    private fun buildFilteredRoot(searchTerm: String): DefaultMutableTreeNode {
-        val originalRoot = fullTreeModel.root as DefaultMutableTreeNode
-        val filteredRoot = originalRoot.clone() as DefaultMutableTreeNode
-        filteredRoot.removeAllChildren()
-
-        for (child in originalRoot.children()) {
-            val originalCategoryNode = child as DefaultMutableTreeNode
-            val filteredCategoryNode = cloneNodeIfMatching(originalCategoryNode, searchTerm)
-            if (filteredCategoryNode != null) {
-                filteredRoot.add(filteredCategoryNode)
-            }
-        }
-        return filteredRoot
-    }
-
-    private fun cloneNodeIfMatching(originalNode: DefaultMutableTreeNode, searchTerm: String): DefaultMutableTreeNode? {
-        if (nodeMatchesSearch(originalNode, searchTerm)) {
-            return deepCloneNode(originalNode)
-        }
-
-        val matchingChildren = mutableListOf<DefaultMutableTreeNode>()
-        if (!originalNode.isLeaf) {
-            for (child in originalNode.children()) {
-                val matchingChild = cloneNodeIfMatching(child as DefaultMutableTreeNode, searchTerm)
-                if (matchingChild != null) {
-                    matchingChildren.add(matchingChild)
-                }
-            }
-        }
-
-        if (matchingChildren.isNotEmpty()) {
-            return DefaultMutableTreeNode(originalNode.userObject).apply {
-                matchingChildren.forEach(::add)
-            }
-        }
-
-        return null
-    }
-
-    private fun deepCloneNode(node: DefaultMutableTreeNode): DefaultMutableTreeNode {
-        val newNode = node.clone() as DefaultMutableTreeNode
-        newNode.removeAllChildren()
-        for (child in node.children()) {
-            newNode.add(deepCloneNode(child as DefaultMutableTreeNode))
-        }
-        return newNode
     }
 
     private fun refreshSearchSelection(searchTerm: String) {
@@ -214,7 +164,7 @@ class BranchSelectionPanel(
     }
 
     private fun createBranchSelectionTree(): Tree {
-        return Tree(fullTreeModel).apply {
+        return Tree(buildBranchTreeModel()).apply {
             isRootVisible = false
             showsRootHandles = true
             cellRenderer = createBranchTreeCellRenderer()
@@ -333,20 +283,17 @@ class BranchSelectionPanel(
         return true
     }
 
-    private fun buildFullBranchTreeModel(): DefaultTreeModel {
+    /**
+     * Builds the branch tree, keeping only branches that match [searchTerm]: every branch of a category
+     * whose name matches, otherwise branches whose full name matches (which covers folder matches, as a
+     * folder is part of the full name of every branch below it).
+     */
+    private fun buildBranchTreeModel(searchTerm: String = ""): DefaultTreeModel {
         val rootNode = DefaultMutableTreeNode("Root")
         val localCategory = BranchCategory(BranchCategoryType.LOCAL, LstCrcBundle.message("branch.type.local"))
         val remoteCategory = BranchCategory(BranchCategoryType.REMOTE, LstCrcBundle.message("branch.type.remote"))
-
-        // Use the pre-fetched snapshot if available; otherwise fall back to the
-        // Git4Idea repository model which is already cached in memory (no I/O).
-        // This method may be called on the EDT, so it must never run git commands.
-        val targetRepo = repository ?: gitService.getPrimaryRepository()
-        val localBranches = resolvedBranches(branchSnapshot?.localBranches, targetRepo?.branches?.localBranches?.map { it.name })
-        val remoteBranches = resolvedBranches(branchSnapshot?.remoteBranches, targetRepo?.branches?.remoteBranches?.map { it.name })
-
-        addBranchCategoryNode(rootNode, localCategory, localBranches)
-        addBranchCategoryNode(rootNode, remoteCategory, remoteBranches)
+        addBranchCategoryNode(rootNode, localCategory, localBranches, searchTerm)
+        addBranchCategoryNode(rootNode, remoteCategory, remoteBranches, searchTerm)
         return DefaultTreeModel(rootNode)
     }
 
@@ -359,10 +306,16 @@ class BranchSelectionPanel(
     private fun addBranchCategoryNode(
         rootNode: DefaultMutableTreeNode,
         category: BranchCategory,
-        branches: List<String>
+        branches: List<String>,
+        searchTerm: String
     ) {
+        val matchingBranches = if (searchTerm.isBlank() || category.displayName.contains(searchTerm, ignoreCase = true)) {
+            branches
+        } else {
+            branches.filter { it.contains(searchTerm, ignoreCase = true) }
+        }
         val categoryNode = DefaultMutableTreeNode(category)
-        addBranchNodes(categoryNode, branches)
+        addBranchNodes(categoryNode, matchingBranches)
         if (categoryNode.childCount > 0) {
             rootNode.add(categoryNode)
         }
