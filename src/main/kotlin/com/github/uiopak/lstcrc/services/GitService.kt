@@ -19,6 +19,7 @@ import com.intellij.openapi.vcs.FilePath
 import com.intellij.openapi.vcs.FileStatus
 import com.intellij.openapi.vcs.VcsException
 import com.intellij.openapi.vcs.changes.Change
+import com.intellij.openapi.vcs.changes.ChangesUtil
 import com.intellij.openapi.vcs.changes.ContentRevision
 import com.intellij.openapi.vcs.history.VcsRevisionNumber
 import com.intellij.openapi.vcs.vfs.ContentRevisionVirtualFile
@@ -468,14 +469,12 @@ class GitService(private val project: Project) {
         baseChanges: List<Change>,
         unsavedChanges: List<Change>
     ): List<Change> {
-        val mergedChanges = LinkedHashMap<String, Change>()
-        baseChanges.forEach { change ->
-            mergedChanges[unsavedOverlayKey(change.afterRevision?.file?.path ?: change.beforeRevision?.file?.path.orEmpty())] = change
-        }
+        // FilePath equality follows the file system's case sensitivity.
+        val mergedChanges = LinkedHashMap<FilePath, Change>()
+        baseChanges.forEach { change -> mergedChanges[ChangesUtil.getFilePath(change)] = change }
 
         unsavedChanges.forEach { change ->
-            val path = change.afterRevision?.file?.path ?: change.beforeRevision?.file?.path.orEmpty()
-            val key = unsavedOverlayKey(path)
+            val key = ChangesUtil.getFilePath(change)
             mergedChanges[key] = mergeUnsavedOverlayChange(mergedChanges[key], change)
         }
 
@@ -546,8 +545,6 @@ class GitService(private val project: Project) {
             null
         }
     }
-
-    private fun unsavedOverlayKey(path: String): String = path.lowercase()
 
     private fun createComparisonVirtualFile(afterRevision: ContentRevision): VirtualFile? {
         return afterRevision.file.virtualFile
