@@ -23,7 +23,7 @@ jobs:
       - name: Maximize Build Space
         uses: jlumbroso/free-disk-space@main
         with:
-          tool-cache: true
+          preinstalled-runtimes: true
           large-packages: true
 
       - name: Fetch Sources

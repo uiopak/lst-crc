@@ -93,7 +93,7 @@ jobs:
         if: runner.os == 'Linux'
         uses: jlumbroso/free-disk-space@main
         with:
-          tool-cache: true
+          preinstalled-runtimes: true
           large-packages: true
 
       - name: Restore Linux UI dependencies

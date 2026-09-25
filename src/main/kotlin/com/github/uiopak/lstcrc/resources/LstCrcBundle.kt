@@ -5,7 +5,7 @@ import org.jetbrains.annotations.PropertyKey
 
 private const val BUNDLE = "messages.LstCrcMessages"
 
-object LstCrcBundle : DynamicBundle(BUNDLE) {
+object LstCrcBundle : DynamicBundle(LstCrcBundle::class.java, BUNDLE) {
     @JvmStatic
     fun message(@PropertyKey(resourceBundle = BUNDLE) key: String, vararg params: Any): String =
         getMessage(key, *params)
