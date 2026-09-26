@@ -19,14 +19,5 @@ internal fun singleSelectedRevisionString(event: AnActionEvent): String? {
         ?.asString()
 }
 
-internal fun singleSelectedCommit(event: AnActionEvent): CommitId? {
-    return event.getData(VcsLogDataKeys.VCS_LOG_COMMIT_SELECTION)
-        ?.commits
-    ?.singleOrNull()
-}
-
-internal fun hasSingleSelectedCommit(event: AnActionEvent): Boolean {
-    return event.getData(VcsLogDataKeys.VCS_LOG_COMMIT_SELECTION)
-        ?.commits
-        ?.size == 1
-}
+internal fun singleSelectedCommit(event: AnActionEvent): CommitId? =
+    event.getData(VcsLogDataKeys.VCS_LOG_COMMIT_SELECTION)?.commits?.singleOrNull()

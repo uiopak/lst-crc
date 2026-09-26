@@ -10,7 +10,6 @@ import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.startup.ProjectActivity
 import com.intellij.openapi.vcs.ProjectLevelVcsManager
-import git4idea.repo.GitRepositoryManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.future.await
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -53,52 +52,28 @@ class PluginStartupActivity : ProjectActivity {
 
         project.service<VcsChangeListener>()
         project.service<com.github.uiopak.lstcrc.gutters.VisualTrackerManager>().init()
-        logger.debug { "STARTUP_LOGIC: Background services initialized." }
 
         // Perform a quick initial refresh for tab colors of already open files.
         withContext(Dispatchers.EDT) {
-            if (project.isDisposed) {
-                logger.debug { "STARTUP_LOGIC: Project ${project.name} is disposed, skipping initial tab color refresh." }
-                return@withContext
-            }
-            logger.debug { "STARTUP_LOGIC: Running initial tab color refresh for project: ${project.name}" }
-            project.service<ProjectActiveDiffDataService>().refreshCurrentColorings()
+            if (!project.isDisposed) project.service<ProjectActiveDiffDataService>().refreshCurrentColorings()
         }
 
         // The diff load only needs Git repositories, not indexes, so it does not wait for indexing
         // (which can take minutes on a large project).
-        logger.debug { "STARTUP_LOGIC: Waiting for VCS initialization before initial diff load." }
         awaitVcsInitialization(project)
-        logger.debug { "STARTUP_LOGIC: VCS initialized. Executing initial diff load for project: ${project.name}" }
+        if (project.isDisposed) return
 
-        if (project.isDisposed) {
-            logger.debug { "STARTUP_LOGIC: Project ${project.name} is disposed after VCS initialization, skipping initial diff load." }
-            return
-        }
-
-        val gitService = project.service<GitService>()
-        val currentRepo = gitService.getPrimaryRepository()
         val toolWindowStateService = project.service<ToolWindowStateService>()
-
-        if (currentRepo == null) {
-            val hasAnyGitRepositories = GitRepositoryManager.getInstance(project).repositories.isNotEmpty()
-            if (hasAnyGitRepositories) {
-                logger.warn("STARTUP_LOGIC: Git repository still not found after VCS initialization for project: ${project.name}. Tab coloring may not function correctly.")
-            } else {
-                logger.debug { "STARTUP_LOGIC: No Git repository configured for project: ${project.name}. Skipping startup diff load." }
+        if (project.service<GitService>().getPrimaryRepository() == null) {
+            // No repository was detected; still sync the persisted state to the UI.
+            logger.debug { "STARTUP_LOGIC: No Git repository for project: ${project.name}. Skipping startup diff load." }
+        } else {
+            try {
+                toolWindowStateService.refreshDataForCurrentSelection().await()
+                logger.debug { "STARTUP_LOGIC: Initial diff load task finished for project: ${project.name}" }
+            } catch (e: Exception) {
+                logger.warn("STARTUP_LOGIC: Initial diff load failed.", e)
             }
-            // If git isn't ready, still sync persisted state to UI.
-            syncUiAfterRefresh(project, toolWindowStateService)
-            return
-        }
-        logger.debug { "STARTUP_LOGIC: Git repository found after VCS initialization: ${currentRepo.root.path}. Proceeding with initial diff load." }
-
-        // This single call orchestrates fetching data and updating services. We now await its completion.
-        try {
-            toolWindowStateService.refreshDataForCurrentSelection().await()
-            logger.debug { "STARTUP_LOGIC: Initial diff load task finished for project: ${project.name}" }
-        } catch (e: Exception) {
-            logger.warn("STARTUP_LOGIC: Initial diff load failed.", e)
         }
 
         syncUiAfterRefresh(project, toolWindowStateService)
