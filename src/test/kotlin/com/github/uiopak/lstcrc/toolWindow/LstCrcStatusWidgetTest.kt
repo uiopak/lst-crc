@@ -76,6 +76,6 @@ class LstCrcStatusWidgetTest : LstCrcTestCase() {
 
     @Suppress("SameParameterValue")
     private fun setShowWidgetContext(show: Boolean) {
-        ApplicationManager.getApplication().service<LstCrcSettingsService>().setShowWidgetContext(show)
+        ApplicationManager.getApplication().service<LstCrcSettingsService>()[LstCrcSettingDefinitions.SHOW_WIDGET_CONTEXT] = show
     }
 }

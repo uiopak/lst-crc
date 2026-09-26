@@ -361,7 +361,7 @@ class LstCrcUiTestBridge {
 
     fun setContextMenuEnabled(enabled: Boolean) {
         onEdt {
-            settingsService().setContextMenuEnabled(enabled)
+            settingsService()[LstCrcSettingDefinitions.SHOW_CONTEXT_MENU] = enabled
         }
     }
 
@@ -376,33 +376,33 @@ class LstCrcUiTestBridge {
     ) {
         onEdt {
             val settings = settingsService()
-            singleClickAction?.let { settings.setSingleClickAction(it) }
-            doubleClickAction?.let { settings.setDoubleClickAction(it) }
-            middleClickAction?.let { settings.setMiddleClickAction(it) }
-            doubleMiddleClickAction?.let { settings.setDoubleMiddleClickAction(it) }
-            rightClickAction?.let { settings.setRightClickAction(it) }
-            doubleRightClickAction?.let { settings.setDoubleRightClickAction(it) }
-            showContextMenu?.let { settings.setContextMenuEnabled(it) }
+            singleClickAction?.let { settings[LstCrcSettingDefinitions.SINGLE_CLICK_ACTION] = it }
+            doubleClickAction?.let { settings[LstCrcSettingDefinitions.DOUBLE_CLICK_ACTION] = it }
+            middleClickAction?.let { settings[LstCrcSettingDefinitions.MIDDLE_CLICK_ACTION] = it }
+            doubleMiddleClickAction?.let { settings[LstCrcSettingDefinitions.DOUBLE_MIDDLE_CLICK_ACTION] = it }
+            rightClickAction?.let { settings[LstCrcSettingDefinitions.RIGHT_CLICK_ACTION] = it }
+            doubleRightClickAction?.let { settings[LstCrcSettingDefinitions.DOUBLE_RIGHT_CLICK_ACTION] = it }
+            showContextMenu?.let { settings[LstCrcSettingDefinitions.SHOW_CONTEXT_MENU] = it }
         }
     }
 
     fun clickSettingsSnapshot(): String = onEdtResult {
         val settings = settingsService()
         listOf(
-            settings.getSingleClickAction(),
-            settings.getDoubleClickAction(),
-            settings.getMiddleClickAction(),
-            settings.getDoubleMiddleClickAction(),
-            settings.getRightClickAction(),
-            settings.getDoubleRightClickAction(),
-            settings.isContextMenuEnabled().toString(),
-            settings.getUserDoubleClickDelay().toString()
+            settings[LstCrcSettingDefinitions.SINGLE_CLICK_ACTION],
+            settings[LstCrcSettingDefinitions.DOUBLE_CLICK_ACTION],
+            settings[LstCrcSettingDefinitions.MIDDLE_CLICK_ACTION],
+            settings[LstCrcSettingDefinitions.DOUBLE_MIDDLE_CLICK_ACTION],
+            settings[LstCrcSettingDefinitions.RIGHT_CLICK_ACTION],
+            settings[LstCrcSettingDefinitions.DOUBLE_RIGHT_CLICK_ACTION],
+            settings[LstCrcSettingDefinitions.SHOW_CONTEXT_MENU].toString(),
+            settings[LstCrcSettingDefinitions.USER_DOUBLE_CLICK_DELAY].toString()
         ).joinToString("|")
     }
 
     fun setDoubleClickDelayMs(delay: Int) {
         onEdt {
-            settingsService().setUserDoubleClickDelay(delay)
+            settingsService()[LstCrcSettingDefinitions.USER_DOUBLE_CLICK_DELAY] = delay
         }
     }
 
@@ -568,7 +568,7 @@ class LstCrcUiTestBridge {
     fun setShowWidgetContext(show: Boolean) {
         val project = project()
         onEdt {
-            settingsService().setShowWidgetContext(show)
+            settingsService()[LstCrcSettingDefinitions.SHOW_WIDGET_CONTEXT] = show
             LstCrcStatusWidget.refresh(project)
         }
         awaitCurrentSelectionRefresh(project)
@@ -576,7 +576,7 @@ class LstCrcUiTestBridge {
 
     fun setShowToolWindowTitle(show: Boolean) {
         onEdt {
-            settingsService().setShowToolWindowTitle(show)
+            settingsService()[LstCrcSettingDefinitions.SHOW_TOOL_WINDOW_TITLE] = show
             ToolWindowUiCompatibility.setToolWindowTitleVisible(toolWindow(), show)
         }
     }
@@ -588,7 +588,7 @@ class LstCrcUiTestBridge {
     fun setIncludeHeadInScopes(include: Boolean) {
         val project = project()
         onEdt {
-            settingsService().setIncludeHeadInScopes(include)
+            settingsService()[LstCrcSettingDefinitions.INCLUDE_HEAD_IN_SCOPES] = include
         }
         awaitCurrentSelectionRefresh(project)
     }
@@ -598,10 +598,10 @@ class LstCrcUiTestBridge {
         onEdt {
             val settings = settingsService()
             enableMarkers?.let {
-                settings.setGutterMarkersEnabled(it)
+                settings[LstCrcSettingDefinitions.ENABLE_GUTTER_MARKERS] = it
             }
             enableForNewFiles?.let {
-                settings.setGutterForNewFilesEnabled(it)
+                settings[LstCrcSettingDefinitions.ENABLE_GUTTER_FOR_NEW_FILES] = it
             }
         }
         awaitCurrentSelectionRefresh(project)
@@ -609,14 +609,14 @@ class LstCrcUiTestBridge {
 
     fun setExpandNewFilesInCollapsedDirs(enabled: Boolean) {
         onEdt {
-            settingsService().setExpandNewFilesInCollapsedDirs(enabled)
+            settingsService()[LstCrcSettingDefinitions.EXPAND_NEW_FILES_IN_COLLAPSED_DIRS] = enabled
         }
     }
 
     fun setShowUntrackedFilesAsNew(enabled: Boolean) {
         val project = project()
         onEdt {
-            settingsService().setShowUntrackedFilesAsNew(enabled)
+            settingsService()[LstCrcSettingDefinitions.SHOW_UNTRACKED_FILES_AS_NEW] = enabled
         }
         awaitCurrentSelectionRefresh(project)
     }
@@ -626,13 +626,13 @@ class LstCrcUiTestBridge {
         onEdt {
             val settings = settingsService()
             showSingleRepo?.let {
-                settings.setShowContextForSingleRepo(it)
+                settings[LstCrcSettingDefinitions.SHOW_CONTEXT_SINGLE_REPO] = it
             }
             showCommits?.let {
-                settings.setShowContextForCommits(it)
+                settings[LstCrcSettingDefinitions.SHOW_CONTEXT_FOR_COMMITS] = it
             }
             showLineStats?.let {
-                settings.setShowLineStatsInTree(it)
+                settings[LstCrcSettingDefinitions.SHOW_LINE_STATS_IN_TREE] = it
             }
             selectedBrowser()?.rebuildView()
         }
@@ -642,28 +642,28 @@ class LstCrcUiTestBridge {
     fun setMultiRepoTreeContextSetting(show: Boolean) {
         val project = project()
         onEdt {
-            settingsService().setShowContextForMultiRepo(show)
+            settingsService()[LstCrcSettingDefinitions.SHOW_CONTEXT_MULTI_REPO] = show
             selectedBrowser()?.rebuildView()
         }
         awaitCurrentSelectionRefresh(project)
     }
 
     fun isMultiRepoTreeContextEnabled(): Boolean = onEdtResult {
-        settingsService().isShowContextForMultiRepo()
+        settingsService()[LstCrcSettingDefinitions.SHOW_CONTEXT_MULTI_REPO]
     }
 
     fun treeContextSettingsSnapshot(): String = onEdtResult {
         val settings = settingsService()
-        "${settings.isShowContextForSingleRepo()}|" +
-            "${settings.isShowContextForCommits()}|" +
-            settings.isShowLineStatsInTree()
+        "${settings[LstCrcSettingDefinitions.SHOW_CONTEXT_SINGLE_REPO]}|" +
+            "${settings[LstCrcSettingDefinitions.SHOW_CONTEXT_FOR_COMMITS]}|" +
+            settings[LstCrcSettingDefinitions.SHOW_LINE_STATS_IN_TREE]
     }
 
     fun gutterSettingsSnapshot(): String = onEdtResult {
         val settings = settingsService()
-        "${settings.isGutterMarkersEnabled()}|" +
-            "${settings.isGutterForNewFilesEnabled()}|" +
-            settings.isIncludeHeadInScopes()
+        "${settings[LstCrcSettingDefinitions.ENABLE_GUTTER_MARKERS]}|" +
+            "${settings[LstCrcSettingDefinitions.ENABLE_GUTTER_FOR_NEW_FILES]}|" +
+            settings[LstCrcSettingDefinitions.INCLUDE_HEAD_IN_SCOPES]
     }
 
     fun selectedTabComparisonMap(): String = onEdtResult {

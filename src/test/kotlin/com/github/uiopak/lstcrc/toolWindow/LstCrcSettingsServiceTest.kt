@@ -11,19 +11,19 @@ class LstCrcSettingsServiceTest : LstCrcTestCase() {
         val settings = ApplicationManager.getApplication().service<LstCrcSettingsService>()
 
         try {
-            settings.setSingleClickAction(ToolWindowSettingsProvider.ACTION_NONE)
-            settings.setDoubleClickAction(ToolWindowSettingsProvider.ACTION_OPEN_DIFF)
-            settings.setContextMenuEnabled(true)
-            settings.setUserDoubleClickDelay(500)
-            settings.setShowLineStatsInTree(true)
+            settings[LstCrcSettingDefinitions.SINGLE_CLICK_ACTION] = ToolWindowSettingsProvider.ACTION_NONE
+            settings[LstCrcSettingDefinitions.DOUBLE_CLICK_ACTION] = ToolWindowSettingsProvider.ACTION_OPEN_DIFF
+            settings[LstCrcSettingDefinitions.SHOW_CONTEXT_MENU] = true
+            settings[LstCrcSettingDefinitions.USER_DOUBLE_CLICK_DELAY] = 500
+            settings[LstCrcSettingDefinitions.SHOW_LINE_STATS_IN_TREE] = true
 
             settings.resetToDefaults()
 
-            assertEquals(LstCrcSettingDefinitions.SINGLE_CLICK_ACTION.defaultValue, settings.getSingleClickAction())
-            assertEquals(LstCrcSettingDefinitions.DOUBLE_CLICK_ACTION.defaultValue, settings.getDoubleClickAction())
-            assertFalse(settings.isContextMenuEnabled())
-            assertEquals(LstCrcSettingDefinitions.USER_DOUBLE_CLICK_DELAY.defaultValue, settings.getUserDoubleClickDelay())
-            assertFalse(settings.isShowLineStatsInTree())
+            assertEquals(LstCrcSettingDefinitions.SINGLE_CLICK_ACTION.defaultValue, settings[LstCrcSettingDefinitions.SINGLE_CLICK_ACTION])
+            assertEquals(LstCrcSettingDefinitions.DOUBLE_CLICK_ACTION.defaultValue, settings[LstCrcSettingDefinitions.DOUBLE_CLICK_ACTION])
+            assertFalse(settings[LstCrcSettingDefinitions.SHOW_CONTEXT_MENU])
+            assertEquals(LstCrcSettingDefinitions.USER_DOUBLE_CLICK_DELAY.defaultValue, settings[LstCrcSettingDefinitions.USER_DOUBLE_CLICK_DELAY])
+            assertFalse(settings[LstCrcSettingDefinitions.SHOW_LINE_STATS_IN_TREE])
         } finally {
             settings.resetToDefaults()
         }
@@ -39,12 +39,12 @@ class LstCrcSettingsServiceTest : LstCrcTestCase() {
             val settings = LstCrcSettingsService()
             settings.importLegacySettings(legacy)
 
-            assertEquals(ToolWindowSettingsProvider.ACTION_OPEN_DIFF, settings.getSingleClickAction())
-            assertFalse(settings.isGutterMarkersEnabled())
-            assertEquals(250, settings.getUserDoubleClickDelay())
+            assertEquals(ToolWindowSettingsProvider.ACTION_OPEN_DIFF, settings[LstCrcSettingDefinitions.SINGLE_CLICK_ACTION])
+            assertFalse(settings[LstCrcSettingDefinitions.ENABLE_GUTTER_MARKERS])
+            assertEquals(250, settings[LstCrcSettingDefinitions.USER_DOUBLE_CLICK_DELAY])
             // Keys absent from the legacy store keep their defaults.
-            assertEquals(LstCrcSettingDefinitions.MIDDLE_CLICK_ACTION.defaultValue, settings.getMiddleClickAction())
-            assertTrue(settings.isShowContextForSingleRepo())
+            assertEquals(LstCrcSettingDefinitions.MIDDLE_CLICK_ACTION.defaultValue, settings[LstCrcSettingDefinitions.MIDDLE_CLICK_ACTION])
+            assertTrue(settings[LstCrcSettingDefinitions.SHOW_CONTEXT_SINGLE_REPO])
         } finally {
             LstCrcSettingDefinitions.allKeys.forEach(legacy::unsetValue)
         }
@@ -54,17 +54,17 @@ class LstCrcSettingsServiceTest : LstCrcTestCase() {
         val settings = ApplicationManager.getApplication().service<LstCrcSettingsService>()
 
         try {
-            settings.setRightClickAction(ToolWindowSettingsProvider.ACTION_SHOW_IN_PROJECT_TREE)
-            settings.setShowWidgetContext(true)
-            settings.setIncludeHeadInScopes(true)
-            settings.setShowToolWindowTitle(true)
-            settings.setUserDoubleClickDelay(300)
+            settings[LstCrcSettingDefinitions.RIGHT_CLICK_ACTION] = ToolWindowSettingsProvider.ACTION_SHOW_IN_PROJECT_TREE
+            settings[LstCrcSettingDefinitions.SHOW_WIDGET_CONTEXT] = true
+            settings[LstCrcSettingDefinitions.INCLUDE_HEAD_IN_SCOPES] = true
+            settings[LstCrcSettingDefinitions.SHOW_TOOL_WINDOW_TITLE] = true
+            settings[LstCrcSettingDefinitions.USER_DOUBLE_CLICK_DELAY] = 300
 
-            assertEquals(ToolWindowSettingsProvider.ACTION_SHOW_IN_PROJECT_TREE, settings.getRightClickAction())
-            assertTrue(settings.isShowWidgetContext())
-            assertTrue(settings.isIncludeHeadInScopes())
-            assertTrue(settings.isShowToolWindowTitle())
-            assertEquals(300, settings.getUserDoubleClickDelay())
+            assertEquals(ToolWindowSettingsProvider.ACTION_SHOW_IN_PROJECT_TREE, settings[LstCrcSettingDefinitions.RIGHT_CLICK_ACTION])
+            assertTrue(settings[LstCrcSettingDefinitions.SHOW_WIDGET_CONTEXT])
+            assertTrue(settings[LstCrcSettingDefinitions.INCLUDE_HEAD_IN_SCOPES])
+            assertTrue(settings[LstCrcSettingDefinitions.SHOW_TOOL_WINDOW_TITLE])
+            assertEquals(300, settings[LstCrcSettingDefinitions.USER_DOUBLE_CLICK_DELAY])
         } finally {
             settings.resetToDefaults()
         }

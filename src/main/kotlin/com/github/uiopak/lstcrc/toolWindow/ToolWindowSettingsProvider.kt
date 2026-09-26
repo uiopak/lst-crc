@@ -21,11 +21,7 @@ import javax.swing.UIManager
  */
 object ToolWindowSettingsProvider {
 
-    private data class ClickActionSettingDefinition(
-        val titleKey: String,
-        val getter: () -> String,
-        val setter: (String) -> Unit
-    )
+    private data class ClickActionSettingDefinition(val titleKey: String, val setting: StringSettingDefinition)
 
     private data class ClickActionChoice(val labelKey: String, val actionValue: String)
     private data class DelayChoice(val labelKey: String, val delayMs: Int)
@@ -48,18 +44,18 @@ object ToolWindowSettingsProvider {
     )
 
     private val leftClickSettings = listOf(
-        ClickActionSettingDefinition("settings.left.click.single", ::getSingleClickAction) { settingsService().setSingleClickAction(it) },
-        ClickActionSettingDefinition("settings.left.click.double", ::getDoubleClickAction) { settingsService().setDoubleClickAction(it) }
+        ClickActionSettingDefinition("settings.left.click.single", LstCrcSettingDefinitions.SINGLE_CLICK_ACTION),
+        ClickActionSettingDefinition("settings.left.click.double", LstCrcSettingDefinitions.DOUBLE_CLICK_ACTION)
     )
 
     private val middleClickSettings = listOf(
-        ClickActionSettingDefinition("settings.middle.click.single", ::getMiddleClickAction) { settingsService().setMiddleClickAction(it) },
-        ClickActionSettingDefinition("settings.middle.click.double", ::getDoubleMiddleClickAction) { settingsService().setDoubleMiddleClickAction(it) }
+        ClickActionSettingDefinition("settings.middle.click.single", LstCrcSettingDefinitions.MIDDLE_CLICK_ACTION),
+        ClickActionSettingDefinition("settings.middle.click.double", LstCrcSettingDefinitions.DOUBLE_MIDDLE_CLICK_ACTION)
     )
 
     private val rightClickSettings = listOf(
-        ClickActionSettingDefinition("settings.right.click.single", ::getRightClickAction) { settingsService().setRightClickAction(it) },
-        ClickActionSettingDefinition("settings.right.click.double", ::getDoubleRightClickAction) { settingsService().setDoubleRightClickAction(it) }
+        ClickActionSettingDefinition("settings.right.click.single", LstCrcSettingDefinitions.RIGHT_CLICK_ACTION),
+        ClickActionSettingDefinition("settings.right.click.double", LstCrcSettingDefinitions.DOUBLE_RIGHT_CLICK_ACTION)
     )
 
     private val doubleClickDelayChoices = listOf(
@@ -76,27 +72,27 @@ object ToolWindowSettingsProvider {
     )
 
     // --- Public Getters for Settings ---
-    fun getSingleClickAction(): String = settingsService().getSingleClickAction()
-    fun getDoubleClickAction(): String = settingsService().getDoubleClickAction()
-    fun getMiddleClickAction(): String = settingsService().getMiddleClickAction()
-    fun getDoubleMiddleClickAction(): String = settingsService().getDoubleMiddleClickAction()
-    fun getRightClickAction(): String = settingsService().getRightClickAction()
-    fun getDoubleRightClickAction(): String = settingsService().getDoubleRightClickAction()
-    fun isContextMenuEnabled(): Boolean = settingsService().isContextMenuEnabled()
-    fun isShowContextForSingleRepoEnabled(): Boolean = settingsService().isShowContextForSingleRepo()
-    fun isShowContextForMultiRepoEnabled(): Boolean = settingsService().isShowContextForMultiRepo()
-    fun isShowContextForCommitsEnabled(): Boolean = settingsService().isShowContextForCommits()
-    fun isGutterMarkersEnabled(): Boolean = settingsService().isGutterMarkersEnabled()
-    fun isGutterForNewFilesEnabled(): Boolean = settingsService().isGutterForNewFilesEnabled()
-    fun isIncludeHeadInScopes(): Boolean = settingsService().isIncludeHeadInScopes()
-    fun isShowToolWindowTitleEnabled(): Boolean = settingsService().isShowToolWindowTitle()
-    fun isShowWidgetContext(): Boolean = settingsService().isShowWidgetContext()
-    fun isExpandNewFilesInCollapsedDirs(): Boolean = settingsService().isExpandNewFilesInCollapsedDirs()
-    fun isShowUntrackedFilesAsNew(): Boolean = settingsService().isShowUntrackedFilesAsNew()
-    fun isShowLineStatsInTree(): Boolean = settingsService().isShowLineStatsInTree()
+    fun getSingleClickAction(): String = settingsService()[LstCrcSettingDefinitions.SINGLE_CLICK_ACTION]
+    fun getDoubleClickAction(): String = settingsService()[LstCrcSettingDefinitions.DOUBLE_CLICK_ACTION]
+    fun getMiddleClickAction(): String = settingsService()[LstCrcSettingDefinitions.MIDDLE_CLICK_ACTION]
+    fun getDoubleMiddleClickAction(): String = settingsService()[LstCrcSettingDefinitions.DOUBLE_MIDDLE_CLICK_ACTION]
+    fun getRightClickAction(): String = settingsService()[LstCrcSettingDefinitions.RIGHT_CLICK_ACTION]
+    fun getDoubleRightClickAction(): String = settingsService()[LstCrcSettingDefinitions.DOUBLE_RIGHT_CLICK_ACTION]
+    fun isContextMenuEnabled(): Boolean = settingsService()[LstCrcSettingDefinitions.SHOW_CONTEXT_MENU]
+    fun isShowContextForSingleRepoEnabled(): Boolean = settingsService()[LstCrcSettingDefinitions.SHOW_CONTEXT_SINGLE_REPO]
+    fun isShowContextForMultiRepoEnabled(): Boolean = settingsService()[LstCrcSettingDefinitions.SHOW_CONTEXT_MULTI_REPO]
+    fun isShowContextForCommitsEnabled(): Boolean = settingsService()[LstCrcSettingDefinitions.SHOW_CONTEXT_FOR_COMMITS]
+    fun isGutterMarkersEnabled(): Boolean = settingsService()[LstCrcSettingDefinitions.ENABLE_GUTTER_MARKERS]
+    fun isGutterForNewFilesEnabled(): Boolean = settingsService()[LstCrcSettingDefinitions.ENABLE_GUTTER_FOR_NEW_FILES]
+    fun isIncludeHeadInScopes(): Boolean = settingsService()[LstCrcSettingDefinitions.INCLUDE_HEAD_IN_SCOPES]
+    fun isShowToolWindowTitleEnabled(): Boolean = settingsService()[LstCrcSettingDefinitions.SHOW_TOOL_WINDOW_TITLE]
+    fun isShowWidgetContext(): Boolean = settingsService()[LstCrcSettingDefinitions.SHOW_WIDGET_CONTEXT]
+    fun isExpandNewFilesInCollapsedDirs(): Boolean = settingsService()[LstCrcSettingDefinitions.EXPAND_NEW_FILES_IN_COLLAPSED_DIRS]
+    fun isShowUntrackedFilesAsNew(): Boolean = settingsService()[LstCrcSettingDefinitions.SHOW_UNTRACKED_FILES_AS_NEW]
+    fun isShowLineStatsInTree(): Boolean = settingsService()[LstCrcSettingDefinitions.SHOW_LINE_STATS_IN_TREE]
 
     fun getUserDoubleClickDelayMs(): Int {
-        val storedValue = settingsService().getUserDoubleClickDelay()
+        val storedValue = settingsService()[LstCrcSettingDefinitions.USER_DOUBLE_CLICK_DELAY]
         if (storedValue > 0) {
             return storedValue
         }
@@ -135,7 +131,7 @@ object ToolWindowSettingsProvider {
             rightClickSettingsGroup.add(createToggleAction(
                 LstCrcBundle.message(choice.labelKey),
                 { isContextMenuEnabled() == choice.contextMenuEnabled },
-                { settingsService().setContextMenuEnabled(choice.contextMenuEnabled) }
+                { settingsService()[LstCrcSettingDefinitions.SHOW_CONTEXT_MENU] = choice.contextMenuEnabled }
             ))
         }
         mouseClickActionsGroup.add(rightClickSettingsGroup)
@@ -154,8 +150,8 @@ object ToolWindowSettingsProvider {
         val delaySpeedGroup = DefaultActionGroup({ LstCrcBundle.message("settings.double.click.speed") }, true)
         doubleClickDelayChoices.forEach { choice ->
             delaySpeedGroup.add(createToggleAction(LstCrcBundle.message(choice.labelKey),
-                { settingsService().getUserDoubleClickDelay() == choice.delayMs },
-                { settingsService().setUserDoubleClickDelay(choice.delayMs) }
+                { settingsService()[LstCrcSettingDefinitions.USER_DOUBLE_CLICK_DELAY] == choice.delayMs },
+                { settingsService()[LstCrcSettingDefinitions.USER_DOUBLE_CLICK_DELAY] = choice.delayMs }
             ))
         }
         mouseClickActionsGroup.add(delaySpeedGroup)
@@ -167,8 +163,7 @@ object ToolWindowSettingsProvider {
         return DefaultActionGroup({ LstCrcBundle.message("settings.tree.view.group.title") }, true).apply {
             add(createBooleanSettingToggle(
                 LstCrcBundle.message("settings.tree.view.show.context.multi.repo"),
-                ::isShowContextForMultiRepoEnabled,
-                { settingsService().setShowContextForMultiRepo(it) },
+                LstCrcSettingDefinitions.SHOW_CONTEXT_MULTI_REPO,
                 onChanged = { e, _ -> rebuildActiveView(e) },
                 updateCheck = { e ->
                     e.presentation.isEnabledAndVisible =
@@ -178,8 +173,7 @@ object ToolWindowSettingsProvider {
 
             add(createBooleanSettingToggle(
                 LstCrcBundle.message("settings.tree.view.show.context.single.repo"),
-                ::isShowContextForSingleRepoEnabled,
-                { settingsService().setShowContextForSingleRepo(it) },
+                LstCrcSettingDefinitions.SHOW_CONTEXT_SINGLE_REPO,
                 onChanged = { e, _ -> rebuildActiveView(e) },
                 updateCheck = { e ->
                     e.presentation.isEnabledAndVisible =
@@ -189,8 +183,7 @@ object ToolWindowSettingsProvider {
 
             add(createBooleanSettingToggle(
                 LstCrcBundle.message("settings.tree.view.show.context.for.commits"),
-                ::isShowContextForCommitsEnabled,
-                { settingsService().setShowContextForCommits(it) },
+                LstCrcSettingDefinitions.SHOW_CONTEXT_FOR_COMMITS,
                 onChanged = { e, _ -> rebuildActiveView(e) },
                 updateCheck = { e ->
                     e.presentation.isEnabled = isShowContextForSingleRepoEnabled() || isShowContextForMultiRepoEnabled()
@@ -199,21 +192,18 @@ object ToolWindowSettingsProvider {
 
             add(createBooleanSettingToggle(
                 LstCrcBundle.message("settings.tree.view.expand.new.files.in.collapsed.dirs"),
-                ::isExpandNewFilesInCollapsedDirs,
-                { settingsService().setExpandNewFilesInCollapsedDirs(it) }
+                LstCrcSettingDefinitions.EXPAND_NEW_FILES_IN_COLLAPSED_DIRS
             ))
 
             add(createBooleanSettingToggle(
                 LstCrcBundle.message("settings.tree.view.show.untracked.files.as.new"),
-                ::isShowUntrackedFilesAsNew,
-                { settingsService().setShowUntrackedFilesAsNew(it) },
+                LstCrcSettingDefinitions.SHOW_UNTRACKED_FILES_AS_NEW,
                 onChanged = { e, _ -> e.project?.service<ToolWindowStateService>()?.refreshDataForCurrentSelection() }
             ))
 
             add(createBooleanSettingToggle(
                 LstCrcBundle.message("settings.tree.view.show.line.stats"),
-                ::isShowLineStatsInTree,
-                { settingsService().setShowLineStatsInTree(it) },
+                LstCrcSettingDefinitions.SHOW_LINE_STATS_IN_TREE,
                 onChanged = { e, _ -> rebuildActiveView(e) }
             ))
         }
@@ -223,18 +213,16 @@ object ToolWindowSettingsProvider {
         return DefaultActionGroup({ LstCrcBundle.message("settings.gutter.group.title") }, true).apply {
             add(createBooleanSettingToggle(
                 LstCrcBundle.message("settings.gutter.enable"),
-                ::isGutterMarkersEnabled,
-                { settingsService().setGutterMarkersEnabled(it) },
+                LstCrcSettingDefinitions.ENABLE_GUTTER_MARKERS,
                 onChanged = { e, _ -> notifyVisualTrackerSettingsChanged(e) }
             ))
 
             add(createBooleanSettingToggle(
                 LstCrcBundle.message("settings.gutter.for.new.files"),
-                ::isGutterForNewFilesEnabled,
-                { settingsService().setGutterForNewFilesEnabled(it) },
+                LstCrcSettingDefinitions.ENABLE_GUTTER_FOR_NEW_FILES,
                 onChanged = { e, _ -> notifyVisualTrackerSettingsChanged(e) },
                 updateCheck = { e ->
-                    e.presentation.isEnabled = settingsService().isGutterMarkersEnabled()
+                    e.presentation.isEnabled = settingsService()[LstCrcSettingDefinitions.ENABLE_GUTTER_MARKERS]
                 }
             ))
         }
@@ -243,22 +231,19 @@ object ToolWindowSettingsProvider {
     private fun addGeneralSettingsActions(rootSettingsGroup: DefaultActionGroup) {
         rootSettingsGroup.add(createBooleanSettingToggle(
             LstCrcBundle.message("settings.show.tool.window.title"),
-            ::isShowToolWindowTitleEnabled,
-            { settingsService().setShowToolWindowTitle(it) },
+            LstCrcSettingDefinitions.SHOW_TOOL_WINDOW_TITLE,
             onChanged = { e, state -> updateToolWindowTitleVisibility(e, state) }
         ))
 
         rootSettingsGroup.add(createBooleanSettingToggle(
             LstCrcBundle.message("settings.show.widget.context"),
-            ::isShowWidgetContext,
-            { settingsService().setShowWidgetContext(it) },
+            LstCrcSettingDefinitions.SHOW_WIDGET_CONTEXT,
             onChanged = { e, _ -> e.project?.let(LstCrcStatusWidget::refresh) }
         ))
 
         rootSettingsGroup.add(createBooleanSettingToggle(
             LstCrcBundle.message("settings.include.head.in.scopes"),
-            ::isIncludeHeadInScopes,
-            { settingsService().setIncludeHeadInScopes(it) },
+            LstCrcSettingDefinitions.INCLUDE_HEAD_IN_SCOPES,
             onChanged = { e, _ ->
                 val project = e.project ?: return@createBooleanSettingToggle
                 if (project.service<ToolWindowStateService>().getSelectedTabBranchName() == null) {
@@ -282,26 +267,22 @@ object ToolWindowSettingsProvider {
         clickActionChoices.forEach { choice ->
             group.add(createToggleAction(
                 LstCrcBundle.message(choice.labelKey),
-                { definition.getter() == choice.actionValue },
-                { definition.setter(choice.actionValue) }
+                { settingsService()[definition.setting] == choice.actionValue },
+                { settingsService()[definition.setting] = choice.actionValue }
             ))
         }
         return group
     }
 
     /**
-     * Helper to create a [ToggleAction] for a boolean setting stored in [LstCrcSettingsService].
+     * A [ToggleAction] for a boolean [setting].
      *
-     * @param text The display text for the action.
-     * @param isSelected Reads the current value from the typed settings service accessor.
-     * @param setSelected Persists the value through the typed settings service accessor.
-     * @param onChanged Optional callback invoked after the value changes. Receives the event and new state.
-     * @param updateCheck Optional predicate to control enabled/visible state in [ToggleAction.update].
+     * @param onChanged Called after the value changes, with the event and the new value.
+     * @param updateCheck Controls enabled/visible state in [ToggleAction.update].
      */
     private fun createBooleanSettingToggle(
         text: String,
-        isSelected: () -> Boolean,
-        setSelected: (Boolean) -> Unit,
+        setting: BooleanSettingDefinition,
         onChanged: ((AnActionEvent, Boolean) -> Unit)? = null,
         updateCheck: ((AnActionEvent) -> Unit)? = null
     ): ToggleAction {
@@ -311,11 +292,10 @@ object ToolWindowSettingsProvider {
                 updateCheck?.invoke(e)
             }
 
-            override fun isSelected(e: AnActionEvent): Boolean =
-                isSelected()
+            override fun isSelected(e: AnActionEvent): Boolean = settingsService()[setting]
 
             override fun setSelected(e: AnActionEvent, state: Boolean) {
-                setSelected(state)
+                settingsService()[setting] = state
                 onChanged?.invoke(e, state)
             }
 

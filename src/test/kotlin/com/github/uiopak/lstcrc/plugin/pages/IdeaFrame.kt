@@ -331,12 +331,12 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
                     showContextMenu != null
             ) { "At least one click action setting must be provided" }
 
-            singleClickAction?.let { setPluginStringSetting(SINGLE_CLICK_ACTION_KEY, it, "setSingleClickAction") }
-            doubleClickAction?.let { setPluginStringSetting(DOUBLE_CLICK_ACTION_KEY, it, "setDoubleClickAction") }
-            middleClickAction?.let { setPluginStringSetting(MIDDLE_CLICK_ACTION_KEY, it, "setMiddleClickAction") }
-            doubleMiddleClickAction?.let { setPluginStringSetting(DOUBLE_MIDDLE_CLICK_ACTION_KEY, it, "setDoubleMiddleClickAction") }
-            rightClickAction?.let { setPluginStringSetting(RIGHT_CLICK_ACTION_KEY, it, "setRightClickAction") }
-            doubleRightClickAction?.let { setPluginStringSetting(DOUBLE_RIGHT_CLICK_ACTION_KEY, it, "setDoubleRightClickAction") }
+            singleClickAction?.let { setPluginStringSetting(SINGLE_CLICK_ACTION_KEY, it) }
+            doubleClickAction?.let { setPluginStringSetting(DOUBLE_CLICK_ACTION_KEY, it) }
+            middleClickAction?.let { setPluginStringSetting(MIDDLE_CLICK_ACTION_KEY, it) }
+            doubleMiddleClickAction?.let { setPluginStringSetting(DOUBLE_MIDDLE_CLICK_ACTION_KEY, it) }
+            rightClickAction?.let { setPluginStringSetting(RIGHT_CLICK_ACTION_KEY, it) }
+            doubleRightClickAction?.let { setPluginStringSetting(DOUBLE_RIGHT_CLICK_ACTION_KEY, it) }
             showContextMenu?.let { setPluginBooleanSetting(SHOW_CONTEXT_MENU_KEY, it) }
         }
     }
@@ -350,12 +350,12 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
 
                     const properties = com.intellij.ide.util.PropertiesComponent.getInstance();
                     const values = [
-                        service ? service.getSingleClickAction() : properties.getValue('$SINGLE_CLICK_ACTION_KEY', ''),
-                        service ? service.getDoubleClickAction() : properties.getValue('$DOUBLE_CLICK_ACTION_KEY', ''),
-                        service ? service.getMiddleClickAction() : properties.getValue('$MIDDLE_CLICK_ACTION_KEY', ''),
-                        service ? service.getDoubleMiddleClickAction() : properties.getValue('$DOUBLE_MIDDLE_CLICK_ACTION_KEY', ''),
-                        service ? service.getRightClickAction() : properties.getValue('$RIGHT_CLICK_ACTION_KEY', ''),
-                        service ? service.getDoubleRightClickAction() : properties.getValue('$DOUBLE_RIGHT_CLICK_ACTION_KEY', ''),
+                        service ? service.getString('$SINGLE_CLICK_ACTION_KEY', '') : properties.getValue('$SINGLE_CLICK_ACTION_KEY', ''),
+                        service ? service.getString('$DOUBLE_CLICK_ACTION_KEY', '') : properties.getValue('$DOUBLE_CLICK_ACTION_KEY', ''),
+                        service ? service.getString('$MIDDLE_CLICK_ACTION_KEY', '') : properties.getValue('$MIDDLE_CLICK_ACTION_KEY', ''),
+                        service ? service.getString('$DOUBLE_MIDDLE_CLICK_ACTION_KEY', '') : properties.getValue('$DOUBLE_MIDDLE_CLICK_ACTION_KEY', ''),
+                        service ? service.getString('$RIGHT_CLICK_ACTION_KEY', '') : properties.getValue('$RIGHT_CLICK_ACTION_KEY', ''),
+                        service ? service.getString('$DOUBLE_RIGHT_CLICK_ACTION_KEY', '') : properties.getValue('$DOUBLE_RIGHT_CLICK_ACTION_KEY', ''),
                         service ? String(service.getBoolean('$SHOW_CONTEXT_MENU_KEY', false)) : String(properties.getBoolean('$SHOW_CONTEXT_MENU_KEY', false)),
                         service ? String(service.getInt('$DOUBLE_CLICK_DELAY_KEY', -1)) : properties.getValue('$DOUBLE_CLICK_DELAY_KEY', '')
                     ];
@@ -1516,27 +1516,9 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
         )
     }
 
-    private fun setPluginStringSetting(key: String, value: String, setterMethod: String) {
-        val keyLiteral = toJsStringLiteral(key)
-        val valueLiteral = toJsStringLiteral(value)
-        val setterLiteral = toJsStringLiteral(setterMethod)
+    private fun setPluginStringSetting(key: String, value: String) {
         runJs(
-            """
-            (function() {
-                var properties = com.intellij.ide.util.PropertiesComponent.getInstance();
-                properties.setValue($keyLiteral, $valueLiteral);
-                ${settingsServiceScript(
-                    """
-                    var setterName = $setterLiteral;
-                    if (typeof appService[setterName] === "function") {
-                        appService[setterName]($valueLiteral);
-                    } else {
-                        properties.setValue($keyLiteral, $valueLiteral);
-                    }
-                    """.trimIndent()
-                )}
-            })();
-            """.trimIndent(),
+            settingsServiceScript("appService.setString(${toJsStringLiteral(key)}, ${toJsStringLiteral(value)});"),
             true
         )
     }

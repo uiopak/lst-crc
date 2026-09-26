@@ -219,12 +219,12 @@ class LstCrcChangesBrowserTest : LstCrcTestCase() {
         val settingsService = ApplicationManager.getApplication().service<LstCrcSettingsService>()
         settingsService.resetToDefaults()
 
-        settingsService.setSingleClickAction(ToolWindowSettingsProvider.ACTION_OPEN_DIFF)
-        settingsService.setDoubleClickAction(ToolWindowSettingsProvider.ACTION_OPEN_SOURCE)
-        settingsService.setMiddleClickAction(ToolWindowSettingsProvider.ACTION_SHOW_IN_PROJECT_TREE)
-        settingsService.setDoubleMiddleClickAction(ToolWindowSettingsProvider.ACTION_NONE)
-        settingsService.setRightClickAction(ToolWindowSettingsProvider.ACTION_OPEN_SOURCE)
-        settingsService.setDoubleRightClickAction(ToolWindowSettingsProvider.ACTION_OPEN_DIFF)
+        settingsService[LstCrcSettingDefinitions.SINGLE_CLICK_ACTION] = ToolWindowSettingsProvider.ACTION_OPEN_DIFF
+        settingsService[LstCrcSettingDefinitions.DOUBLE_CLICK_ACTION] = ToolWindowSettingsProvider.ACTION_OPEN_SOURCE
+        settingsService[LstCrcSettingDefinitions.MIDDLE_CLICK_ACTION] = ToolWindowSettingsProvider.ACTION_SHOW_IN_PROJECT_TREE
+        settingsService[LstCrcSettingDefinitions.DOUBLE_MIDDLE_CLICK_ACTION] = ToolWindowSettingsProvider.ACTION_NONE
+        settingsService[LstCrcSettingDefinitions.RIGHT_CLICK_ACTION] = ToolWindowSettingsProvider.ACTION_OPEN_SOURCE
+        settingsService[LstCrcSettingDefinitions.DOUBLE_RIGHT_CLICK_ACTION] = ToolWindowSettingsProvider.ACTION_OPEN_DIFF
 
         assertEquals(ToolWindowSettingsProvider.ACTION_OPEN_DIFF, browser.configuredActionForClickForTest(java.awt.event.MouseEvent.BUTTON1, false))
         assertEquals(ToolWindowSettingsProvider.ACTION_OPEN_SOURCE, browser.configuredActionForClickForTest(java.awt.event.MouseEvent.BUTTON1, true))

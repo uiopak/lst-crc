@@ -1,6 +1,7 @@
 package com.github.uiopak.lstcrc.scopes
 
 import com.github.uiopak.lstcrc.services.CategorizedChanges
+import com.github.uiopak.lstcrc.toolWindow.LstCrcSettingDefinitions
 import com.github.uiopak.lstcrc.toolWindow.LstCrcSettingsService
 import com.github.uiopak.lstcrc.toolWindow.ToolWindowSettingsProvider
 import com.github.uiopak.lstcrc.testsupport.categorizedChanges
@@ -73,7 +74,6 @@ class LstCrcFileStatusScopesTest : LstCrcTestCase() {
     }
 
     private fun enableIncludeHeadInScopes(enabled: Boolean) {
-        ApplicationManager.getApplication().service<LstCrcSettingsService>()
-            .setIncludeHeadInScopes(enabled)
+        ApplicationManager.getApplication().service<LstCrcSettingsService>()[LstCrcSettingDefinitions.INCLUDE_HEAD_IN_SCOPES] = enabled
     }
 }
