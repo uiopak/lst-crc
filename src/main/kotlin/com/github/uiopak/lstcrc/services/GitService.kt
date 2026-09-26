@@ -2,6 +2,7 @@ package com.github.uiopak.lstcrc.services
 
 import com.github.uiopak.lstcrc.resources.LstCrcBundle
 import com.github.uiopak.lstcrc.state.TabInfo
+import com.github.uiopak.lstcrc.utils.isCommitHash
 import com.intellij.diff.comparison.ComparisonManager
 import com.intellij.diff.comparison.ComparisonPolicy
 import com.intellij.openapi.application.ApplicationManager
@@ -41,6 +42,10 @@ import java.nio.charset.Charset
 
 private const val DIFF_FILTER_PARAM = "--diff-filter=ADCMRUXT"
 private const val IGNORE_CR_AT_EOL_PARAM = "--ignore-cr-at-eol"
+
+/** Revision contents kept by [GitService]; larger files are loaded every time. */
+private const val REVISION_CONTENT_CACHE_ENTRIES = 64
+private const val REVISION_CONTENT_CACHE_MAX_CHARS = 512 * 1024
 
 
 /**
@@ -120,6 +125,24 @@ class GitService(private val project: Project) {
         val changeType: Change.Type,
         val fileStatus: FileStatus
     )
+
+    private data class RevisionContentKey(
+        val root: String,
+        val commitHash: String,
+        val relativePath: String,
+        val charset: Charset
+    )
+
+    /**
+     * File contents at a commit. Refreshes while typing (the unsaved-edit overlay) and gutter loads
+     * ask for the same content again and again, and every miss runs `git show`. Entries are keyed by
+     * commit hash rather than branch name, so they never go stale.
+     */
+    private val revisionContentCache =
+        object : LinkedHashMap<RevisionContentKey, String>(16, 0.75f, true) {
+            override fun removeEldestEntry(eldest: MutableMap.MutableEntry<RevisionContentKey, String>): Boolean =
+                size > REVISION_CONTENT_CACHE_ENTRIES
+        }
 
     private data class LoadedChanges(
         val changes: List<Change>,
@@ -519,7 +542,7 @@ class GitService(private val project: Project) {
 
     private fun createUnsavedDocumentChange(repo: GitRepository, file: VirtualFile, targetRevision: String): Change? {
         return try {
-            val beforeRevision = createTargetContentRevision(project, repo, file, targetRevision) ?: return null
+            val beforeRevision = createTargetContentRevision(repo, file, targetRevision) ?: return null
             val afterRevision = createLiveDocumentContentRevision(file)
             Change(beforeRevision, afterRevision, FileStatus.MODIFIED)
         } catch (e: Exception) {
@@ -555,11 +578,54 @@ class GitService(private val project: Project) {
         val relativePath = VfsUtilCore.getRelativePath(file, repository.root, '/')
             ?: throw IllegalStateException("Could not calculate relative path for file '${file.path}' against repo root '${repository.root.path}'.")
 
-        val normalizedContent = loadRevisionTextContent(project, repository.root, revision, relativePath, file.charset)
+        val normalizedContent = loadRevisionText(repository, revision, relativePath, file.charset)
 
         logger.debug { "GUTTER_GIT_SERVICE: Successfully fetched content for '${relativePath}' in revision '${revision}'." }
         return normalizedContent
     }
+
+    /**
+     * [relativePath]'s text at [revision], with LF line endings. Throws [VcsException] when git fails,
+     * for example when the file does not exist in that revision; failures are not cached.
+     */
+    private fun loadRevisionText(repo: GitRepository, revision: String, relativePath: String, charset: Charset): String {
+        val commitHash = resolveCommitHash(repo, revision)
+            ?: return loadRevisionTextContent(project, repo.root, revision, relativePath, charset)
+        val key = RevisionContentKey(repo.root.path, commitHash, relativePath, charset)
+        synchronized(revisionContentCache) { revisionContentCache[key] }?.let { return it }
+
+        val content = loadRevisionTextContent(project, repo.root, commitHash, relativePath, charset)
+        if (content.length <= REVISION_CONTENT_CACHE_MAX_CHARS) {
+            synchronized(revisionContentCache) { revisionContentCache[key] = content }
+        }
+        return content
+    }
+
+    /** [file]'s content at [revision] as a [ContentRevision], or null when it cannot be loaded. */
+    private fun createTargetContentRevision(repo: GitRepository, file: VirtualFile, revision: String): ContentRevision? {
+        val relativePath = VfsUtilCore.getRelativePath(file, repo.root, '/') ?: return null
+        val content = runCatching { loadRevisionText(repo, revision, relativePath, file.charset) }.getOrElse { return null }
+        val filePath = VcsUtil.getFilePath(file)
+
+        return object : ContentRevision {
+            override fun getFile(): FilePath = filePath
+
+            override fun getContent(): String = content
+
+            override fun getRevisionNumber(): VcsRevisionNumber = GitRevisionNumber(revision)
+        }
+    }
+}
+
+/**
+ * The commit [revision] points to, read from Git4Idea's in-memory repository state (no git call), or
+ * null when that state cannot tell: tags, abbreviated hashes, a repository without commits.
+ */
+internal fun resolveCommitHash(repo: GitRepository, revision: String): String? {
+    if (revision == "HEAD") return repo.currentRevision
+    val branches = repo.branches
+    branches.findBranchByName(revision)?.let { return branches.getHash(it)?.asString() }
+    return revision.takeIf { it.length == 40 && isCommitHash(it) }
 }
 
 internal fun calculateLineStats(beforeContent: String, afterContent: String): ChangeLineStats {
@@ -603,29 +669,6 @@ internal fun createLiveDocumentContentRevision(file: VirtualFile): ContentRevisi
 
             override fun compareTo(other: VcsRevisionNumber): Int = 0
         }
-    }
-}
-
-internal fun createTargetContentRevision(
-    project: Project,
-    repo: GitRepository,
-    file: VirtualFile,
-    revision: String
-): ContentRevision? {
-    val filePath = VcsUtil.getFilePath(file)
-    val relativePath = VfsUtilCore.getRelativePath(file, repo.root, '/') ?: return null
-    val content = runCatching {
-        loadRevisionTextContent(project, repo.root, revision, relativePath, file.charset)
-    }.getOrElse {
-        return null
-    }
-
-    return object : ContentRevision {
-        override fun getFile(): FilePath = filePath
-
-        override fun getContent(): String = content
-
-        override fun getRevisionNumber(): VcsRevisionNumber = GitRevisionNumber(revision)
     }
 }
 
