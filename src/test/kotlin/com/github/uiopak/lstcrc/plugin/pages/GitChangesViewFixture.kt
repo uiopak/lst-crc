@@ -1,5 +1,6 @@
 package com.github.uiopak.lstcrc.plugin.pages
 
+import com.github.uiopak.lstcrc.plugin.utils.toJsStringLiteral
 import com.intellij.remoterobot.RemoteRobot
 import com.intellij.remoterobot.data.RemoteComponent
 import com.intellij.remoterobot.fixtures.*
@@ -12,10 +13,13 @@ import java.time.Duration
 fun IdeaFrame.gitChangesView(function: GitChangesViewFixture.() -> Unit) {
     val timeout = if (System.getenv("GITHUB_ACTIONS") == "true") Duration.ofSeconds(30) else Duration.ofSeconds(10)
     val locator = byXpath("//div[@class='LstCrcChangesBrowser' and @visible='true']")
+    // Keep the lookup that found the browser: a second lookup can miss it while the selected tab is switching.
+    var browsers = emptyList<GitChangesViewFixture>()
     waitFor(timeout, interval = Duration.ofMillis(250)) {
-        findAll<GitChangesViewFixture>(locator).isNotEmpty()
+        browsers = findAll<GitChangesViewFixture>(locator)
+        browsers.isNotEmpty()
     }
-    findAll<GitChangesViewFixture>(locator).first().apply(function)
+    browsers.first().apply(function)
 }
 
 @FixtureName("GitChangesView")
@@ -24,22 +28,6 @@ class GitChangesViewFixture(remoteRobot: RemoteRobot, remoteComponent: RemoteCom
 
     private val branchSelectionPanelLocator = byXpath("//div[@class='BranchSelectionPanel']")
 
-    private fun toJsStringLiteral(value: String): String {
-        return buildString {
-            append('"')
-            value.forEach { character ->
-                when (character) {
-                    '\\' -> append("\\\\")
-                    '"' -> append("\\\"")
-                    '\n' -> append("\\n")
-                    '\r' -> append("\\r")
-                    '\t' -> append("\\t")
-                    else -> append(character)
-                }
-            }
-            append('"')
-        }
-    }
 
     private fun contentManagerLookupStatements(
         projectVariableName: String = "project",
@@ -186,11 +174,27 @@ class GitChangesViewFixture(remoteRobot: RemoteRobot, remoteComponent: RemoteCom
             Duration.ofSeconds(10)
         )
 
+    /**
+     * Waits until the changes tree shows the same rows on two reads in a row. Selecting a tab reloads its data
+     * and then rebuilds the tree asynchronously, so on slow runners (macOS) a click or check made right after
+     * the switch can land on a tree that is still being rebuilt.
+     */
+    fun waitForTreeToSettle() {
+        step("Wait for the changes tree to settle") {
+            var previousRows: List<String>? = null
+            waitFor(Duration.ofSeconds(15), interval = Duration.ofMillis(500)) {
+                val rows = changesTree.findAllText().map { it.text }
+                (rows.isNotEmpty() && rows == previousRows).also { previousRows = rows }
+            }
+        }
+    }
+
     fun clickChange(fileName: String, button: MouseButton = MouseButton.LEFT_BUTTON) {
         step("Click '$fileName' with $button") {
             waitFor(Duration.ofSeconds(10), interval = Duration.ofMillis(250)) {
                 changesTree.findAllText(fileName).isNotEmpty()
             }
+            waitForTreeToSettle()
             changesTree.findText(fileName).click(button)
         }
     }
@@ -243,6 +247,7 @@ class GitChangesViewFixture(remoteRobot: RemoteRobot, remoteComponent: RemoteCom
             waitFor(Duration.ofSeconds(10), interval = Duration.ofMillis(250)) {
                 changesTree.findAllText(fileName).isNotEmpty()
             }
+            waitForTreeToSettle()
             changesTree.findText(fileName).doubleClick()
         }
     }

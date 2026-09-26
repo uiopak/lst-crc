@@ -21,7 +21,10 @@ import com.github.uiopak.lstcrc.testsupport.LstCrcTestCase
 import com.intellij.ui.content.Content
 import com.intellij.ui.content.ContentFactory
 import com.intellij.ui.content.ContentManager
+import com.intellij.testFramework.LightVirtualFile
+import com.intellij.vcs.log.CommitId
 import com.intellij.vcs.log.VcsLogDataKeys
+import com.intellij.vcs.log.impl.HashImpl
 import com.intellij.vcs.log.VcsLogCommitSelection
 import sun.misc.Unsafe
 import java.lang.reflect.Proxy
@@ -205,7 +208,7 @@ class LstCrcActionVisibilityTest : LstCrcTestCase() {
             arrayOf(VcsLogCommitSelection::class.java)
         ) { _, method, _ ->
             when (method.name) {
-                "getCommits" -> List(size) { index -> "commit-$index" }
+                "getCommits" -> List(size) { index -> CommitId(HashImpl.build("%040x".format(index)), LightVirtualFile("root")) }
                 else -> defaultValue(method.returnType)
             }
         } as VcsLogCommitSelection

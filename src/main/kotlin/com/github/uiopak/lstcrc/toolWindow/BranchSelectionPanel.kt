@@ -87,49 +87,27 @@ class BranchSelectionPanel(
         refreshSearchSelection(searchTerm)
     }
 
+    /** Selects the first node (pre-order) whose text contains [searchTerm], or clears the selection. */
     private fun refreshSearchSelection(searchTerm: String) {
-        if (searchTerm.isBlank()) {
+        val root = tree.model.root as? DefaultMutableTreeNode
+        val match = root.takeIf { searchTerm.isNotBlank() }?.let { rootNode ->
+            TreeUtil.findNode(rootNode) { node ->
+                val text = when (val userObject = node.userObject) {
+                    is BranchInfo -> userObject.fullBranchName
+                    is String -> userObject
+                    is BranchCategory -> userObject.displayName
+                    else -> ""
+                }
+                text.contains(searchTerm, ignoreCase = true)
+            }
+        }
+        if (match == null) {
             tree.clearSelection()
             return
         }
-
-        val firstMatchingPath = findFirstMatchingPath(tree.model.root as? DefaultMutableTreeNode, searchTerm)
-        if (firstMatchingPath != null) {
-            tree.selectionPath = firstMatchingPath
-            tree.scrollPathToVisible(firstMatchingPath)
-        } else {
-            tree.clearSelection()
-        }
-    }
-
-    private fun findFirstMatchingPath(node: DefaultMutableTreeNode?, searchTerm: String): javax.swing.tree.TreePath? {
-        if (node == null) return null
-
-        if (nodeMatchesSearch(node, searchTerm)) {
-            return javax.swing.tree.TreePath(node.path)
-        }
-
-        for (child in node.children()) {
-            val matchingPath = findFirstMatchingPath(child as DefaultMutableTreeNode, searchTerm)
-            if (matchingPath != null) {
-                return matchingPath
-            }
-        }
-
-        return null
-    }
-
-    private fun searchableNodeText(node: DefaultMutableTreeNode): String {
-        return when (val userObject = node.userObject) {
-            is BranchInfo -> userObject.fullBranchName
-            is String -> userObject
-            is BranchCategory -> userObject.displayName
-            else -> ""
-        }
-    }
-
-    private fun nodeMatchesSearch(node: DefaultMutableTreeNode, searchTerm: String): Boolean {
-        return searchableNodeText(node).contains(searchTerm, ignoreCase = true)
+        val path = javax.swing.tree.TreePath(match.path)
+        tree.selectionPath = path
+        tree.scrollPathToVisible(path)
     }
 
     fun requestFocusOnSearchField() {

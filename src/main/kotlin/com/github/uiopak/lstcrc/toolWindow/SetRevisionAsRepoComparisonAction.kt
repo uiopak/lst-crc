@@ -16,7 +16,7 @@ class SetRevisionAsRepoComparisonAction : AnAction() {
         val project = e.project
 
         e.presentation.isEnabledAndVisible = project != null &&
-                hasSingleSelectedCommit(e) &&
+                singleSelectedCommit(e) != null &&
                 selectedLstCrcTab(project) != null
     }
 

@@ -52,6 +52,8 @@ class RepoNodeRenderer(
     private var cachedRoot: Any? = null
     private var cachedLineStats: Map<ChangeLineStatsKey, ChangeLineStats>? = null
     private var cachedIsMultiRepo = false
+    private var cachedAnnotationNode: ChangesBrowserNode<*>? = null
+    private var annotationNodeResolved = false
     private val aggregateCache = IdentityHashMap<TreeNode, ChangeLineStats?>()
 
     init {
@@ -64,39 +66,23 @@ class RepoNodeRenderer(
         cachedRoot = root
         cachedLineStats = lineStatsByChange
         cachedIsMultiRepo = gitService.getRepositories().size > 1
+        annotationNodeResolved = false
         aggregateCache.clear()
     }
 
-    private fun visibleTargetRevision(targetRevision: String?): String? {
-        targetRevision ?: return null
-        val showForCommits = ToolWindowSettingsProvider.isShowContextForCommitsEnabled()
-        return targetRevision.takeUnless { isCommitHash(it) && !showForCommits }
-    }
-
+    /** Fills the trailing "(vs target) +a -r" text and sets the insets that depend on whether it is shown. */
     private fun configureTrailingRenderer(targetRevision: String?, lineStats: ChangeLineStats?) {
         trailingRenderer.clear()
-
-        trailingMetadataFragments(
-            lineStats = lineStats,
-            targetRevision = targetRevision,
-            showLineStats = ToolWindowSettingsProvider.isShowLineStatsInTree()
-        ).forEachIndexed { index, fragment ->
-            if (index > 0) {
-                trailingRenderer.append(FontUtil.spaceAndThinSpace())
+        val visibleTarget = targetRevision?.takeUnless { isCommitHash(it) && !ToolWindowSettingsProvider.isShowContextForCommitsEnabled() }
+        trailingMetadataFragments(lineStats, visibleTarget, ToolWindowSettingsProvider.isShowLineStatsInTree())
+            .forEachIndexed { index, fragment ->
+                if (index > 0) trailingRenderer.append(FontUtil.spaceAndThinSpace())
+                trailingRenderer.append(fragment.text, fragment.attributes)
             }
-            trailingRenderer.append(fragment.text, fragment.attributes)
-        }
 
-        trailingRenderer.isVisible = trailingRenderer.fragmentCount > 0
-    }
-
-    private fun updateRendererInsets(hasTrailingMetadata: Boolean) {
-        border = if (hasTrailingMetadata) {
-            JBUI.Borders.empty()
-        } else {
-            JBUI.Borders.emptyRight(RENDERER_RIGHT_PADDING)
-        }
-
+        val hasTrailingMetadata = trailingRenderer.fragmentCount > 0
+        trailingRenderer.isVisible = hasTrailingMetadata
+        border = if (hasTrailingMetadata) JBUI.Borders.empty() else JBUI.Borders.emptyRight(RENDERER_RIGHT_PADDING)
         trailingRenderer.border = JBUI.Borders.emptyRight(if (hasTrailingMetadata) TRAILING_METADATA_RIGHT_GAP else 0)
     }
 
@@ -115,15 +101,9 @@ class RepoNodeRenderer(
         super.getTreeCellRendererComponent(tree, value, selected, expanded, leaf, row, hasFocus)
 
         val node = value as? ChangesBrowserNode<*> ?: return this
-        val lineStatsByChange = currentLineStatsByChange()
+        val lineStatsByChange = categorizedChangesProvider()?.lineStatsByChange ?: diffDataService.lineStatsByChange
         refreshCachesIfStale(tree, lineStatsByChange)
-
-        val targetRevision = visibleTargetRevision(resolveTargetRevision(tree, node))
-        val lineStats = aggregateLineStatsForNode(node, lineStatsByChange, aggregateCache)
-
-        configureTrailingRenderer(targetRevision, lineStats)
-        updateRendererInsets(trailingRenderer.isVisible)
-
+        configureTrailingRenderer(resolveTargetRevision(tree, node), aggregateLineStatsForNode(node, lineStatsByChange, aggregateCache))
         trailingRenderer.background = textRenderer.background
 
         return this
@@ -147,68 +127,38 @@ class RepoNodeRenderer(
             .joinToString(" ")
     }
 
+    /** The "(vs target)" context for [node]: on repository nodes in multi-repo projects, else on one top-level node. */
     private fun resolveTargetRevision(tree: JTree, node: ChangesBrowserNode<*>): String? {
-        val isMultiRepo = cachedIsMultiRepo
-        if (!shouldShowContext(isMultiRepo)) {
-            return null
-        }
-
-        return if (isMultiRepo) {
-            resolveMultiRepoTargetRevision(node)
+        val context = categorizedChangesProvider()?.comparisonContext ?: diffDataService.activeComparisonContext
+        val target = if (cachedIsMultiRepo) {
+            if (!ToolWindowSettingsProvider.isShowContextForMultiRepoEnabled()) return null
+            val repository = (node as? RepositoryChangesBrowserNode)?.userObject as? GitRepository ?: return null
+            context[repository.root.path]
         } else {
-            resolveSingleRepoTargetRevision(tree, node)
+            if (!ToolWindowSettingsProvider.isShowContextForSingleRepoEnabled()) return null
+            if (node !== singleRepoAnnotationNode(tree)) return null
+            context.values.firstOrNull()
         }
+        return target ?: diffDataService.activeBranchName ?: stateService.getSelectedTabBranchName()
     }
 
-    private fun shouldShowContext(isMultiRepo: Boolean): Boolean {
-        return if (isMultiRepo) {
-            ToolWindowSettingsProvider.isShowContextForMultiRepoEnabled()
-        } else {
-            ToolWindowSettingsProvider.isShowContextForSingleRepoEnabled()
+    private fun singleRepoAnnotationNode(tree: JTree): ChangesBrowserNode<*>? {
+        if (!annotationNodeResolved) {
+            cachedAnnotationNode = findSingleRepoAnnotationNode(tree)
+            annotationNodeResolved = true
         }
+        return cachedAnnotationNode
     }
 
-    private fun resolveMultiRepoTargetRevision(node: ChangesBrowserNode<*>): String? {
-        val repositoryNode = node as? RepositoryChangesBrowserNode ?: return null
-        val repository = repositoryNode.userObject as? GitRepository ?: return null
-        return resolveTargetRevisionForRepository(repository)
-    }
-
-    private fun resolveSingleRepoTargetRevision(tree: JTree, node: ChangesBrowserNode<*>): String? {
-        if (!shouldAnnotateSingleRepoNode(tree, node)) {
-            return null
-        }
-
-        return currentComparisonContext().values.firstOrNull() ?: defaultTargetRevision()
-    }
-
-    private fun resolveTargetRevisionForRepository(repository: GitRepository): String? {
-        return currentComparisonContext()[repository.root.path] ?: defaultTargetRevision()
-    }
-
-    private fun defaultTargetRevision(): String? {
-        return diffDataService.activeBranchName ?: stateService.getSelectedTabBranchName()
-    }
-
-    private fun currentComparisonContext(): Map<String, String> {
-        return categorizedChangesProvider()?.comparisonContext ?: diffDataService.activeComparisonContext
-    }
-
-    private fun currentLineStatsByChange(): Map<ChangeLineStatsKey, ChangeLineStats> {
-        return categorizedChangesProvider()?.lineStatsByChange ?: diffDataService.lineStatsByChange
-    }
-
-    private fun shouldAnnotateSingleRepoNode(tree: JTree, node: ChangesBrowserNode<*>): Boolean {
-        val changesTree = tree as? ChangesTree ?: return false
-        val rootNode = tree.model.root as? DefaultMutableTreeNode ?: return false
-        val topLevelNodes = TreeUtil.listChildren(rootNode)
-            .filterIsInstance<ChangesBrowserNode<*>>()
-        if (topLevelNodes.isEmpty()) {
-            return false
-        }
+    /** The top-level node that carries the context in single-repo projects; computed once per tree root. */
+    private fun findSingleRepoAnnotationNode(tree: JTree): ChangesBrowserNode<*>? {
+        val changesTree = tree as? ChangesTree ?: return null
+        val rootNode = tree.model.root as? DefaultMutableTreeNode ?: return null
+        val topLevelNodes = TreeUtil.listChildren(rootNode).filterIsInstance<ChangesBrowserNode<*>>()
+        if (topLevelNodes.isEmpty()) return null
 
         val groupingSupport = changesTree.groupingSupport
-        val annotationNode = topLevelNodes.firstOrNull { candidate ->
+        return topLevelNodes.firstOrNull { candidate ->
             when (candidate) {
                 is ChangesBrowserModuleNode -> groupingSupport[ChangesGroupingSupport.MODULE_GROUPING]
                 is ChangesBrowserFilePathNode -> groupingSupport.isDirectory && !groupingSupport[ChangesGroupingSupport.MODULE_GROUPING]
@@ -217,8 +167,6 @@ class RepoNodeRenderer(
             }
         } ?: topLevelNodes.firstOrNull { it.childCount > 0 }
             ?: topLevelNodes.first()
-
-        return node === annotationNode
     }
 }
 

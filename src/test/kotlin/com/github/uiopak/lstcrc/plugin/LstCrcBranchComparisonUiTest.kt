@@ -1,6 +1,8 @@
 package com.github.uiopak.lstcrc.plugin
 
+import com.github.uiopak.lstcrc.plugin.utils.toJsStringLiteral
 import com.automation.remarks.junit5.Video
+import com.github.uiopak.lstcrc.plugin.pages.GitChangesViewFixture
 import com.github.uiopak.lstcrc.plugin.pages.IdeaFrame
 import com.github.uiopak.lstcrc.plugin.pages.gitChangesView
 import com.github.uiopak.lstcrc.plugin.pages.branchSelection
@@ -362,45 +364,9 @@ class LstCrcBranchComparisonUiTest : LstCrcUiTestSupport() {
     @Test
     @Video
     fun testRefreshKeepsTreeViewportWhenSelectionIsOffscreen(remoteRobot: RemoteRobot) = with(remoteRobot) {
-        val uiSteps = PluginUiTestSteps(remoteRobot)
-
-        prepareFreshProject()
-
-        idea {
-            step("Wait for smart mode") {
-                dumbAware(Duration.ofMinutes(5)) {}
-            }
-
-            uiSteps.initializeGitRepository()
-            resetGitChangesViewState()
-
-            val baseContent = (1..25).joinToString(separator = "\n", postfix = "\n") { index ->
-                "line $index"
-            }
-            uiSteps.createNewFile("Main.txt", baseContent)
-            uiSteps.commitChanges("Initial commit")
-            val defaultBranch = uiSteps.defaultBranchName()
-
-            uiSteps.createBranch("feature-scroll-refresh")
-            uiSteps.createFilesWithoutStaging(
-                (0 until 25).associate { index ->
-                    "feature/Only${index.toString().padStart(3, '0')}.txt" to "feature $index\n"
-                }
-            )
-            uiSteps.commitChanges("Add many feature files")
-            uiSteps.checkoutBranch(defaultBranch)
-
-            openGitChangesView()
-            gitChangesView { addTab() }
-            branchSelection { searchAndSelect("feature-scroll-refresh") }
-
+        val baseContent = numberedLines(25)
+        openFeatureComparison("feature-scroll-refresh", baseContent, featureFileCount = 25) { uiSteps ->
             gitChangesView {
-                step("Wait for comparison tree to populate") {
-                    waitFor(Duration.ofSeconds(30)) {
-                        changesTree.findAllText("Only000.txt").isNotEmpty()
-                    }
-                }
-
                 clickChange("Only000.txt")
                 setTreeViewportPosition(y = 120)
                 waitFor(Duration.ofSeconds(5)) {
@@ -428,70 +394,17 @@ class LstCrcBranchComparisonUiTest : LstCrcUiTestSupport() {
     @Test
     @Video
     fun testRefreshDoesNotMoveViewportWhenSelectionIsAtBottomAndViewportIsAtTop(remoteRobot: RemoteRobot) = with(remoteRobot) {
-        val uiSteps = PluginUiTestSteps(remoteRobot)
-
-        prepareFreshProject()
-
-        idea {
-            step("Wait for smart mode") {
-                dumbAware(Duration.ofMinutes(5)) {}
-            }
-
-            uiSteps.initializeGitRepository()
-            resetGitChangesViewState()
-
-            val baseContent = (1..25).joinToString(separator = "\n", postfix = "\n") { index ->
-                "line $index"
-            }
-            uiSteps.createNewFile("Main.txt", baseContent)
-            uiSteps.commitChanges("Initial commit")
-            val defaultBranch = uiSteps.defaultBranchName()
-
-            uiSteps.createBranch("feature-scroll-refresh-top")
-            uiSteps.createFilesWithoutStaging(
-                (0 until 40).associate { index ->
-                    "feature/Only${index.toString().padStart(3, '0')}.txt" to "feature $index\n"
-                }
-            )
-            uiSteps.commitChanges("Add many feature files")
-            uiSteps.checkoutBranch(defaultBranch)
-
-            openGitChangesView()
-            gitChangesView { addTab() }
-            branchSelection { searchAndSelect("feature-scroll-refresh-top") }
-
+        val baseContent = numberedLines(25)
+        openFeatureComparison("feature-scroll-refresh-top", baseContent, featureFileCount = 40) { uiSteps ->
             gitChangesView {
-                step("Wait for comparison tree to populate") {
-                    waitFor(Duration.ofSeconds(30)) {
-                        changesTree.findAllText("Only000.txt").isNotEmpty()
-                    }
-                }
-
-                selectChangeInTree("Only039.txt")
-                setTreeViewportPosition(y = 0)
-                waitFor(Duration.ofSeconds(5)) {
-                    treeViewportPosition() == (0 to 0)
-                }
-                val beforeRefreshPosition = treeViewportPosition()
+                val beforeRefreshPosition = selectLastChangeAndScrollToTop("Only039.txt")
                 assertEquals(0 to 0, beforeRefreshPosition, "Precondition failed: expected tree viewport at the top")
 
-                beginTreeViewportTracking()
-                val viewportHistory = try {
-                    uiSteps.updateFileWithoutStaging("Main.txt", "${baseContent}local refresh change\n")
-                    waitFor(Duration.ofSeconds(5)) {
-                        treeViewportPosition() == beforeRefreshPosition
-                    }
-                    stopTreeViewportTracking()
-                } catch (t: Throwable) {
-                    stopTreeViewportTracking()
-                    throw t
-                }
-
-                assertEquals(
-                    listOf(beforeRefreshPosition),
-                    viewportHistory.distinct(),
+                assertViewportStaysDuring(
                     "Refreshing diff data should not move the tree viewport while the selected file stays offscreen"
-                )
+                ) {
+                    uiSteps.updateFileWithoutStaging("Main.txt", "${baseContent}local refresh change\n")
+                }
             }
         }
     }
@@ -540,31 +453,14 @@ class LstCrcBranchComparisonUiTest : LstCrcUiTestSupport() {
                     }
                 }
 
-                selectChangeInTree("Only039.txt")
-                setTreeViewportPosition(y = 0)
-                waitFor(Duration.ofSeconds(5)) {
-                    treeViewportPosition() == (0 to 0)
-                }
-                val beforeRefreshPosition = treeViewportPosition()
+                val beforeRefreshPosition = selectLastChangeAndScrollToTop("Only039.txt")
                 assertEquals(0 to 0, beforeRefreshPosition, "Precondition failed: expected HEAD tree viewport at the top")
 
-                beginTreeViewportTracking()
-                val viewportHistory = try {
-                    uiSteps.updateFileWithoutStaging("Main.txt", "main line\nlocal refresh change\n")
-                    waitFor(Duration.ofSeconds(5)) {
-                        treeViewportPosition() == beforeRefreshPosition
-                    }
-                    stopTreeViewportTracking()
-                } catch (t: Throwable) {
-                    stopTreeViewportTracking()
-                    throw t
-                }
-
-                assertEquals(
-                    listOf(beforeRefreshPosition),
-                    viewportHistory.distinct(),
+                assertViewportStaysDuring(
                     "Refreshing HEAD diff data should not move the tree viewport while the selected file stays offscreen"
-                )
+                ) {
+                    uiSteps.updateFileWithoutStaging("Main.txt", "main line\nlocal refresh change\n")
+                }
             }
         }
     }
@@ -572,70 +468,18 @@ class LstCrcBranchComparisonUiTest : LstCrcUiTestSupport() {
     @Test
     @Video
     fun testUnsavedRefreshDoesNotMoveViewportWhenSelectionIsAtBottomAndViewportIsAtTop(remoteRobot: RemoteRobot) = with(remoteRobot) {
-        val uiSteps = PluginUiTestSteps(remoteRobot)
-        val baseContent = "main line\n"
-
-        prepareFreshProject()
-
-        idea {
-            step("Wait for smart mode") {
-                dumbAware(Duration.ofMinutes(5)) {}
-            }
-
-            uiSteps.initializeGitRepository()
-            resetGitChangesViewState()
-
-            uiSteps.createNewFile("Main.txt", baseContent)
-            uiSteps.commitChanges("Initial commit")
-            val defaultBranch = uiSteps.defaultBranchName()
-
-            uiSteps.createBranch("feature-scroll-refresh-unsaved")
-            uiSteps.createFilesWithoutStaging(
-                (0 until 40).associate { index ->
-                    "feature/Only${index.toString().padStart(3, '0')}.txt" to "feature $index\n"
-                }
-            )
-            uiSteps.commitChanges("Add many feature files")
-            uiSteps.checkoutBranch(defaultBranch)
-
-            openGitChangesView()
-            gitChangesView { addTab() }
-            branchSelection { searchAndSelect("feature-scroll-refresh-unsaved") }
-
+        openFeatureComparison("feature-scroll-refresh-unsaved", "main line\n", featureFileCount = 40) {
             gitChangesView {
-                step("Wait for comparison tree to populate") {
-                    waitFor(Duration.ofSeconds(30)) {
-                        changesTree.findAllText("Only000.txt").isNotEmpty()
-                    }
-                }
-
-                selectChangeInTree("Only039.txt")
-                setTreeViewportPosition(y = 0)
-                waitFor(Duration.ofSeconds(5)) {
-                    treeViewportPosition() == (0 to 0)
-                }
-                val beforeRefreshPosition = treeViewportPosition()
+                val beforeRefreshPosition = selectLastChangeAndScrollToTop("Only039.txt")
                 assertEquals(0 to 0, beforeRefreshPosition, "Precondition failed: expected comparison tree viewport at the top")
 
-                beginTreeViewportTracking()
-                val viewportHistory = try {
+                assertViewportStaysDuring(
+                    "Unsaved comparison refresh should not move the tree viewport while the selected file stays offscreen"
+                ) {
                     focusEditorFile("Main.txt")
                     moveCaretToLineEnd(0)
                     insertSingleCharacterAtCaretWithoutSave()
-                    waitFor(Duration.ofSeconds(5)) {
-                        treeViewportPosition() == beforeRefreshPosition
-                    }
-                    stopTreeViewportTracking()
-                } catch (t: Throwable) {
-                    stopTreeViewportTracking()
-                    throw t
                 }
-
-                assertEquals(
-                    listOf(beforeRefreshPosition),
-                    viewportHistory.distinct(),
-                    "Unsaved comparison refresh should not move the tree viewport while the selected file stays offscreen"
-                )
             }
         }
     }
@@ -643,56 +487,13 @@ class LstCrcBranchComparisonUiTest : LstCrcUiTestSupport() {
     @Test
     @Video
     fun testRefreshDoesNotChangeTopVisibleEntryWhenSelectionIsAtBottomAndViewportIsAtTop(remoteRobot: RemoteRobot) = with(remoteRobot) {
-        val uiSteps = PluginUiTestSteps(remoteRobot)
         val baseContent = "main line\n"
-
-        prepareFreshProject()
-
-        idea {
-            step("Wait for smart mode") {
-                dumbAware(Duration.ofMinutes(5)) {}
-            }
-
-            uiSteps.initializeGitRepository()
-            resetGitChangesViewState()
-
-            uiSteps.createNewFile("Main.txt", baseContent)
-            uiSteps.commitChanges("Initial commit")
-            val defaultBranch = uiSteps.defaultBranchName()
-
-            uiSteps.createBranch("feature-scroll-top-visible")
-            uiSteps.createFilesWithoutStaging(
-                (0 until 40).associate { index ->
-                    "feature/Only${index.toString().padStart(3, '0')}.txt" to "feature $index\n"
-                }
-            )
-            uiSteps.commitChanges("Add many feature files")
-            uiSteps.checkoutBranch(defaultBranch)
-
-            openGitChangesView()
-            gitChangesView { addTab() }
-            branchSelection { searchAndSelect("feature-scroll-top-visible") }
-
+        openFeatureComparison("feature-scroll-top-visible", baseContent, featureFileCount = 40) { uiSteps ->
             gitChangesView {
-                step("Wait for comparison tree to populate") {
-                    waitFor(Duration.ofSeconds(30)) {
-                        changesTree.findAllText("Only000.txt").isNotEmpty()
-                    }
-                }
+                selectLastChangeAndScrollToTop("Only039.txt")
 
-                selectChangeInTree("Only039.txt")
-                setTreeViewportPosition(y = 0)
-                waitFor(Duration.ofSeconds(5)) {
-                    treeViewportPosition() == (0 to 0)
-                }
-
-                beginTopVisibleEntryTracking()
-                val topVisibleHistory = try {
+                val topVisibleHistory = tracking({ beginTopVisibleEntryTracking() }, { stopTopVisibleEntryTracking() }) {
                     uiSteps.updateFileWithoutStaging("Main.txt", "${baseContent}local refresh change\n")
-                    stopTopVisibleEntryTracking()
-                } catch (t: Throwable) {
-                    stopTopVisibleEntryTracking()
-                    throw t
                 }
 
                 assertEquals(
@@ -707,45 +508,8 @@ class LstCrcBranchComparisonUiTest : LstCrcUiTestSupport() {
     @Test
     @Video
     fun testClickedScrolledUnsavedRefreshWithLineStatsDoesNotMoveVisibleTreeState(remoteRobot: RemoteRobot) = with(remoteRobot) {
-        val uiSteps = PluginUiTestSteps(remoteRobot)
-        val baseContent = (1..25).joinToString(separator = "\n", postfix = "\n") { index ->
-            "line $index"
-        }
-
-        prepareFreshProject()
-
-        idea {
-            step("Wait for smart mode") {
-                dumbAware(Duration.ofMinutes(5)) {}
-            }
-
-            uiSteps.initializeGitRepository()
-            resetGitChangesViewState()
-
-            uiSteps.createNewFile("Main.txt", baseContent)
-            uiSteps.commitChanges("Initial commit")
-            val defaultBranch = uiSteps.defaultBranchName()
-
-            uiSteps.createBranch("feature-scroll-refresh-clicked-line-stats")
-            uiSteps.createFilesWithoutStaging(
-                (0 until 25).associate { index ->
-                    "feature/Only${index.toString().padStart(3, '0')}.txt" to "feature $index\n"
-                }
-            )
-            uiSteps.commitChanges("Add many feature files")
-            uiSteps.checkoutBranch(defaultBranch)
-
-            openGitChangesView()
-            gitChangesView { addTab() }
-            branchSelection { searchAndSelect("feature-scroll-refresh-clicked-line-stats") }
-
+        openFeatureComparison("feature-scroll-refresh-clicked-line-stats", numberedLines(25), featureFileCount = 25) {
             gitChangesView {
-                step("Wait for comparison tree to populate") {
-                    waitFor(Duration.ofSeconds(30)) {
-                        changesTree.findAllText("Only000.txt").isNotEmpty()
-                    }
-                }
-
                 clickChange("Only000.txt")
                 step("Wait for click action to settle") {
                     Thread.sleep(1_000)
@@ -770,23 +534,13 @@ class LstCrcBranchComparisonUiTest : LstCrcUiTestSupport() {
                 val beforeRefreshPosition = treeViewportPosition()
                 assertTrue(beforeRefreshPosition.second > 0, "Precondition failed: expected clicked tree viewport to be scrolled")
 
-                beginTreeViewportTracking()
-                beginTopVisibleEntryTracking()
-                val viewportHistory: List<Pair<Int, Int>>
-                val topVisibleHistory: List<String>
-                try {
+                val (viewportHistory, topVisibleHistory) = trackViewportAndTopEntry {
                     focusEditorFile("Main.txt")
                     moveCaretToLineEnd(0)
                     insertSingleCharacterAtCaretWithoutSave()
                     waitFor(Duration.ofSeconds(5)) {
                         treeViewportPosition() == beforeRefreshPosition
                     }
-                    viewportHistory = stopTreeViewportTracking()
-                    topVisibleHistory = stopTopVisibleEntryTracking()
-                } catch (t: Throwable) {
-                    stopTreeViewportTracking()
-                    stopTopVisibleEntryTracking()
-                    throw t
                 }
 
                 assertEquals(
@@ -880,11 +634,7 @@ class LstCrcBranchComparisonUiTest : LstCrcUiTestSupport() {
                     "Precondition failed: expected tree viewport to stay in a mid-scroll position before editing the selected untracked file, got $beforeRefreshPosition"
                 )
 
-                beginTreeViewportTracking()
-                beginTopVisibleEntryTracking()
-                val viewportHistory: List<Pair<Int, Int>>
-                val topVisibleHistory: List<String>
-                try {
+                val (viewportHistory, topVisibleHistory) = trackViewportAndTopEntry {
                     focusOpenEditorTab("Untracked039.txt", "Untracked039.txt")
                     step("Wait for selected untracked editor tab to regain focus") {
                         waitFor(Duration.ofSeconds(10)) {
@@ -896,12 +646,6 @@ class LstCrcBranchComparisonUiTest : LstCrcUiTestSupport() {
                     step("Let tree refresh settle") {
                         Thread.sleep(2_000)
                     }
-                    viewportHistory = stopTreeViewportTracking()
-                    topVisibleHistory = stopTopVisibleEntryTracking()
-                } catch (t: Throwable) {
-                    stopTreeViewportTracking()
-                    stopTopVisibleEntryTracking()
-                    throw t
                 }
 
                 assertEquals(
@@ -1284,6 +1028,7 @@ class LstCrcBranchComparisonUiTest : LstCrcUiTestSupport() {
                     waitFor(Duration.ofSeconds(10)) {
                         changesTree.findAllText("OnlyB.txt").isEmpty()
                     }
+                    waitForTreeToSettle()
                 }
             }
 
@@ -1736,6 +1481,102 @@ class LstCrcBranchComparisonUiTest : LstCrcUiTestSupport() {
 
 
     @Suppress("SameParameterValue")
+    private fun numberedLines(count: Int): String =
+        (1..count).joinToString(separator = "\n", postfix = "\n") { index -> "line $index" }
+
+    /**
+     * Opens a fresh project that commits `Main.txt` with [baseContent], adds [featureFileCount] files
+     * `feature/OnlyNNN.txt` on [branchName], checks out the default branch again and opens a comparison
+     * tab for [branchName]. Runs [body] once the tree shows the feature files.
+     */
+    private fun RemoteRobot.openFeatureComparison(
+        branchName: String,
+        baseContent: String,
+        featureFileCount: Int,
+        body: IdeaFrame.(PluginUiTestSteps) -> Unit
+    ) {
+        val uiSteps = PluginUiTestSteps(this)
+
+        prepareFreshProject()
+
+        idea {
+            step("Wait for smart mode") {
+                dumbAware(Duration.ofMinutes(5)) {}
+            }
+
+            uiSteps.initializeGitRepository()
+            resetGitChangesViewState()
+
+            uiSteps.createNewFile("Main.txt", baseContent)
+            uiSteps.commitChanges("Initial commit")
+            val defaultBranch = uiSteps.defaultBranchName()
+
+            uiSteps.createBranch(branchName)
+            uiSteps.createFilesWithoutStaging(
+                (0 until featureFileCount).associate { index ->
+                    "feature/Only${index.toString().padStart(3, '0')}.txt" to "feature $index\n"
+                }
+            )
+            uiSteps.commitChanges("Add many feature files")
+            uiSteps.checkoutBranch(defaultBranch)
+
+            openGitChangesView()
+            gitChangesView { addTab() }
+            branchSelection { searchAndSelect(branchName) }
+
+            gitChangesView {
+                step("Wait for comparison tree to populate") {
+                    waitFor(Duration.ofSeconds(30)) {
+                        changesTree.findAllText("Only000.txt").isNotEmpty()
+                    }
+                }
+            }
+
+            body(uiSteps)
+        }
+    }
+
+    /** Selects [fileName] (the last row) and scrolls the tree back to the top; returns the viewport position. */
+    private fun GitChangesViewFixture.selectLastChangeAndScrollToTop(fileName: String): Pair<Int, Int> {
+        selectChangeInTree(fileName)
+        setTreeViewportPosition(y = 0)
+        waitFor(Duration.ofSeconds(5)) {
+            treeViewportPosition() == (0 to 0)
+        }
+        return treeViewportPosition()
+    }
+
+    /** Runs [action] between [begin] and [stop], and returns what [stop] recorded. Tracking is stopped on failure too. */
+    private fun <T> tracking(begin: () -> Unit, stop: () -> T, action: () -> Unit): T {
+        begin()
+        try {
+            action()
+        } catch (t: Throwable) {
+            stop()
+            throw t
+        }
+        return stop()
+    }
+
+    private fun GitChangesViewFixture.trackViewportAndTopEntry(action: () -> Unit): Pair<List<Pair<Int, Int>>, List<String>> =
+        tracking(
+            begin = { beginTreeViewportTracking(); beginTopVisibleEntryTracking() },
+            stop = { stopTreeViewportTracking() to stopTopVisibleEntryTracking() },
+            action = action
+        )
+
+    /** Asserts that the tree viewport never moves while [action] runs and the refresh it causes settles. */
+    private fun GitChangesViewFixture.assertViewportStaysDuring(message: String, action: () -> Unit) {
+        val beforeRefreshPosition = treeViewportPosition()
+        val viewportHistory = tracking({ beginTreeViewportTracking() }, { stopTreeViewportTracking() }) {
+            action()
+            waitFor(Duration.ofSeconds(5)) {
+                treeViewportPosition() == beforeRefreshPosition
+            }
+        }
+        assertEquals(listOf(beforeRefreshPosition), viewportHistory.distinct(), message)
+    }
+
     private fun RemoteRobot.setChangesTreeNodeExpanded(nodeText: String, expanded: Boolean) {
         step("${if (expanded) "Expand" else "Collapse"} tree node '$nodeText'") {
             val success = callJs<Boolean>(
@@ -2100,21 +1941,4 @@ class LstCrcBranchComparisonUiTest : LstCrcUiTestSupport() {
         true
     )
 
-    private fun toJsStringLiteral(value: String): String {
-        val escaped = buildString(value.length + 2) {
-            append('"')
-            value.forEach { ch ->
-                when (ch) {
-                    '\\' -> append("\\\\")
-                    '"' -> append("\\\"")
-                    '\n' -> append("\\n")
-                    '\r' -> append("\\r")
-                    '\t' -> append("\\t")
-                    else -> append(ch)
-                }
-            }
-            append('"')
-        }
-        return escaped
-    }
 }

@@ -4,8 +4,7 @@ This file lists refactoring opportunities in `src/main` that were checked agains
 
 ## Open Opportunities
 
-1. **`hasSingleSelectedCommit` duplicates `singleSelectedCommit`.** `LstCrcActionVisibilityTest` fakes the Git Log selection with strings, and replacing the size check with `singleSelectedCommit(e) != null` casts them and fails. Only change this together with the test fake.
-2. **`ToolWindowSettingsProvider` read facade.** It still has one getter per setting (for example `isShowLineStatsInTree()`), each a single `settingsService()[definition]` call. Callers could read `service<LstCrcSettingsService>()[definition]` directly, but the facade is used in about 30 places and keeps them short, so this is optional.
+1. **`ToolWindowSettingsProvider` read facade.** It still has one getter per setting (for example `isShowLineStatsInTree()`), each a single `settingsService()[definition]` call. Callers could read `service<LstCrcSettingsService>()[definition]` directly, but the facade is used in about 30 places and keeps them short, so this is optional.
 
 ## Looks Removable, Must Stay
 
@@ -30,3 +29,12 @@ This file lists refactoring opportunities in `src/main` that were checked agains
   - **One EDT hop less per refresh.** `ProjectActiveDiffDataService` applies the result directly when it is already on the EDT.
   - **`BaseLabel` lookup moved into `ToolWindowUiCompatibility`**, so all internal tool-window calls are in one file. `RenameTabAction` no longer logs a warning when the action is invoked without a clicked tab.
   - **Settings accessors collapsed.** The 38 typed getters and setters in `LstCrcSettingsService` became `settings[definition]` and `settings[definition] = value`. The Remote Robot JavaScript uses the raw-key accessors (`getString`/`setString`, `getBoolean`/`setBoolean`, `getInt`/`setInt`).
+- The 2026-09 optimization pass (one PR, no behavior change):
+  - **One git process per repository instead of two.** `GitService` reads status, paths and line counts from one `git diff --raw --numstat -z` run (`--raw -z` when line stats are off). `-z` output is unquoted, so paths go through `GitContentRevision.createPath`. `--ignore-cr-at-eol` only changes the counts; raw records still list line-ending-only changes.
+  - **Tab switches in the editor only re-check the visible editors' gutters.** Diff-data and settings changes still re-check every open editor.
+  - **No-op refreshes skip the path sets.** `updateActiveDiff` compares the new data with the current snapshot before building its path sets.
+  - **The tree renderer finds the single-repo annotation node once per tree**, not on every repaint of every row.
+  - `debugGutterSummaryFor` reads tracker ranges and mode through the public API instead of reflection (same output string).
+  - Inlined one-use helpers in `MyToolWindowFactory`, `ToolWindowHelper`, `RepoNodeRenderer`, `ShowRepoComparisonInfoAction`, `BranchSelectionPanel` (`TreeUtil.findNode`), `PluginStartupActivity` and `LstCrcChangesBrowser` (click bindings), and simplified `handleBranchFailures`.
+  - Removed `hasSingleSelectedCommit`; `LstCrcActionVisibilityTest` now fakes the Git Log selection with real `CommitId`s.
+  - Tests: one `toJsStringLiteral` in `plugin/utils/JsStrings.kt` instead of seven copies, and the viewport tests in `LstCrcBranchComparisonUiTest` share `openFeatureComparison`, `selectLastChangeAndScrollToTop` and the tracking helpers.

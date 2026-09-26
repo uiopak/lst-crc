@@ -8,7 +8,6 @@ import com.github.uiopak.lstcrc.services.ToolWindowStateService
 import com.github.uiopak.lstcrc.state.ToolWindowState
 import com.github.uiopak.lstcrc.state.displayName
 import com.github.uiopak.lstcrc.utils.LstCrcKeys
-import com.intellij.openapi.actionSystem.ActionGroup
 import com.intellij.openapi.actionSystem.DefaultActionGroup
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.service
@@ -19,7 +18,6 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.wm.ToolWindow
 import com.intellij.openapi.wm.ToolWindowFactory
 import com.intellij.ui.content.Content
-import com.intellij.ui.content.ContentManager
 import com.intellij.ui.content.ContentFactory
 import com.intellij.ui.content.ContentManagerEvent
 import com.intellij.ui.content.ContentManagerListener
@@ -39,29 +37,18 @@ class MyToolWindowFactory : ToolWindowFactory {
         val persistedState = stateService.state
 
         ApplicationManager.getApplication().executeOnPooledThread {
-            val currentActualBranchName = resolveInitialBranchName(project, persistedState)
+            // Without persisted tabs, the first start opens a tab for the current branch.
+            val currentActualBranchName = if (persistedState.openTabs.isEmpty()) {
+                project.service<GitService>().getPrimaryRepository()?.currentBranchName
+            } else {
+                null
+            }
 
             ApplicationManager.getApplication().invokeLater {
-                if (project.isDisposed || toolWindow.isDisposed) {
-                    return@invokeLater
-                }
-
-                initializeToolWindowContent(
-                    project,
-                    toolWindow,
-                    stateService,
-                    persistedState,
-                    currentActualBranchName
-                )
+                if (project.isDisposed || toolWindow.isDisposed) return@invokeLater
+                initializeToolWindowContent(project, toolWindow, stateService, persistedState, currentActualBranchName)
             }
         }
-    }
-
-    private fun resolveInitialBranchName(project: Project, persistedState: ToolWindowState): String? {
-        if (persistedState.openTabs.isNotEmpty()) {
-            return null
-        }
-        return project.service<GitService>().getPrimaryRepository()?.currentBranchName
     }
 
     private fun initializeToolWindowContent(
@@ -73,35 +60,21 @@ class MyToolWindowFactory : ToolWindowFactory {
     ) {
         val contentManager = toolWindow.contentManager
 
-        applyToolWindowTitleSetting(toolWindow)
+        ToolWindowUiCompatibility.setToolWindowTitleVisible(toolWindow, ToolWindowSettingsProvider.isShowToolWindowTitleEnabled())
         subscribeToStateChanges(project, toolWindow)
         val headContent = createHeadTab(project, toolWindow)
-        val selectedContentRestored = restoreOrCreateInitialTabs(
-            project, toolWindow, persistedState, currentActualBranchName
-        )
-        if (!selectedContentRestored) {
-            selectHeadFallback(contentManager, headContent, stateService)
+        if (!restoreOrCreateInitialTabs(project, toolWindow, persistedState, currentActualBranchName)) {
+            contentManager.setSelectedContent(headContent, true)
+            stateService.setSelectedTab(-1)
         }
         registerContentManagerListener(project, toolWindow, stateService)
-        setupToolWindowActions(project, toolWindow)
+        ToolWindowUiCompatibility.setTabActions(toolWindow, OpenBranchSelectionTabAction(project, toolWindow))
+        toolWindow.setAdditionalGearActions(DefaultActionGroup(ToolWindowSettingsProvider.createToolWindowSettingsGroup()))
 
         logger.debug { "Tool window UI setup complete." }
     }
 
-    private fun applyToolWindowTitleSetting(toolWindow: ToolWindow) {
-        val showTitle = ToolWindowSettingsProvider.isShowToolWindowTitleEnabled()
-        ToolWindowUiCompatibility.setToolWindowTitleVisible(toolWindow, showTitle)
-    }
-
-    private fun selectHeadFallback(
-        contentManager: ContentManager,
-        headContent: Content,
-        stateService: ToolWindowStateService
-    ) {
-        contentManager.setSelectedContent(headContent, true)
-        stateService.setSelectedTab(-1)
-    }
-
+    /** Keeps tab titles in sync with renamed aliases. */
     private fun subscribeToStateChanges(project: Project, toolWindow: ToolWindow) {
         val contentManager = toolWindow.contentManager
         project.messageBus.connect(toolWindow.disposable).subscribe(TOOL_WINDOW_STATE_TOPIC,
@@ -109,22 +82,15 @@ class MyToolWindowFactory : ToolWindowFactory {
                 override fun stateChanged(newState: ToolWindowState) {
                     ApplicationManager.getApplication().invokeLater {
                         if (project.isDisposed || toolWindow.isDisposed) return@invokeLater
-                        syncTabDisplayNames(contentManager, newState)
+                        newState.openTabs.forEach { tabInfo ->
+                            val content = ToolWindowHelper.findContentByBranchName(contentManager, tabInfo.branchName)
+                            if (content != null && content.displayName != tabInfo.displayName) {
+                                content.displayName = tabInfo.displayName
+                            }
+                        }
                     }
                 }
             })
-    }
-
-    private fun syncTabDisplayNames(contentManager: ContentManager, newState: ToolWindowState) {
-        newState.openTabs.forEach { tabInfo ->
-            val content = ToolWindowHelper.findContentByBranchName(contentManager, tabInfo.branchName)
-            content?.let {
-                val newDisplayName = tabInfo.displayName
-                if (it.displayName != newDisplayName) {
-                    it.displayName = newDisplayName
-                }
-            }
-        }
     }
 
     private fun createHeadTab(project: Project, toolWindow: ToolWindow): Content {
@@ -152,31 +118,20 @@ class MyToolWindowFactory : ToolWindowFactory {
         persistedState: ToolWindowState,
         currentActualBranchName: String?
     ): Boolean {
-        if (persistedState.openTabs.isNotEmpty()) {
-            return restorePersistedTabs(project, toolWindow, persistedState)
-        }
-
-        if (currentActualBranchName != null) {
+        val contentManager = toolWindow.contentManager
+        if (persistedState.openTabs.isEmpty()) {
+            currentActualBranchName ?: return false
             ToolWindowHelper.createAndSelectTab(project, toolWindow, currentActualBranchName)
             return true
         }
-        return false
-    }
 
-    private fun restorePersistedTabs(project: Project, toolWindow: ToolWindow, persistedState: ToolWindowState): Boolean {
-        val contentManager = toolWindow.contentManager
         persistedState.openTabs.forEach { tabInfo ->
             ToolWindowHelper.createBranchContent(project, tabInfo.branchName, tabInfo.displayName, contentManager)
         }
-        if (persistedState.selectedTabIndex >= 0 && persistedState.selectedTabIndex < persistedState.openTabs.size) {
-            val selectedTabInfo = persistedState.openTabs[persistedState.selectedTabIndex]
-            val contentToSelect = ToolWindowHelper.findContentByBranchName(contentManager, selectedTabInfo.branchName)
-            if (contentToSelect != null) {
-                contentManager.setSelectedContent(contentToSelect, true)
-                return true
-            }
-        }
-        return false
+        val selectedTabInfo = persistedState.openTabs.getOrNull(persistedState.selectedTabIndex) ?: return false
+        val contentToSelect = ToolWindowHelper.findContentByBranchName(contentManager, selectedTabInfo.branchName) ?: return false
+        contentManager.setSelectedContent(contentToSelect, true)
+        return true
     }
 
     private fun registerContentManagerListener(
@@ -186,47 +141,18 @@ class MyToolWindowFactory : ToolWindowFactory {
     ) {
         toolWindow.contentManager.addContentManagerListener(object : ContentManagerListener {
             override fun contentRemoved(event: ContentManagerEvent) {
-                val branchName = contentBranchName(event.content)
-                if (branchName != null) {
-                    stateService.removeTab(branchName)
-                }
+                event.content.getUserData(LstCrcKeys.BRANCH_NAME_KEY)?.let(stateService::removeTab)
             }
 
             override fun selectionChanged(event: ContentManagerEvent) {
                 if (project.isDisposed || toolWindow.isDisposed) return
-                syncSelectedTabFromContent(toolWindow, stateService)
+                val selectedContent = toolWindow.contentManager.selectedContent ?: return
+                // HEAD has no branch name. A comparison tab not yet added to the state is registered by its creator.
+                val branchName = selectedContent.getUserData(LstCrcKeys.BRANCH_NAME_KEY)
+                val index = if (branchName == null) -1 else stateService.findTabIndex(branchName).takeIf { it != -1 } ?: return
+                stateService.setSelectedTab(index)
             }
         })
-    }
-
-    private fun syncSelectedTabFromContent(toolWindow: ToolWindow, stateService: ToolWindowStateService) {
-        val selectedContent = toolWindow.contentManager.selectedContent ?: return
-        val branchName = contentBranchName(selectedContent)
-        if (branchName != null) {
-            val indexInPersistedList = stateService.findTabIndex(branchName)
-            if (indexInPersistedList != -1) {
-                stateService.setSelectedTab(indexInPersistedList)
-            }
-            return
-        }
-        stateService.setSelectedTab(-1)
-    }
-
-    private fun contentBranchName(content: Content): String? {
-        return content.getUserData(LstCrcKeys.BRANCH_NAME_KEY)
-    }
-
-    private fun setupToolWindowActions(project: Project, toolWindow: ToolWindow) {
-        val openSelectionTabAction = OpenBranchSelectionTabAction(project, toolWindow)
-        ToolWindowUiCompatibility.setTabActions(toolWindow, openSelectionTabAction)
-        toolWindow.setAdditionalGearActions(createGearActionsGroup())
-    }
-
-    private fun createGearActionsGroup(): ActionGroup {
-        val pluginSettingsSubMenu: ActionGroup = ToolWindowSettingsProvider.createToolWindowSettingsGroup()
-        return DefaultActionGroup().apply {
-            add(pluginSettingsSubMenu)
-        }
     }
 
     override fun shouldBeAvailable(project: Project) = true

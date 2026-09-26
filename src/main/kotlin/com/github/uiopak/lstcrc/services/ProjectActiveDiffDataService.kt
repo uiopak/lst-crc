@@ -99,8 +99,11 @@ class ProjectActiveDiffDataService(private val project: Project) : Disposable {
         }
 
         onEdt {
-            val newSnapshot = ActiveDiffSnapshot(branchNameFromEvent, categorizedChanges)
-            if (snapshot != newSnapshot) replaceSnapshot(newSnapshot)
+            // Most edit-only refreshes return the same data; compare before building the path sets.
+            val current = snapshot
+            if (current.activeBranchName != branchNameFromEvent || current.categorizedChanges != categorizedChanges) {
+                replaceSnapshot(ActiveDiffSnapshot(branchNameFromEvent, categorizedChanges))
+            }
         }
     }
 

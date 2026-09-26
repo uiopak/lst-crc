@@ -176,39 +176,27 @@ class ToolWindowStateService(private val project: Project, val coroutineScope: C
         }
 
         logger.warn("Handling branch failures for tab '${tabInfo.branchName}'. Actual branch failures: $actualBranchFailures")
-        val newComparisonMap = tabInfo.comparisonMap.toMutableMap()
-        var tabConfigUpdated = false
-
-        actualBranchFailures.forEach { (repo, failedRevision) ->
-            // Condition A: The failed revision was an explicit override for this repo.
-            val isExplicitOverrideFailure = newComparisonMap[repo.root.path] == failedRevision
-
-            // Condition B: The failed revision was the primary tab name, and this repo was using it implicitly.
-            val isImplicitPrimaryFailure = (tabInfo.branchName == failedRevision && newComparisonMap[repo.root.path] == null)
-
-            if (isExplicitOverrideFailure || isImplicitPrimaryFailure) {
-                newComparisonMap[repo.root.path] = "HEAD" // Reset the comparison for this repo to HEAD.
-                tabConfigUpdated = true
-            }
+        // Reset a repository to HEAD when the failed revision was its explicit override, or the tab's own
+        // branch that it used implicitly.
+        val resetRoots = actualBranchFailures.mapNotNull { (repo, failedRevision) ->
+            val root = repo.root.path
+            val effectiveTarget = tabInfo.comparisonMap[root] ?: tabInfo.branchName
+            root.takeIf { effectiveTarget == failedRevision }
         }
 
-        if (tabConfigUpdated) {
+        if (resetRoots.isNotEmpty()) {
+            val newComparisonMap = tabInfo.comparisonMap + resetRoots.associateWith { "HEAD" }
             logger.debug { "Tab '${tabInfo.branchName}' config updated due to missing branches. New map: $newComparisonMap" }
             // Update the state, but do NOT trigger another refresh to avoid loops within this call stack.
             updateTabComparisonMap(tabInfo.branchName, newComparisonMap, triggerRefresh = false)
 
             // The current refresh detected the error and corrected the state; load the data for the
             // corrected state as a separate task. If this refresh is still running, the request is
-            // queued and runs as its next cycle.
+            // queued and runs as its next cycle. Skipped if the user has switched tabs meanwhile.
             coroutineScope.launch(Dispatchers.EDT) {
-                if (project.isDisposed) return@launch
-                // We must check if the tab that was corrected is still the active one.
-                // The user might have switched tabs while the refresh was running.
-                if (getSelectedTabInfo()?.branchName == tabInfo.branchName) {
+                if (!project.isDisposed && getSelectedTabInfo()?.branchName == tabInfo.branchName) {
                     logger.debug { "Scheduling a new data refresh after correcting active tab '${tabInfo.branchName}' configuration." }
                     refreshDataForCurrentSelection()
-                } else {
-                    logger.debug { "Tab '${tabInfo.branchName}' was corrected, but is no longer active. Skipping automatic refresh." }
                 }
             }
         }
@@ -365,18 +353,10 @@ class ToolWindowStateService(private val project: Project, val coroutineScope: C
         broadcast()
     }
 
-    private fun normalizeState(state: ToolWindowState): ToolWindowState {
-        return ToolWindowState(
-            openTabs = state.openTabs.map { tab ->
-                TabInfo(
-                    branchName = tab.branchName,
-                    alias = tab.alias,
-                    comparisonMap = tab.comparisonMap.toMutableMap()
-                )
-            },
-            selectedTabIndex = state.selectedTabIndex
-        )
-    }
+    private fun normalizeState(state: ToolWindowState): ToolWindowState = ToolWindowState(
+        openTabs = state.openTabs.map { it.copy(comparisonMap = it.comparisonMap.toMutableMap()) },
+        selectedTabIndex = state.selectedTabIndex
+    )
 
     /** Replaces one tab via [transform]; no-op (no broadcast, no refresh) when the tab is missing or unchanged. */
     private fun updateTab(branchName: String, triggerRefresh: Boolean, transform: (TabInfo) -> TabInfo) {

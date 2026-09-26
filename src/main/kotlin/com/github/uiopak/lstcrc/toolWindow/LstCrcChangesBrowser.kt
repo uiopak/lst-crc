@@ -60,6 +60,16 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.time.Duration.Companion.milliseconds
+import java.awt.Component
+import java.awt.event.KeyAdapter
+import java.awt.event.KeyEvent
+import java.awt.event.MouseAdapter
+import java.awt.event.MouseEvent
+import javax.swing.SwingUtilities
+import javax.swing.tree.DefaultMutableTreeNode
+import javax.swing.tree.TreePath
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import java.awt.BorderLayout
 import java.awt.event.ComponentAdapter
 import java.awt.event.ComponentEvent
@@ -99,11 +109,6 @@ class LstCrcChangesBrowser(
         val titleKey: String,
         val isEnabled: (List<Change>) -> Boolean = { it.isNotEmpty() },
         val action: (List<Change>) -> Unit
-    )
-
-    private data class MouseClickActionBinding(
-        val singleAction: () -> String,
-        val doubleAction: () -> String
     )
 
     private class ReusableChangeDiffVirtualFile(
@@ -192,9 +197,9 @@ class LstCrcChangesBrowser(
         setViewerBorder(JBUI.Borders.empty())
 
         // Custom Enter-key behavior: open diff.
-        viewer.addKeyListener(object : java.awt.event.KeyAdapter() {
-            override fun keyPressed(e: java.awt.event.KeyEvent) {
-                if (e.keyCode == java.awt.event.KeyEvent.VK_ENTER) {
+        viewer.addKeyListener(object : KeyAdapter() {
+            override fun keyPressed(e: KeyEvent) {
+                if (e.keyCode == KeyEvent.VK_ENTER) {
                     val changes = selectedChanges
                     if (changes.isNotEmpty()) {
                         openDiff(changes)
@@ -249,7 +254,7 @@ class LstCrcChangesBrowser(
 
         override fun isFileColorsEnabled(): Boolean = true
 
-        override fun getFileColorForPath(path: javax.swing.tree.TreePath): Color? {
+        override fun getFileColorForPath(path: TreePath): Color? {
             // First try native pipeline for existing files (which have VirtualFiles)
             val defaultColor = super.getFileColorForPath(path)
             if (defaultColor != null) return defaultColor
@@ -428,7 +433,7 @@ class LstCrcChangesBrowser(
     @Suppress("unused")
     fun invokeTestContextMenuAction(change: Change, actionTitle: String) {
         val changes = listOf(change)
-        resolveBrowserChangeActionByTitle(actionTitle)
+        browserChangeActions.firstOrNull { LstCrcBundle.message(it.titleKey) == actionTitle }
             ?.takeIf { it.isEnabled(changes) }
             ?.action
             ?.invoke(changes)
@@ -437,7 +442,7 @@ class LstCrcChangesBrowser(
 
     @Suppress("unused")
     fun availableContextMenuActionTitlesForTest(change: Change): List<String> {
-        return availableBrowserChangeActions(listOf(change)).map { LstCrcBundle.message(it.titleKey) }
+        return browserChangeActions.filter { it.isEnabled(listOf(change)) }.map { LstCrcBundle.message(it.titleKey) }
     }
 
     @Suppress("unused")
@@ -451,7 +456,7 @@ class LstCrcChangesBrowser(
     }
 
     @Suppress("unused")
-    fun fileColorForPathForTest(path: javax.swing.tree.TreePath): Color? {
+    fun fileColorForPathForTest(path: TreePath): Color? {
         return (viewer as? LstCrcAsyncChangesTree)?.getFileColorForPath(path)
     }
 
@@ -466,7 +471,7 @@ class LstCrcChangesBrowser(
     fun expandedNodeTextsForTest(): List<String> {
         return visibleRowPaths()
             .mapNotNull { (row, path) ->
-                val node = path.lastPathComponent as? javax.swing.tree.DefaultMutableTreeNode ?: return@mapNotNull null
+                val node = path.lastPathComponent as? DefaultMutableTreeNode ?: return@mapNotNull null
                 if (node.isLeaf || !viewer.isExpanded(path)) {
                     return@mapNotNull null
                 }
@@ -479,7 +484,7 @@ class LstCrcChangesBrowser(
     fun setExpandedForVisibleNodeTextForTest(nodeText: String, expanded: Boolean): Boolean {
         val targetPath = visibleRowPaths()
             .firstOrNull { (row, path) ->
-                val userObjectText = (path.lastPathComponent as? javax.swing.tree.DefaultMutableTreeNode)
+                val userObjectText = (path.lastPathComponent as? DefaultMutableTreeNode)
                     ?.userObject
                     ?.toString()
                     .orEmpty()
@@ -512,7 +517,7 @@ class LstCrcChangesBrowser(
         return true
     }
 
-    private fun visibleRowPaths(): List<Pair<Int, javax.swing.tree.TreePath>> {
+    private fun visibleRowPaths(): List<Pair<Int, TreePath>> {
         return (0 until viewer.rowCount)
             .mapNotNull { row -> viewer.getPathForRow(row)?.let { row to it } }
     }
@@ -523,14 +528,14 @@ class LstCrcChangesBrowser(
             ?.first
     }
 
-    private fun changeAtPathMatchesFileName(path: javax.swing.tree.TreePath, fileName: String): Boolean {
-        val node = path.lastPathComponent as? javax.swing.tree.DefaultMutableTreeNode ?: return false
+    private fun changeAtPathMatchesFileName(path: TreePath, fileName: String): Boolean {
+        val node = path.lastPathComponent as? DefaultMutableTreeNode ?: return false
         val change = node.userObject as? Change ?: return false
         val file = change.afterRevision?.file ?: change.beforeRevision?.file ?: return false
         return file.name == fileName || file.path.replace('\\', '/').endsWith("/$fileName")
     }
 
-    private fun renderedRowTextForTest(path: javax.swing.tree.TreePath, row: Int): String? {
+    private fun renderedRowTextForTest(path: TreePath, row: Int): String? {
         val renderer = viewer.cellRenderer as? RepoNodeRenderer ?: return null
         val model = viewer.model
         return renderer.renderedTextForTest(
@@ -652,21 +657,21 @@ class LstCrcChangesBrowser(
         logger.debug { "LstCrcChangesBrowser for branch '$targetBranchToCompare' disposed." }
     }
 
-    private var pendingClickJob: kotlinx.coroutines.Job? = null
+    private var pendingClickJob: Job? = null
 
     private fun installConfigurableMouseHandler() {
-        viewer.addMouseListener(object : java.awt.event.MouseAdapter() {
-            override fun mouseClicked(e: java.awt.event.MouseEvent) {
+        viewer.addMouseListener(object : MouseAdapter() {
+            override fun mouseClicked(e: MouseEvent) {
                 handleMouseClick(e)
             }
         })
     }
 
-    private fun handleMouseClick(e: java.awt.event.MouseEvent) {
+    private fun handleMouseClick(e: MouseEvent) {
         val clickCount = e.clickCount
         val button = e.button
 
-        if (javax.swing.SwingUtilities.isRightMouseButton(e) && ToolWindowSettingsProvider.isContextMenuEnabled()) {
+        if (SwingUtilities.isRightMouseButton(e) && ToolWindowSettingsProvider.isContextMenuEnabled()) {
             return
         }
 
@@ -691,7 +696,7 @@ class LstCrcChangesBrowser(
             val delayMs = ToolWindowSettingsProvider.getUserDoubleClickDelayMs().toLong()
             pendingClickJob?.cancel()
             pendingClickJob = clickScope.launch {
-                kotlinx.coroutines.delay(delayMs.milliseconds)
+                delay(delayMs.milliseconds)
                 withContext(Dispatchers.EDT) {
                     if (!project.isDisposed) performConfiguredAction(change, singleAction)
                 }
@@ -714,23 +719,25 @@ class LstCrcChangesBrowser(
     /** Must be called on the EDT. */
     private fun performConfiguredAction(change: Change, actionType: String) {
         val changes = listOf(change)
-        resolveBrowserChangeActionBySetting(actionType)
+        browserChangeActions.firstOrNull { it.settingValue == actionType }
             ?.takeIf { it.isEnabled(changes) }
             ?.action
             ?.invoke(changes)
     }
 
-    private fun configuredActionForButton(button: Int, doubleClick: Boolean): String {
-        val binding = mouseClickActionBinding(button) ?: return ToolWindowSettingsProvider.ACTION_NONE
-        return if (doubleClick) binding.doubleAction() else binding.singleAction()
+    private fun configuredActionForButton(button: Int, doubleClick: Boolean): String = when (button) {
+        MouseEvent.BUTTON1 -> if (doubleClick) ToolWindowSettingsProvider.getDoubleClickAction() else ToolWindowSettingsProvider.getSingleClickAction()
+        MouseEvent.BUTTON2 -> if (doubleClick) ToolWindowSettingsProvider.getDoubleMiddleClickAction() else ToolWindowSettingsProvider.getMiddleClickAction()
+        MouseEvent.BUTTON3 -> if (doubleClick) ToolWindowSettingsProvider.getDoubleRightClickAction() else ToolWindowSettingsProvider.getRightClickAction()
+        else -> ToolWindowSettingsProvider.ACTION_NONE
     }
 
-    private fun changePathAt(x: Int, y: Int): javax.swing.tree.TreePath? {
+    private fun changePathAt(x: Int, y: Int): TreePath? {
         val path = TreeUtil.getPathForLocation(viewer, x, y) ?: return null
         return path.takeIf { changeAt(it) != null }
     }
 
-    private fun changeAt(path: javax.swing.tree.TreePath): Change? {
+    private fun changeAt(path: TreePath): Change? {
         return (path.lastPathComponent as? ChangesBrowserNode<*>)?.userObject as? Change
     }
 
@@ -755,7 +762,7 @@ class LstCrcChangesBrowser(
 
         // Install our custom context menu handler
         viewer.addMouseListener(object : PopupHandler() {
-            override fun invokePopup(comp: java.awt.Component?, x: Int, y: Int) {
+            override fun invokePopup(comp: Component?, x: Int, y: Int) {
                     if (!ToolWindowSettingsProvider.isContextMenuEnabled()) return
 
                     val path = changePathAt(x, y) ?: return
@@ -764,10 +771,7 @@ class LstCrcChangesBrowser(
                     val changes = selectedChanges
                     if (changes.isEmpty()) return
 
-                    val group = DefaultActionGroup()
-                    availableBrowserChangeActions(changes).forEach { definition ->
-                        group.add(createContextMenuAction(definition))
-                    }
+                    val group = DefaultActionGroup(browserChangeActions.filter { it.isEnabled(changes) }.map(::createContextMenuAction))
 
                     val popupMenu = ActionManager.getInstance().createActionPopupMenu(ActionPlaces.TOOLWINDOW_POPUP, group)
                     popupMenu.component.show(comp, x, y)
@@ -848,41 +852,11 @@ class LstCrcChangesBrowser(
         return actions
     }
 
-    private fun selectPathAndFocus(path: javax.swing.tree.TreePath) {
+    private fun selectPathAndFocus(path: TreePath) {
         if (viewer.selectionPath != path) {
             viewer.selectionPath = path
         }
         viewer.requestFocusInWindow()
-    }
-
-    private fun availableBrowserChangeActions(changes: List<Change>): List<BrowserChangeActionDefinition> {
-        return browserChangeActions.filter { it.isEnabled(changes) }
-    }
-
-    private fun resolveBrowserChangeActionBySetting(actionType: String): BrowserChangeActionDefinition? {
-        return browserChangeActions.firstOrNull { it.settingValue == actionType }
-    }
-
-    private fun resolveBrowserChangeActionByTitle(actionTitle: String): BrowserChangeActionDefinition? {
-        return browserChangeActions.firstOrNull { LstCrcBundle.message(it.titleKey) == actionTitle }
-    }
-
-    private fun mouseClickActionBinding(button: Int): MouseClickActionBinding? {
-        return when (button) {
-            java.awt.event.MouseEvent.BUTTON1 -> MouseClickActionBinding(
-                singleAction = ToolWindowSettingsProvider::getSingleClickAction,
-                doubleAction = ToolWindowSettingsProvider::getDoubleClickAction
-            )
-            java.awt.event.MouseEvent.BUTTON2 -> MouseClickActionBinding(
-                singleAction = ToolWindowSettingsProvider::getMiddleClickAction,
-                doubleAction = ToolWindowSettingsProvider::getDoubleMiddleClickAction
-            )
-            java.awt.event.MouseEvent.BUTTON3 -> MouseClickActionBinding(
-                singleAction = ToolWindowSettingsProvider::getRightClickAction,
-                doubleAction = ToolWindowSettingsProvider::getDoubleRightClickAction
-            )
-            else -> null
-        }
     }
 
 }
