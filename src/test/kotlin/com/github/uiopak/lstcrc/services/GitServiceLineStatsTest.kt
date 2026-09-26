@@ -52,7 +52,7 @@ class GitServiceLineStatsTest : LstCrcTestCase() {
             initializeTrackedStatsGitRepo(repoPath)
 
             val noisyDiff = runGit(repoPath, "diff", "--numstat", "feature-line-endings")
-            val normalizedDiff = runGit(repoPath, "diff", *trackedLineStatsDiffArgs("feature-line-endings").toTypedArray())
+            val normalizedDiff = runGit(repoPath, "diff", *trackedDiffArgs("feature-line-endings", includeLineStats = true).toTypedArray())
 
             assertTrue(noisyDiff, noisyDiff.lineSequence().any { it == "3\t3\tMain.txt" })
             assertTrue(normalizedDiff, normalizedDiff.split('\u0000').any { it.trim() == "1\t1\tMain.txt" })
@@ -72,6 +72,21 @@ class GitServiceLineStatsTest : LstCrcTestCase() {
         val currentRevision = createLiveDocumentContentRevision(file)
 
         assertEquals("baseX\n", currentRevision.content)
+    }
+
+    fun testLiveDocumentContentRevisionsAreEqualOnlyForTheSameText() {
+        val file = myFixture.addFileToProject("tracked.txt", "base\n").virtualFile
+        val document = FileDocumentManager.getInstance().getDocument(file)!!
+
+        WriteCommandAction.runWriteCommandAction(project) { document.setText("edited\n") }
+        val first = createLiveDocumentContentRevision(file)
+        val second = createLiveDocumentContentRevision(file)
+        WriteCommandAction.runWriteCommandAction(project) { document.setText("edited again\n") }
+        val third = createLiveDocumentContentRevision(file)
+
+        assertEquals(first, second)
+        assertEquals(first.hashCode(), second.hashCode())
+        assertFalse(first == third)
     }
 
     fun testCreateLiveDocumentContentRevisionAllowsBackgroundThreadAccess() {

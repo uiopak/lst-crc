@@ -23,6 +23,7 @@ Location: `src/test/kotlin/com/github/uiopak/lstcrc/{gutters,listeners,scopes,se
 | `GitServiceLineStatsTest.testTrackedLineStatsDiffArgsIgnoreLineEndingOnlyChurn` | `C3.10` | `git diff --numstat` is run with `--ignore-cr-at-eol`. |
 | `GitServiceLineStatsTest.testCreateLiveDocumentContentRevisionReadsLatestUnsavedDocumentText` | `C3.8` | The unsaved-overlay revision reads the editor's current text. |
 | `GitServiceLineStatsTest.testCreateLiveDocumentContentRevisionAllowsBackgroundThreadAccess` | `C3.8` | The unsaved-overlay revision can be read off the EDT. |
+| `GitServiceLineStatsTest.testLiveDocumentContentRevisionsAreEqualOnlyForTheSameText` | `C3.8` | Two loads of the same unsaved text are equal; different text is not. |
 | `GitServiceOverlayMergeTest.testPreservesNewChangeTypeWhenUnsavedOverlayIsApplied` | `C3.8` | Unsaved edits to a new file keep it `NEW`/`ADDED`. |
 | `GitServiceOverlayMergeTest.testKeepsModificationOverlayForNonNewFiles` | `C3.8` | Unsaved edits to other files stay modifications. |
 | `LstCrcActionVisibilityTest.testShowRepoComparisonInfoActionHiddenOnHeadAndVisibleForComparisonTab` | `C2.3` | Repo-comparison toolbar action is hidden on `HEAD` and shown on comparison tabs. |
@@ -58,6 +59,7 @@ Location: `src/test/kotlin/com/github/uiopak/lstcrc/{gutters,listeners,scopes,se
 | `ProjectActiveDiffDataServiceTest.testRejectsStaleUpdateWhenSelectedBranchDoesNotMatch` | `C5.1` | Results for a tab that is no longer selected are dropped. |
 | `ProjectActiveDiffDataServiceTest.testRejectsHeadUpdateWhileComparisonTabIsSelected` | `C5.1` | `HEAD` results are dropped while a comparison tab is selected. |
 | `ProjectActiveDiffDataServiceTest.testUpdateActiveDiffWithIdenticalSnapshotBypassesNotification` | `C5.1` | Identical data does not re-notify listeners. |
+| `ProjectActiveDiffDataServiceTest.testSamePathsWithNewUnsavedContentPublishesNewChanges` | `C3.8`, `C5.1` | New unsaved content on the same paths is published; the same content is not. |
 | `RepoNodeRendererTest.testAddedLineStatsUseBuiltInSuccessForeground` | `C3.10` | Added counts use the theme's success color. |
 | `RepoNodeRendererTest.testRemovedLineStatsUseBuiltInErrorAttributes` | `C3.10` | Removed counts use the theme's error color. |
 | `RepoNodeRendererTest.testBuildTrailingMetadataTextIncludesVisibleLineStatsAndRevision` | `C3.5`, `C3.10` | Rows show the target and the line counts. |

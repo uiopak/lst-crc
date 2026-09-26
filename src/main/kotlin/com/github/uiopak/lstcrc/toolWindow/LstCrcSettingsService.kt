@@ -6,105 +6,48 @@ import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.State
 import com.intellij.openapi.components.Storage
 
-data class StringSettingDefinition(val key: String, val defaultValue: String)
-data class BooleanSettingDefinition(val key: String, val defaultValue: Boolean)
-data class IntSettingDefinition(val key: String, val defaultValue: Int)
+/** One persisted setting: its key, default and how a stored string is read back (null when it can't be). */
+class SettingDefinition<T : Any>(val key: String, val defaultValue: T, val parse: (String) -> T?)
+
+private const val KEY_PREFIX = "com.github.uiopak.lstcrc.app."
+
+private fun stringSetting(name: String, defaultValue: String) = SettingDefinition(KEY_PREFIX + name, defaultValue) { it }
+private fun booleanSetting(name: String, defaultValue: Boolean) = SettingDefinition(KEY_PREFIX + name, defaultValue, String::toBooleanStrictOrNull)
+private fun intSetting(name: String, defaultValue: Int) = SettingDefinition(KEY_PREFIX + name, defaultValue, String::toIntOrNull)
 
 object LstCrcSettingDefinitions {
-    val SINGLE_CLICK_ACTION = StringSettingDefinition(
-        key = "com.github.uiopak.lstcrc.app.singleClickAction",
-        defaultValue = ToolWindowSettingsProvider.ACTION_OPEN_SOURCE
-    )
-    val DOUBLE_CLICK_ACTION = StringSettingDefinition(
-        key = "com.github.uiopak.lstcrc.app.doubleClickAction",
-        defaultValue = ToolWindowSettingsProvider.ACTION_NONE
-    )
-    val MIDDLE_CLICK_ACTION = StringSettingDefinition(
-        key = "com.github.uiopak.lstcrc.app.middleClickAction",
-        defaultValue = ToolWindowSettingsProvider.ACTION_SHOW_IN_PROJECT_TREE
-    )
-    val DOUBLE_MIDDLE_CLICK_ACTION = StringSettingDefinition(
-        key = "com.github.uiopak.lstcrc.app.doubleMiddleClickAction",
-        defaultValue = ToolWindowSettingsProvider.ACTION_NONE
-    )
-    val RIGHT_CLICK_ACTION = StringSettingDefinition(
-        key = "com.github.uiopak.lstcrc.app.rightClickAction",
-        defaultValue = ToolWindowSettingsProvider.ACTION_OPEN_DIFF
-    )
-    val DOUBLE_RIGHT_CLICK_ACTION = StringSettingDefinition(
-        key = "com.github.uiopak.lstcrc.app.doubleRightClickAction",
-        defaultValue = ToolWindowSettingsProvider.ACTION_NONE
-    )
+    val SINGLE_CLICK_ACTION = stringSetting("singleClickAction", ToolWindowSettingsProvider.ACTION_OPEN_SOURCE)
+    val DOUBLE_CLICK_ACTION = stringSetting("doubleClickAction", ToolWindowSettingsProvider.ACTION_NONE)
+    val MIDDLE_CLICK_ACTION = stringSetting("middleClickAction", ToolWindowSettingsProvider.ACTION_SHOW_IN_PROJECT_TREE)
+    val DOUBLE_MIDDLE_CLICK_ACTION = stringSetting("doubleMiddleClickAction", ToolWindowSettingsProvider.ACTION_NONE)
+    val RIGHT_CLICK_ACTION = stringSetting("rightClickAction", ToolWindowSettingsProvider.ACTION_OPEN_DIFF)
+    val DOUBLE_RIGHT_CLICK_ACTION = stringSetting("doubleRightClickAction", ToolWindowSettingsProvider.ACTION_NONE)
 
-    val SHOW_CONTEXT_MENU = BooleanSettingDefinition(
-        key = "com.github.uiopak.lstcrc.app.showContextMenu",
-        defaultValue = false
-    )
-    val USER_DOUBLE_CLICK_DELAY = IntSettingDefinition(
-        key = "com.github.uiopak.lstcrc.app.userDoubleClickDelay",
-        defaultValue = -1
-    )
-    val INCLUDE_HEAD_IN_SCOPES = BooleanSettingDefinition(
-        key = "com.github.uiopak.lstcrc.app.includeHeadInScopes",
-        defaultValue = false
-    )
-    val ENABLE_GUTTER_MARKERS = BooleanSettingDefinition(
-        key = "com.github.uiopak.lstcrc.app.enableGutterMarkers",
-        defaultValue = true
-    )
-    val ENABLE_GUTTER_FOR_NEW_FILES = BooleanSettingDefinition(
-        key = "com.github.uiopak.lstcrc.app.enableGutterForNewFiles",
-        defaultValue = false
-    )
-    val SHOW_TOOL_WINDOW_TITLE = BooleanSettingDefinition(
-        key = "com.github.uiopak.lstcrc.app.showToolWindowTitle",
-        defaultValue = false
-    )
-    val SHOW_WIDGET_CONTEXT = BooleanSettingDefinition(
-        key = "com.github.uiopak.lstcrc.app.showWidgetContext",
-        defaultValue = false
-    )
-    val EXPAND_NEW_FILES_IN_COLLAPSED_DIRS = BooleanSettingDefinition(
-        key = "com.github.uiopak.lstcrc.app.expandNewFilesInCollapsedDirs",
-        defaultValue = true
-    )
-    val SHOW_UNTRACKED_FILES_AS_NEW = BooleanSettingDefinition(
-        key = "com.github.uiopak.lstcrc.app.showUntrackedFilesAsNew",
-        defaultValue = false
-    )
-    val SHOW_LINE_STATS_IN_TREE = BooleanSettingDefinition(
-        key = "com.github.uiopak.lstcrc.app.showLineStatsInTree",
-        defaultValue = false
-    )
-    val SHOW_CONTEXT_SINGLE_REPO = BooleanSettingDefinition(
-        key = "com.github.uiopak.lstcrc.app.showContextSingleRepo",
-        defaultValue = true
-    )
-    val SHOW_CONTEXT_MULTI_REPO = BooleanSettingDefinition(
-        key = "com.github.uiopak.lstcrc.app.showContextMultiRepo",
-        defaultValue = true
-    )
-    val SHOW_CONTEXT_FOR_COMMITS = BooleanSettingDefinition(
-        key = "com.github.uiopak.lstcrc.app.showContextForCommits",
-        defaultValue = false
-    )
+    val SHOW_CONTEXT_MENU = booleanSetting("showContextMenu", false)
+    val USER_DOUBLE_CLICK_DELAY = intSetting("userDoubleClickDelay", -1)
+    val INCLUDE_HEAD_IN_SCOPES = booleanSetting("includeHeadInScopes", false)
+    val ENABLE_GUTTER_MARKERS = booleanSetting("enableGutterMarkers", true)
+    val ENABLE_GUTTER_FOR_NEW_FILES = booleanSetting("enableGutterForNewFiles", false)
+    val SHOW_TOOL_WINDOW_TITLE = booleanSetting("showToolWindowTitle", false)
+    val SHOW_WIDGET_CONTEXT = booleanSetting("showWidgetContext", false)
+    val EXPAND_NEW_FILES_IN_COLLAPSED_DIRS = booleanSetting("expandNewFilesInCollapsedDirs", true)
+    val SHOW_UNTRACKED_FILES_AS_NEW = booleanSetting("showUntrackedFilesAsNew", false)
+    val SHOW_LINE_STATS_IN_TREE = booleanSetting("showLineStatsInTree", false)
+    val SHOW_CONTEXT_SINGLE_REPO = booleanSetting("showContextSingleRepo", true)
+    val SHOW_CONTEXT_MULTI_REPO = booleanSetting("showContextMultiRepo", true)
+    val SHOW_CONTEXT_FOR_COMMITS = booleanSetting("showContextForCommits", false)
 
-    val stringSettings: List<StringSettingDefinition> = listOf(
+    val all: List<SettingDefinition<*>> = listOf(
         SINGLE_CLICK_ACTION, DOUBLE_CLICK_ACTION, MIDDLE_CLICK_ACTION,
-        DOUBLE_MIDDLE_CLICK_ACTION, RIGHT_CLICK_ACTION, DOUBLE_RIGHT_CLICK_ACTION
-    )
-
-    val booleanSettings: List<BooleanSettingDefinition> = listOf(
-        SHOW_CONTEXT_MENU, INCLUDE_HEAD_IN_SCOPES, ENABLE_GUTTER_MARKERS,
+        DOUBLE_MIDDLE_CLICK_ACTION, RIGHT_CLICK_ACTION, DOUBLE_RIGHT_CLICK_ACTION,
+        SHOW_CONTEXT_MENU, USER_DOUBLE_CLICK_DELAY, INCLUDE_HEAD_IN_SCOPES, ENABLE_GUTTER_MARKERS,
         ENABLE_GUTTER_FOR_NEW_FILES, SHOW_TOOL_WINDOW_TITLE, SHOW_WIDGET_CONTEXT,
         SHOW_CONTEXT_SINGLE_REPO, SHOW_CONTEXT_MULTI_REPO, SHOW_CONTEXT_FOR_COMMITS,
         SHOW_LINE_STATS_IN_TREE, EXPAND_NEW_FILES_IN_COLLAPSED_DIRS, SHOW_UNTRACKED_FILES_AS_NEW
     )
 
-    val intSettings: List<IntSettingDefinition> = listOf(USER_DOUBLE_CLICK_DELAY)
-
     val allKeys: List<String>
-        get() = stringSettings.map { it.key } + booleanSettings.map { it.key } + intSettings.map { it.key }
+        get() = all.map { it.key }
 }
 
 @State(name = "LstCrcSettingsService", storages = [Storage("lstCrcSettings.xml")])
@@ -139,14 +82,12 @@ class LstCrcSettingsService : PersistentStateComponent<LstCrcSettingsService.Set
 
     // --- Typed accessors: settings[LstCrcSettingDefinitions.SHOW_LINE_STATS_IN_TREE] = true ---
 
-    operator fun get(definition: StringSettingDefinition): String = getString(definition.key, definition.defaultValue)
-    operator fun set(definition: StringSettingDefinition, value: String) = setString(definition.key, value)
+    operator fun <T : Any> get(definition: SettingDefinition<T>): T =
+        storedValue(definition.key)?.let(definition.parse) ?: definition.defaultValue
 
-    operator fun get(definition: BooleanSettingDefinition): Boolean = getBoolean(definition.key, definition.defaultValue)
-    operator fun set(definition: BooleanSettingDefinition, value: Boolean) = setBoolean(definition.key, value)
-
-    operator fun get(definition: IntSettingDefinition): Int = getInt(definition.key, definition.defaultValue)
-    operator fun set(definition: IntSettingDefinition, value: Int) = setInt(definition.key, value)
+    operator fun <T : Any> set(definition: SettingDefinition<T>, value: T) {
+        state.values[definition.key] = value.toString()
+    }
 
     // --- Raw-key accessors, used by the Remote Robot JavaScript (which cannot pick an operator overload) ---
 
@@ -172,8 +113,6 @@ class LstCrcSettingsService : PersistentStateComponent<LstCrcSettingsService.Set
 
     @Suppress("unused")
     fun resetToDefaults() {
-        LstCrcSettingDefinitions.stringSettings.forEach { this[it] = it.defaultValue }
-        LstCrcSettingDefinitions.booleanSettings.forEach { this[it] = it.defaultValue }
-        LstCrcSettingDefinitions.intSettings.forEach { this[it] = it.defaultValue }
+        LstCrcSettingDefinitions.all.forEach { state.values[it.key] = it.defaultValue.toString() }
     }
 }
