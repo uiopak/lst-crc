@@ -57,8 +57,8 @@ This document lists each current `src/main` file separately and explains why it 
 ## Listeners And State
 
 ### PluginStartupActivity.kt
-- Role: Startup bootstrap. It initializes `VcsChangeListener` and `VisualTrackerManager`, refreshes editor tab colors, waits for VCS initialization (not smart mode), runs the first diff load, then rebroadcasts the tool-window state and updates the status bar widget.
-- Depends on: `ProjectActivity`, `ProjectLevelVcsManager` (looked up as a service, see `CLAUDE.md`), `GitService`, `ToolWindowStateService`, `ProjectActiveDiffDataService`, and `LstCrcStatusWidget`.
+- Role: Startup bootstrap. It initializes `VcsChangeListener` and `VisualTrackerManager`, refreshes editor tab colors, waits for VCS initialization (not smart mode), runs the first diff load, then rebroadcasts the tool-window state (which also updates the status bar widget).
+- Depends on: `ProjectActivity`, `ProjectLevelVcsManager` (looked up as a service, see `CLAUDE.md`), `GitService`, `ToolWindowStateService`, and `ProjectActiveDiffDataService`.
 - Connected to: `VcsChangeListener`, `VisualTrackerManager`, and the initial active-diff load.
 - Why it exists: The plugin needs deterministic initialization so scopes, widget text, gutter state, and the tool window start in sync, without waiting for indexing.
 

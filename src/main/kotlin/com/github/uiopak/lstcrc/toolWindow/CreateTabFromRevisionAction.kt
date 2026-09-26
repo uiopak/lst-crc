@@ -6,6 +6,7 @@ import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.diagnostic.debug
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.wm.ToolWindow
@@ -31,13 +32,13 @@ class CreateTabFromRevisionAction : AnAction() {
     override fun actionPerformed(e: AnActionEvent) {
         val project = e.project ?: return
         val revisionString = singleSelectedRevisionString(e) ?: return
-        logger.info("Action performed: Create tab for revision '$revisionString'")
+        logger.debug { "Action performed: Create tab for revision '$revisionString'" }
 
         val newAlias = promptForAlias(project, revisionString)
 
         // If the user cancels the dialog, do nothing.
         if (newAlias == null) {
-            logger.info("User cancelled alias selection. Aborting tab creation.")
+            logger.debug { "User cancelled alias selection. Aborting tab creation." }
             return
         }
 

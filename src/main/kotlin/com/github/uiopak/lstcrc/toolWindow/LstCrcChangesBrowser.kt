@@ -23,6 +23,7 @@ import com.intellij.openapi.actionSystem.UiDataProvider
 import com.intellij.openapi.application.EDT
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.service
+import com.intellij.openapi.diagnostic.debug
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.fileEditor.OpenFileDescriptor
@@ -568,7 +569,7 @@ class LstCrcChangesBrowser(
      * Initiates a refresh of the data for this browser's target branch.
      */
     fun requestRefreshData() {
-        logger.debug("UI_REFRESH: Browser for '$targetBranchToCompare' is requesting a data refresh.")
+        logger.debug { "UI_REFRESH: Browser for '$targetBranchToCompare' is requesting a data refresh." }
         project.service<ToolWindowStateService>().refreshDataForCurrentSelection()
     }
 
@@ -648,7 +649,7 @@ class LstCrcChangesBrowser(
         pendingClickJob?.cancel()
         clickScope.cancel()
         shutdown()
-        logger.info("LstCrcChangesBrowser for branch '$targetBranchToCompare' disposed.")
+        logger.debug { "LstCrcChangesBrowser for branch '$targetBranchToCompare' disposed." }
     }
 
     private var pendingClickJob: kotlinx.coroutines.Job? = null
@@ -749,7 +750,7 @@ class LstCrcChangesBrowser(
         // Remove the default empty popup handler that the base class installs.
         viewer.mouseListeners.filterIsInstance<PopupHandler>().forEach {
             viewer.removeMouseListener(it)
-            logger.debug("Removed a default PopupHandler to prevent empty context menu.")
+            logger.debug { "Removed a default PopupHandler to prevent empty context menu." }
         }
 
         // Install our custom context menu handler

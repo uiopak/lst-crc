@@ -17,6 +17,7 @@ import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.State
 import com.intellij.openapi.components.Storage
 import com.intellij.openapi.components.service
+import com.intellij.openapi.diagnostic.debug
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.project.Project
 import git4idea.repo.GitRepository
@@ -52,39 +53,39 @@ class ToolWindowStateService(private val project: Project, val coroutineScope: C
     private val refreshQueued = AtomicBoolean(false)
 
     override fun getState(): ToolWindowState {
-        logger.debug("getState() called. Current state: $myState")
+        logger.debug { "getState() called. Current state: $myState" }
         return normalizeState(myState)
     }
 
     override fun loadState(state: ToolWindowState) {
-        logger.info("loadState() called. Loading state: $state")
+        logger.debug { "loadState() called. Loading state: $state" }
         myState = normalizeState(state)
         broadcast()
     }
 
     override fun noStateLoaded() {
-        logger.info("noStateLoaded() called. Initializing with default state.")
+        logger.debug { "noStateLoaded() called. Initializing with default state." }
         replaceState(ToolWindowState())
     }
 
     fun addTab(branchName: String) {
         if (project.isDisposed) return
-        logger.info("addTab('$branchName') called.")
+        logger.debug { "addTab('$branchName') called." }
         if (myState.openTabs.any { it.branchName == branchName }) {
-            logger.info("Tab $branchName already exists.")
+            logger.debug { "Tab $branchName already exists." }
             return
         }
 
         replaceState(myState.copy(openTabs = myState.openTabs + TabInfo(branchName = branchName)))
-        logger.info("Tab '$branchName' added. New state: $myState")
+        logger.debug { "Tab '$branchName' added. New state: $myState" }
     }
 
     fun removeTab(branchName: String) {
         if (project.isDisposed) return
-        logger.info("removeTab($branchName) called.")
+        logger.debug { "removeTab($branchName) called." }
         val removedIndex = myState.openTabs.indexOfFirst { it.branchName == branchName }
         if (removedIndex == -1) {
-            logger.debug("Tab $branchName was not present. No state change needed.")
+            logger.debug { "Tab $branchName was not present. No state change needed." }
             return
         }
 
@@ -98,7 +99,7 @@ class ToolWindowStateService(private val project: Project, val coroutineScope: C
         }
 
         replaceState(myState.copy(openTabs = updatedTabs, selectedTabIndex = updatedSelectedIndex))
-        logger.info("Tab $branchName removed from state. New state: $myState")
+        logger.debug { "Tab $branchName removed from state. New state: $myState" }
     }
 
     fun setSelectedTab(index: Int) {
@@ -112,7 +113,7 @@ class ToolWindowStateService(private val project: Project, val coroutineScope: C
 
         if (myState.selectedTabIndex != validIndex) {
             myState = myState.copy(selectedTabIndex = validIndex)
-            logger.info("Selected tab index set to $validIndex. New state: $myState")
+            logger.debug { "Selected tab index set to $validIndex. New state: $myState" }
             // Broadcast first so the status bar widget updates immediately, then load the new tab's data.
             broadcast()
             refreshDataForCurrentSelection()
@@ -128,7 +129,7 @@ class ToolWindowStateService(private val project: Project, val coroutineScope: C
      */
     private suspend fun loadDataForTab(tabInfo: TabInfo?) {
         val profileName = tabInfo?.branchName ?: "HEAD"
-        logger.info("DATA_FLOW: Initiating data load for profile: '$profileName'")
+        logger.debug { "DATA_FLOW: Initiating data load for profile: '$profileName'" }
         val gitService = project.service<GitService>()
         val diffDataService = project.service<ProjectActiveDiffDataService>()
 
@@ -136,7 +137,7 @@ class ToolWindowStateService(private val project: Project, val coroutineScope: C
             val result = gitService.getChanges(tabInfo)
             withContext(Dispatchers.EDT) {
                 if (project.isDisposed) return@withContext
-                logger.info("DATA_FLOW: Loaded ${result.categorizedChanges.allChanges.size} changes for '$profileName'.")
+                logger.debug { "DATA_FLOW: Loaded ${result.categorizedChanges.allChanges.size} changes for '$profileName'." }
                 if (tabInfo != null && result.failures.isNotEmpty()) {
                     handleBranchFailures(tabInfo, result.failures)
                 }
@@ -167,7 +168,7 @@ class ToolWindowStateService(private val project: Project, val coroutineScope: C
         }
 
         if (actualBranchFailures.isEmpty()) {
-            logger.info("Handling branch failures: All failures were for commit hashes, taking no action. Original failures: $failures")
+            logger.debug { "Handling branch failures: All failures were for commit hashes, taking no action. Original failures: $failures" }
             return
         }
 
@@ -189,7 +190,7 @@ class ToolWindowStateService(private val project: Project, val coroutineScope: C
         }
 
         if (tabConfigUpdated) {
-            logger.info("Tab '${tabInfo.branchName}' config updated due to missing branches. New map: $newComparisonMap")
+            logger.debug { "Tab '${tabInfo.branchName}' config updated due to missing branches. New map: $newComparisonMap" }
             // Update the state, but do NOT trigger another refresh to avoid loops within this call stack.
             updateTabComparisonMap(tabInfo.branchName, newComparisonMap, triggerRefresh = false)
 
@@ -201,10 +202,10 @@ class ToolWindowStateService(private val project: Project, val coroutineScope: C
                 // We must check if the tab that was corrected is still the active one.
                 // The user might have switched tabs while the refresh was running.
                 if (getSelectedTabInfo()?.branchName == tabInfo.branchName) {
-                    logger.info("Scheduling a new data refresh after correcting active tab '${tabInfo.branchName}' configuration.")
+                    logger.debug { "Scheduling a new data refresh after correcting active tab '${tabInfo.branchName}' configuration." }
                     refreshDataForCurrentSelection()
                 } else {
-                    logger.info("Tab '${tabInfo.branchName}' was corrected, but is no longer active. Skipping automatic refresh.")
+                    logger.debug { "Tab '${tabInfo.branchName}' was corrected, but is no longer active. Skipping automatic refresh." }
                 }
             }
         }
@@ -262,7 +263,7 @@ class ToolWindowStateService(private val project: Project, val coroutineScope: C
         refreshQueued.set(true)
 
         activeRefresh.get()?.let {
-            logger.debug("ACTION: Refresh already in progress. Coalescing another refresh request.")
+            logger.debug { "ACTION: Refresh already in progress. Coalescing another refresh request." }
             return it
         }
 
@@ -271,13 +272,13 @@ class ToolWindowStateService(private val project: Project, val coroutineScope: C
         }.asCompletableFuture()
 
         if (!activeRefresh.compareAndSet(null, refreshFuture)) {
-            logger.debug("ACTION: Refresh was scheduled concurrently. Reusing the active refresh future.")
+            logger.debug { "ACTION: Refresh was scheduled concurrently. Reusing the active refresh future." }
             return activeRefresh.get() ?: refreshFuture
         }
 
         refreshFuture.whenComplete { _, _ ->
             if (activeRefresh.compareAndSet(refreshFuture, null) && refreshQueued.get() && !project.isDisposed) {
-                logger.debug("ACTION: A refresh request arrived during completion. Scheduling another coalesced cycle.")
+                logger.debug { "ACTION: A refresh request arrived during completion. Scheduling another coalesced cycle." }
                 refreshDataForCurrentSelection()
             }
         }
@@ -377,7 +378,7 @@ class ToolWindowStateService(private val project: Project, val coroutineScope: C
         if (updatedTab == currentTab) return
 
         replaceState(myState.copy(openTabs = myState.openTabs.toMutableList().also { it[tabIndex] = updatedTab }))
-        logger.info("Tab '$branchName' updated. New state: $myState")
+        logger.debug { "Tab '$branchName' updated. New state: $myState" }
 
         if (triggerRefresh && myState.selectedTabIndex == tabIndex) {
             refreshDataForCurrentSelection()

@@ -8,6 +8,7 @@ import com.github.uiopak.lstcrc.services.ToolWindowStateService
 import com.github.uiopak.lstcrc.utils.LstCrcKeys
 import com.intellij.openapi.application.EDT
 import com.intellij.openapi.components.service
+import com.intellij.openapi.diagnostic.debug
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.project.Project
@@ -91,17 +92,17 @@ object ToolWindowHelper {
      * @param branchName The branch or revision identifier for the new tab.
      */
     fun createAndSelectTab(project: Project, toolWindow: ToolWindow, branchName: String) {
-        logger.info("HELPER: createAndSelectTab called for '$branchName'")
+        logger.debug { "HELPER: createAndSelectTab called for '$branchName'" }
         val contentManager = toolWindow.contentManager
         val stateService = project.service<ToolWindowStateService>()
 
         val existingContent = findContentByBranchName(contentManager, branchName)
 
         if (existingContent != null) {
-            logger.info("HELPER: Tab for '$branchName' already exists. Selecting it.")
+            logger.debug { "HELPER: Tab for '$branchName' already exists. Selecting it." }
             contentManager.setSelectedContent(existingContent, true)
         } else {
-            logger.info("HELPER: Creating new tab for '$branchName'")
+            logger.debug { "HELPER: Creating new tab for '$branchName'" }
             createSelectAndRegisterBranchContent(project, branchName, contentManager, stateService)
         }
     }
@@ -169,7 +170,7 @@ object ToolWindowHelper {
      */
     fun openBranchSelectionTab(project: Project, toolWindow: ToolWindow) {
         activateToolWindow(toolWindow) {
-            logger.info("HELPER: openBranchSelectionTab called.")
+            logger.debug { "HELPER: openBranchSelectionTab called." }
             val contentManager: ContentManager = toolWindow.contentManager
 
             if (selectExistingBranchSelectionTab(contentManager)) {
@@ -201,7 +202,7 @@ object ToolWindowHelper {
         val existingSelection = findBranchSelectionContent(contentManager) ?: return false
         contentManager.setSelectedContent(existingSelection, true)
         (existingSelection.component as? BranchSelectionPanel)?.requestFocusOnSearchField()
-        logger.info("HELPER: Found existing '$selectionTabName' tab and selected it.")
+        logger.debug { "HELPER: Found existing '$selectionTabName' tab and selected it." }
         return true
     }
 
@@ -218,7 +219,7 @@ object ToolWindowHelper {
         val branchSelectionUi = BranchSelectionPanel(gitService, primaryRepo, branchSnapshot) { selectedBranchName ->
             handleBranchSelected(project, toolWindow, stateService, selectedBranchName)
         }
-        logger.info("HELPER: Creating and adding new '$selectionTabName' tab to UI.")
+        logger.debug { "HELPER: Creating and adding new '$selectionTabName' tab to UI." }
         val newContent = ContentFactory.getInstance().createContent(branchSelectionUi, selectionTabName, true).apply {
             isCloseable = true
             @Suppress("UsePropertyAccessSyntax") // Content.disposer is a val; the setter is the only API
@@ -235,7 +236,7 @@ object ToolWindowHelper {
         stateService: ToolWindowStateService,
         selectedBranchName: String
     ) {
-        logger.info("HELPER (Callback): Branch '$selectedBranchName' selected from panel.")
+        logger.debug { "HELPER (Callback): Branch '$selectedBranchName' selected from panel." }
         val manager = toolWindow.contentManager
         val selectionTabContent = findBranchSelectionContent(manager)
         if (selectedBranchName.isBlank() || selectionTabContent == null) {
@@ -261,7 +262,7 @@ object ToolWindowHelper {
         selectionTabContent: Content,
         selectedBranchName: String
     ) {
-        logger.info("HELPER (Callback): Replacing selection tab with '$selectedBranchName'.")
+        logger.debug { "HELPER (Callback): Replacing selection tab with '$selectedBranchName'." }
         val selectionIndex = manager.getIndexOfContent(selectionTabContent)
         manager.removeContent(selectionTabContent, true)
 

@@ -4,6 +4,7 @@ import com.github.uiopak.lstcrc.resources.LstCrcBundle
 import com.intellij.icons.AllIcons
 import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnActionEvent
+import com.intellij.openapi.diagnostic.debug
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.project.DumbAwareAction
 import com.intellij.openapi.project.Project
@@ -40,7 +41,7 @@ class OpenBranchSelectionTabAction(
     }
 
     override fun actionPerformed(e: AnActionEvent) {
-        logger.info("OpenBranchSelectionTabAction: actionPerformed called.")
+        logger.debug { "OpenBranchSelectionTabAction: actionPerformed called." }
         ToolWindowHelper.openBranchSelectionTab(project, toolWindow)
     }
 }

@@ -8,7 +8,7 @@ LST-CRC is organized around one central idea: one selected comparison tab produc
 
 - `src/main/resources/META-INF/plugin.xml` is the platform entry point. It registers the tool window factory, the custom scope provider, the search-scope provider, the status bar widget factory, the startup activity, the notification group, the tab rename action, and the two VCS Log actions.
 - `MyToolWindowFactory` creates the permanent `HEAD` tab, restores persisted comparison tabs (or opens one for the current branch on first use), wires content-manager listeners, and installs the add-tab action and the settings gear menu.
-- `PluginStartupActivity` initializes `VcsChangeListener` and `VisualTrackerManager`, refreshes editor tab colors, waits for VCS initialization (`ProjectLevelVcsManager.runAfterInitialization`, so it does not wait for indexing), runs the first diff load, then rebroadcasts the tool-window state and updates the status bar widget.
+- `PluginStartupActivity` initializes `VcsChangeListener` and `VisualTrackerManager`, refreshes editor tab colors, waits for VCS initialization (`ProjectLevelVcsManager.runAfterInitialization`, so it does not wait for indexing), runs the first diff load, then rebroadcasts the tool-window state, which also updates the status bar widget.
 
 ## Core Service Boundaries
 
