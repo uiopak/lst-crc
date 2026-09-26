@@ -38,6 +38,9 @@ import git4idea.commands.GitLineHandler
 import git4idea.repo.GitRepository
 import git4idea.repo.GitRepositoryManager
 import git4idea.util.GitFileUtils
+import org.apache.commons.io.ByteOrderMark
+import org.apache.commons.io.input.BOMInputStream
+import java.io.ByteArrayInputStream
 import java.nio.charset.Charset
 import java.util.concurrent.ConcurrentHashMap
 
@@ -69,7 +72,11 @@ data class CategorizedChanges(
     val lineStatsByChange: Map<ChangeLineStatsKey, ChangeLineStats>,
     /** False when the load skipped line stats because "Show line stats" was off. */
     val lineStatsIncluded: Boolean = true
-)
+) {
+    companion object {
+        val EMPTY = CategorizedChanges(emptyList(), emptyList(), emptyList(), emptyList(), emptyList(), emptyMap(), emptyMap())
+    }
+}
 
 data class ChangeLineStats(
     val addedLines: Int,
@@ -81,10 +88,8 @@ data class ChangeLineStatsKey(
     val afterPath: String?
 ) {
     companion object {
-        fun from(change: Change): ChangeLineStatsKey = ChangeLineStatsKey(
-            beforePath = normalizePath(change.beforeRevision?.file?.path),
-            afterPath = normalizePath(change.afterRevision?.file?.path)
-        )
+        fun from(change: Change): ChangeLineStatsKey =
+            fromPaths(change.beforeRevision?.file?.path, change.afterRevision?.file?.path)
 
         fun fromPaths(beforePath: String?, afterPath: String?): ChangeLineStatsKey = ChangeLineStatsKey(
             beforePath = normalizePath(beforePath),
@@ -232,10 +237,7 @@ class GitService(private val project: Project) {
         logger.debug { "getChanges called for profile: $profileName" }
 
         if (repositories.isEmpty()) {
-            return GetChangesResult(
-                CategorizedChanges(emptyList(), emptyList(), emptyList(), emptyList(), emptyList(), emptyMap(), emptyMap()),
-                emptyMap()
-            )
+            return GetChangesResult(CategorizedChanges.EMPTY, emptyMap())
         }
 
         // Line stats cost an extra `git diff --numstat` per repository plus in-process diffs of
@@ -344,8 +346,8 @@ class GitService(private val project: Project) {
      * every changed file whatever the whitespace options.
      */
     private fun loadTrackedChangesAgainstWorkingTree(repo: GitRepository, target: String, includeLineStats: Boolean): LoadedChanges {
-        val args = if (includeLineStats) trackedLineStatsDiffArgs(target) else listOf(DIFF_FILTER_PARAM, "-M", target)
-        return parseTrackedDiff(repo, GitRevisionNumber(target), runGitDiff(repo, "--raw", "-z", *args.toTypedArray()))
+        val output = runGitDiff(repo, "--raw", *trackedDiffArgs(target, includeLineStats).toTypedArray())
+        return parseTrackedDiff(repo, GitRevisionNumber(target), output)
     }
 
     /** Runs a silent `git diff` in [repo] and returns its stdout, throwing [VcsException] on failure. */
@@ -543,7 +545,8 @@ class GitService(private val project: Project) {
         knownKeys: Set<ChangeLineStatsKey> = emptySet()
     ): Map<ChangeLineStatsKey, ChangeLineStats> {
         val lineStats = linkedMapOf<ChangeLineStatsKey, ChangeLineStats>()
-        val keys = changes.map(ChangeLineStatsKey::from).toSet()
+        val keyedChanges = changes.map { ChangeLineStatsKey.from(it) to it }
+        val keys = keyedChanges.mapTo(HashSet()) { it.first }
 
         trackedLineStats.forEach { (key, stats) ->
             if (key in keys && key !in forceRecompute) {
@@ -551,8 +554,7 @@ class GitService(private val project: Project) {
             }
         }
 
-        changes.forEach { change ->
-            val key = ChangeLineStatsKey.from(change)
+        keyedChanges.forEach { (key, change) ->
             if (key in forceRecompute || (key !in lineStats && key !in knownKeys)) {
                 computeFallbackLineStats(change)?.let { lineStats[key] = it }
             }
@@ -656,15 +658,7 @@ class GitService(private val project: Project) {
     private fun createTargetContentRevision(repo: GitRepository, file: VirtualFile, revision: String): ContentRevision? {
         val relativePath = VfsUtilCore.getRelativePath(file, repo.root, '/') ?: return null
         val content = runCatching { loadRevisionText(repo, revision, relativePath, file.charset) }.getOrElse { return null }
-        val filePath = VcsUtil.getFilePath(file)
-
-        return object : ContentRevision {
-            override fun getFile(): FilePath = filePath
-
-            override fun getContent(): String = content
-
-            override fun getRevisionNumber(): VcsRevisionNumber = GitRevisionNumber(revision)
-        }
+        return TextContentRevision(VcsUtil.getFilePath(file), content, GitRevisionNumber(revision))
     }
 }
 
@@ -694,33 +688,48 @@ internal fun calculateLineStats(beforeContent: String, afterContent: String): Ch
     )
 }
 
-internal fun trackedLineStatsDiffArgs(vararg revisions: String): List<String> = buildList {
-    add("--numstat")
+/** `git diff` options for the tracked changes against [target]; with [includeLineStats] also `--numstat`. */
+internal fun trackedDiffArgs(target: String, includeLineStats: Boolean): List<String> = buildList {
+    if (includeLineStats) {
+        add("--numstat")
+        add(IGNORE_CR_AT_EOL_PARAM)
+    }
     add("-z")
     add(DIFF_FILTER_PARAM)
     add("-M")
-    add(IGNORE_CR_AT_EOL_PARAM)
-    addAll(revisions)
+    add(target)
+}
+
+/**
+ * A revision whose text is already loaded: the target side and the live-document side of an unsaved edit.
+ * Unlike an anonymous [ContentRevision], two loads of the same text are equal, so a refresh that finds the
+ * same unsaved content is recognized as unchanged (see `ProjectActiveDiffDataService.updateActiveDiff`).
+ */
+internal data class TextContentRevision(
+    private val filePath: FilePath,
+    private val text: String,
+    private val revision: VcsRevisionNumber
+) : ContentRevision {
+    override fun getFile(): FilePath = filePath
+
+    override fun getContent(): String = text
+
+    override fun getRevisionNumber(): VcsRevisionNumber = revision
+}
+
+/** The revision number of live-document content. One instance, so equal content means equal revisions. */
+private object LocalRevisionNumber : VcsRevisionNumber {
+    override fun asString(): String = "LOCAL"
+
+    override fun compareTo(other: VcsRevisionNumber): Int = 0
 }
 
 internal fun createLiveDocumentContentRevision(file: VirtualFile): ContentRevision {
-    val filePath = VcsUtil.getFilePath(file)
     val content = ApplicationManager.getApplication().runReadAction<String> {
         FileDocumentManager.getInstance().getDocument(file)?.immutableCharSequence?.toString()
             ?: VfsUtilCore.loadText(file)
     }
-
-    return object : ContentRevision {
-        override fun getFile(): FilePath = filePath
-
-        override fun getContent(): String = content
-
-        override fun getRevisionNumber(): VcsRevisionNumber = object : VcsRevisionNumber {
-            override fun asString(): String = "LOCAL"
-
-            override fun compareTo(other: VcsRevisionNumber): Int = 0
-        }
-    }
+    return TextContentRevision(VcsUtil.getFilePath(file), content, LocalRevisionNumber)
 }
 
 internal fun loadRevisionTextContent(
@@ -731,19 +740,17 @@ internal fun loadRevisionTextContent(
     charset: Charset
 ): String {
     val revisionContentBytes = GitFileUtils.getFileContent(project, repoRoot, revision, relativePath)
-    val rawContent = org.apache.commons.io.input.BOMInputStream.builder()
-        .setInputStream(java.io.ByteArrayInputStream(revisionContentBytes))
+    val rawContent = BOMInputStream.builder()
+        .setInputStream(ByteArrayInputStream(revisionContentBytes))
         .setByteOrderMarks(
-            org.apache.commons.io.ByteOrderMark.UTF_8,
-            org.apache.commons.io.ByteOrderMark.UTF_16LE,
-            org.apache.commons.io.ByteOrderMark.UTF_16BE,
-            org.apache.commons.io.ByteOrderMark.UTF_32LE,
-            org.apache.commons.io.ByteOrderMark.UTF_32BE
+            ByteOrderMark.UTF_8,
+            ByteOrderMark.UTF_16LE,
+            ByteOrderMark.UTF_16BE,
+            ByteOrderMark.UTF_32LE,
+            ByteOrderMark.UTF_32BE
         )
         .get()
-        .use {
-            it.reader(charset).readText()
-        }
+        .use { it.reader(charset).readText() }
 
     // The IntelliJ Document model requires LF ('\n') line endings, but Git on Windows might return CRLF ('\r\n').
     return StringUtil.convertLineSeparators(rawContent)

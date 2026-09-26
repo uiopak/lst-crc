@@ -273,35 +273,15 @@ class VisualTrackerManager(
             return null
         }
 
-        if (shouldSkipTrackerForCurrentRevision(repository, targetRevision)) {
-            return null
-        }
-
-        if (shouldSkipTrackerForNewFile(diffDataService, file)) {
-            return null
-        }
-
-        return targetRevision
-    }
-
-    private fun shouldSkipTrackerForCurrentRevision(repository: GitRepository, targetRevision: String): Boolean {
+        // The native tracker already compares against the current revision, unless HEAD is included in scopes.
         val isTargetSameAsCurrent = targetRevision == repository.currentBranchName ||
             targetRevision == repository.currentRevision ||
             targetRevision == "HEAD"
-        return isTargetSameAsCurrent && !ToolWindowSettingsProvider.isIncludeHeadInScopes()
-    }
+        if (isTargetSameAsCurrent && !ToolWindowSettingsProvider.isIncludeHeadInScopes()) return null
 
-    private fun shouldSkipTrackerForNewFile(
-        diffDataService: ProjectActiveDiffDataService,
-        file: VirtualFile
-    ): Boolean = !ToolWindowSettingsProvider.isGutterForNewFilesEnabled() &&
-        file.path in diffDataService.createdFilePaths
+        if (!ToolWindowSettingsProvider.isGutterForNewFilesEnabled() && file.path in diffDataService.createdFilePaths) return null
 
-    private fun createVisualTracker(document: Document, file: VirtualFile): SimpleLocalLineStatusTracker {
-        val tracker = SimpleLocalLineStatusTracker.createTracker(project, document, file)
-        val stableTracker: LocalLineStatusTracker<*> = tracker
-        stableTracker.mode = VISIBLE_MODE
-        return tracker
+        return targetRevision
     }
 
     private fun performInterception(nativeTracker: LocalLineStatusTracker<*>, targetRevision: String) {
@@ -324,7 +304,10 @@ class VisualTrackerManager(
     private fun ensureVisualTracker(document: Document, file: VirtualFile, targetRevision: String) {
         val visualTracker = visualTrackers.computeIfAbsent(document) {
             logger.debug { "VISUAL_TRACKER: Creating visual tracker for ${file.name}" }
-            createVisualTracker(document, file)
+            val tracker = SimpleLocalLineStatusTracker.createTracker(project, document, file)
+            val localTracker: LocalLineStatusTracker<*> = tracker // `mode` is set through the base type
+            localTracker.mode = VISIBLE_MODE
+            tracker
         }
         if (loadedRevisions.put(document, targetRevision) == targetRevision) return
 

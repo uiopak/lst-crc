@@ -508,45 +508,31 @@ tasks {
             }
 
             logger.lifecycle("Stopping ${matchingProcesses.size} runIdeForUiTests process(es).")
-            val osName = System.getProperty("os.name").lowercase()
-            matchingProcesses.forEach { (pid, commandLine) ->
-                logger.lifecycle("Stopping PID $pid: $commandLine")
-                if (osName.contains("windows")) {
-                    runCommand("taskkill", "/PID", pid, "/T", "/F")
+            val isWindows = System.getProperty("os.name").lowercase().contains("windows")
+
+            // Stops [processes] (with SIGKILL when [force]) and waits up to [timeout] for all of them to exit.
+            fun stopAndWait(processes: List<Pair<String, String>>, force: Boolean, timeout: Duration): Boolean {
+                processes.forEach { (pid, commandLine) ->
+                    logger.lifecycle("${if (force) "Force stopping" else "Stopping"} PID $pid: $commandLine")
+                    when {
+                        isWindows -> runCommand("taskkill", "/PID", pid, "/T", "/F")
+                        force -> runCommand("kill", "-9", pid)
+                        else -> runCommand("kill", pid)
+                    }
                 }
-                else {
-                    runCommand("kill", pid)
+                val deadline = System.nanoTime() + timeout.toNanos()
+                while (System.nanoTime() < deadline) {
+                    if (findMatchingProcesses().isEmpty()) {
+                        logger.lifecycle("All runIdeForUiTests processes stopped.")
+                        return true
+                    }
+                    Thread.sleep(250)
                 }
+                return false
             }
 
-            val gracefulDeadline = System.nanoTime() + Duration.ofSeconds(10).toNanos()
-            while (System.nanoTime() < gracefulDeadline) {
-                if (findMatchingProcesses().isEmpty()) {
-                    logger.lifecycle("All runIdeForUiTests processes stopped.")
-                    return@doLast
-                }
-                Thread.sleep(250)
-            }
-
-            val survivors = findMatchingProcesses()
-            survivors.forEach { (pid, commandLine) ->
-                logger.lifecycle("Force stopping PID $pid: $commandLine")
-                if (osName.contains("windows")) {
-                    runCommand("taskkill", "/PID", pid, "/T", "/F")
-                }
-                else {
-                    runCommand("kill", "-9", pid)
-                }
-            }
-
-            val forceDeadline = System.nanoTime() + Duration.ofSeconds(5).toNanos()
-            while (System.nanoTime() < forceDeadline) {
-                if (findMatchingProcesses().isEmpty()) {
-                    logger.lifecycle("All runIdeForUiTests processes stopped.")
-                    return@doLast
-                }
-                Thread.sleep(250)
-            }
+            if (stopAndWait(matchingProcesses, force = false, timeout = Duration.ofSeconds(10))) return@doLast
+            if (stopAndWait(findMatchingProcesses(), force = true, timeout = Duration.ofSeconds(5))) return@doLast
 
             val stillAlive = findMatchingProcesses()
             check(stillAlive.isEmpty()) {

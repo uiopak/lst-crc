@@ -30,19 +30,11 @@ class SingleRepoBranchSelectionDialog(
         return JBUI.size(350, 500)
     }
 
-    override fun createCenterPanel(): JComponent {
-        return createBranchSelectionPanel()
-    }
-
-    private fun createBranchSelectionPanel(): JComponent {
-        val gitService = project.service<GitService>()
-        val panel = BranchSelectionPanel(gitService, repository) { branchName ->
-            this.selectedBranchName = branchName
-            this.doOKAction()
-        }
-        panel.requestFocusOnSearchField()
-        return panel
-    }
+    override fun createCenterPanel(): JComponent =
+        BranchSelectionPanel(project.service<GitService>(), repository) { branchName ->
+            selectedBranchName = branchName
+            doOKAction()
+        }.apply { requestFocusOnSearchField() }
 
     /**
      * We handle closing via the branch selection callback, so we don't need explicit OK/Cancel buttons.
@@ -53,18 +45,14 @@ class SingleRepoBranchSelectionDialog(
         if (isOK) { // Prevent multiple executions
             return
         }
-        applySelectedBranch()
+        selectedBranchName?.let { branchToSet ->
+            project.service<ToolWindowStateService>().updateTabRepoComparison(
+                branchName = tabInfo.branchName,
+                repositoryRootPath = repository.root.path,
+                targetRevision = branchToSet,
+                defaultTarget = tabInfo.branchName
+            )
+        }
         super.doOKAction()
-    }
-
-    private fun applySelectedBranch() {
-        val branchToSet = selectedBranchName ?: return
-        val stateService = project.service<ToolWindowStateService>()
-        stateService.updateTabRepoComparison(
-            branchName = tabInfo.branchName,
-            repositoryRootPath = repository.root.path,
-            targetRevision = branchToSet,
-            defaultTarget = tabInfo.branchName
-        )
     }
 }

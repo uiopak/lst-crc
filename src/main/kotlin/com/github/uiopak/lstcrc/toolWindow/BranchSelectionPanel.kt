@@ -6,6 +6,7 @@ import com.github.uiopak.lstcrc.services.GitService
 import com.intellij.openapi.Disposable
 import com.intellij.icons.AllIcons
 import com.intellij.ui.ColoredTreeCellRenderer
+import com.intellij.ui.DocumentAdapter
 import com.intellij.ui.SearchTextField
 import com.intellij.ui.SimpleTextAttributes
 import com.intellij.ui.components.JBPanel
@@ -21,11 +22,11 @@ import java.awt.event.KeyEvent
 import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
 import javax.swing.JTree
+import javax.swing.Icon
 import javax.swing.event.DocumentEvent
-import javax.swing.event.DocumentListener
 import javax.swing.tree.DefaultMutableTreeNode
 import javax.swing.tree.DefaultTreeModel
-import javax.swing.tree.TreeNode
+import javax.swing.tree.TreePath
 
 /**
  * A UI panel that displays Git branches in a filterable, hierarchical tree, allowing the user to select one.
@@ -46,12 +47,8 @@ class BranchSelectionPanel(
     private val localBranches: List<String>
     private val remoteBranches: List<String>
     private val tree: Tree
-    private val filterDocumentListener = object : DocumentListener {
-        override fun insertUpdate(e: DocumentEvent?) = filterTree()
-
-        override fun removeUpdate(e: DocumentEvent?) = filterTree()
-
-        override fun changedUpdate(e: DocumentEvent?) = filterTree()
+    private val filterDocumentListener = object : DocumentAdapter() {
+        override fun textChanged(e: DocumentEvent) = filterTree()
     }
 
     // Data classes to represent nodes in the tree clearly.
@@ -64,8 +61,10 @@ class BranchSelectionPanel(
         // Git4Idea repository model which is already cached in memory (no I/O).
         // This constructor may run on the EDT, so it must never run git commands.
         val targetRepo = repository ?: gitService.getPrimaryRepository()
-        localBranches = resolvedBranches(branchSnapshot?.localBranches, targetRepo?.branches?.localBranches?.map { it.name })
-        remoteBranches = resolvedBranches(branchSnapshot?.remoteBranches, targetRepo?.branches?.remoteBranches?.map { it.name })
+        localBranches = branchSnapshot?.localBranches?.takeIf { it.isNotEmpty() }
+            ?: targetRepo?.branches?.localBranches?.map { it.name }.orEmpty()
+        remoteBranches = branchSnapshot?.remoteBranches?.takeIf { it.isNotEmpty() }
+            ?: targetRepo?.branches?.remoteBranches?.map { it.name }.orEmpty()
         tree = createBranchSelectionTree()
 
         searchTextField.addDocumentListener(filterDocumentListener)
@@ -105,7 +104,7 @@ class BranchSelectionPanel(
             tree.clearSelection()
             return
         }
-        val path = javax.swing.tree.TreePath(match.path)
+        val path = TreePath(match.path)
         tree.selectionPath = path
         tree.scrollPathToVisible(path)
     }
@@ -121,14 +120,14 @@ class BranchSelectionPanel(
         return (0 until tree.rowCount)
             .mapNotNull { row -> tree.getPathForRow(row)?.lastPathComponent as? DefaultMutableTreeNode }
             .filter(DefaultMutableTreeNode::isLeaf)
-            .mapNotNull(::branchLeafText)
+            .mapNotNull { resolveBranchNodePresentation(it)?.first }
     }
 
     @Suppress("unused")
     fun selectVisibleBranchForTest(branchName: String): Boolean {
         for (row in 0 until tree.rowCount) {
             val path = tree.getPathForRow(row) ?: continue
-            val node = branchNodeAt(path) ?: continue
+            val node = path.lastPathComponent as? DefaultMutableTreeNode ?: continue
             val branchInfo = node.userObject as? BranchInfo ?: continue
             if (branchInfo.fullBranchName != branchName) {
                 continue
@@ -194,7 +193,7 @@ class BranchSelectionPanel(
         }
     }
 
-    private fun resolveBranchNodePresentation(node: DefaultMutableTreeNode): Pair<String, javax.swing.Icon>? {
+    private fun resolveBranchNodePresentation(node: DefaultMutableTreeNode): Pair<String, Icon>? {
         return when (val userObject = node.userObject) {
             is BranchCategory -> userObject.displayName to when (userObject.type) {
                 BranchCategoryType.LOCAL -> AllIcons.Nodes.Folder
@@ -211,7 +210,7 @@ class BranchSelectionPanel(
             override fun mouseClicked(e: MouseEvent) {
                 if (e.clickCount < 1) return
 
-                val node = branchNodeAt(TreeUtil.getPathForLocation(tree, e.x, e.y)) ?: return
+                val node = TreeUtil.getPathForLocation(tree, e.x, e.y)?.lastPathComponent as? DefaultMutableTreeNode ?: return
                 selectBranchNode(node)
             }
         }
@@ -230,7 +229,7 @@ class BranchSelectionPanel(
             override fun keyPressed(e: KeyEvent) {
                 if (e.keyCode != KeyEvent.VK_ENTER) return
 
-                val node = branchNodeAt(tree.selectionPath) ?: return
+                val node = tree.selectionPath?.lastPathComponent as? DefaultMutableTreeNode ?: return
                 if (selectBranchNode(node)) {
                     e.consume()
                 }
@@ -242,15 +241,6 @@ class BranchSelectionPanel(
         if (searchTextField.textEditor.hasFocus()) return false
         if (e.keyChar == KeyEvent.CHAR_UNDEFINED || e.keyChar < ' ') return false
         return !e.isControlDown && !e.isMetaDown && !e.isAltDown
-    }
-
-    private fun branchNodeAt(path: javax.swing.tree.TreePath?): DefaultMutableTreeNode? {
-        return path?.lastPathComponent as? DefaultMutableTreeNode
-    }
-
-    private fun branchLeafText(node: TreeNode): String? {
-        val treeNode = node as? DefaultMutableTreeNode ?: return null
-        return resolveBranchNodePresentation(treeNode)?.first
     }
 
     private fun selectBranchNode(node: DefaultMutableTreeNode): Boolean {
@@ -273,12 +263,6 @@ class BranchSelectionPanel(
         addBranchCategoryNode(rootNode, localCategory, localBranches, searchTerm)
         addBranchCategoryNode(rootNode, remoteCategory, remoteBranches, searchTerm)
         return DefaultTreeModel(rootNode)
-    }
-
-    private fun resolvedBranches(snapshotBranches: List<String>?, repositoryBranches: List<String>?): List<String> {
-        return snapshotBranches?.takeIf { it.isNotEmpty() }
-            ?: repositoryBranches
-            ?: emptyList()
     }
 
     private fun addBranchCategoryNode(
@@ -305,22 +289,13 @@ class BranchSelectionPanel(
             val parts = branchName.split('/')
             var currentParent = parentNode
             var currentPath = ""
-            for (i in parts.indices) {
-                val part = parts[i]
+            parts.forEachIndexed { i, part ->
                 currentPath = if (currentPath.isEmpty()) part else "$currentPath/$part"
-                var node = branchNodes[currentPath]
-                if (node == null) {
-                    val isLeaf = (i == parts.size - 1)
-                    val userObject: Any = if (isLeaf) {
-                        BranchInfo(part, branchName)
-                    } else {
-                        part
-                    }
-                    node = DefaultMutableTreeNode(userObject)
-                    branchNodes[currentPath] = node
-                    currentParent.add(node)
+                val parent = currentParent
+                currentParent = branchNodes.getOrPut(currentPath) {
+                    // The last part is the branch itself; the parts before it are folders.
+                    DefaultMutableTreeNode(if (i == parts.lastIndex) BranchInfo(part, branchName) else part).also(parent::add)
                 }
-                currentParent = node
             }
         }
     }

@@ -20,7 +20,6 @@ import com.intellij.ui.awt.RelativePoint
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBTextField
 import com.intellij.ui.components.panels.VerticalLayout
-import com.intellij.ui.content.Content
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
 import java.awt.Component
@@ -31,7 +30,7 @@ import javax.swing.JPanel
 
 /**
  * A context menu action (right-click on a tab) for renaming a closable comparison tab.
- * Resolves the [Content] for the right-clicked tab through [ToolWindowUiCompatibility],
+ * Resolves the content of the right-clicked tab through [ToolWindowUiCompatibility],
  * keeping the action independent of internal tool-window label classes.
  */
 class RenameTabAction : AnAction() {
@@ -39,23 +38,15 @@ class RenameTabAction : AnAction() {
     private val logger = thisLogger()
     private data class RenameContext(val owner: Component, val branchName: String)
 
-    private fun findContent(source: Component?): Content? {
+    /** The clicked tab label and its closable comparison tab's branch, or null outside such a label. */
+    private fun findRenameContext(source: Component?): RenameContext? {
         if (source == null) return null
         val content = ToolWindowUiCompatibility.findTabContent(source)
         // Normal when the menu opens outside a tab label, e.g. on the tree.
         if (content == null) logger.debug { "RenameTabAction: no tab label around ${source.javaClass.name}" }
-        return content
-    }
-
-    private fun findRenameContext(source: Component?): RenameContext? {
-        val content = findContent(source) ?: return null
-        if (!content.isCloseable) {
-            return null
-        }
-
+        if (content == null || !content.isCloseable) return null
         val branchName = content.getUserData(LstCrcKeys.BRANCH_NAME_KEY) ?: return null
-        val owner = source ?: return null
-        return RenameContext(owner, branchName)
+        return RenameContext(source, branchName)
     }
 
     override fun update(e: AnActionEvent) {
