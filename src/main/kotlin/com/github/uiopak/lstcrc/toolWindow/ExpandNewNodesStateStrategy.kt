@@ -7,8 +7,10 @@ import com.intellij.util.ui.tree.TreeUtil
 import com.intellij.openapi.vcs.FilePath
 import com.intellij.openapi.vfs.VirtualFile
 import java.io.File
+import java.util.IdentityHashMap
 import java.util.Comparator
 import javax.swing.tree.DefaultMutableTreeNode
+import javax.swing.tree.TreeNode
 import javax.swing.tree.TreePath
 
 /**
@@ -119,14 +121,23 @@ class ExpandNewNodesStateStrategy(
         val expandedForNewFiles = mutableSetOf<String>()
 
         // One traversal: directory paths by key (to restore expansion) and change paths by key
-        // (to restore selection and to reveal new changes).
+        // (to restore selection and to reveal new changes). The traversal is pre-order, so each node's
+        // path and key extend its parent's instead of being rebuilt from the root.
         val pathKeyToTreePath = mutableMapOf<String, TreePath>()
         val pathsByChange = mutableMapOf<ChangeKey, TreePath>()
+        val pathAndKeyByNode = IdentityHashMap<TreeNode, Pair<TreePath, String>>()
         TreeUtil.treeNodeTraverser(tree.root).forEach { treeNode ->
             val node = treeNode as? DefaultMutableTreeNode ?: return@forEach
-            val path = TreeUtil.getPathFromRoot(node)
+            val parent = pathAndKeyByNode[node.parent]
+            val (path, key) = when {
+                node.parent == null -> TreePath(node) to ""
+                parent == null -> TreeUtil.getPathFromRoot(node).let { it to pathKey(it) }
+                parent.first.pathCount == 1 -> parent.first.pathByAddingChild(node) to userObjectKey(node.userObject)
+                else -> parent.first.pathByAddingChild(node) to "${parent.second}/${userObjectKey(node.userObject)}"
+            }
+            pathAndKeyByNode[node] = path to key
             if (path.pathCount > 1 && !node.isLeaf) {
-                pathKeyToTreePath[pathKey(path)] = path
+                pathKeyToTreePath[key] = path
             }
             val change = node.userObject as? Change ?: return@forEach
             pathsByChange[change.asChangeKey()] = path
@@ -152,7 +163,7 @@ class ExpandNewNodesStateStrategy(
             val sortedPaths = pathsToExpand.sortedWith(Comparator.comparingInt(TreePath::getPathCount))
             for (path in sortedPaths) {
                 tree.expandPath(path)
-                expandedForNewFiles.add(pathKey(path))
+                expandedForNewFiles.add(pathAndKeyByNode[path.lastPathComponent]?.second ?: pathKey(path))
             }
         }
 

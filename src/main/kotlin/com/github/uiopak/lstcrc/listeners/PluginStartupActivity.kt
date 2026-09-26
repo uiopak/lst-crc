@@ -1,5 +1,6 @@
 package com.github.uiopak.lstcrc.listeners
 
+import com.github.uiopak.lstcrc.gutters.VisualTrackerManager
 import com.github.uiopak.lstcrc.services.GitService
 import com.github.uiopak.lstcrc.services.ProjectActiveDiffDataService
 import com.github.uiopak.lstcrc.services.ToolWindowStateService
@@ -24,15 +25,6 @@ import kotlin.coroutines.resume
 class PluginStartupActivity : ProjectActivity {
     private val logger = thisLogger()
 
-    /** Broadcasts the tab state, which also updates the status bar widget (it listens to the topic). */
-    private suspend fun syncUiAfterRefresh(project: Project, stateService: ToolWindowStateService) {
-        withContext(Dispatchers.EDT) {
-            if (project.isDisposed) return@withContext
-            logger.debug { "STARTUP_LOGIC: Broadcasting ToolWindowState to sync all UI components." }
-            stateService.broadcastCurrentState()
-        }
-    }
-
     /**
      * Suspends until the VCS subsystem is initialized, which includes the initial detection of Git
      * repositories. (`ProjectLevelVcsManager.awaitInitialization` does this directly, from 2025.3.)
@@ -51,7 +43,7 @@ class PluginStartupActivity : ProjectActivity {
         logger.debug { "STARTUP_LOGIC: ProjectActivity executing for project: ${project.name}" }
 
         project.service<VcsChangeListener>()
-        project.service<com.github.uiopak.lstcrc.gutters.VisualTrackerManager>().init()
+        project.service<VisualTrackerManager>().init()
 
         // Perform a quick initial refresh for tab colors of already open files.
         withContext(Dispatchers.EDT) {
@@ -76,6 +68,11 @@ class PluginStartupActivity : ProjectActivity {
             }
         }
 
-        syncUiAfterRefresh(project, toolWindowStateService)
+        // Broadcasts the tab state, which also updates the status bar widget (it listens to the topic).
+        withContext(Dispatchers.EDT) {
+            if (project.isDisposed) return@withContext
+            logger.debug { "STARTUP_LOGIC: Broadcasting ToolWindowState to sync all UI components." }
+            toolWindowStateService.broadcastCurrentState()
+        }
     }
 }

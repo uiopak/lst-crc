@@ -119,14 +119,21 @@ class LstCrcStatusWidget(private val project: Project) : StatusBarWidget, Status
         }
     }
 
-    private fun createPopupActions(openTabs: List<TabInfo>): List<AnAction> {
-        val actions = mutableListOf<AnAction>(SelectHeadTabAction())
+    private fun createPopupActions(openTabs: List<TabInfo>): List<AnAction> = buildList {
+        add(popupAction(LstCrcBundle.message("tab.name.head")) { selectToolWindowContent(ToolWindowHelper::findHeadContent) })
         openTabs.forEach { tabInfo ->
-            actions.add(SelectTabAction(tabInfo.displayName, tabInfo.branchName))
+            add(popupAction(tabInfo.displayName) {
+                selectToolWindowContent { ToolWindowHelper.findContentByBranchName(it, tabInfo.branchName) }
+            })
         }
-        actions.add(Separator.getInstance())
-        actions.add(AddTabAction())
-        return actions
+        add(Separator.getInstance())
+        add(popupAction(LstCrcBundle.message("widget.action.add.tab")) {
+            ToolWindowHelper.activateToolWindow(project) { toolWindow -> ToolWindowHelper.openBranchSelectionTab(project, toolWindow) }
+        })
+    }
+
+    private fun popupAction(text: String, perform: () -> Unit): AnAction = object : AnAction(text) {
+        override fun actionPerformed(e: AnActionEvent) = perform()
     }
 
     /** Activates the tool window and selects the tab [findContent] returns, if any. */
@@ -134,26 +141,6 @@ class LstCrcStatusWidget(private val project: Project) : StatusBarWidget, Status
         ToolWindowHelper.activateToolWindow(project) { toolWindow ->
             val contentManager = toolWindow.contentManager
             findContent(contentManager)?.let { contentManager.setSelectedContent(it, true) }
-        }
-    }
-
-    private inner class SelectHeadTabAction : AnAction(LstCrcBundle.message("tab.name.head")) {
-        override fun actionPerformed(e: AnActionEvent) = selectToolWindowContent(ToolWindowHelper::findHeadContent)
-    }
-
-    private inner class SelectTabAction(
-        displayName: String,
-        private val branchName: String
-    ) : AnAction(displayName) {
-        override fun actionPerformed(e: AnActionEvent) =
-            selectToolWindowContent { ToolWindowHelper.findContentByBranchName(it, branchName) }
-    }
-
-    private inner class AddTabAction : AnAction(LstCrcBundle.message("widget.action.add.tab")) {
-        override fun actionPerformed(e: AnActionEvent) {
-            ToolWindowHelper.activateToolWindow(project) { toolWindow ->
-                ToolWindowHelper.openBranchSelectionTab(project, toolWindow)
-            }
         }
     }
 }

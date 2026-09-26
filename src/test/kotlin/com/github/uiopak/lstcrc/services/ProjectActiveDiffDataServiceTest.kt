@@ -124,4 +124,42 @@ class ProjectActiveDiffDataServiceTest : LstCrcTestCase() {
 
         assertEquals(1, notifications)
     }
+
+    fun testSamePathsWithNewUnsavedContentPublishesNewChanges() {
+        val diffDataService = project.service<ProjectActiveDiffDataService>()
+        val file = myFixture.addFileToProject("diff/Edited.txt", "base\n").virtualFile
+        val filePath = com.intellij.vcsUtil.VcsUtil.getFilePath(file)
+        fun unsavedEdit(text: String) = CategorizedChanges.EMPTY.copy(
+            allChanges = listOf(
+                com.intellij.openapi.vcs.changes.Change(
+                    TextContentRevision(filePath, "base\n", git4idea.GitRevisionNumber("HEAD")),
+                    TextContentRevision(filePath, text, git4idea.GitRevisionNumber("LOCAL")),
+                    com.intellij.openapi.vcs.FileStatus.MODIFIED
+                )
+            ),
+            modifiedFiles = listOf(file)
+        )
+        selectHeadTab(project)
+        diffDataService.updateActiveDiff("HEAD", unsavedEdit("one\n"))
+        flushEdt()
+
+        var notifications = 0
+        project.messageBus.connect(testRootDisposable).subscribe(
+            com.github.uiopak.lstcrc.messaging.DIFF_DATA_CHANGED_TOPIC,
+            object : com.github.uiopak.lstcrc.messaging.ActiveDiffDataChangedListener {
+                override fun onDiffDataChanged() {
+                    notifications++
+                }
+            }
+        )
+
+        diffDataService.updateActiveDiff("HEAD", unsavedEdit("one\n"))
+        flushEdt()
+        assertEquals(0, notifications)
+
+        diffDataService.updateActiveDiff("HEAD", unsavedEdit("two\n"))
+        flushEdt()
+        assertEquals(1, notifications)
+        assertEquals("two\n", diffDataService.categorizedChanges!!.allChanges.single().afterRevision!!.content)
+    }
 }

@@ -36,9 +36,7 @@ import com.intellij.openapi.vcs.changes.ContentRevision
 import com.intellij.openapi.vcs.changes.ChangesUtil
 import com.intellij.openapi.vcs.changes.actions.diff.ChangeDiffRequestProducer
 import com.intellij.openapi.vcs.changes.actions.diff.ShowDiffAction
-import com.intellij.openapi.vcs.changes.ui.ChangeDiffRequestChain
 import com.intellij.openapi.vcs.changes.ui.*
-import com.intellij.openapi.vcs.changes.ui.AsyncChangesTreeModel
 import com.intellij.openapi.vcs.vfs.ContentRevisionVirtualFile
 import java.awt.Color
 import java.awt.Point
@@ -76,7 +74,7 @@ import java.awt.event.ComponentEvent
 import javax.swing.JComponent
 import javax.swing.JPanel
 import javax.swing.JViewport
-import javax.swing.event.TreeModelEvent
+import com.intellij.util.ui.tree.TreeModelAdapter
 import javax.swing.event.TreeModelListener
 
 /**
@@ -262,20 +260,11 @@ class LstCrcChangesBrowser(
             // Custom logic for deleted files (which don't have VirtualFiles)
             val node = path.lastPathComponent as? ChangesBrowserNode<*> ?: return null
             val change = node.userObject as? Change ?: return null
-            if (change.type == Change.Type.DELETED) {
-                // Use scope-based coloring for deleted files
-                val scopeColorForDeletedFile = getScopeColorForDeletedFile(project)
-                return scopeColorForDeletedFile
-            }
-            return null
-        }
-
-        /** The colour configured for the deleted-files scope, or the default rose if none is set. */
-        private fun getScopeColorForDeletedFile(project: Project): Color =
-            FileColorManager.getInstance(project).getScopeColor(DELETED_SCOPE_ID)
+            if (change.type != Change.Type.DELETED) return null
+            // The colour configured for the deleted-files scope, or the default rose if none is set.
+            return FileColorManager.getInstance(project).getScopeColor(DELETED_SCOPE_ID)
                 ?: JBColor.namedColor("FileColor.Rose", JBColor(Color(255, 235, 236), Color(71, 43, 43)))
-
-
+        }
     }
 
     override val changesTreeModel: AsyncChangesTreeModel =
@@ -297,7 +286,11 @@ class LstCrcChangesBrowser(
         if (changes.isEmpty()) return
 
         val diffKey = DiffSelectionKey(targetBranchToCompare, changes.map { it.toDiffChangeKey() })
-        findOpenReusableDiffFile(diffKey)?.let { openDiffFile(it); return }
+        val diffFilesManager = DiffEditorTabFilesManager.getInstance(project)
+        FileEditorManager.getInstance(project).openFiles
+            .filterIsInstance<ReusableChangeDiffVirtualFile>()
+            .firstOrNull { it.matches(diffKey) }
+            ?.let { diffFilesManager.showDiffFile(it, true); return }
 
         val producers = changes.mapNotNull { ChangeDiffRequestProducer.create(project, it) }
         if (producers.size != changes.size) {
@@ -306,22 +299,7 @@ class LstCrcChangesBrowser(
         }
 
         val chain = ChangeDiffRequestChain(ListSelection.createAt(producers, 0))
-        val diffFile = ReusableChangeDiffVirtualFile(
-            chain = chain,
-            diffKey = diffKey,
-            name = changes.first().diffFileDisplayName()
-        )
-        openDiffFile(diffFile)
-    }
-
-    private fun findOpenReusableDiffFile(diffKey: DiffSelectionKey): ReusableChangeDiffVirtualFile? {
-        return FileEditorManager.getInstance(project).openFiles
-            .filterIsInstance<ReusableChangeDiffVirtualFile>()
-            .firstOrNull { it.matches(diffKey) }
-    }
-
-    private fun openDiffFile(diffFile: ChainDiffVirtualFile) {
-        DiffEditorTabFilesManager.getInstance(project).showDiffFile(diffFile, true)
+        diffFilesManager.showDiffFile(ReusableChangeDiffVirtualFile(chain, diffKey, changes.first().diffFileDisplayName()), true)
     }
 
     private fun Change.toDiffChangeKey(): DiffChangeKey {
@@ -388,18 +366,14 @@ class LstCrcChangesBrowser(
                 logger.warn("Failed to preload revision-backed file '${revision.file.path}'.", e)
                 ApplicationManager.getApplication().invokeLater {
                     if (project.isDisposed) return@invokeLater
-                    showOpenSourceWarning(revision.file.path)
+                    Messages.showWarningDialog(
+                        project,
+                        LstCrcBundle.message("changes.browser.open.source.error.message", revision.file.path),
+                        LstCrcBundle.message("changes.browser.open.source.error.title")
+                    )
                 }
             }
         }
-    }
-
-    private fun showOpenSourceWarning(path: String) {
-        Messages.showWarningDialog(
-            project,
-            LstCrcBundle.message("changes.browser.open.source.error.message", path),
-            LstCrcBundle.message("changes.browser.open.source.error.title")
-        )
     }
 
     @Suppress("unused")
@@ -615,15 +589,7 @@ class LstCrcChangesBrowser(
             }
         }
 
-        listener = object : TreeModelListener {
-            override fun treeNodesChanged(e: TreeModelEvent?) = restoreViewportOnce()
-
-            override fun treeNodesInserted(e: TreeModelEvent?) = restoreViewportOnce()
-
-            override fun treeNodesRemoved(e: TreeModelEvent?) = restoreViewportOnce()
-
-            override fun treeStructureChanged(e: TreeModelEvent?) = restoreViewportOnce()
-        }
+        listener = TreeModelAdapter.create { _, _ -> restoreViewportOnce() }
 
         model?.addTreeModelListener(listener)
         viewer.rebuildTree()
@@ -675,7 +641,7 @@ class LstCrcChangesBrowser(
             return
         }
 
-        val path = changePathAt(e.x, e.y) ?: return
+        val path = TreeUtil.getPathForLocation(viewer, e.x, e.y) ?: return
         val change = changeAt(path) ?: return
 
         selectPathAndFocus(path)
@@ -732,11 +698,6 @@ class LstCrcChangesBrowser(
         else -> ToolWindowSettingsProvider.ACTION_NONE
     }
 
-    private fun changePathAt(x: Int, y: Int): TreePath? {
-        val path = TreeUtil.getPathForLocation(viewer, x, y) ?: return null
-        return path.takeIf { changeAt(it) != null }
-    }
-
     private fun changeAt(path: TreePath): Change? {
         return (path.lastPathComponent as? ChangesBrowserNode<*>)?.userObject as? Change
     }
@@ -765,7 +726,7 @@ class LstCrcChangesBrowser(
             override fun invokePopup(comp: Component?, x: Int, y: Int) {
                     if (!ToolWindowSettingsProvider.isContextMenuEnabled()) return
 
-                    val path = changePathAt(x, y) ?: return
+                    val path = TreeUtil.getPathForLocation(viewer, x, y)?.takeIf { changeAt(it) != null } ?: return
 
                     selectPathAndFocus(path)
                     val changes = selectedChanges
