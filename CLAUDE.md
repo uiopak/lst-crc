@@ -52,6 +52,9 @@ around them in the build scripts:
     older versions don't have, so it fails at runtime there.
   - Look them up with `project.service<T>()` instead (see `PluginStartupActivity`).
   - Only `verifyPlugin` catches this, because all tests run against 2026.2.
+- Log tracing with the lazy `logger.debug { "..." }` (import `com.intellij.openapi.diagnostic.debug`), so
+  nothing is built or written unless debug logging is on. Use `warn`/`error` only for real problems, and
+  don't log at `INFO` on paths that run per refresh, per keystroke or per file.
 - User-facing strings go through `LstCrcBundle` and `src/main/resources/messages/LstCrcMessages.properties`.
 - The plugin description in `plugin.xml` comes from the `<!-- Plugin description -->` block in
   `README.md` at build time. Edit the README block, not `plugin.xml`.

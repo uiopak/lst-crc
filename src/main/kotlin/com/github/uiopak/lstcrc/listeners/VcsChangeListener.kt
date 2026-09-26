@@ -4,6 +4,7 @@ import com.github.uiopak.lstcrc.services.ToolWindowStateService
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.service
+import com.intellij.openapi.diagnostic.debug
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.editor.EditorFactory
 import com.intellij.openapi.editor.event.DocumentEvent
@@ -71,7 +72,7 @@ class VcsChangeListener internal constructor(
     )
 
     init {
-        logger.info("VCS_CHANGE_LISTENER: Initializing for project ${project.name}")
+        logger.debug { "VCS_CHANGE_LISTENER: Initializing for project ${project.name}" }
         ChangeListManager.getInstance(project).addChangeListListener(this, this)
         EditorFactory.getInstance().eventMulticaster.addDocumentListener(this, this)
         project.messageBus.connect(this).subscribe(GitRepository.GIT_REPO_CHANGE, this)
@@ -82,19 +83,19 @@ class VcsChangeListener internal constructor(
                 .debounce(REFRESH_DEBOUNCE)
                 .collect {
                     if (project.isDisposed) return@collect
-                    logger.debug("VCS_CHANGE_LISTENER: Refresh executing.")
+                    logger.debug { "VCS_CHANGE_LISTENER: Refresh executing." }
                     refreshCurrentSelection()
                 }
         }
     }
 
     override fun repositoryChanged(repository: GitRepository) {
-        logger.debug("VCS_CHANGE_LISTENER: repositoryChanged() detected for '${repository.root.name}', triggering refresh.")
+        logger.debug { "VCS_CHANGE_LISTENER: repositoryChanged() detected for '${repository.root.name}', triggering refresh." }
         triggerRefresh(null)
     }
 
     override fun changeListUpdateDone() {
-        logger.debug("VCS_CHANGE_LISTENER: changeListUpdateDone() detected, triggering refresh.")
+        logger.debug { "VCS_CHANGE_LISTENER: changeListUpdateDone() detected, triggering refresh." }
         triggerRefresh(null)
     }
 
@@ -105,7 +106,7 @@ class VcsChangeListener internal constructor(
     internal fun handleDocumentChange(file: VirtualFile?) {
         file ?: return
 
-        logger.debug("VCS_CHANGE_LISTENER: documentChanged() detected for '${file.path}', queueing refresh.")
+        logger.debug { "VCS_CHANGE_LISTENER: documentChanged() detected for '${file.path}', queueing refresh." }
         triggerRefresh(file)
     }
 
@@ -114,6 +115,6 @@ class VcsChangeListener internal constructor(
     }
 
     override fun dispose() {
-        logger.info("VCS_CHANGE_LISTENER: Disposing for project ${project.name}")
+        logger.debug { "VCS_CHANGE_LISTENER: Disposing for project ${project.name}" }
     }
 }

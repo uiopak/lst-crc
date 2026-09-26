@@ -6,6 +6,7 @@ import com.intellij.diff.comparison.ComparisonManager
 import com.intellij.diff.comparison.ComparisonPolicy
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.Service
+import com.intellij.openapi.diagnostic.debug
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.progress.DumbProgressIndicator
 import com.intellij.openapi.project.Project
@@ -156,7 +157,7 @@ class GitService(private val project: Project) {
 
     fun getBranchSnapshot(repository: GitRepository?): BranchSnapshot {
         val repo = repository ?: getPrimaryRepository() ?: run {
-            logger.debug("getBranchSnapshot() called with no repository available.")
+            logger.debug { "getBranchSnapshot() called with no repository available." }
             return BranchSnapshot(emptyList(), emptyList())
         }
         repo.update()
@@ -165,10 +166,10 @@ class GitService(private val project: Project) {
             branches.localBranches.map { it.name },
             branches.remoteBranches.map { it.name }
         )
-        logger.info(
+        logger.debug {
             "Loaded branch snapshot for repo '${repo.root.name}': " +
                 "${snapshot.localBranches.size} local, ${snapshot.remoteBranches.size} remote branches."
-        )
+        }
         return snapshot
     }
 
@@ -179,7 +180,7 @@ class GitService(private val project: Project) {
         val repositories = getRepositories()
         val profileName = tabInfo?.branchName ?: "HEAD"
 
-        logger.debug("getChanges called for profile: $profileName")
+        logger.debug { "getChanges called for profile: $profileName" }
 
         if (repositories.isEmpty()) {
             return GetChangesResult(
@@ -216,7 +217,7 @@ class GitService(private val project: Project) {
         for (repo in repositories) {
             val target = resolveComparisonTarget(repo, tabInfo)
             comparisonContext[repo.root.path] = target
-            logger.debug("Repo '${repo.root.path}': using target '$target'")
+            logger.debug { "Repo '${repo.root.path}': using target '$target'" }
             val loadedChanges = loadChanges(repo, target, includeLineStats, failures)
             allChanges.addAll(loadedChanges.changes)
             lineStatsByChange.putAll(loadedChanges.lineStatsByChange)
@@ -241,7 +242,7 @@ class GitService(private val project: Project) {
     ): LoadedChanges {
         repo.update()
         if (repo.isFresh) {
-            logger.info("Repo '${repo.root.name}' is fresh. Showing only untracked files and unsaved edits for target '$target'.")
+            logger.debug { "Repo '${repo.root.name}' is fresh. Showing only untracked files and unsaved edits for target '$target'." }
             return combineWithUntrackedAndUnsaved(repo, "HEAD", LoadedChanges.EMPTY, includeLineStats)
         }
 
@@ -493,7 +494,7 @@ class GitService(private val project: Project) {
         return runCatching {
             calculateLineStats(beforeContent, afterContent)
         }.getOrElse { error ->
-            logger.debug("Failed to compute fallback line stats for '${change.afterRevision?.file?.path ?: change.beforeRevision?.file?.path}'.", error)
+            logger.debug(error) { "Failed to compute fallback line stats for '${change.afterRevision?.file?.path ?: change.beforeRevision?.file?.path}'." }
             null
         }
     }
@@ -549,14 +550,14 @@ class GitService(private val project: Project) {
             return null
         }
 
-        logger.debug("GUTTER_GIT_SERVICE: Preparing to fetch content for revision:'${revision}' file:'${file.path}'")
+        logger.debug { "GUTTER_GIT_SERVICE: Preparing to fetch content for revision:'${revision}' file:'${file.path}'" }
 
         val relativePath = VfsUtilCore.getRelativePath(file, repository.root, '/')
             ?: throw IllegalStateException("Could not calculate relative path for file '${file.path}' against repo root '${repository.root.path}'.")
 
         val normalizedContent = loadRevisionTextContent(project, repository.root, revision, relativePath, file.charset)
 
-        logger.info("GUTTER_GIT_SERVICE: Successfully fetched content for '${relativePath}' in revision '${revision}'.")
+        logger.debug { "GUTTER_GIT_SERVICE: Successfully fetched content for '${relativePath}' in revision '${revision}'." }
         return normalizedContent
     }
 }

@@ -5,6 +5,7 @@ import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.service
+import com.intellij.openapi.diagnostic.debug
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.project.Project
@@ -93,7 +94,7 @@ class ProjectActiveDiffDataService(private val project: Project) : Disposable {
         // A null selection is the HEAD tab, whose loads are reported as "HEAD".
         val currentToolWindowBranch = project.service<ToolWindowStateService>().getSelectedTabBranchName() ?: "HEAD"
         if (branchNameFromEvent != currentToolWindowBranch) {
-            logger.debug("updateActiveDiff - Update REJECTED as stale. Event branch '$branchNameFromEvent' does NOT match current tool window branch '$currentToolWindowBranch'.")
+            logger.debug { "updateActiveDiff - Update REJECTED as stale. Event branch '$branchNameFromEvent' does NOT match current tool window branch '$currentToolWindowBranch'." }
             return
         }
 
@@ -125,25 +126,25 @@ class ProjectActiveDiffDataService(private val project: Project) : Disposable {
     /** Must be called on EDT. */
     private fun triggerEditorTabColorRefresh() {
         if (project.isDisposed) return
-        logger.debug("triggerEditorTabColorRefresh() called.")
+        logger.debug { "triggerEditorTabColorRefresh() called." }
         val fileEditorManager = FileEditorManager.getInstance(project)
         fileEditorManager.openFiles.forEach { vf ->
             if (vf.isValid) {
                 fileEditorManager.updateFilePresentation(vf)
             }
         }
-        logger.debug("updateFilePresentation requests sent for all valid open files.")
+        logger.debug { "updateFilePresentation requests sent for all valid open files." }
     }
 
     fun refreshCurrentColorings() {
-        logger.debug("refreshCurrentColorings() called. Active branch: $activeBranchName")
+        logger.debug { "refreshCurrentColorings() called. Active branch: $activeBranchName" }
         ApplicationManager.getApplication().invokeLater {
             if (!project.isDisposed) triggerEditorTabColorRefresh()
         }
     }
 
     override fun dispose() {
-        logger.info("Disposing ProjectActiveDiffDataService for project ${project.name}, clearing data.")
+        logger.debug { "Disposing ProjectActiveDiffDataService for project ${project.name}, clearing data." }
         snapshot = ActiveDiffSnapshot.EMPTY
     }
 }

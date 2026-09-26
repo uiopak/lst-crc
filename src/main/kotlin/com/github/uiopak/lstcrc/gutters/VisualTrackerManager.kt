@@ -11,6 +11,7 @@ import com.intellij.openapi.application.EDT
 import com.intellij.openapi.application.readActionBlocking
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.service
+import com.intellij.openapi.diagnostic.debug
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.editor.Document
 import com.intellij.openapi.editor.ex.MarkupModelEx
@@ -95,7 +96,7 @@ class VisualTrackerManager(
 
             override fun onTrackerRemoved(tracker: LineStatusTracker<*>) {
                 if (releaseVisualTracker(tracker.document)) {
-                    logger.debug("VISUAL_TRACKER: Native tracker removed for ${tracker.virtualFile.name}. Released visual tracker.")
+                    logger.debug { "VISUAL_TRACKER: Native tracker removed for ${tracker.virtualFile.name}. Released visual tracker." }
                 }
             }
         })
@@ -125,7 +126,7 @@ class VisualTrackerManager(
      * triggers a global file status refresh so the IDE updates its UI.
      */
     fun settingsChanged() {
-        logger.info("VISUAL_TRACKER: Gutter marker setting changed. Refreshing trackers and file statuses.")
+        logger.debug { "VISUAL_TRACKER: Gutter marker setting changed. Refreshing trackers and file statuses." }
         refreshAllTrackers()
         refreshFileStatuses()
     }
@@ -285,7 +286,7 @@ class VisualTrackerManager(
                 if (nativeTracker != null) {
                     restoreNativeTracker(nativeTracker)
                 } else if (releaseVisualTracker(document)) {
-                    logger.debug("VISUAL_TRACKER: Released standalone visual tracker for ${file.name}.")
+                    logger.debug { "VISUAL_TRACKER: Released standalone visual tracker for ${file.name}." }
                 }
             }
         }
@@ -294,7 +295,7 @@ class VisualTrackerManager(
     private fun restoreNativeTracker(nativeTracker: LocalLineStatusTracker<*>) {
         // Only act if we actually had a visual tracker for this document.
         if (releaseVisualTracker(nativeTracker.document)) {
-            logger.debug("VISUAL_TRACKER: Restored native tracker for ${nativeTracker.virtualFile.name}.")
+            logger.debug { "VISUAL_TRACKER: Restored native tracker for ${nativeTracker.virtualFile.name}." }
             nativeTracker.mode = VISIBLE_MODE
         }
     }
@@ -314,7 +315,7 @@ class VisualTrackerManager(
         val repository = project.service<GitService>().getRepositoryForFile(file)
         val targetRevision = repository?.let { diffDataService.activeComparisonContext[it.root.path] ?: diffDataService.activeBranchName }
         if (repository == null || targetRevision == null) {
-            logger.debug("VISUAL_TRACKER: Yielding. Target revision is null for ${file.name}.")
+            logger.debug { "VISUAL_TRACKER: Yielding. Target revision is null for ${file.name}." }
             return null
         }
 
@@ -368,7 +369,7 @@ class VisualTrackerManager(
      */
     private fun ensureVisualTracker(document: Document, file: VirtualFile, targetRevision: String) {
         val visualTracker = visualTrackers.computeIfAbsent(document) {
-            logger.debug("VISUAL_TRACKER: Creating visual tracker for ${file.name}")
+            logger.debug { "VISUAL_TRACKER: Creating visual tracker for ${file.name}" }
             createVisualTracker(document, file)
         }
         if (loadedRevisions.put(document, targetRevision) == targetRevision) return

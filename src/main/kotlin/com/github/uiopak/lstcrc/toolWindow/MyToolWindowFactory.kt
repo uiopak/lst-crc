@@ -12,6 +12,7 @@ import com.intellij.openapi.actionSystem.ActionGroup
 import com.intellij.openapi.actionSystem.DefaultActionGroup
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.service
+import com.intellij.openapi.diagnostic.debug
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.project.Project
@@ -32,7 +33,7 @@ class MyToolWindowFactory : ToolWindowFactory {
     private val logger = thisLogger()
 
     override fun createToolWindowContent(project: Project, toolWindow: ToolWindow) {
-        logger.info("createToolWindowContent called for project: ${project.name}.")
+        logger.debug { "createToolWindowContent called for project: ${project.name}." }
 
         val stateService = project.service<ToolWindowStateService>()
         val persistedState = stateService.state
@@ -84,7 +85,7 @@ class MyToolWindowFactory : ToolWindowFactory {
         registerContentManagerListener(project, toolWindow, stateService)
         setupToolWindowActions(project, toolWindow)
 
-        logger.info("Tool window UI setup complete.")
+        logger.debug { "Tool window UI setup complete." }
     }
 
     private fun applyToolWindowTitleSetting(toolWindow: ToolWindow) {
