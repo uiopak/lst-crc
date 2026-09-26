@@ -39,6 +39,7 @@ import git4idea.repo.GitRepository
 import git4idea.repo.GitRepositoryManager
 import git4idea.util.GitFileUtils
 import java.nio.charset.Charset
+import java.util.concurrent.ConcurrentHashMap
 
 private const val DIFF_FILTER_PARAM = "--diff-filter=ADCMRUXT"
 private const val IGNORE_CR_AT_EOL_PARAM = "--ignore-cr-at-eol"
@@ -144,6 +145,30 @@ class GitService(private val project: Project) {
                 size > REVISION_CONTENT_CACHE_ENTRIES
         }
 
+    /** What decides a repository's changes on disk, apart from the files themselves. */
+    private data class DiskChangesKey(
+        val target: String,
+        val includeLineStats: Boolean,
+        val includeUntracked: Boolean
+    )
+
+    /**
+     * A repository's changes before unsaved edits are overlaid: tracked changes against the target,
+     * untracked files, and their line stats. [overlayTarget] is the revision unsaved edits compare to.
+     */
+    private data class DiskChanges(
+        val key: DiskChangesKey,
+        val loaded: LoadedChanges,
+        val overlayTarget: String
+    )
+
+    /**
+     * The last [DiskChanges] per repository root. A refresh caused only by unsaved edits
+     * (`reuseDiskChanges`) reuses them instead of running `git diff` and `git ls-files` again,
+     * because nothing changed on disk; every other refresh reloads and replaces them.
+     */
+    private val lastDiskChanges = ConcurrentHashMap<String, DiskChanges>()
+
     private data class LoadedChanges(
         val changes: List<Change>,
         val lineStatsByChange: Map<ChangeLineStatsKey, ChangeLineStats>
@@ -196,8 +221,14 @@ class GitService(private val project: Project) {
         return snapshot
     }
 
+    /**
+     * Loads the comparison for [tabInfo] (`HEAD` when null). With [reuseDiskChanges] (the refresh was
+     * caused only by unsaved edits) the last `git diff` result of each repository is reused when its
+     * target and settings still match, and only the unsaved-edit overlay is rebuilt.
+     */
     suspend fun getChanges(
         tabInfo: TabInfo?,
+        reuseDiskChanges: Boolean = false,
         dispatcher: CoroutineDispatcher = Dispatchers.IO
     ): GetChangesResult {
         val repositories = getRepositories()
@@ -217,7 +248,7 @@ class GitService(private val project: Project) {
         val includeLineStats = ToolWindowSettingsProvider.isShowLineStatsInTree()
         return withBackgroundProgress(project, LstCrcBundle.message("git.task.loading.changes")) {
             withContext(dispatcher) {
-                loadChangesResult(repositories, tabInfo, includeLineStats)
+                loadChangesResult(repositories, tabInfo, includeLineStats, reuseDiskChanges)
             }
         }
     }
@@ -230,7 +261,8 @@ class GitService(private val project: Project) {
     private fun loadChangesResult(
         repositories: List<GitRepository>,
         tabInfo: TabInfo?,
-        includeLineStats: Boolean
+        includeLineStats: Boolean,
+        reuseDiskChanges: Boolean
     ): GetChangesResult {
         val allChanges = mutableListOf<Change>()
         val comparisonContext = mutableMapOf<String, String>()
@@ -241,7 +273,7 @@ class GitService(private val project: Project) {
             val target = resolveComparisonTarget(repo, tabInfo)
             comparisonContext[repo.root.path] = target
             logger.debug { "Repo '${repo.root.path}': using target '$target'" }
-            val loadedChanges = loadChanges(repo, target, includeLineStats, failures)
+            val loadedChanges = loadChanges(repo, target, includeLineStats, failures, reuseDiskChanges)
             allChanges.addAll(loadedChanges.changes)
             lineStatsByChange.putAll(loadedChanges.lineStatsByChange)
         }
@@ -261,25 +293,54 @@ class GitService(private val project: Project) {
         repo: GitRepository,
         target: String,
         includeLineStats: Boolean,
-        failures: MutableMap<GitRepository, String>?
+        failures: MutableMap<GitRepository, String>?,
+        reuseDiskChanges: Boolean
     ): LoadedChanges {
+        val key = DiskChangesKey(target, includeLineStats, ToolWindowSettingsProvider.isShowUntrackedFilesAsNew())
+        val diskChanges = lastDiskChanges[repo.root.path]?.takeIf { reuseDiskChanges && it.key == key }
+            ?: loadDiskChanges(repo, key, failures)
+            ?: return LoadedChanges.EMPTY
+        return overlayUnsavedDocuments(repo, diskChanges)
+    }
+
+    /**
+     * Runs git for [repo]'s changes on disk and remembers them for [loadChanges]. Returns null when a
+     * comparison tab's target cannot be resolved (recorded in [failures]).
+     */
+    private fun loadDiskChanges(
+        repo: GitRepository,
+        key: DiskChangesKey,
+        failures: MutableMap<GitRepository, String>?
+    ): DiskChanges? {
         repo.update()
-        if (repo.isFresh) {
-            logger.debug { "Repo '${repo.root.name}' is fresh. Showing only untracked files and unsaved edits for target '$target'." }
-            return combineWithUntrackedAndUnsaved(repo, "HEAD", LoadedChanges.EMPTY, includeLineStats)
+        var cacheable = true
+        val trackedChanges = if (repo.isFresh) {
+            logger.debug { "Repo '${repo.root.name}' is fresh. Showing only untracked files and unsaved edits for target '${key.target}'." }
+            LoadedChanges.EMPTY
+        } else {
+            try {
+                loadTrackedChangesAgainstWorkingTree(repo, key.target, key.includeLineStats)
+            } catch (e: VcsException) {
+                logger.warn("git diff failed for repo '${repo.root.name}' against target '${key.target}': ${e.message}")
+                if (failures != null) {
+                    failures[repo] = key.target
+                    lastDiskChanges.remove(repo.root.path)
+                    return null
+                }
+                cacheable = false
+                LoadedChanges.EMPTY
+            }
         }
 
-        val trackedChanges = try {
-            loadTrackedChangesAgainstWorkingTree(repo, target, includeLineStats)
-        } catch (e: VcsException) {
-            logger.warn("git diff failed for repo '${repo.root.name}' against target '$target': ${e.message}")
-            if (failures != null) {
-                failures[repo] = target
-                return LoadedChanges.EMPTY
-            }
-            LoadedChanges.EMPTY
-        }
-        return combineWithUntrackedAndUnsaved(repo, target, trackedChanges, includeLineStats)
+        val untrackedChanges = if (key.includeUntracked) loadUntrackedChanges(repo) else emptyList()
+        val changes = trackedChanges.changes + untrackedChanges
+        val loaded = LoadedChanges(
+            changes = changes,
+            lineStatsByChange = if (key.includeLineStats) buildLineStats(changes, trackedChanges.lineStatsByChange, emptySet()) else emptyMap()
+        )
+        val diskChanges = DiskChanges(key, loaded, overlayTarget = if (repo.isFresh) "HEAD" else key.target)
+        if (cacheable) lastDiskChanges[repo.root.path] = diskChanges else lastDiskChanges.remove(repo.root.path)
+        return diskChanges
     }
 
     private fun loadTrackedChangesAgainstWorkingTree(repo: GitRepository, target: String, includeLineStats: Boolean): LoadedChanges {
@@ -418,22 +479,18 @@ class GitService(private val project: Project) {
         )
     }
 
-    private fun combineWithUntrackedAndUnsaved(
-        repo: GitRepository,
-        target: String,
-        trackedChanges: LoadedChanges,
-        includeLineStats: Boolean
-    ): LoadedChanges {
-        val untrackedChanges = if (ToolWindowSettingsProvider.isShowUntrackedFilesAsNew()) loadUntrackedChanges(repo) else emptyList()
-        val unsavedChanges = collectUnsavedDocumentChanges(repo, target)
-        val allChanges = overlayUnsavedDocumentChanges(trackedChanges.changes + untrackedChanges, unsavedChanges)
-        if (!includeLineStats) return LoadedChanges(allChanges, emptyMap())
+    /** Overlays [repo]'s unsaved documents on [diskChanges] and adds line stats for the edited files. */
+    private fun overlayUnsavedDocuments(repo: GitRepository, diskChanges: DiskChanges): LoadedChanges {
+        val unsavedChanges = collectUnsavedDocumentChanges(repo, diskChanges.overlayTarget)
+        val allChanges = overlayUnsavedDocumentChanges(diskChanges.loaded.changes, unsavedChanges)
+        if (!diskChanges.key.includeLineStats) return LoadedChanges(allChanges, emptyMap())
         return LoadedChanges(
             changes = allChanges,
             lineStatsByChange = buildLineStats(
                 changes = allChanges,
-                trackedLineStats = trackedChanges.lineStatsByChange,
-                forceRecompute = unsavedChanges.mapTo(linkedSetOf()) { ChangeLineStatsKey.from(it) }
+                trackedLineStats = diskChanges.loaded.lineStatsByChange,
+                forceRecompute = unsavedChanges.mapTo(linkedSetOf()) { ChangeLineStatsKey.from(it) },
+                knownKeys = diskChanges.loaded.changes.mapTo(HashSet()) { ChangeLineStatsKey.from(it) }
             )
         )
     }
@@ -486,10 +543,16 @@ class GitService(private val project: Project) {
         return mergedChanges.values.toList()
     }
 
+    /**
+     * Line stats for [changes]: taken from [trackedLineStats] where present, otherwise computed in
+     * process. Keys in [forceRecompute] (unsaved edits) are always computed; keys in [knownKeys] were
+     * already handled when [trackedLineStats] was built, so a failed computation is not retried.
+     */
     private fun buildLineStats(
         changes: List<Change>,
         trackedLineStats: Map<ChangeLineStatsKey, ChangeLineStats>,
-        forceRecompute: Set<ChangeLineStatsKey>
+        forceRecompute: Set<ChangeLineStatsKey>,
+        knownKeys: Set<ChangeLineStatsKey> = emptySet()
     ): Map<ChangeLineStatsKey, ChangeLineStats> {
         val lineStats = linkedMapOf<ChangeLineStatsKey, ChangeLineStats>()
         val keys = changes.map(ChangeLineStatsKey::from).toSet()
@@ -502,7 +565,7 @@ class GitService(private val project: Project) {
 
         changes.forEach { change ->
             val key = ChangeLineStatsKey.from(change)
-            if (key in forceRecompute || key !in lineStats) {
+            if (key in forceRecompute || (key !in lineStats && key !in knownKeys)) {
                 computeFallbackLineStats(change)?.let { lineStats[key] = it }
             }
         }
