@@ -11,11 +11,10 @@ import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.PlatformDataKeys
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.service
+import com.intellij.openapi.diagnostic.debug
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.popup.Balloon
-import com.intellij.openapi.wm.impl.content.BaseLabel
-import com.intellij.ui.ComponentUtil
 import com.intellij.openapi.ui.popup.JBPopupFactory
 import com.intellij.ui.awt.RelativePoint
 import com.intellij.ui.components.JBLabel
@@ -42,12 +41,10 @@ class RenameTabAction : AnAction() {
 
     private fun findContent(source: Component?): Content? {
         if (source == null) return null
-        val label = (source as? BaseLabel) ?: ComponentUtil.getParentOfType(BaseLabel::class.java, source)
-        if (label == null) {
-            logger.warn("RenameTabAction: No BaseLabel found in component hierarchy for ${source.javaClass.name}")
-            return null
-        }
-        return label.content
+        val content = ToolWindowUiCompatibility.findTabContent(source)
+        // Normal when the menu opens outside a tab label, e.g. on the tree.
+        if (content == null) logger.debug { "RenameTabAction: no tab label around ${source.javaClass.name}" }
+        return content
     }
 
     private fun findRenameContext(source: Component?): RenameContext? {
