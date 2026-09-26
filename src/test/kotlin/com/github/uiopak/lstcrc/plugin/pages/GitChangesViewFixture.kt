@@ -13,10 +13,13 @@ import java.time.Duration
 fun IdeaFrame.gitChangesView(function: GitChangesViewFixture.() -> Unit) {
     val timeout = if (System.getenv("GITHUB_ACTIONS") == "true") Duration.ofSeconds(30) else Duration.ofSeconds(10)
     val locator = byXpath("//div[@class='LstCrcChangesBrowser' and @visible='true']")
+    // Keep the lookup that found the browser: a second lookup can miss it while the selected tab is switching.
+    var browsers = emptyList<GitChangesViewFixture>()
     waitFor(timeout, interval = Duration.ofMillis(250)) {
-        findAll<GitChangesViewFixture>(locator).isNotEmpty()
+        browsers = findAll<GitChangesViewFixture>(locator)
+        browsers.isNotEmpty()
     }
-    findAll<GitChangesViewFixture>(locator).first().apply(function)
+    browsers.first().apply(function)
 }
 
 @FixtureName("GitChangesView")
