@@ -2,7 +2,8 @@
 
 IntelliJ Platform plugin (Kotlin, Git4Idea) that keeps one active Git comparison (working tree vs `HEAD`,
 a branch or a revision) in sync across a tool window, named/search scopes, a status bar widget, gutter
-markers and editor tab colors. Deeper notes are in `docs/`, but they may lag behind the code.
+markers and editor tab colors. Deeper notes are in `docs/` (see `docs/README.md`). When you change behavior, add or
+remove a file, or add or rename a test, update the matching doc in the same PR.
 
 ## Commands
 

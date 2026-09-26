@@ -50,7 +50,7 @@ LST-CRC is an IntelliJ Platform plugin for comparing the current working tree ag
 	- Renames and moves appear as moved entries.
 	- Missing files relative to the selected target appear as deleted entries.
 	- Mixed-state tabs can surface several file states at once across one active comparison.
-	- Displayed added/removed line counters intentionally ignore CRLF/LF-only churn so the browser metadata stays aligned with the visible diff and gutter ranges instead of raw Git `numstat` noise.
+	- Each row carries the change's IDE file status, which drives its color: files only in the working tree are `ADDED`, files only in the comparison target are `DELETED`, and content changes and renames are `MODIFIED`.
 - `C3.2` Custom named scopes.
 	- The plugin publishes named scopes for Created, Modified, Moved, Deleted, and Changed files from the active diff.
 	- `Created` tracks new files.
@@ -60,8 +60,7 @@ LST-CRC is an IntelliJ Platform plugin for comparing the current working tree ag
 	- `Changed` aggregates created, modified, and moved, and intentionally excludes deleted files.
 - `C3.3` Search-scope wrappers.
 	- Created, Modified, Moved, and Changed scopes are available in Find/Search scope pickers and respect the active comparison selection.
-	- Wrapper membership follows the same active diff cache as the named scopes.
-	- Search-scope wrappers exclude library content.
+	- Wrapper membership follows the same active diff cache as the named scopes, so only files in the active comparison match.
 	- Deleted files are intentionally omitted from Find/Search scope publication.
 - `C3.4` Deleted-file special handling.
 	- Deleted files remain available through dedicated deleted handling and stay out of the `Changed` aggregate scope/search-scope path.
@@ -82,11 +81,23 @@ LST-CRC is an IntelliJ Platform plugin for comparing the current working tree ag
 - `C3.9` Tree expansion-state persistence.
 	- The comparison tree keeps user expand/collapse decisions when the active comparison tab changes and later returns.
 	- New nodes can still be revealed without forcing previously collapsed nodes open.
+	- "Expand collapsed folders for new changes" decides whether a collapsed folder opens when a new change appears inside it.
+- `C3.10` Line statistics in the tree.
+	- With "Show line stats" enabled, change rows show added/removed line counts and folder and group rows show the sum of their descendants.
+	- Counts ignore CRLF/LF-only churn, so they match the visible diff and gutter ranges rather than raw `git diff --numstat` output.
+	- Unsaved edits update the counts before save.
+	- Line stats are only computed while the setting is on; turning it on reloads the data.
+- `C3.11` Untracked files as new.
+	- With "Show untracked files as new" enabled, files git does not track (and does not ignore) appear as created entries with the IDE's "unknown" file status.
+	- With the setting disabled they stay out of the comparison.
+- `C3.12` Stable tree viewport.
+	- Refreshes (after edits, saves, unsaved typing or data reloads) keep the tree's scroll position and selection instead of scrolling to the selected row.
 
 ### C4. Interaction model and presentation settings
 
 - `C4.1` Configurable click actions.
 	- Single, double, middle, and right click interactions can be mapped to source, diff, project-view, or no-op behaviors.
+	- Opening the diff for a selection that already has an open diff tab reuses that tab.
 - `C4.2` Right-click mode switch.
 	- Right click can either follow the configured action model or open the context menu.
 - `C4.3` Double-click delay setting.
@@ -105,12 +116,15 @@ LST-CRC is an IntelliJ Platform plugin for comparing the current working tree ag
 - `C4.8` Gutter settings.
 	- Gutter markers can be enabled or disabled globally, and new-file gutter handling has a separate setting.
 	- New-file gutter behavior is a separate decision path from modified/deleted gutter behavior.
+- `C4.9` Settings storage.
+	- Settings are application-level and stored in `lstCrcSettings.xml`.
+	- Values saved by earlier versions (in the IDE's `PropertiesComponent`) are imported once, so upgrading keeps the user's configuration.
 
 ### C5. Lifecycle, persistence, and failure handling
 
 - `C5.1` Automatic refresh.
-	- Startup hooks plus VFS, changelist, and repository listeners keep the active comparison synchronized with local and repository changes.
-	- Refresh covers local edits, saves, branch changes, and repository-level updates.
+	- Startup plus changelist, repository and document listeners keep the active comparison synchronized with local and repository changes.
+	- Refresh covers unsaved edits, saves, external file changes, branch changes, and repository-level updates, debounced so typing does not run git on every keystroke.
 	- Async diff application rejects stale results whose comparison identity no longer matches the selected tab.
 - `C5.2` Persistent project UI state.
 	- Open tabs, the selected tab, aliases, and per-repository comparison overrides survive IDE restart.

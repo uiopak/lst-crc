@@ -22,17 +22,18 @@ The plugin is built for branch-heavy and multi-repository work where the current
 
 ## Build And Test
 
-- Build the plugin ZIP: `./gradlew.bat buildPlugin`
-- Verify plugin structure and compatibility: `./gradlew.bat verifyPlugin`
-- Run non-UI tests: `./gradlew.bat test`
-- Run IDE Starter UI tests: `./gradlew.bat starterUiTest`
-- Run Starter performance smoke coverage: `./gradlew.bat starterPerformanceTest`
+Use `./gradlew` on Linux and macOS, `gradlew.bat` on Windows.
 
-Additional architecture notes and test mapping live in [docs/README.md](./docs/README.md).
+- Build the plugin ZIP: `./gradlew buildPlugin` (in `build/distributions/`)
+- Run unit tests: `./gradlew test`
+- Verify compatibility with IDE 2025.1 and later: `./gradlew verifyPlugin`
+- UI tests (Remote Robot and IDE Starter) need a display. See [CLAUDE.md](./CLAUDE.md) for how to run them locally or as GitHub workflows.
+
+Architecture notes and the test mapping live in [docs/README.md](./docs/README.md).
 
 ## Installation
 
-- Build a plugin ZIP with `./gradlew.bat buildPlugin` and install it from disk via <kbd>Settings/Preferences</kbd> > <kbd>Plugins</kbd> > <kbd>⚙</kbd> > <kbd>Install plugin from disk...</kbd>
+- Build a plugin ZIP with `./gradlew buildPlugin` and install it from disk via <kbd>Settings/Preferences</kbd> > <kbd>Plugins</kbd> > <kbd>⚙</kbd> > <kbd>Install plugin from disk...</kbd>
 - Or download the latest packaged artifact from the repository releases page when a release is published.
 
 ## Development Notes
