@@ -174,11 +174,27 @@ class GitChangesViewFixture(remoteRobot: RemoteRobot, remoteComponent: RemoteCom
             Duration.ofSeconds(10)
         )
 
+    /**
+     * Waits until the changes tree shows the same rows on two reads in a row. Selecting a tab reloads its data
+     * and then rebuilds the tree asynchronously, so on slow runners (macOS) a click or check made right after
+     * the switch can land on a tree that is still being rebuilt.
+     */
+    fun waitForTreeToSettle() {
+        step("Wait for the changes tree to settle") {
+            var previousRows: List<String>? = null
+            waitFor(Duration.ofSeconds(15), interval = Duration.ofMillis(500)) {
+                val rows = changesTree.findAllText().map { it.text }
+                (rows.isNotEmpty() && rows == previousRows).also { previousRows = rows }
+            }
+        }
+    }
+
     fun clickChange(fileName: String, button: MouseButton = MouseButton.LEFT_BUTTON) {
         step("Click '$fileName' with $button") {
             waitFor(Duration.ofSeconds(10), interval = Duration.ofMillis(250)) {
                 changesTree.findAllText(fileName).isNotEmpty()
             }
+            waitForTreeToSettle()
             changesTree.findText(fileName).click(button)
         }
     }
@@ -231,6 +247,7 @@ class GitChangesViewFixture(remoteRobot: RemoteRobot, remoteComponent: RemoteCom
             waitFor(Duration.ofSeconds(10), interval = Duration.ofMillis(250)) {
                 changesTree.findAllText(fileName).isNotEmpty()
             }
+            waitForTreeToSettle()
             changesTree.findText(fileName).doubleClick()
         }
     }

@@ -1028,6 +1028,7 @@ class LstCrcBranchComparisonUiTest : LstCrcUiTestSupport() {
                     waitFor(Duration.ofSeconds(10)) {
                         changesTree.findAllText("OnlyB.txt").isEmpty()
                     }
+                    waitForTreeToSettle()
                 }
             }
 
