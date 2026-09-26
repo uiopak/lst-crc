@@ -13,7 +13,7 @@ LST-CRC is organized around one central idea: one selected comparison tab produc
 ## Core Service Boundaries
 
 - `ToolWindowStateService` is the orchestration layer. It owns persisted tab state, selected-tab state, refresh sequencing, missing-branch notifications, and the handoff from tab selection to Git refresh.
-- `GitService` owns all Git4Idea and git CLI work: repository resolution, `git diff --name-status` / `--numstat` against the target, untracked files, unsaved-document overlays, revision content, and categorized diff construction. It keeps the last on-disk result per repository for edit-only refreshes, and caches file content at a revision by commit hash.
+- `GitService` owns all Git4Idea and git CLI work: repository resolution, one `git diff --raw --numstat -z` run per repository against the target (just `--raw` when line stats are off), untracked files, unsaved-document overlays, revision content, and categorized diff construction. It keeps the last on-disk result per repository for edit-only refreshes, and caches file content at a revision by commit hash.
 - `ProjectActiveDiffDataService` is the active-diff cache. It stores the categorized file sets, path sets, line stats, and comparison context for the selected tab and publishes `DIFF_DATA_CHANGED_TOPIC` when the active diff changes.
 - `LstCrcSettingsService` is the application-level `PersistentStateComponent` for plugin settings (`lstCrcSettings.xml`), read and written as `settings[definition]`; on first run it imports values from the legacy `PropertiesComponent` keys. `ToolWindowSettingsProvider` reads settings through it and builds the gear menu, calling the affected components directly when a setting changes.
 

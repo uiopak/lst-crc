@@ -125,7 +125,7 @@ This document lists each current `src/main` file separately and explains why it 
 ### VisualTrackerManager.kt
 - Role: Intercepts line-status tracking and renders active-comparison gutter markers against the selected diff target.
 - Depends on: `ProjectActiveDiffDataService`, `GitService`, `ToolWindowSettingsProvider`, and line-status tracker APIs.
-- Connected to: Editor gutter state, diff-change notifications, settings changes, and active file lookups.
+- Connected to: Editor gutter state, diff-change notifications, settings changes, and active file lookups. Diff-data and settings changes re-check every open editor; switching editor tabs only re-checks the selected editor of each split, since hidden editors are checked when they are selected.
 - Why it exists: The plugin's comparison target can differ from `HEAD`, so the standard gutter behavior is not sufficient.
 
 ## Tool Window UI And Actions
