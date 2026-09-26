@@ -122,11 +122,6 @@ class GitService(private val project: Project) {
 
     private val logger = thisLogger()
 
-    private data class ParsedDiffStatus(
-        val changeType: Change.Type,
-        val fileStatus: FileStatus
-    )
-
     private data class RevisionContentKey(
         val root: String,
         val commitHash: String,
@@ -343,27 +338,14 @@ class GitService(private val project: Project) {
         return diskChanges
     }
 
+    /**
+     * Loads the tracked changes against [target] and, with [includeLineStats], their line counts, from one
+     * `git diff --raw [--numstat] -z` run. `--ignore-cr-at-eol` only changes the counts: raw records list
+     * every changed file whatever the whitespace options.
+     */
     private fun loadTrackedChangesAgainstWorkingTree(repo: GitRepository, target: String, includeLineStats: Boolean): LoadedChanges {
-        val targetRevision = GitRevisionNumber(target)
-        val changes = runGitDiff(repo, "--name-status", DIFF_FILTER_PARAM, "-M", target)
-            .lineSequence()
-            .mapNotNull { parseDiffLine(repo, targetRevision, it) }
-            .toList()
-
-        return LoadedChanges(
-            changes = changes,
-            lineStatsByChange = if (includeLineStats) loadTrackedLineStats(repo, changes, target) else emptyMap()
-        )
-    }
-
-    private fun loadTrackedLineStats(
-        repo: GitRepository,
-        changes: List<Change>,
-        target: String
-    ): Map<ChangeLineStatsKey, ChangeLineStats> {
-        if (changes.isEmpty()) return emptyMap()
-        val output = runGitDiff(repo, *trackedLineStatsDiffArgs(target).toTypedArray())
-        return parseTrackedLineStats(repo, changes, output)
+        val args = if (includeLineStats) trackedLineStatsDiffArgs(target) else listOf(DIFF_FILTER_PARAM, "-M", target)
+        return parseTrackedDiff(repo, GitRevisionNumber(target), runGitDiff(repo, "--raw", "-z", *args.toTypedArray()))
     }
 
     /** Runs a silent `git diff` in [repo] and returns its stdout, throwing [VcsException] on failure. */
@@ -377,72 +359,78 @@ class GitService(private val project: Project) {
     }
 
     /**
-     * Parses `git diff --numstat -z` output. Each record is `added<TAB>removed<TAB>path<NUL>`, or for
-     * renames `added<TAB>removed<TAB><NUL>old<NUL>new<NUL>`; binary files report `-` counts and are
-     * skipped. Paths are unquoted with `-z`, so renames map to their [Change] instead of falling back
-     * to an in-process diff (without `-z` git writes them as `dir/{old => new}`).
+     * Parses `git diff --raw -z` output, optionally followed by `--numstat -z` output. The "before" side of
+     * each change is [targetRevision], the "after" side is the working tree. Paths are unquoted with `-z`.
+     *
+     * - Raw records are `:<modes> <hashes> <status><NUL><path><NUL>`, with a second path for renames and copies.
+     * - Numstat records are `added<TAB>removed<TAB>path<NUL>`, or for renames `added<TAB>removed<TAB><NUL>old<NUL>new<NUL>`.
+     *   Binary files report `-` counts and get no stats.
      */
-    private fun parseTrackedLineStats(
-        repo: GitRepository,
-        changes: List<Change>,
-        output: String
-    ): Map<ChangeLineStatsKey, ChangeLineStats> {
-        val keys = changes.mapTo(LinkedHashSet(), ChangeLineStatsKey::from)
-        val byAfterPath = keys.filter { it.afterPath != null }.associateBy { it.afterPath!! }
-        val byBeforePath = keys.filter { it.beforePath != null }.associateBy { it.beforePath!! }
+    private fun parseTrackedDiff(repo: GitRepository, targetRevision: GitRevisionNumber, output: String): LoadedChanges {
         val root = repo.root.path
+        fun path(relativePath: String) = GitContentRevision.createPath(repo.root, relativePath)
+        fun before(path: FilePath) = GitContentRevision.createRevision(path, targetRevision, project)
+        fun after(path: FilePath) = GitContentRevision.createRevision(path, null, project)
 
-        val result = linkedMapOf<ChangeLineStatsKey, ChangeLineStats>()
+        val changes = mutableListOf<Change>()
+        val stats = mutableListOf<Pair<ChangeLineStatsKey, ChangeLineStats?>>()
         val fields = output.split('\u0000').iterator()
         while (fields.hasNext()) {
-            val tokens = fields.next().trim('\n').split('\t')
+            val field = fields.next().trim('\n')
+            if (field.startsWith(':')) {
+                val status = field.substringAfterLast(' ').firstOrNull()
+                val first = if (fields.hasNext()) fields.next() else break
+                changes += when (status) {
+                    'A' -> Change(null, after(path(first)), FileStatus.ADDED)
+                    'D' -> Change(before(path(first)), null, FileStatus.DELETED)
+                    'M', 'T', 'U', 'X' -> path(first).let { Change(before(it), after(it), FileStatus.MODIFIED) }
+                    'R', 'C' -> {
+                        val second = if (fields.hasNext()) fields.next() else break
+                        Change(before(path(first)), after(path(second)), FileStatus.MODIFIED)
+                    }
+                    else -> continue
+                }
+                continue
+            }
+            val tokens = field.split('\t')
             if (tokens.size < 3) continue
             val key = if (tokens[2].isEmpty()) {
                 // Rename or copy: the old and new paths follow as separate fields.
                 val oldPath = if (fields.hasNext()) fields.next() else break
                 val newPath = if (fields.hasNext()) fields.next() else break
-                ChangeLineStatsKey.fromPaths("$root/$oldPath", "$root/$newPath").takeIf { it in keys }
+                ChangeLineStatsKey.fromPaths("$root/$oldPath", "$root/$newPath")
             } else {
-                val path = "$root/${tokens[2]}".replace('\\', '/')
-                byAfterPath[path] ?: byBeforePath[path]
-            } ?: continue
-            val addedLines = tokens[0].toIntOrNull() ?: continue
-            val removedLines = tokens[1].toIntOrNull() ?: continue
-            result[key] = ChangeLineStats(addedLines = addedLines, removedLines = removedLines)
+                ChangeLineStatsKey.fromPaths(null, "$root/${tokens[2]}")
+            }
+            val addedLines = tokens[0].toIntOrNull()
+            val removedLines = tokens[1].toIntOrNull()
+            stats += key to if (addedLines != null && removedLines != null) ChangeLineStats(addedLines, removedLines) else null
         }
-        return result
+        return LoadedChanges(changes, matchLineStats(changes, stats))
     }
 
     /**
-     * Parses one `git diff --name-status <target>` line. The "before" side is [targetRevision],
-     * the "after" side is the current working tree.
+     * Maps numstat entries to the keys of [changes]. A plain path matches a change by its after path, else by
+     * its before path (deletions); a rename entry must match a change's key exactly.
      */
-    private fun parseDiffLine(repo: GitRepository, targetRevision: GitRevisionNumber, line: String): Change? {
-        val tokens = line.split('\t')
-        val parsedStatus = parseDiffStatus(tokens.first()) ?: return null
-        val requiredTokens = if (parsedStatus.changeType == Change.Type.MOVED) 3 else 2
-        if (tokens.size < requiredTokens) return null
-
-        fun path(index: Int) = GitContentRevision.createPathFromEscaped(repo.root, tokens[index])
-        fun before(path: FilePath) = GitContentRevision.createRevision(path, targetRevision, project)
-        fun after(path: FilePath) = GitContentRevision.createRevision(path, null, project)
-
-        return when (parsedStatus.changeType) {
-            Change.Type.NEW -> Change(null, after(path(1)), parsedStatus.fileStatus)
-            Change.Type.DELETED -> Change(before(path(1)), null, parsedStatus.fileStatus)
-            Change.Type.MODIFICATION -> path(1).let { Change(before(it), after(it), parsedStatus.fileStatus) }
-            Change.Type.MOVED -> Change(before(path(1)), after(path(2)), parsedStatus.fileStatus)
+    private fun matchLineStats(
+        changes: List<Change>,
+        stats: List<Pair<ChangeLineStatsKey, ChangeLineStats?>>
+    ): Map<ChangeLineStatsKey, ChangeLineStats> {
+        if (stats.isEmpty()) return emptyMap()
+        val keys = changes.mapTo(LinkedHashSet(), ChangeLineStatsKey::from)
+        val byAfterPath = keys.filter { it.afterPath != null }.associateBy { it.afterPath!! }
+        val byBeforePath = keys.filter { it.beforePath != null }.associateBy { it.beforePath!! }
+        val result = linkedMapOf<ChangeLineStatsKey, ChangeLineStats>()
+        for ((entry, lineStats) in stats) {
+            val key = if (entry.beforePath != null) {
+                entry.takeIf { it in keys }
+            } else {
+                byAfterPath[entry.afterPath] ?: byBeforePath[entry.afterPath]
+            } ?: continue
+            result[key] = lineStats ?: continue
         }
-    }
-
-    private fun parseDiffStatus(statusToken: String): ParsedDiffStatus? {
-        return when (statusToken.firstOrNull()) {
-            'A' -> ParsedDiffStatus(Change.Type.NEW, FileStatus.ADDED)
-            'D' -> ParsedDiffStatus(Change.Type.DELETED, FileStatus.DELETED)
-            'M', 'T', 'U', 'X' -> ParsedDiffStatus(Change.Type.MODIFICATION, FileStatus.MODIFIED)
-            'R', 'C' -> ParsedDiffStatus(Change.Type.MOVED, FileStatus.MODIFIED)
-            else -> null
-        }
+        return result
     }
 
     /** Splits changes into created/modified/moved/deleted files in one pass. */
