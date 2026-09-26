@@ -63,8 +63,8 @@ This document lists each current `src/main` file separately and explains why it 
 - Why it exists: The plugin needs deterministic initialization so scopes, widget text, gutter state, and the tool window start in sync, without waiting for indexing.
 
 ### VcsChangeListener.kt
-- Role: The only source of automatic refreshes. It listens to `ChangeListManager` updates, `GitRepository.GIT_REPO_CHANGE` and document edits in repository files, and turns bursts of them into one refresh after a 300 ms debounce (a coroutine `Flow`).
-- Depends on: `ChangeListManager`, `EditorFactory` document events, the Git repository topic, `ToolWindowStateService`, and `GitService` (to check whether an edited file is in a repository, off the EDT).
+- Role: The only source of automatic refreshes. It listens to `ChangeListManager` updates, `GitRepository.GIT_REPO_CHANGE`, document saves and document edits in repository files, and turns bursts of them into one refresh after a 300 ms debounce (a coroutine `Flow`). If the burst held only document edits it asks for an edit-only refresh, which reuses the last git result; any other event makes it a full refresh.
+- Depends on: `ChangeListManager`, `EditorFactory` document events, `FileDocumentManagerListener` (saves), the Git repository topic, `ToolWindowStateService`, and `GitService` (to check whether an edited file is in a repository, off the EDT).
 - Connected to: The refresh pipeline in `ToolWindowStateService`.
 - Why it exists: Local edits, saves, external changes, checkouts and commits all need to refresh the comparison, but typing must not run git on every keystroke.
 
@@ -83,7 +83,7 @@ This document lists each current `src/main` file separately and explains why it 
 ## Core Services
 
 ### GitService.kt
-- Role: Sole Git and Git4Idea integration boundary for repository discovery, change loading, revision content, and branch snapshots.
+- Role: Sole Git and Git4Idea integration boundary for repository discovery, change loading, revision content, and branch snapshots. It keeps the last on-disk diff per repository, which edit-only refreshes reuse, and a small LRU cache of file content at a revision, keyed by the resolved commit hash.
 - Depends on: Git4Idea, low-level Git commands, VCS `Change` models, and plugin state types such as `TabInfo`.
 - Connected to: `ToolWindowStateService`, `VisualTrackerManager`, settings code, and branch-selection flows.
 - Why it exists: Centralizing all Git logic keeps the rest of the plugin from depending directly on IntelliJ VCS internals.
@@ -173,15 +173,15 @@ This document lists each current `src/main` file separately and explains why it 
 - Why it exists: The plugin exposes many interaction toggles and needs one place that builds them and reads their values.
 
 ### LstCrcSettingsService.kt
-- Role: Application-level `PersistentStateComponent` holding every setting as a string map in `lstCrcSettings.xml`, with typed getters and setters. `LstCrcSettingDefinitions` lists each key and its default.
+- Role: Application-level `PersistentStateComponent` holding every setting as a string map in `lstCrcSettings.xml`. Typed access goes through the setting definitions: `settings[LstCrcSettingDefinitions.X]` and `settings[LstCrcSettingDefinitions.X] = value`. `LstCrcSettingDefinitions` lists each key and its default.
 - Depends on: `PersistentStateComponent`; `PropertiesComponent` only for the one-time import of settings saved by earlier versions.
-- Connected to: `ToolWindowSettingsProvider`, and the unit tests, Remote Robot JavaScript and Starter bridge, which call the typed accessors by name.
+- Connected to: `ToolWindowSettingsProvider`, the unit tests and the Starter bridge (typed access), and the Remote Robot JavaScript, which calls the raw-key accessors (`getString`, `setBoolean`, ...) by name.
 - Why it exists: Settings need typed, testable storage with defaults, and upgrades must keep the user's configuration.
 
 ### ToolWindowUiCompatibility.kt
-- Role: The calls into internal tool-window classes: showing or hiding the tool-window title and setting the tab actions.
-- Depends on: `ToolWindowEx`, `ToolWindowContentUi` and `ContentManagerImpl` (internal).
-- Connected to: `MyToolWindowFactory`, `ToolWindowSettingsProvider`, and the Remote Robot tests (which call `setToolWindowTitleVisible` / `isToolWindowTitleVisible` by reflection).
+- Role: The calls into internal tool-window classes: showing or hiding the tool-window title, setting the tab actions, and finding the tab content behind a clicked tab label.
+- Depends on: `ToolWindowEx`, `ToolWindowContentUi`, `ContentManagerImpl` and `BaseLabel` (internal).
+- Connected to: `MyToolWindowFactory`, `ToolWindowSettingsProvider`, `RenameTabAction`, and the Remote Robot tests (which call `setToolWindowTitleVisible` / `isToolWindowTitleVisible` by reflection).
 - Why it exists: The public API cannot hide the tool-window title after creation; keeping the internal calls here makes them easy to find on IDE upgrades.
 
 ### LstCrcActionContext.kt
@@ -228,7 +228,7 @@ This document lists each current `src/main` file separately and explains why it 
 
 ### RenameTabAction.kt
 - Role: Tab context-menu action that renames a closable comparison tab through an inline balloon.
-- Depends on: Action APIs, popup UI classes, `LstCrcKeys`, `ToolWindowHelper`, and the internal `BaseLabel` class to find the clicked tab.
+- Depends on: Action APIs, popup UI classes, `LstCrcKeys`, `ToolWindowHelper`, and `ToolWindowUiCompatibility.findTabContent` to find the clicked tab.
 - Connected to: Tool-window tab context menus, persisted aliases, and widget display text.
 - Why it exists: Tab aliases are important when multiple revisions or similar branch names are open at once.
 

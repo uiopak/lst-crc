@@ -111,8 +111,9 @@ Entry points are registered in `src/main/resources/META-INF/plugin.xml`. The cod
   - `toolWindow/LstCrcStatusWidget`;
   - `toolWindow/LstCrcChangesBrowser` (the tree in each tab).
 - `listeners/VcsChangeListener` is the only source of automatic refreshes. It listens to
-  `ChangeListManager` updates, `GIT_REPO_CHANGE` and unsaved document edits, and triggers one
-  refresh after a 300 ms debounce.
+  `ChangeListManager` updates, `GIT_REPO_CHANGE`, document saves and unsaved document edits, and
+  triggers one refresh after a 300 ms debounce. A burst of edits only triggers an edit-only
+  refresh, which reuses the last git result and only overlays unsaved documents.
 - `listeners/PluginStartupActivity` initializes `VcsChangeListener` and `VisualTrackerManager` and
   refreshes the tab colors. Then it waits for VCS initialization (not smart mode, so it doesn't wait for
   indexing) and runs the first diff load.
