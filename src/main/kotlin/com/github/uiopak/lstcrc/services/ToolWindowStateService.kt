@@ -52,6 +52,9 @@ class ToolWindowStateService(private val project: Project, val coroutineScope: C
     private val activeRefresh = AtomicReference<CompletableFuture<Unit>?>(null)
     private val refreshQueued = AtomicBoolean(false)
 
+    /** True while a queued request needs a full reload; see [refreshAfterDocumentEdit]. */
+    private val fullReloadQueued = AtomicBoolean(true)
+
     override fun getState(): ToolWindowState {
         logger.debug { "getState() called. Current state: $myState" }
         return normalizeState(myState)
@@ -127,14 +130,14 @@ class ToolWindowStateService(private val project: Project, val coroutineScope: C
      * Central point for loading data for a given tab profile. It fetches changes from Git,
      * updates the data cache ([ProjectActiveDiffDataService]), and refreshes the UI.
      */
-    private suspend fun loadDataForTab(tabInfo: TabInfo?) {
+    private suspend fun loadDataForTab(tabInfo: TabInfo?, reuseDiskChanges: Boolean) {
         val profileName = tabInfo?.branchName ?: "HEAD"
         logger.debug { "DATA_FLOW: Initiating data load for profile: '$profileName'" }
         val gitService = project.service<GitService>()
         val diffDataService = project.service<ProjectActiveDiffDataService>()
 
         try {
-            val result = gitService.getChanges(tabInfo)
+            val result = gitService.getChanges(tabInfo, reuseDiskChanges)
             withContext(Dispatchers.EDT) {
                 if (project.isDisposed) return@withContext
                 logger.debug { "DATA_FLOW: Loaded ${result.categorizedChanges.allChanges.size} changes for '$profileName'." }
@@ -257,9 +260,19 @@ class ToolWindowStateService(private val project: Project, val coroutineScope: C
      *
      * @return A [CompletableFuture] that completes when the refresh operation is finished.
      */
-    fun refreshDataForCurrentSelection(): CompletableFuture<Unit> {
+    fun refreshDataForCurrentSelection(): CompletableFuture<Unit> = requestRefresh(fullReload = true)
+
+    /**
+     * Refresh after unsaved edits only. Nothing changed on disk, so `GitService` may reuse its last
+     * `git diff` result and only rebuild the unsaved-edit overlay. If a full refresh is merged into
+     * the same cycle, the cycle reloads everything.
+     */
+    fun refreshAfterDocumentEdit(): CompletableFuture<Unit> = requestRefresh(fullReload = false)
+
+    private fun requestRefresh(fullReload: Boolean): CompletableFuture<Unit> {
         if (project.isDisposed) return CompletableFuture.completedFuture(Unit)
 
+        if (fullReload) fullReloadQueued.set(true)
         refreshQueued.set(true)
 
         activeRefresh.get()?.let {
@@ -279,7 +292,8 @@ class ToolWindowStateService(private val project: Project, val coroutineScope: C
         refreshFuture.whenComplete { _, _ ->
             if (activeRefresh.compareAndSet(refreshFuture, null) && refreshQueued.get() && !project.isDisposed) {
                 logger.debug { "ACTION: A refresh request arrived during completion. Scheduling another coalesced cycle." }
-                refreshDataForCurrentSelection()
+                // The pending request already recorded in fullReloadQueued whether it needs a full reload.
+                requestRefresh(fullReload = false)
             }
         }
 
@@ -289,7 +303,7 @@ class ToolWindowStateService(private val project: Project, val coroutineScope: C
     private suspend fun runRefreshCycle() {
         // Requests that arrive while a load is running are folded into one more iteration.
         while (!project.isDisposed && refreshQueued.getAndSet(false)) {
-            loadDataForTab(getSelectedTabInfo())
+            loadDataForTab(getSelectedTabInfo(), reuseDiskChanges = !fullReloadQueued.getAndSet(false))
         }
     }
 

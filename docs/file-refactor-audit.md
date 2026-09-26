@@ -4,19 +4,8 @@ This file lists refactoring opportunities in `src/main` that were checked agains
 
 ## Open Opportunities
 
-1. **Settings accessor duplication.**
-   - `LstCrcSettingsService` has a typed getter and setter for each of its 19 settings (38 methods), and `ToolWindowSettingsProvider` re-exposes 18 of the getters unchanged.
-   - A generic `get(definition)` / `set(definition, value)` would remove about 55 lines.
-   - The unit tests, the Remote Robot JavaScript (`IdeaFrame` calls setters such as `setSingleClickAction` by name) and the Starter bridge all use the typed accessors, so they have to change in the same PR.
-2. **Double EDT hop per refresh.**
-   - `ToolWindowStateService.loadDataForTab` switches to the EDT, and `ProjectActiveDiffDataService.updateActiveDiff` then schedules another `invokeLater`.
-   - Applying the snapshot directly when already on the EDT saves one event-queue round trip per refresh.
-   - This changes event ordering slightly, so run both UI suites.
-3. **Internal `BaseLabel` in `RenameTabAction`.**
-   - The action reads the internal `BaseLabel` class directly to find the clicked tab, although its KDoc says it goes through `ToolWindowUiCompatibility`.
-   - Either move the lookup into `ToolWindowUiCompatibility`, so all internal tool-window calls stay in one file, or replace the balloon with a standard input dialog like `CreateTabFromRevisionAction` uses.
-   - `LstCrcActionVisibilityTest` covers the lookup.
-4. **`hasSingleSelectedCommit` duplicates `singleSelectedCommit`.** `LstCrcActionVisibilityTest` fakes the Git Log selection with strings, and replacing the size check with `singleSelectedCommit(e) != null` casts them and fails. Only change this together with the test fake.
+1. **`hasSingleSelectedCommit` duplicates `singleSelectedCommit`.** `LstCrcActionVisibilityTest` fakes the Git Log selection with strings, and replacing the size check with `singleSelectedCommit(e) != null` casts them and fails. Only change this together with the test fake.
+2. **`ToolWindowSettingsProvider` read facade.** It still has one getter per setting (for example `isShowLineStatsInTree()`), each a single `settingsService()[definition]` call. Callers could read `service<LstCrcSettingsService>()[definition]` directly, but the facade is used in about 30 places and keeps them short, so this is optional.
 
 ## Looks Removable, Must Stay
 
@@ -35,3 +24,9 @@ This file lists refactoring opportunities in `src/main` that were checked agains
 - PR #85 removed dead code and single-use indirection across 10 files (−211 lines). It simplified branch filtering in `BranchSelectionPanel`, `openSource` and viewport handling in `LstCrcChangesBrowser`, the status widget's connection handling and tab selection, the shared snapshot swap in `ProjectActiveDiffDataService`, and helpers in `GitService` and `VisualTrackerManager`.
 - The follow-up cleanup turned every trace-level `INFO` log into a lazy `logger.debug { ... }`, so nothing is written to `idea.log`, and no message string is built, unless debug logging is on. Before, each refresh (which runs after every pause in typing) and each gutter load wrote `INFO` lines, some with the whole tab state. It also removed the extra `LstCrcStatusWidget.refresh` at startup, since the state broadcast already updates the widget.
 - Logging rule: use `logger.debug { ... }` for tracing, and `warn`/`error` only for problems a user or maintainer should see.
+- The review after that made refreshes cheaper and removed duplication:
+  - **Edit-only refreshes reuse the last git result.** A refresh caused only by typing no longer runs `git diff --name-status`, `--numstat` and `ls-files` again: `GitService` keeps the last disk result per repository (keyed by target and settings) and only overlays the unsaved documents. VCS events, saves, tab switches and settings changes still reload from disk.
+  - **Revision content is cached by commit hash.** The unsaved-document overlay used to run `git show` for every unsaved file on every refresh. Content is now cached (64 entries, files up to 512K characters) under the commit the target resolves to, so a moved branch or `HEAD` never serves stale content. Tags and abbreviated hashes are not cached.
+  - **One EDT hop less per refresh.** `ProjectActiveDiffDataService` applies the result directly when it is already on the EDT.
+  - **`BaseLabel` lookup moved into `ToolWindowUiCompatibility`**, so all internal tool-window calls are in one file. `RenameTabAction` no longer logs a warning when the action is invoked without a clicked tab.
+  - **Settings accessors collapsed.** The 38 typed getters and setters in `LstCrcSettingsService` became `settings[definition]` and `settings[definition] = value`. The Remote Robot JavaScript uses the raw-key accessors (`getString`/`setString`, `getBoolean`/`setBoolean`, `getInt`/`setInt`).

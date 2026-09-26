@@ -137,76 +137,24 @@ class LstCrcSettingsService : PersistentStateComponent<LstCrcSettingsService.Set
 
     private fun storedValue(key: String): String? = state.values[key]?.takeUnless(String::isBlank)
 
-    private fun getString(key: String, default: String): String = storedValue(key) ?: default
-    private fun setString(key: String, value: String) { state.values[key] = value }
+    // --- Typed accessors: settings[LstCrcSettingDefinitions.SHOW_LINE_STATS_IN_TREE] = true ---
 
-    private fun getString(def: StringSettingDefinition): String = getString(def.key, def.defaultValue)
-    private fun setString(def: StringSettingDefinition, value: String) = setString(def.key, value)
-    private fun getBoolean(def: BooleanSettingDefinition): Boolean = getBoolean(def.key, def.defaultValue)
-    private fun setBoolean(def: BooleanSettingDefinition, value: Boolean) = setBoolean(def.key, value)
-    private fun getInt(def: IntSettingDefinition): Int = getInt(def.key, def.defaultValue)
-    private fun setInt(def: IntSettingDefinition, value: Int) = setInt(def.key, value)
+    operator fun get(definition: StringSettingDefinition): String = getString(definition.key, definition.defaultValue)
+    operator fun set(definition: StringSettingDefinition, value: String) = setString(definition.key, value)
 
-    // --- Public typed accessors ---
+    operator fun get(definition: BooleanSettingDefinition): Boolean = getBoolean(definition.key, definition.defaultValue)
+    operator fun set(definition: BooleanSettingDefinition, value: Boolean) = setBoolean(definition.key, value)
 
-    fun getSingleClickAction(): String = getString(LstCrcSettingDefinitions.SINGLE_CLICK_ACTION)
-    fun setSingleClickAction(action: String) = setString(LstCrcSettingDefinitions.SINGLE_CLICK_ACTION, action)
+    operator fun get(definition: IntSettingDefinition): Int = getInt(definition.key, definition.defaultValue)
+    operator fun set(definition: IntSettingDefinition, value: Int) = setInt(definition.key, value)
 
-    fun getDoubleClickAction(): String = getString(LstCrcSettingDefinitions.DOUBLE_CLICK_ACTION)
-    fun setDoubleClickAction(action: String) = setString(LstCrcSettingDefinitions.DOUBLE_CLICK_ACTION, action)
+    // --- Raw-key accessors, used by the Remote Robot JavaScript (which cannot pick an operator overload) ---
 
-    fun getMiddleClickAction(): String = getString(LstCrcSettingDefinitions.MIDDLE_CLICK_ACTION)
-    fun setMiddleClickAction(action: String) = setString(LstCrcSettingDefinitions.MIDDLE_CLICK_ACTION, action)
+    fun getString(key: String, default: String): String = storedValue(key) ?: default
 
-    fun getDoubleMiddleClickAction(): String = getString(LstCrcSettingDefinitions.DOUBLE_MIDDLE_CLICK_ACTION)
-    fun setDoubleMiddleClickAction(action: String) = setString(LstCrcSettingDefinitions.DOUBLE_MIDDLE_CLICK_ACTION, action)
-
-    fun getRightClickAction(): String = getString(LstCrcSettingDefinitions.RIGHT_CLICK_ACTION)
-    fun setRightClickAction(action: String) = setString(LstCrcSettingDefinitions.RIGHT_CLICK_ACTION, action)
-
-    fun getDoubleRightClickAction(): String = getString(LstCrcSettingDefinitions.DOUBLE_RIGHT_CLICK_ACTION)
-    fun setDoubleRightClickAction(action: String) = setString(LstCrcSettingDefinitions.DOUBLE_RIGHT_CLICK_ACTION, action)
-
-    fun isContextMenuEnabled(): Boolean = getBoolean(LstCrcSettingDefinitions.SHOW_CONTEXT_MENU)
-    fun setContextMenuEnabled(enabled: Boolean) = setBoolean(LstCrcSettingDefinitions.SHOW_CONTEXT_MENU, enabled)
-
-    fun getUserDoubleClickDelay(): Int = getInt(LstCrcSettingDefinitions.USER_DOUBLE_CLICK_DELAY)
-    fun setUserDoubleClickDelay(delay: Int) = setInt(LstCrcSettingDefinitions.USER_DOUBLE_CLICK_DELAY, delay)
-
-    fun isIncludeHeadInScopes(): Boolean = getBoolean(LstCrcSettingDefinitions.INCLUDE_HEAD_IN_SCOPES)
-    fun setIncludeHeadInScopes(enabled: Boolean) = setBoolean(LstCrcSettingDefinitions.INCLUDE_HEAD_IN_SCOPES, enabled)
-
-    fun isGutterMarkersEnabled(): Boolean = getBoolean(LstCrcSettingDefinitions.ENABLE_GUTTER_MARKERS)
-    fun setGutterMarkersEnabled(enabled: Boolean) = setBoolean(LstCrcSettingDefinitions.ENABLE_GUTTER_MARKERS, enabled)
-
-    fun isGutterForNewFilesEnabled(): Boolean = getBoolean(LstCrcSettingDefinitions.ENABLE_GUTTER_FOR_NEW_FILES)
-    fun setGutterForNewFilesEnabled(enabled: Boolean) = setBoolean(LstCrcSettingDefinitions.ENABLE_GUTTER_FOR_NEW_FILES, enabled)
-
-    fun isShowToolWindowTitle(): Boolean = getBoolean(LstCrcSettingDefinitions.SHOW_TOOL_WINDOW_TITLE)
-    fun setShowToolWindowTitle(enabled: Boolean) = setBoolean(LstCrcSettingDefinitions.SHOW_TOOL_WINDOW_TITLE, enabled)
-
-    fun isShowWidgetContext(): Boolean = getBoolean(LstCrcSettingDefinitions.SHOW_WIDGET_CONTEXT)
-    fun setShowWidgetContext(enabled: Boolean) = setBoolean(LstCrcSettingDefinitions.SHOW_WIDGET_CONTEXT, enabled)
-
-    fun isShowContextForSingleRepo(): Boolean = getBoolean(LstCrcSettingDefinitions.SHOW_CONTEXT_SINGLE_REPO)
-    fun setShowContextForSingleRepo(enabled: Boolean) = setBoolean(LstCrcSettingDefinitions.SHOW_CONTEXT_SINGLE_REPO, enabled)
-
-    fun isShowContextForMultiRepo(): Boolean = getBoolean(LstCrcSettingDefinitions.SHOW_CONTEXT_MULTI_REPO)
-    fun setShowContextForMultiRepo(enabled: Boolean) = setBoolean(LstCrcSettingDefinitions.SHOW_CONTEXT_MULTI_REPO, enabled)
-
-    fun isShowContextForCommits(): Boolean = getBoolean(LstCrcSettingDefinitions.SHOW_CONTEXT_FOR_COMMITS)
-    fun setShowContextForCommits(enabled: Boolean) = setBoolean(LstCrcSettingDefinitions.SHOW_CONTEXT_FOR_COMMITS, enabled)
-
-    fun isShowLineStatsInTree(): Boolean = getBoolean(LstCrcSettingDefinitions.SHOW_LINE_STATS_IN_TREE)
-    fun setShowLineStatsInTree(enabled: Boolean) = setBoolean(LstCrcSettingDefinitions.SHOW_LINE_STATS_IN_TREE, enabled)
-
-    fun isExpandNewFilesInCollapsedDirs(): Boolean = getBoolean(LstCrcSettingDefinitions.EXPAND_NEW_FILES_IN_COLLAPSED_DIRS)
-    fun setExpandNewFilesInCollapsedDirs(enabled: Boolean) = setBoolean(LstCrcSettingDefinitions.EXPAND_NEW_FILES_IN_COLLAPSED_DIRS, enabled)
-
-    fun isShowUntrackedFilesAsNew(): Boolean = getBoolean(LstCrcSettingDefinitions.SHOW_UNTRACKED_FILES_AS_NEW)
-    fun setShowUntrackedFilesAsNew(enabled: Boolean) = setBoolean(LstCrcSettingDefinitions.SHOW_UNTRACKED_FILES_AS_NEW, enabled)
-
-    // --- Public raw-key accessors (used by tests via reflection) ---
+    fun setString(key: String, value: String) {
+        state.values[key] = value
+    }
 
     fun getBoolean(key: String, default: Boolean): Boolean =
         storedValue(key)?.toBooleanStrictOrNull() ?: default
@@ -224,8 +172,8 @@ class LstCrcSettingsService : PersistentStateComponent<LstCrcSettingsService.Set
 
     @Suppress("unused")
     fun resetToDefaults() {
-        LstCrcSettingDefinitions.stringSettings.forEach { setString(it, it.defaultValue) }
-        LstCrcSettingDefinitions.booleanSettings.forEach { setBoolean(it, it.defaultValue) }
-        LstCrcSettingDefinitions.intSettings.forEach { setInt(it, it.defaultValue) }
+        LstCrcSettingDefinitions.stringSettings.forEach { this[it] = it.defaultValue }
+        LstCrcSettingDefinitions.booleanSettings.forEach { this[it] = it.defaultValue }
+        LstCrcSettingDefinitions.intSettings.forEach { this[it] = it.defaultValue }
     }
 }

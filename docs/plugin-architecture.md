@@ -13,14 +13,14 @@ LST-CRC is organized around one central idea: one selected comparison tab produc
 ## Core Service Boundaries
 
 - `ToolWindowStateService` is the orchestration layer. It owns persisted tab state, selected-tab state, refresh sequencing, missing-branch notifications, and the handoff from tab selection to Git refresh.
-- `GitService` owns all Git4Idea and git CLI work: repository resolution, `git diff --name-status` / `--numstat` against the target, untracked files, unsaved-document overlays, revision content, and categorized diff construction.
+- `GitService` owns all Git4Idea and git CLI work: repository resolution, `git diff --name-status` / `--numstat` against the target, untracked files, unsaved-document overlays, revision content, and categorized diff construction. It keeps the last on-disk result per repository for edit-only refreshes, and caches file content at a revision by commit hash.
 - `ProjectActiveDiffDataService` is the active-diff cache. It stores the categorized file sets, path sets, line stats, and comparison context for the selected tab and publishes `DIFF_DATA_CHANGED_TOPIC` when the active diff changes.
-- `LstCrcSettingsService` is the application-level `PersistentStateComponent` for plugin settings (`lstCrcSettings.xml`); on first run it imports values from the legacy `PropertiesComponent` keys. `ToolWindowSettingsProvider` reads settings through it and builds the gear menu, calling the affected components directly when a setting changes.
+- `LstCrcSettingsService` is the application-level `PersistentStateComponent` for plugin settings (`lstCrcSettings.xml`), read and written as `settings[definition]`; on first run it imports values from the legacy `PropertiesComponent` keys. `ToolWindowSettingsProvider` reads settings through it and builds the gear menu, calling the affected components directly when a setting changes.
 
 ## Event And Refresh Flow
 
-1. A trigger asks `ToolWindowStateService.refreshDataForCurrentSelection()` to refresh: startup, tab selection, a settings change, or `VcsChangeListener`. `VcsChangeListener` is the only source of automatic refreshes: it listens to `ChangeListManager` updates, `GitRepository.GIT_REPO_CHANGE` and document edits in repository files, and debounces them by 300 ms.
-2. `ToolWindowStateService` merges concurrent requests into one coroutine refresh cycle, resolves the selected `TabInfo` and calls `GitService.getChanges(...)`, which runs on `Dispatchers.IO` under a background progress indicator.
+1. A trigger asks `ToolWindowStateService.refreshDataForCurrentSelection()` to refresh: startup, tab selection, a settings change, or `VcsChangeListener`. `VcsChangeListener` is the only source of automatic refreshes: it listens to `ChangeListManager` updates, `GitRepository.GIT_REPO_CHANGE`, document saves and document edits in repository files, and debounces them by 300 ms. When the debounced burst held only document edits, it calls `refreshAfterDocumentEdit()` instead, an edit-only refresh.
+2. `ToolWindowStateService` merges concurrent requests into one coroutine refresh cycle, resolves the selected `TabInfo` and calls `GitService.getChanges(...)`, which runs on `Dispatchers.IO` under a background progress indicator. If every request merged into the cycle was edit-only, `GitService` reuses each repository's last on-disk result (when the target and settings match) and only overlays the unsaved documents, so typing does not run `git diff` again. Any other request, including a save, reloads from disk.
 3. `GitService` computes categorized changes across all repositories, using the per-repository target from `TabInfo.comparisonMap` (or the tab's own target), and returns the file buckets, line stats and comparison context plus any repositories whose target could not be resolved.
 4. Back on the EDT, `ToolWindowStateService` handles missing branches (resetting that repository to `HEAD` and notifying) and passes the result to `ProjectActiveDiffDataService`, which drops results for a tab that is no longer selected. The diff data is pushed even for the `HEAD` tab, whatever `Include HEAD in scopes` says.
 5. `ProjectActiveDiffDataService` refreshes file statuses and editor tab colors and publishes `DIFF_DATA_CHANGED_TOPIC`. `LstCrcChangesBrowser` and `VisualTrackerManager` react to the topic. Scopes and the tree renderer read the cache lazily when the IDE evaluates scope membership or repaints. Scopes and gutter markers check `Include HEAD in scopes` themselves.
@@ -40,7 +40,7 @@ LST-CRC is organized around one central idea: one selected comparison tab produc
 - `RepoNodeRenderer` appends comparison-context text ("(vs target)") and added/removed line counts to tree rows.
 - `BranchSelectionPanel` and `SingleRepoBranchSelectionDialog` provide the searchable branch-selection flows used by the tool window and by branch-failure recovery.
 - `LstCrcStatusWidget` mirrors the selected tab label or alias in the status bar and provides a quick popup for switching or adding tabs.
-- `ToolWindowUiCompatibility` contains the calls into internal tool-window classes (title visibility, tab actions). `RenameTabAction` still reads the internal `BaseLabel` directly to find the clicked tab.
+- `ToolWindowUiCompatibility` contains the calls into internal tool-window classes (title visibility, tab actions, and the `BaseLabel` lookup `RenameTabAction` uses to find the clicked tab).
 
 ## IntelliJ Platform Dependencies
 
@@ -55,7 +55,7 @@ LST-CRC is organized around one central idea: one selected comparison tab produc
 
 ## Threading Model
 
-- Git commands and diff work run in coroutines on `Dispatchers.IO` (or `Dispatchers.Default` for tracker work); results come back to the EDT through `Dispatchers.EDT` or `invokeLater`.
+- Git commands and diff work run in coroutines on `Dispatchers.IO` (or `Dispatchers.Default` for tracker work); results come back to the EDT through `Dispatchers.EDT` or `invokeLater`. `ProjectActiveDiffDataService` applies a result directly when it is already called on the EDT.
 - UI construction, notification display, popup creation, and content-manager mutations stay on the EDT.
 - `ToolWindowStateService` never runs two loads at once: requests that arrive during a load are folded into one more cycle. Stale results are also dropped when diff data is applied.
 

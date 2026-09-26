@@ -14,6 +14,7 @@ Location: `src/test/kotlin/com/github/uiopak/lstcrc/{gutters,listeners,scopes,se
 | `BranchSelectionPanelTest.testEnterSubmitsSelectedBranch` | `C2.1` | Enter on the selected branch submits it. |
 | `BranchSelectionPanelTest.testNewPanelReopensWithFullBranchSnapshotAfterPreviousFilter` | `C2.1` | A new panel starts unfiltered after an earlier panel was filtered. |
 | `GitServiceComparisonTargetTest.testResolveComparisonTargetPrecedence` | `C2.3` | A per-repository override wins over the tab target; the `HEAD` tab compares against `HEAD`. |
+| `GitServiceComparisonTargetTest.testResolveCommitHashUsesRepositoryStateAndRejectsAmbiguousRevisions` | `C3.8` | Revision content is cached only under a commit hash resolved from `HEAD`, a branch or a full hash; tags and short hashes are not cached. |
 | `GitServiceLineStatsTest.testCalculateLineStatsIgnoresLineEndingOnlyDifferences` | `C3.10` | CRLF/LF-only differences count as no change. |
 | `GitServiceLineStatsTest.testCalculateLineStatsCountsRealChangesWhenLineEndingsAlsoDiffer` | `C3.10` | Real edits still count when line endings differ too. |
 | `GitServiceLineStatsTest.testCalculateLineStatsForSingleLineReplacement` | `C3.10` | A replaced line counts as one added and one removed. |
@@ -77,6 +78,7 @@ Location: `src/test/kotlin/com/github/uiopak/lstcrc/{gutters,listeners,scopes,se
 | `VcsChangeListenerTest.testHandleDocumentChangeTriggersRefreshForRepositoryFiles` | `C5.1` | Edits to repository files trigger one debounced refresh. |
 | `VcsChangeListenerTest.testHandleDocumentChangeIgnoresNonRepositoryFiles` | `C5.1` | Edits outside repositories are ignored. |
 | `VcsChangeListenerTest.testHandleDocumentChangeDoesNotBlockOnRepositoryCheck` | `C5.1` | The repository check never blocks the editing thread. |
+| `VcsChangeListenerTest.testDocumentEditsAloneRequestEditOnlyRefreshWhileVcsEventsRequestFullRefresh` | `C5.1` | A burst of edits alone requests an edit-only refresh; a VCS event in the burst makes it a full refresh. |
 | `VisualTrackerManagerBehaviorTest.testUnderlyingTrackerReportsInsertedRangeForPartialInsertionAgainstExistingBase` | `C3.7` | A partial insertion is an inserted range. |
 | `VisualTrackerManagerBehaviorTest.testUnderlyingTrackerReportsInitialInsertedRangeForWholeNewFileAgainstEmptyBase` | `C3.7` | A new file against an empty base is one inserted range. |
 | `VisualTrackerManagerBehaviorTest.testStandaloneTrackerInstallsGutterHighlightersForWholeNewFile` | `C3.7`, `C4.8` | The standalone tracker for a new file draws gutter markers. |

@@ -125,6 +125,7 @@ LST-CRC is an IntelliJ Platform plugin for comparing the current working tree ag
 - `C5.1` Automatic refresh.
 	- Startup plus changelist, repository and document listeners keep the active comparison synchronized with local and repository changes.
 	- Refresh covers unsaved edits, saves, external file changes, branch changes, and repository-level updates, debounced so typing does not run git on every keystroke.
+	- A burst of unsaved edits alone reuses the last git result and only overlays the edited documents; saves and VCS or repository events reload the comparison from disk.
 	- Async diff application rejects stale results whose comparison identity no longer matches the selected tab.
 - `C5.2` Persistent project UI state.
 	- Open tabs, the selected tab, aliases, and per-repository comparison overrides survive IDE restart.

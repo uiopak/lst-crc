@@ -98,16 +98,26 @@ class ProjectActiveDiffDataService(private val project: Project) : Disposable {
             return
         }
 
-        ApplicationManager.getApplication().invokeLater {
-            if (project.isDisposed) return@invokeLater
+        onEdt {
             val newSnapshot = ActiveDiffSnapshot(branchNameFromEvent, categorizedChanges)
             if (snapshot != newSnapshot) replaceSnapshot(newSnapshot)
         }
     }
 
     fun clearActiveDiff() {
-        ApplicationManager.getApplication().invokeLater {
-            if (!project.isDisposed) replaceSnapshot(ActiveDiffSnapshot.EMPTY)
+        onEdt { replaceSnapshot(ActiveDiffSnapshot.EMPTY) }
+    }
+
+    /**
+     * Runs [action] now when called on the EDT (the normal case: refreshes apply their result there),
+     * otherwise on the next EDT turn. Skipped once the project is disposed.
+     */
+    private fun onEdt(action: () -> Unit) {
+        val application = ApplicationManager.getApplication()
+        if (application.isDispatchThread) {
+            if (!project.isDisposed) action()
+        } else {
+            application.invokeLater { if (!project.isDisposed) action() }
         }
     }
 
