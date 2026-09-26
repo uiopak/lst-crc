@@ -106,7 +106,7 @@ class ProjectActiveDiffDataService(private val project: Project) : Disposable {
 
     /**
      * `Change.equals` only compares paths, so this also compares revisions and statuses: an unsaved edit
-     * keeps its paths but carries new content, and the tree must show (and diff) the new [Change].
+     * keeps its paths but carries new content, and the tree must show (and diff) the new `Change`.
      */
     private fun CategorizedChanges.sameAs(other: CategorizedChanges): Boolean =
         this == other && allChanges.indices.all { i ->

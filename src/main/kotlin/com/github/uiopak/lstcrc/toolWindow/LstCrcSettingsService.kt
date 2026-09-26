@@ -91,22 +91,28 @@ class LstCrcSettingsService : PersistentStateComponent<LstCrcSettingsService.Set
 
     // --- Raw-key accessors, used by the Remote Robot JavaScript (which cannot pick an operator overload) ---
 
+    @Suppress("unused")
     fun getString(key: String, default: String): String = storedValue(key) ?: default
 
+    @Suppress("unused")
     fun setString(key: String, value: String) {
         state.values[key] = value
     }
 
+    @Suppress("unused")
     fun getBoolean(key: String, default: Boolean): Boolean =
         storedValue(key)?.toBooleanStrictOrNull() ?: default
 
+    @Suppress("unused")
     fun setBoolean(key: String, value: Boolean) {
         state.values[key] = value.toString()
     }
 
+    @Suppress("unused")
     fun getInt(key: String, default: Int): Int =
         storedValue(key)?.toIntOrNull() ?: default
 
+    @Suppress("unused")
     fun setInt(key: String, value: Int) {
         state.values[key] = value.toString()
     }
