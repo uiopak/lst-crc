@@ -1,5 +1,6 @@
 package com.github.uiopak.lstcrc.messaging
 
+import com.github.uiopak.lstcrc.state.ToolWindowState
 import com.intellij.util.messages.Topic
 import java.util.EventListener
 
@@ -8,7 +9,7 @@ import java.util.EventListener
  * This decouples listeners (like the Gutter Service) from UI events and ensures they
  * only react when the underlying data they depend on is ready.
  */
-interface ActiveDiffDataChangedListener : EventListener {
+fun interface ActiveDiffDataChangedListener : EventListener {
     fun onDiffDataChanged()
 }
 
@@ -19,8 +20,8 @@ val DIFF_DATA_CHANGED_TOPIC: Topic<ActiveDiffDataChangedListener> = Topic.create
  *
  * @see com.github.uiopak.lstcrc.services.ToolWindowStateService
  */
-interface ToolWindowStateListener : EventListener {
-    fun stateChanged(newState: com.github.uiopak.lstcrc.state.ToolWindowState)
+fun interface ToolWindowStateListener : EventListener {
+    fun stateChanged(newState: ToolWindowState)
 }
 
 val TOOL_WINDOW_STATE_TOPIC: Topic<ToolWindowStateListener> = Topic.create("LST-CRC ToolWindow State Changed", ToolWindowStateListener::class.java)

@@ -97,7 +97,7 @@ LST-CRC is an IntelliJ Platform plugin for comparing the current working tree ag
 
 - `C4.1` Configurable click actions.
 	- Single, double, middle, and right click interactions can be mapped to source, diff, project-view, or no-op behaviors.
-	- Opening the diff for a selection that already has an open diff tab reuses that tab.
+	- Opening the diff for a selection that already has an open diff tab reuses that tab. For a file with unsaved edits the tab is reused only while the unsaved text is the same; after more typing a new diff opens with the current text.
 - `C4.2` Right-click mode switch.
 	- Right click can either follow the configured action model or open the context menu.
 - `C4.3` Double-click delay setting.

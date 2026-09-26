@@ -29,22 +29,17 @@ import kotlinx.coroutines.withContext
 object ToolWindowHelper {
     private val logger = thisLogger()
 
-    internal fun normalizedTabAlias(alias: String?): String? = alias?.trim()?.ifEmpty { null }
-
+    /** Sets [branchName]'s alias; a blank alias clears it. */
     internal fun updateNormalizedTabAlias(project: Project, branchName: String, alias: String?) {
-        project.service<ToolWindowStateService>().updateTabAlias(branchName, normalizedTabAlias(alias))
+        project.service<ToolWindowStateService>().updateTabAlias(branchName, alias?.trim()?.ifEmpty { null })
     }
 
     internal fun branchSelectionTabName(): String = LstCrcBundle.message("tab.name.select.branch")
 
     internal fun activateToolWindow(project: Project, onActivated: (ToolWindow) -> Unit): Boolean {
         val toolWindow = ToolWindowManager.getInstance(project).getToolWindow(LstCrcConstants.TOOL_WINDOW_ID) ?: return false
-        activateToolWindow(toolWindow, onActivated)
-        return true
-    }
-
-    internal fun activateToolWindow(toolWindow: ToolWindow, onActivated: (ToolWindow) -> Unit) {
         toolWindow.activate({ onActivated(toolWindow) }, true, true)
+        return true
     }
 
     /**
@@ -148,12 +143,12 @@ object ToolWindowHelper {
      * @param toolWindow The LST-CRC tool window instance.
      */
     fun openBranchSelectionTab(project: Project, toolWindow: ToolWindow) {
-        activateToolWindow(toolWindow) {
+        toolWindow.activate({
             logger.debug { "HELPER: openBranchSelectionTab called." }
             val contentManager: ContentManager = toolWindow.contentManager
 
             if (selectExistingBranchSelectionTab(contentManager)) {
-                return@activateToolWindow
+                return@activate
             }
 
             project.service<ToolWindowStateService>().coroutineScope.launch {
@@ -171,7 +166,7 @@ object ToolWindowHelper {
                     addBranchSelectionContent(project, toolWindow, contentManager, primaryRepo, branchSnapshot)
                 }
             }
-        }
+        }, true, true)
     }
 
     private fun selectExistingBranchSelectionTab(contentManager: ContentManager): Boolean {

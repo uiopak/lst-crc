@@ -77,20 +77,17 @@ class MyToolWindowFactory : ToolWindowFactory {
     /** Keeps tab titles in sync with renamed aliases. */
     private fun subscribeToStateChanges(project: Project, toolWindow: ToolWindow) {
         val contentManager = toolWindow.contentManager
-        project.messageBus.connect(toolWindow.disposable).subscribe(TOOL_WINDOW_STATE_TOPIC,
-            object : ToolWindowStateListener {
-                override fun stateChanged(newState: ToolWindowState) {
-                    ApplicationManager.getApplication().invokeLater {
-                        if (project.isDisposed || toolWindow.isDisposed) return@invokeLater
-                        newState.openTabs.forEach { tabInfo ->
-                            val content = ToolWindowHelper.findContentByBranchName(contentManager, tabInfo.branchName)
-                            if (content != null && content.displayName != tabInfo.displayName) {
-                                content.displayName = tabInfo.displayName
-                            }
-                        }
+        project.messageBus.connect(toolWindow.disposable).subscribe(TOOL_WINDOW_STATE_TOPIC, ToolWindowStateListener { newState ->
+            ApplicationManager.getApplication().invokeLater {
+                if (project.isDisposed || toolWindow.isDisposed) return@invokeLater
+                newState.openTabs.forEach { tabInfo ->
+                    val content = ToolWindowHelper.findContentByBranchName(contentManager, tabInfo.branchName)
+                    if (content != null && content.displayName != tabInfo.displayName) {
+                        content.displayName = tabInfo.displayName
                     }
                 }
-            })
+            }
+        })
     }
 
     private fun createHeadTab(project: Project, toolWindow: ToolWindow): Content {
@@ -154,8 +151,4 @@ class MyToolWindowFactory : ToolWindowFactory {
             }
         })
     }
-
-    override fun shouldBeAvailable(project: Project) = true
-
-    override suspend fun isApplicableAsync(project: Project): Boolean = true
 }

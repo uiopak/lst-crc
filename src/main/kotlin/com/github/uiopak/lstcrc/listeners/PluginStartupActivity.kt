@@ -11,6 +11,7 @@ import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.startup.ProjectActivity
 import com.intellij.openapi.vcs.ProjectLevelVcsManager
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.future.await
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -63,6 +64,8 @@ class PluginStartupActivity : ProjectActivity {
             try {
                 toolWindowStateService.refreshDataForCurrentSelection().await()
                 logger.debug { "STARTUP_LOGIC: Initial diff load task finished for project: ${project.name}" }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 logger.warn("STARTUP_LOGIC: Initial diff load failed.", e)
             }

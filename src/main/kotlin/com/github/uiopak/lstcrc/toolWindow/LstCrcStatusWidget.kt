@@ -1,11 +1,11 @@
 package com.github.uiopak.lstcrc.toolWindow
 
+import com.github.uiopak.lstcrc.LstCrcConstants
 import com.github.uiopak.lstcrc.messaging.TOOL_WINDOW_STATE_TOPIC
 import com.github.uiopak.lstcrc.messaging.ToolWindowStateListener
 import com.github.uiopak.lstcrc.resources.LstCrcBundle
 import com.github.uiopak.lstcrc.services.ToolWindowStateService
 import com.github.uiopak.lstcrc.state.TabInfo
-import com.github.uiopak.lstcrc.state.ToolWindowState
 import com.github.uiopak.lstcrc.state.displayName
 import com.intellij.ide.DataManager
 import com.intellij.openapi.actionSystem.AnAction
@@ -18,6 +18,7 @@ import com.intellij.openapi.ui.popup.JBPopupFactory
 import com.intellij.openapi.wm.StatusBar
 import com.intellij.openapi.wm.StatusBarWidget
 import com.intellij.openapi.wm.StatusBarWidgetFactory
+import com.intellij.openapi.wm.ToolWindowManager
 import com.intellij.openapi.wm.WindowManager
 import com.intellij.ui.content.Content
 import com.intellij.ui.content.ContentManager
@@ -31,7 +32,6 @@ import java.awt.event.MouseEvent
 class LstCrcStatusWidgetFactory : StatusBarWidgetFactory {
     override fun getId(): String = LstCrcStatusWidget.ID
     override fun getDisplayName(): String = LstCrcBundle.message("widget.display.name")
-    override fun isAvailable(project: Project): Boolean = true
     override fun createWidget(project: Project): StatusBarWidget = LstCrcStatusWidget(project)
     // disposeWidget and canBeEnabledOn use default implementations from StatusBarWidgetFactory
 }
@@ -64,10 +64,8 @@ class LstCrcStatusWidget(private val project: Project) : StatusBarWidget, Status
 
         // The listener's only job is to tell the status bar to re-query our presentation.
         // The connection is disposed together with the widget.
-        project.messageBus.connect(this).subscribe(TOOL_WINDOW_STATE_TOPIC, object : ToolWindowStateListener {
-            override fun stateChanged(newState: ToolWindowState) {
-                this@LstCrcStatusWidget.statusBar?.updateWidget(ID())
-            }
+        project.messageBus.connect(this).subscribe(TOOL_WINDOW_STATE_TOPIC, ToolWindowStateListener {
+            this@LstCrcStatusWidget.statusBar?.updateWidget(ID())
         })
     }
 
@@ -128,7 +126,9 @@ class LstCrcStatusWidget(private val project: Project) : StatusBarWidget, Status
         }
         add(Separator.getInstance())
         add(popupAction(LstCrcBundle.message("widget.action.add.tab")) {
-            ToolWindowHelper.activateToolWindow(project) { toolWindow -> ToolWindowHelper.openBranchSelectionTab(project, toolWindow) }
+            // openBranchSelectionTab activates the tool window itself.
+            ToolWindowManager.getInstance(project).getToolWindow(LstCrcConstants.TOOL_WINDOW_ID)
+                ?.let { ToolWindowHelper.openBranchSelectionTab(project, it) }
         })
     }
 

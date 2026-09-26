@@ -1,5 +1,6 @@
 package com.github.uiopak.lstcrc.toolWindow
 
+import com.github.uiopak.lstcrc.services.ToolWindowStateService
 import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
@@ -32,7 +33,7 @@ class SetRevisionAsRepoComparisonAction : AnAction() {
         val selectedTabInfo = selectedLstCrcTab(project) ?: return
 
         val revisionString = commitId.hash.asString()
-        project.service<com.github.uiopak.lstcrc.services.ToolWindowStateService>()
+        project.service<ToolWindowStateService>()
             .updateTabRepoComparison(selectedTabInfo.branchName, repo.root.path, revisionString)
     }
 }

@@ -74,6 +74,7 @@
 | `C3.8` | Unsaved edits appear before save | `LstCrcBranchComparisonUiTest.testUnsavedLocalEditAppearsWithoutSave` |
 | `C3.8` | Unsaved edits of new files preserve `NEW`/`ADDED` semantics | `LstCrcBranchComparisonUiTest.testNewFileStaysCreatedDuringUnsavedEdits`, `GitServiceOverlayMergeTest.testPreservesNewChangeTypeWhenUnsavedOverlayIsApplied` |
 | `C3.8` | Unsaved overlays for non-new files remain modifications | `GitServiceOverlayMergeTest.testKeepsModificationOverlayForNonNewFiles` |
+| `C3.8` | Files `git diff` reports as added skip the target-content lookup for the overlay; untracked files do not | `GitServiceOverlayMergeTest.testTrackedAddedPathsSkipsUntrackedAndModifiedFiles` |
 | `C3.8` | The unsaved-overlay revision reads the editor's current text, also off the EDT | `GitServiceLineStatsTest.testCreateLiveDocumentContentRevisionReadsLatestUnsavedDocumentText`, `GitServiceLineStatsTest.testCreateLiveDocumentContentRevisionAllowsBackgroundThreadAccess` |
 | `C3.8` | New unsaved content on unchanged paths reaches the tree; identical content does not republish | `GitServiceLineStatsTest.testLiveDocumentContentRevisionsAreEqualOnlyForTheSameText`, `ProjectActiveDiffDataServiceTest.testSamePathsWithNewUnsavedContentPublishesNewChanges` |
 | `C3.8` | Target content for the overlay is cached only under a resolved commit hash, so a moved branch or `HEAD` never serves stale content | `GitServiceComparisonTargetTest.testResolveCommitHashUsesRepositoryStateAndRejectsAmbiguousRevisions` |
@@ -95,6 +96,7 @@
 | --- | --- | --- |
 | `C4.1` | Configured click actions trigger the expected behaviors | `LstCrcInteractionUiTest.testToolWindowClickActions`, `LstCrcInteractionStarterUiTest.testToolWindowClickActions`, `LstCrcSettingsUiTest.testAdditionalClickSettings`, `LstCrcSettingsStarterUiTest.testAdditionalClickSettings` |
 | `C4.1` | Each mouse button uses its own settings; other buttons do nothing | `LstCrcChangesBrowserTest.testConfiguredClickActionLookupUsesButtonSpecificSettings`, `LstCrcChangesBrowserTest.testConfiguredClickActionLookupFallsBackToNoneForUnsupportedButtons` |
+| `C4.1` | An open diff tab of an unsaved file is reused only for the same unsaved text | `LstCrcChangesBrowserTest.testDiffKeyOfUnsavedEditChangesWithItsText` |
 | `C4.1` | Open Source wins over a focused diff, and Show Diff reuses an open diff tab | `LstCrcInteractionUiTest.testContextMenuOpenSourceWinsOverFocusedDiffAndReusesDiff`, `LstCrcInteractionStarterUiTest.testContextMenuOpenSourceWinsOverFocusedDiffAndReusesDiff` |
 | `C4.2` | Right-click can switch from configured actions to context-menu mode | `LstCrcInteractionUiTest.testContextMenuActionsWhenEnabled`, `LstCrcInteractionStarterUiTest.testContextMenuActionsWhenEnabled`, `LstCrcSettingsUiTest.testAdditionalClickSettings`, `LstCrcSettingsStarterUiTest.testAdditionalClickSettings` |
 | `C4.2` | The context menu offers "Show in Project" only for files that exist | `LstCrcChangesBrowserTest.testAvailableContextMenuActionsIncludeProjectTreeForNonDeletedChange`, `LstCrcChangesBrowserTest.testAvailableContextMenuActionsOmitProjectTreeForDeletedChange` |

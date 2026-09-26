@@ -81,12 +81,6 @@ class VisualTrackerManager(
      */
     private val loadedRevisions = ConcurrentHashMap<Document, String>()
 
-    private fun isExpectedMissingFileInRevision(message: String?): Boolean =
-        message != null && (
-            message.contains("does not exist in", ignoreCase = true) ||
-                message.contains("exists on disk, but not in", ignoreCase = true)
-            )
-
     fun init() {
         val busConnection = project.messageBus.connect(this)
 
@@ -109,11 +103,7 @@ class VisualTrackerManager(
         })
 
         // Listen for Diff Data changes (Tab switching)
-        busConnection.subscribe(DIFF_DATA_CHANGED_TOPIC, object : ActiveDiffDataChangedListener {
-            override fun onDiffDataChanged() {
-                refreshAllTrackers()
-            }
-        })
+        busConnection.subscribe(DIFF_DATA_CHANGED_TOPIC, ActiveDiffDataChangedListener { refreshAllTrackers() })
 
         busConnection.subscribe(FileEditorManagerListener.FILE_EDITOR_MANAGER, object : FileEditorManagerListener {
             // Only the editors on screen need a check now; others are checked when they are selected.
@@ -132,7 +122,9 @@ class VisualTrackerManager(
     fun settingsChanged() {
         logger.debug { "VISUAL_TRACKER: Gutter marker setting changed. Refreshing trackers and file statuses." }
         refreshAllTrackers()
-        refreshFileStatuses()
+        ApplicationManager.getApplication().invokeLater {
+            if (!project.isDisposed) FileStatusManager.getInstance(project).fileStatusesChanged()
+        }
     }
 
     @Suppress("unused")
@@ -156,14 +148,6 @@ class VisualTrackerManager(
             "${it.javaClass.simpleName}|visible=${it.mode.isVisible}|ranges=${ranges.joinToString(",")}"
         } ?: "tracker=none"
         return "${highlighters.joinToString(",")}|highlighters=${highlighters.size}|$trackerSummary"
-    }
-
-    private fun refreshFileStatuses() {
-        if (project.isDisposed) return
-        ApplicationManager.getApplication().invokeLater {
-            if (project.isDisposed) return@invokeLater
-            FileStatusManager.getInstance(project).fileStatusesChanged()
-        }
     }
 
     private fun trackerRangeTypeName(type: Byte): String = when (type) {
@@ -238,19 +222,15 @@ class VisualTrackerManager(
                 }
             } else {
                 if (nativeTracker != null) {
-                    restoreNativeTracker(nativeTracker)
+                    // Only restore the native tracker if we actually had a visual tracker for this document.
+                    if (releaseVisualTracker(document)) {
+                        logger.debug { "VISUAL_TRACKER: Restored native tracker for ${file.name}." }
+                        nativeTracker.mode = VISIBLE_MODE
+                    }
                 } else if (releaseVisualTracker(document)) {
                     logger.debug { "VISUAL_TRACKER: Released standalone visual tracker for ${file.name}." }
                 }
             }
-        }
-    }
-
-    private fun restoreNativeTracker(nativeTracker: LocalLineStatusTracker<*>) {
-        // Only act if we actually had a visual tracker for this document.
-        if (releaseVisualTracker(nativeTracker.document)) {
-            logger.debug { "VISUAL_TRACKER: Restored native tracker for ${nativeTracker.virtualFile.name}." }
-            nativeTracker.mode = VISIBLE_MODE
         }
     }
 
@@ -344,7 +324,11 @@ class VisualTrackerManager(
                 gitService.getFileContentForRevision(revision, file)
             } catch (e: Exception) {
                 val vcsError = generateSequence<Throwable>(e) { it.cause }.firstOrNull { it is VcsException }
-                if (isExpectedMissingFileInRevision(vcsError?.message)) {
+                val message = vcsError?.message.orEmpty()
+                // The file does not exist in the target revision: compare against empty content.
+                if (message.contains("does not exist in", ignoreCase = true) ||
+                    message.contains("exists on disk, but not in", ignoreCase = true)
+                ) {
                     ""
                 } else {
                     logger.warn("VISUAL_TRACKER: Failed to load content for ${file.path}: ${(vcsError ?: e).message}")

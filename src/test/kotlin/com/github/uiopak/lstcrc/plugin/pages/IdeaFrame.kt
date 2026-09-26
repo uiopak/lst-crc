@@ -679,7 +679,7 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
         })();
         """.trimIndent()
 
-    private fun selectedBrowserScript(body: String): String =
+    fun selectedBrowserScript(body: String): String =
         """
         (function() {
             ${toolWindowLookupStatements()}

@@ -1,5 +1,6 @@
 package com.github.uiopak.lstcrc.listeners
 
+import com.github.uiopak.lstcrc.services.GitService
 import com.github.uiopak.lstcrc.services.ToolWindowStateService
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
@@ -57,24 +58,12 @@ class VcsChangeListener internal constructor(
     private val refreshAfterDocumentEdit: () -> Unit = refreshCurrentSelection
 ) : ChangeListListener, DocumentListener, GitRepositoryChangeListener, FileDocumentManagerListener, Disposable {
 
-    companion object {
-        @JvmStatic
-        fun createForTest(
-            project: Project,
-            coroutineScope: CoroutineScope,
-            refreshCurrentSelection: () -> Unit,
-            isRepositoryFile: (VirtualFile) -> Boolean,
-            refreshAfterDocumentEdit: () -> Unit = refreshCurrentSelection
-        ): VcsChangeListener =
-            VcsChangeListener(project, coroutineScope, refreshCurrentSelection, isRepositoryFile, refreshAfterDocumentEdit)
-    }
-
     @Suppress("unused")
     constructor(project: Project, coroutineScope: CoroutineScope) : this(
         project = project,
         coroutineScope = coroutineScope,
         refreshCurrentSelection = { project.service<ToolWindowStateService>().refreshDataForCurrentSelection() },
-        isRepositoryFile = { file -> project.service<com.github.uiopak.lstcrc.services.GitService>().getRepositoryForFile(file) != null },
+        isRepositoryFile = { file -> project.service<GitService>().getRepositoryForFile(file) != null },
         refreshAfterDocumentEdit = { project.service<ToolWindowStateService>().refreshAfterDocumentEdit() }
     )
 
@@ -114,18 +103,18 @@ class VcsChangeListener internal constructor(
 
     override fun repositoryChanged(repository: GitRepository) {
         logger.debug { "VCS_CHANGE_LISTENER: repositoryChanged() detected for '${repository.root.name}', triggering refresh." }
-        triggerRefresh(RefreshSignal(null, full = true))
+        refreshSignals.tryEmit(RefreshSignal(null, full = true))
     }
 
     override fun changeListUpdateDone() {
         logger.debug { "VCS_CHANGE_LISTENER: changeListUpdateDone() detected, triggering refresh." }
-        triggerRefresh(RefreshSignal(null, full = true))
+        refreshSignals.tryEmit(RefreshSignal(null, full = true))
     }
 
     /** A save writes the document to disk, so the next refresh must run `git diff` again. */
     override fun beforeDocumentSaving(document: Document) {
         val file = FileDocumentManager.getInstance().getFile(document) ?: return
-        triggerRefresh(RefreshSignal(file, full = true))
+        refreshSignals.tryEmit(RefreshSignal(file, full = true))
     }
 
     override fun documentChanged(event: DocumentEvent) {
@@ -136,11 +125,7 @@ class VcsChangeListener internal constructor(
         file ?: return
 
         logger.debug { "VCS_CHANGE_LISTENER: documentChanged() detected for '${file.path}', queueing refresh." }
-        triggerRefresh(RefreshSignal(file, full = false))
-    }
-
-    private fun triggerRefresh(signal: RefreshSignal) {
-        refreshSignals.tryEmit(signal)
+        refreshSignals.tryEmit(RefreshSignal(file, full = false))
     }
 
     override fun dispose() {

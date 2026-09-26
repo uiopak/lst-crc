@@ -2,6 +2,7 @@ package com.github.uiopak.lstcrc.toolWindow
 
 import com.github.uiopak.lstcrc.resources.LstCrcBundle
 import com.github.uiopak.lstcrc.services.CategorizedChanges
+import com.github.uiopak.lstcrc.services.TextContentRevision
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.service
 import com.intellij.openapi.util.Disposer
@@ -185,6 +186,18 @@ class LstCrcChangesBrowserTest : LstCrcTestCase() {
                 viewportPositions.distinct()
             )
         }
+    }
+
+    fun testDiffKeyOfUnsavedEditChangesWithItsText() {
+        val filePath = VcsUtil.getFilePath("/repo/Main.txt", false)
+        fun unsavedEdit(text: String) = Change(
+            TextContentRevision(filePath, "base\n", git4idea.GitRevisionNumber("HEAD")),
+            TextContentRevision(filePath, text, git4idea.GitRevisionNumber("LOCAL")),
+            FileStatus.MODIFIED
+        )
+
+        assertEquals(unsavedEdit("one\n").toDiffChangeKey(), unsavedEdit("one\n").toDiffChangeKey())
+        assertFalse(unsavedEdit("one\n").toDiffChangeKey() == unsavedEdit("two\n").toDiffChangeKey())
     }
 
     fun testAvailableContextMenuActionsIncludeProjectTreeForNonDeletedChange() {

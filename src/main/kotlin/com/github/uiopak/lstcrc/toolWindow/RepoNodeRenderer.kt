@@ -142,23 +142,18 @@ class RepoNodeRenderer(
         return target ?: diffDataService.activeBranchName ?: stateService.getSelectedTabBranchName()
     }
 
-    private fun singleRepoAnnotationNode(tree: JTree): ChangesBrowserNode<*>? {
-        if (!annotationNodeResolved) {
-            cachedAnnotationNode = findSingleRepoAnnotationNode(tree)
-            annotationNodeResolved = true
-        }
-        return cachedAnnotationNode
-    }
-
     /** The top-level node that carries the context in single-repo projects; computed once per tree root. */
-    private fun findSingleRepoAnnotationNode(tree: JTree): ChangesBrowserNode<*>? {
+    private fun singleRepoAnnotationNode(tree: JTree): ChangesBrowserNode<*>? {
+        if (annotationNodeResolved) return cachedAnnotationNode
+        annotationNodeResolved = true
+        cachedAnnotationNode = null
         val changesTree = tree as? ChangesTree ?: return null
         val rootNode = tree.model.root as? DefaultMutableTreeNode ?: return null
         val topLevelNodes = TreeUtil.listChildren(rootNode).filterIsInstance<ChangesBrowserNode<*>>()
         if (topLevelNodes.isEmpty()) return null
 
         val groupingSupport = changesTree.groupingSupport
-        return topLevelNodes.firstOrNull { candidate ->
+        cachedAnnotationNode = topLevelNodes.firstOrNull { candidate ->
             when (candidate) {
                 is ChangesBrowserModuleNode -> groupingSupport[ChangesGroupingSupport.MODULE_GROUPING]
                 is ChangesBrowserFilePathNode -> groupingSupport.isDirectory && !groupingSupport[ChangesGroupingSupport.MODULE_GROUPING]
@@ -167,6 +162,7 @@ class RepoNodeRenderer(
             }
         } ?: topLevelNodes.firstOrNull { it.childCount > 0 }
             ?: topLevelNodes.first()
+        return cachedAnnotationNode
     }
 }
 

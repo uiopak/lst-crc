@@ -26,6 +26,7 @@ Location: `src/test/kotlin/com/github/uiopak/lstcrc/{gutters,listeners,scopes,se
 | `GitServiceLineStatsTest.testLiveDocumentContentRevisionsAreEqualOnlyForTheSameText` | `C3.8` | Two loads of the same unsaved text are equal; different text is not. |
 | `GitServiceOverlayMergeTest.testPreservesNewChangeTypeWhenUnsavedOverlayIsApplied` | `C3.8` | Unsaved edits to a new file keep it `NEW`/`ADDED`. |
 | `GitServiceOverlayMergeTest.testKeepsModificationOverlayForNonNewFiles` | `C3.8` | Unsaved edits to other files stay modifications. |
+| `GitServiceOverlayMergeTest.testTrackedAddedPathsSkipsUntrackedAndModifiedFiles` | `C3.8` | Only files `git diff` reports as added skip the target-content lookup. |
 | `LstCrcActionVisibilityTest.testShowRepoComparisonInfoActionHiddenOnHeadAndVisibleForComparisonTab` | `C2.3` | Repo-comparison toolbar action is hidden on `HEAD` and shown on comparison tabs. |
 | `LstCrcActionVisibilityTest.testCreateTabFromRevisionActionVisibleOnlyForSingleRevisionSelection` | `C1.3` | Git Log "create tab" needs exactly one selected revision. |
 | `LstCrcActionVisibilityTest.testRenameTabActionVisibleForClosableBranchTabWhenContextIsNestedUnderBaseLabel` | `C1.5` | Rename is offered from inside a closable tab's label. |
@@ -38,6 +39,7 @@ Location: `src/test/kotlin/com/github/uiopak/lstcrc/{gutters,listeners,scopes,se
 | `LstCrcChangesBrowserTest.testRefreshPreservesTopViewportWhenSelectionIsOffscreen` | `C3.12` | A refresh keeps the view at the top when the selection is offscreen. |
 | `LstCrcChangesBrowserTest.testRefreshDoesNotMoveViewportWhileSelectionIsOffscreen` | `C3.12` | A refresh does not scroll to an offscreen selection. |
 | `LstCrcChangesBrowserTest.testRefreshDoesNotMoveViewportForSelectedAddedFileWhileOffscreen` | `C3.12` | A refresh does not scroll to an offscreen selected added file. |
+| `LstCrcChangesBrowserTest.testDiffKeyOfUnsavedEditChangesWithItsText` | `C4.1` | An open diff tab of an unsaved file is reused only for the same unsaved text. |
 | `LstCrcChangesBrowserTest.testAvailableContextMenuActionsIncludeProjectTreeForNonDeletedChange` | `C4.2` | The context menu offers "Show in Project" for existing files. |
 | `LstCrcChangesBrowserTest.testAvailableContextMenuActionsOmitProjectTreeForDeletedChange` | `C4.2` | The context menu omits "Show in Project" for deleted files. |
 | `LstCrcChangesBrowserTest.testConfiguredClickActionLookupUsesButtonSpecificSettings` | `C4.1` | Each mouse button uses its own single/double click settings. |
