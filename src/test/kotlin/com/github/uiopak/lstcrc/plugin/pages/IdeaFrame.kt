@@ -2,6 +2,7 @@
 
 package com.github.uiopak.lstcrc.plugin.pages
 
+import com.github.uiopak.lstcrc.plugin.utils.toJsStringLiteral
 import com.github.uiopak.lstcrc.toolWindow.LstCrcSettingDefinitions
 import com.github.uiopak.lstcrc.toolWindow.LstCrcStatusWidget
 import com.github.uiopak.lstcrc.toolWindow.LstCrcSettingsService
@@ -1556,20 +1557,4 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
         }
         """.trimIndent()
 
-    private fun toJsStringLiteral(value: String): String {
-        return buildString {
-            append('"')
-            value.forEach { character ->
-                when (character) {
-                    '\\' -> append("\\\\")
-                    '"' -> append("\\\"")
-                    '\n' -> append("\\n")
-                    '\r' -> append("\\r")
-                    '\t' -> append("\\t")
-                    else -> append(character)
-                }
-            }
-            append('"')
-        }
-    }
 }

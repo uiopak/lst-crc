@@ -1,5 +1,6 @@
 package com.github.uiopak.lstcrc.plugin.steps
 
+import com.github.uiopak.lstcrc.plugin.utils.toJsStringLiteral
 import com.intellij.remoterobot.RemoteRobot
 import com.intellij.remoterobot.fixtures.ComponentFixture
 import com.intellij.remoterobot.search.locators.byXpath
@@ -389,22 +390,6 @@ class PluginUiTestSteps(private val remoteRobot: RemoteRobot) {
         }
     }
 
-    private fun toJsStringLiteral(value: String): String {
-        return buildString {
-            append('"')
-            value.forEach { character ->
-                when (character) {
-                    '\\' -> append("\\\\")
-                    '"' -> append("\\\"")
-                    '\n' -> append("\\n")
-                    '\r' -> append("\\r")
-                    '\t' -> append("\\t")
-                    else -> append(character)
-                }
-            }
-            append('"')
-        }
-    }
 
     private fun refreshCurrentSelectionScript(projectVariableName: String = "project"): String =
         """

@@ -174,22 +174,6 @@ private fun createFreshProjectDirectory(prefix: String = "remote-ui-project-"): 
     return Files.createTempDirectory(root, prefix)
 }
 
-private fun toJsStringLiteral(value: String): String {
-    return buildString {
-        append('"')
-        value.forEach { character ->
-            when (character) {
-                '\\' -> append("\\\\")
-                '"' -> append("\\\"")
-                '\n' -> append("\\n")
-                '\r' -> append("\\r")
-                '\t' -> append("\\t")
-                else -> append(character)
-            }
-        }
-        append('"')
-    }
-}
 
 private fun RemoteRobot.suppressNewUsersOnboarding() {
     runJs(

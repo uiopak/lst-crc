@@ -1,5 +1,6 @@
 package com.github.uiopak.lstcrc.plugin.pages
 
+import com.github.uiopak.lstcrc.plugin.utils.toJsStringLiteral
 import com.intellij.remoterobot.RemoteRobot
 import com.intellij.remoterobot.data.RemoteComponent
 import com.intellij.remoterobot.fixtures.*
@@ -30,22 +31,6 @@ class BranchSelectionFixture(remoteRobot: RemoteRobot, remoteComponent: RemoteCo
         )
     }
 
-    private fun toJsStringLiteral(value: String): String {
-        return buildString {
-            append('"')
-            value.forEach { character ->
-                when (character) {
-                    '\\' -> append("\\\\")
-                    '"' -> append("\\\"")
-                    '\n' -> append("\\n")
-                    '\r' -> append("\\r")
-                    '\t' -> append("\\t")
-                    else -> append(character)
-                }
-            }
-            append('"')
-        }
-    }
 
     private fun ContainerFixture.isShowingOnScreen(): Boolean {
         return runCatching {

@@ -1,5 +1,6 @@
 package com.github.uiopak.lstcrc.plugin.pages
 
+import com.github.uiopak.lstcrc.plugin.utils.toJsStringLiteral
 import com.intellij.remoterobot.RemoteRobot
 
 /*
@@ -73,9 +74,9 @@ fun RemoteRobot.filesMatchingScope(scopeId: String, relativePaths: Collection<St
         var scopes = cl.loadClass("com.github.uiopak.lstcrc.scopes.LstCrcProvidedScopes").getField("INSTANCE").get(null).getAllScopes();
         var scope = null;
         for (var i = 0; i < scopes.size(); i++) {
-            if (String(scopes.get(i).getScopeId()) == ${jsString(scopeId)}) scope = scopes.get(i);
+            if (String(scopes.get(i).getScopeId()) == ${toJsStringLiteral(scopeId)}) scope = scopes.get(i);
         }
-        if (scope == null) throw new java.lang.IllegalStateException("Unknown LSTCRC scope " + ${jsString(scopeId)});
+        if (scope == null) throw new java.lang.IllegalStateException("Unknown LSTCRC scope " + ${toJsStringLiteral(scopeId)});
 
         // Deleted and revision-backed files are not on disk; the comparison holds them.
         var comparisonFiles = {};
@@ -86,7 +87,7 @@ fun RemoteRobot.filesMatchingScope(scopeId: String, relativePaths: Collection<St
 
         var holder = com.intellij.psi.search.scope.packageSet.NamedScopeManager.getInstance(project);
         var fileSystem = com.intellij.openapi.vfs.LocalFileSystem.getInstance();
-        var candidates = ${jsString(relativePaths.joinToString("\n"))}.split("\n");
+        var candidates = ${toJsStringLiteral(relativePaths.joinToString("\n"))}.split("\n");
         var matches = [];
         for (var c = 0; c < candidates.length; c++) {
             if (candidates[c].length == 0) continue;
@@ -112,12 +113,12 @@ fun RemoteRobot.findInFilesPaths(text: String, scopeDisplayName: String): List<S
         var searchScopes = cl.loadClass("com.github.uiopak.lstcrc.scopes.LstCrcProvidedScopes").getField("INSTANCE").get(null).searchScopes(project);
         var scope = null;
         for (var i = 0; i < searchScopes.size(); i++) {
-            if (String(searchScopes.get(i).getDisplayName()) == ${jsString(scopeDisplayName)}) scope = searchScopes.get(i);
+            if (String(searchScopes.get(i).getDisplayName()) == ${toJsStringLiteral(scopeDisplayName)}) scope = searchScopes.get(i);
         }
-        if (scope == null) throw new java.lang.IllegalStateException("Unknown search scope " + ${jsString(scopeDisplayName)});
+        if (scope == null) throw new java.lang.IllegalStateException("Unknown search scope " + ${toJsStringLiteral(scopeDisplayName)});
 
         var model = new com.intellij.find.FindModel();
-        model.setStringToFind(${jsString(text)});
+        model.setStringToFind(${toJsStringLiteral(text)});
         model.setCaseSensitive(true);
         model.setProjectScope(false);
         model.setCustomScope(true);
@@ -179,18 +180,3 @@ fun RemoteRobot.isGitRepositoryDetected(): Boolean = callJs(
     """.trimIndent(),
     true
 )
-
-private fun jsString(value: String): String = buildString {
-    append('"')
-    value.forEach { character ->
-        when (character) {
-            '\\' -> append("\\\\")
-            '"' -> append("\\\"")
-            '\n' -> append("\\n")
-            '\r' -> append("\\r")
-            '\t' -> append("\\t")
-            else -> append(character)
-        }
-    }
-    append('"')
-}
