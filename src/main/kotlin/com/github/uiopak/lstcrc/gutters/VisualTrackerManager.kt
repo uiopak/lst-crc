@@ -18,8 +18,10 @@ import com.intellij.openapi.editor.ex.MarkupModelEx
 import com.intellij.openapi.editor.EditorFactory
 import com.intellij.openapi.editor.impl.DocumentMarkupModel
 import com.intellij.openapi.fileEditor.FileDocumentManager
+import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.fileEditor.FileEditorManagerEvent
 import com.intellij.openapi.fileEditor.FileEditorManagerListener
+import com.intellij.openapi.fileEditor.TextEditor
 import com.intellij.openapi.project.Project
 
 import com.intellij.openapi.vcs.FileStatusManager
@@ -27,6 +29,7 @@ import com.intellij.openapi.vcs.VcsException
 import com.intellij.openapi.vcs.ex.LineStatusTracker
 import com.intellij.openapi.vcs.ex.LocalLineStatusTracker
 import com.intellij.openapi.vcs.ex.PartialLocalLineStatusTracker
+import com.intellij.openapi.vcs.ex.Range
 import com.intellij.openapi.vcs.ex.SimpleLocalLineStatusTracker
 import com.intellij.openapi.vcs.impl.LineStatusTrackerManager
 import com.intellij.openapi.vfs.VirtualFile
@@ -113,8 +116,9 @@ class VisualTrackerManager(
         })
 
         busConnection.subscribe(FileEditorManagerListener.FILE_EDITOR_MANAGER, object : FileEditorManagerListener {
+            // Only the editors on screen need a check now; others are checked when they are selected.
             override fun selectionChanged(event: FileEditorManagerEvent) {
-                refreshAllTrackers()
+                refreshAllTrackers(visibleOnly = true)
             }
         })
 
@@ -134,25 +138,24 @@ class VisualTrackerManager(
     @Suppress("unused")
     fun findStandaloneTracker(document: Document): LocalLineStatusTracker<*>? = visualTrackers[document]
 
-    @Suppress("unused")
-    fun debugTrackerSummary(tracker: Any): String {
-        val rangeParts = extractTrackerRangeParts(tracker)
-        val visible = extractTrackerVisibility(tracker)
-        return "${tracker.javaClass.simpleName}|visible=$visible|ranges=${rangeParts.joinToString(",")}"
-    }
-
-    @Suppress("unused")
-    fun debugTrackerSummaryFor(document: Document): String {
-        val tracker = (LineStatusTrackerManager.getInstance(project).getLineStatusTracker(document) as? LocalLineStatusTracker<*>)
-            ?: visualTrackers[document]
-            ?: return "tracker=none"
-        return debugTrackerSummary(tracker)
-    }
-
+    /** Gutter highlighters and tracker ranges of [document], for the UI tests (both suites parse this string). */
     @Suppress("unused")
     fun debugGutterSummaryFor(document: Document): String {
-        val (highlighterSummary, gutterHighlighterCount) = collectGutterHighlighterSummary(document)
-        return "$highlighterSummary|highlighters=$gutterHighlighterCount|${debugTrackerSummaryFor(document)}"
+        val markupModel = DocumentMarkupModel.forDocument(document, project, true) as MarkupModelEx
+        val highlighters = markupModel.allHighlighters.mapNotNull { highlighter ->
+            val renderer: Any = highlighter.gutterIconRenderer ?: highlighter.lineMarkerRenderer ?: return@mapNotNull null
+            val startOffset = highlighter.startOffset
+            val endLine = document.getLineNumber(maxOf(highlighter.endOffset, startOffset + 1) - 1) + 1
+            "${document.getLineNumber(startOffset)}-$endLine:${renderer.javaClass.simpleName.ifEmpty { renderer.javaClass.name }}"
+        }
+        val tracker = LineStatusTrackerManager.getInstance(project).getLineStatusTracker(document) as? LocalLineStatusTracker<*>
+            ?: visualTrackers[document]
+        val trackerSummary = tracker?.let {
+            val ranges = runCatching { it.getRanges().orEmpty().map { range -> "${range.line1}-${range.line2}:${trackerRangeTypeName(range.type)}" } }
+                .getOrDefault(emptyList())
+            "${it.javaClass.simpleName}|visible=${it.mode.isVisible}|ranges=${ranges.joinToString(",")}"
+        } ?: "tracker=none"
+        return "${highlighters.joinToString(",")}|highlighters=${highlighters.size}|$trackerSummary"
     }
 
     private fun refreshFileStatuses() {
@@ -163,67 +166,11 @@ class VisualTrackerManager(
         }
     }
 
-    private fun extractTrackerRangeParts(tracker: Any): List<String> {
-        return runCatching {
-            val getRanges = tracker.javaClass.methods.firstOrNull { it.name == "getRanges" && it.parameterCount == 0 }
-            val ranges = (getRanges?.invoke(tracker) as? Collection<*>) ?: emptyList<Any?>()
-            ranges.mapNotNull { range -> range?.let(::describeTrackerRange) }
-        }.getOrDefault(emptyList())
-    }
-
-    private fun collectGutterHighlighterSummary(document: Document): Pair<String, Int> {
-        val markupModel = DocumentMarkupModel.forDocument(document, project, true) as MarkupModelEx
-        val highlighterParts = mutableListOf<String>()
-        var gutterHighlighterCount = 0
-
-        markupModel.allHighlighters.forEach { highlighter ->
-            val renderer = highlighter.gutterIconRenderer ?: highlighter.lineMarkerRenderer ?: return@forEach
-            gutterHighlighterCount += 1
-            val startOffset = highlighter.startOffset
-            val endOffsetExclusive = maxOf(highlighter.endOffset, startOffset + 1)
-            val startLine = document.getLineNumber(startOffset)
-            val endLine = document.getLineNumber(endOffsetExclusive - 1) + 1
-            val rendererName = highlighterRendererName(renderer)
-            highlighterParts.add("$startLine-$endLine:$rendererName")
-        }
-
-        return highlighterParts.joinToString(",") to gutterHighlighterCount
-    }
-
-    private fun highlighterRendererName(renderer: Any): String {
-        return renderer.javaClass.simpleName.ifEmpty { renderer.javaClass.name }
-    }
-
-    private fun describeTrackerRange(rangeObject: Any): String? {
-        val rangeClass = rangeObject::class.java
-        val line1 = (rangeClass.methods.firstOrNull { it.name == "getLine1" }?.invoke(rangeObject) as? Number)?.toInt()
-        val line2 = (rangeClass.methods.firstOrNull { it.name == "getLine2" }?.invoke(rangeObject) as? Number)?.toInt()
-        if (line1 == null || line2 == null) {
-            return null
-        }
-
-        val typeValue = (rangeClass.methods.firstOrNull { it.name == "getType" }?.invoke(rangeObject) as? Number)?.toInt()
-        return "$line1-$line2:${trackerRangeTypeName(typeValue)}"
-    }
-
-    private fun trackerRangeTypeName(typeValue: Int?): String {
-        return when (typeValue) {
-            com.intellij.openapi.vcs.ex.Range.MODIFIED.toInt() -> "MODIFIED"
-            com.intellij.openapi.vcs.ex.Range.INSERTED.toInt() -> "INSERTED"
-            com.intellij.openapi.vcs.ex.Range.DELETED.toInt() -> "DELETED"
-            else -> "UNKNOWN"
-        }
-    }
-
-    private fun extractTrackerVisibility(tracker: Any): String {
-        return runCatching {
-            val mode = tracker.javaClass.methods.firstOrNull { it.name == "getMode" && it.parameterCount == 0 }?.invoke(tracker)
-            if (mode == null) {
-                null
-            } else {
-                mode::class.java.methods.firstOrNull { it.name == "isVisible" && it.parameterCount == 0 }?.invoke(mode)
-            }
-        }.getOrNull()?.toString() ?: "n/a"
+    private fun trackerRangeTypeName(type: Byte): String = when (type) {
+        Range.MODIFIED -> "MODIFIED"
+        Range.INSERTED -> "INSERTED"
+        Range.DELETED -> "DELETED"
+        else -> "UNKNOWN"
     }
 
     /**
@@ -232,14 +179,21 @@ class VisualTrackerManager(
      * - Native -> Visual (Create Visual, Hide Native)
      * - Visual -> Visual (Update Content)
      * - Visual -> Native (Dispose Visual, Restore Native)
+     *
+     * With [visibleOnly], only the selected editor of each split is checked.
      */
-    private fun refreshAllTrackers() {
+    private fun refreshAllTrackers(visibleOnly: Boolean = false) {
         if (project.isDisposed) return
 
         ApplicationManager.getApplication().invokeLater {
             if (project.isDisposed) return@invokeLater
 
-            val documents = EditorFactory.getInstance().allEditors.map { it.document }.distinct()
+            val editors = if (visibleOnly) {
+                FileEditorManager.getInstance(project).selectedEditors.filterIsInstance<TextEditor>().map { it.editor }
+            } else {
+                EditorFactory.getInstance().allEditors.toList()
+            }
+            val documents = editors.map { it.document }.distinct()
             val gutterEnabled = ToolWindowSettingsProvider.isGutterMarkersEnabled()
             coroutineScope.launch(dispatchers.background) {
                 documents.forEach { document ->
