@@ -873,23 +873,49 @@ class LstCrcBranchComparisonUiTest : LstCrcUiTestSupport() {
                 }
             }
 
-            closeTabFromContextMenu("feature-1")
-
-            // What matters is the plugin's comparison; the selected tab is only reported if it does not follow.
-            step("Closing the first tab activates HEAD") {
-                var entries = emptyList<String>()
-                val headActive = runCatching {
-                    waitFor(Duration.ofSeconds(30), interval = Duration.ofMillis(500)) {
-                        entries = activeDiffEntries().lines()
-                        !hasLstCrcTab("feature-1") && entries.first().startsWith("branch=HEAD|")
-                    }
-                }.isSuccess
-                assertTrue(headActive, "HEAD should be the active comparison. Selected tab: '${selectedLstCrcTabName()}', active diff: $entries")
-                assertTrue(entries.none { "Feature1.txt" in it || "Base.txt" in it }, "HEAD shows no branch files: $entries")
-                assertEquals(emptySet<String>(), filesMatchingScope("LSTCRC.Deleted", listOf("Feature1.txt", "Feature2.txt")))
+            // Close the other comparison tabs from the right. The tool window may also have a tab for the default branch,
+            // opened when it was first shown, so the expected tab is read from the real tab order: each close must select
+            // the tab before it and make its comparison active, down to HEAD (the first tab).
+            var tabs = lstCrcTabNames()
+            while (tabs.size > 1) {
+                val closing = tabs.last()
+                val expected = tabs[tabs.size - 2]
+                closeTabFromContextMenu(closing)
+                step("Closing '$closing' activates '$expected', the tab before it") {
+                    var entries = emptyList<String>()
+                    val activated = runCatching {
+                        waitFor(Duration.ofSeconds(30), interval = Duration.ofMillis(500)) {
+                            entries = activeDiffEntries().lines()
+                            !hasLstCrcTab(closing) && selectedLstCrcTabName() == expected &&
+                                entries.first().startsWith("branch=${if (tabs.size == 2) "HEAD" else expected}|")
+                        }
+                    }.isSuccess
+                    assertTrue(activated, "'$expected' should be selected and active. Selected tab: '${selectedLstCrcTabName()}', active diff: $entries")
+                }
+                tabs = tabs.dropLast(1)
             }
+            // HEAD compares against the default branch's tip, which has neither feature file.
+            assertEquals(emptySet<String>(), filesMatchingScope("LSTCRC.Deleted", listOf("Feature1.txt", "Feature2.txt")))
         }
     }
+
+    /** Display names of the LST-CRC tool window's tabs, left to right (the HEAD tab first). */
+    private fun RemoteRobot.lstCrcTabNames(): List<String> = callJs<String>(
+        """
+        (function() {
+            var project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
+            var toolWindow = project
+                ? com.intellij.openapi.wm.ToolWindowManager.getInstance(project).getToolWindow("GitChangesView")
+                : null;
+            if (!toolWindow) return "";
+            var contents = toolWindow.getContentManager().getContents();
+            var names = [];
+            for (var i = 0; i < contents.length; i++) names.push(String(contents[i].getDisplayName()));
+            return names.join("\n");
+        })();
+        """.trimIndent(),
+        true
+    ).lines().filter(String::isNotBlank)
 
     /** Closes [tabName] with the "Close Tab" item of the tab's context menu. */
     private fun IdeaFrame.closeTabFromContextMenu(tabName: String) = step("Close tab '$tabName' from its context menu") {
