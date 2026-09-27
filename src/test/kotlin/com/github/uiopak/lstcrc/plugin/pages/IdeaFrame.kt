@@ -332,13 +332,13 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
                     showContextMenu != null
             ) { "At least one click action setting must be provided" }
 
-            singleClickAction?.let { setPluginStringSetting(SINGLE_CLICK_ACTION_KEY, it) }
-            doubleClickAction?.let { setPluginStringSetting(DOUBLE_CLICK_ACTION_KEY, it) }
-            middleClickAction?.let { setPluginStringSetting(MIDDLE_CLICK_ACTION_KEY, it) }
-            doubleMiddleClickAction?.let { setPluginStringSetting(DOUBLE_MIDDLE_CLICK_ACTION_KEY, it) }
-            rightClickAction?.let { setPluginStringSetting(RIGHT_CLICK_ACTION_KEY, it) }
-            doubleRightClickAction?.let { setPluginStringSetting(DOUBLE_RIGHT_CLICK_ACTION_KEY, it) }
-            showContextMenu?.let { setPluginBooleanSetting(SHOW_CONTEXT_MENU_KEY, it) }
+            singleClickAction?.let { setPluginSetting(SINGLE_CLICK_ACTION_KEY, it) }
+            doubleClickAction?.let { setPluginSetting(DOUBLE_CLICK_ACTION_KEY, it) }
+            middleClickAction?.let { setPluginSetting(MIDDLE_CLICK_ACTION_KEY, it) }
+            doubleMiddleClickAction?.let { setPluginSetting(DOUBLE_MIDDLE_CLICK_ACTION_KEY, it) }
+            rightClickAction?.let { setPluginSetting(RIGHT_CLICK_ACTION_KEY, it) }
+            doubleRightClickAction?.let { setPluginSetting(DOUBLE_RIGHT_CLICK_ACTION_KEY, it) }
+            showContextMenu?.let { setPluginSetting(SHOW_CONTEXT_MENU_KEY, it) }
         }
     }
 
@@ -370,7 +370,7 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
 
     fun setDoubleClickDelayMs(delay: Int) {
         step("Set double click delay to ${delay}ms") {
-            setPluginIntSetting(DOUBLE_CLICK_DELAY_KEY, delay)
+            setPluginSetting(DOUBLE_CLICK_DELAY_KEY, delay)
         }
     }
 
@@ -808,13 +808,13 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
 
     fun setShowWidgetContext(show: Boolean) {
         step("Set widget context prefix to $show") {
-            setPluginBooleanSetting(SHOW_WIDGET_CONTEXT_KEY, show)
+            setPluginSetting(SHOW_WIDGET_CONTEXT_KEY, show)
         }
     }
 
     fun setShowToolWindowTitle(show: Boolean) {
         step("Set tool window title visibility to $show") {
-            setPluginBooleanSetting(SHOW_TOOL_WINDOW_TITLE_KEY, show)
+            setPluginSetting(SHOW_TOOL_WINDOW_TITLE_KEY, show)
             runJs(
                 """
                 (function() {
@@ -868,7 +868,7 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
 
     fun setIncludeHeadInScopes(include: Boolean) {
         step("Set include HEAD in scopes to $include") {
-            setPluginBooleanSetting(INCLUDE_HEAD_IN_SCOPES_KEY, include)
+            setPluginSetting(INCLUDE_HEAD_IN_SCOPES_KEY, include)
             runJs(
                 selectedBrowserScript(
                     """
@@ -885,17 +885,17 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
     fun setGutterSettings(enableMarkers: Boolean? = null, enableForNewFiles: Boolean? = null) {
         step("Update gutter settings") {
             check(enableMarkers != null || enableForNewFiles != null) { "At least one gutter setting must be provided" }
-            enableMarkers?.let { setPluginBooleanSetting(ENABLE_GUTTER_MARKERS_KEY, it) }
-            enableForNewFiles?.let { setPluginBooleanSetting(ENABLE_GUTTER_FOR_NEW_FILES_KEY, it) }
+            enableMarkers?.let { setPluginSetting(ENABLE_GUTTER_MARKERS_KEY, it) }
+            enableForNewFiles?.let { setPluginSetting(ENABLE_GUTTER_FOR_NEW_FILES_KEY, it) }
         }
     }
 
     fun setTreeContextSettings(showSingleRepo: Boolean? = null, showCommits: Boolean? = null, showLineStats: Boolean? = null) {
         step("Update tree context settings") {
             check(showSingleRepo != null || showCommits != null || showLineStats != null) { "At least one tree context setting must be provided" }
-            showSingleRepo?.let { setPluginBooleanSetting(SHOW_CONTEXT_SINGLE_REPO_KEY, it) }
-            showCommits?.let { setPluginBooleanSetting(SHOW_CONTEXT_FOR_COMMITS_KEY, it) }
-            showLineStats?.let { setPluginBooleanSetting(SHOW_LINE_STATS_IN_TREE_KEY, it) }
+            showSingleRepo?.let { setPluginSetting(SHOW_CONTEXT_SINGLE_REPO_KEY, it) }
+            showCommits?.let { setPluginSetting(SHOW_CONTEXT_FOR_COMMITS_KEY, it) }
+            showLineStats?.let { setPluginSetting(SHOW_LINE_STATS_IN_TREE_KEY, it) }
             runJs(
                 selectedBrowserScript(
                     """
@@ -911,13 +911,13 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
 
     fun setExpandNewFilesInCollapsedDirs(enabled: Boolean) {
         step("Set expand new files in collapsed dirs to $enabled") {
-            setPluginBooleanSetting(EXPAND_NEW_FILES_IN_COLLAPSED_DIRS_KEY, enabled)
+            setPluginSetting(EXPAND_NEW_FILES_IN_COLLAPSED_DIRS_KEY, enabled)
         }
     }
 
     fun setShowUntrackedFilesAsNew(enabled: Boolean) {
         step("Set show untracked files as new to $enabled") {
-            setPluginBooleanSetting(SHOW_UNTRACKED_FILES_AS_NEW_KEY, enabled)
+            setPluginSetting(SHOW_UNTRACKED_FILES_AS_NEW_KEY, enabled)
             runJs(
                 selectedBrowserScript(
                     """
@@ -1374,28 +1374,14 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
     }
 
     /**
-     * Sets a boolean plugin setting via [LstCrcSettingsService], bypassing PropertiesComponent.
+     * Sets a plugin setting via [LstCrcSettingsService], bypassing PropertiesComponent.
      * This is needed because [LstCrcSettingsService] maintains its own in-memory cache in
      * [LstCrcSettingsService.SettingsState.values] which takes priority over PropertiesComponent.
      * Direct PropertiesComponent writes from test JS would be ignored if the cache already holds a value.
      */
-    private fun setPluginBooleanSetting(key: String, value: Boolean) {
+    private fun setPluginSetting(key: String, value: Any) {
         runJs(
-            settingsServiceScript("appService.setBoolean(${toJsStringLiteral(key)}, $value);"),
-            true
-        )
-    }
-
-    private fun setPluginStringSetting(key: String, value: String) {
-        runJs(
-            settingsServiceScript("appService.setString(${toJsStringLiteral(key)}, ${toJsStringLiteral(value)});"),
-            true
-        )
-    }
-
-    private fun setPluginIntSetting(key: String, value: Int) {
-        runJs(
-            settingsServiceScript("appService.setInt(${toJsStringLiteral(key)}, $value);"),
+            settingsServiceScript("appService.setValue(${toJsStringLiteral(key)}, ${toJsStringLiteral(value.toString())});"),
             true
         )
     }

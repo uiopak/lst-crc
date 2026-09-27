@@ -96,7 +96,6 @@ class LstCrcChangesBrowser(
     parentDisposable: Disposable
 ) : AsyncChangesBrowserBase(project, false, true), Disposable, UiDataProvider {
 
-
     private data class DiffSelectionKey(
         val comparisonTarget: String,
         val changes: List<DiffChangeKey>
@@ -111,11 +110,9 @@ class LstCrcChangesBrowser(
 
     private class ReusableChangeDiffVirtualFile(
         chain: ChangeDiffRequestChain,
-        private val diffKey: DiffSelectionKey,
+        val diffKey: DiffSelectionKey,
         name: String
     ) : ChainDiffVirtualFile(chain, name) {
-        fun matches(otherKey: DiffSelectionKey): Boolean = diffKey == otherKey
-
         override fun equals(other: Any?): Boolean {
             if (this === other) return true
             if (other !is ReusableChangeDiffVirtualFile) return false
@@ -155,7 +152,6 @@ class LstCrcChangesBrowser(
             )
         )
     }
-
 
     init {
         // This is CRITICAL. Unlike SimpleAsyncChangesBrowser, AsyncChangesBrowserBase does not call
@@ -221,7 +217,6 @@ class LstCrcChangesBrowser(
         return actions
     }
 
-
     /**
      * Override to return an empty list, completely disabling the default right-click context menu.
      * This is a secondary measure; the primary is removing the `PopupHandler` listener in the init block.
@@ -249,7 +244,6 @@ class LstCrcChangesBrowser(
             putClientProperty(RenderingHelper.SHRINK_LONG_RENDERER, true)
             putClientProperty(RenderingHelper.SHRINK_LONG_SELECTION, true)
         }
-
 
         override val changesTreeModel: AsyncChangesTreeModel
             get() = this@LstCrcChangesBrowser.changesTreeModel
@@ -285,7 +279,6 @@ class LstCrcChangesBrowser(
             builder.build()
         }
 
-
     private fun openDiff(changes: List<Change>) {
         if (changes.isEmpty()) return
 
@@ -293,7 +286,7 @@ class LstCrcChangesBrowser(
         val diffFilesManager = DiffEditorTabFilesManager.getInstance(project)
         FileEditorManager.getInstance(project).openFiles
             .filterIsInstance<ReusableChangeDiffVirtualFile>()
-            .firstOrNull { it.matches(diffKey) }
+            .firstOrNull { it.diffKey == diffKey }
             ?.let { diffFilesManager.showDiffFile(it, true); return }
 
         val producers = changes.mapNotNull { ChangeDiffRequestProducer.create(project, it) }
@@ -317,9 +310,8 @@ class LstCrcChangesBrowser(
         return change.afterRevision?.file?.virtualFile ?: change.beforeRevision?.file?.virtualFile
     }
 
+    /** Only offered for changes that are not deletions (see [browserChangeActions]). */
     private fun showInProjectTree(change: Change) {
-        if (change.type == Change.Type.DELETED) return
-
         val fileToSelect = getFileFromChange(change)
         if (fileToSelect != null && fileToSelect.isValid) {
             val toolWindow = ToolWindowManager.getInstance(project).getToolWindow(ToolWindowId.PROJECT_VIEW)

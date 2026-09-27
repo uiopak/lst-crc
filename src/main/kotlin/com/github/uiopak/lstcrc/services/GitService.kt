@@ -613,15 +613,10 @@ class GitService(private val project: Project) {
             return null
         }
 
-        logger.debug { "GUTTER_GIT_SERVICE: Preparing to fetch content for revision:'${revision}' file:'${file.path}'" }
-
         val relativePath = VfsUtilCore.getRelativePath(file, repository.root, '/')
             ?: throw IllegalStateException("Could not calculate relative path for file '${file.path}' against repo root '${repository.root.path}'.")
-
-        val normalizedContent = loadRevisionText(repository, revision, relativePath, file.charset)
-
-        logger.debug { "GUTTER_GIT_SERVICE: Successfully fetched content for '${relativePath}' in revision '${revision}'." }
-        return normalizedContent
+        logger.debug { "GUTTER_GIT_SERVICE: Loading '$relativePath' at revision '$revision'." }
+        return loadRevisionText(repository, revision, relativePath, file.charset)
     }
 
     /**

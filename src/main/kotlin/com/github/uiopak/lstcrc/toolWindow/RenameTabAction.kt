@@ -63,7 +63,7 @@ class RenameTabAction : AnAction() {
         val project = e.project!!
         val renameContext = findRenameContext(e.getData(PlatformDataKeys.CONTEXT_COMPONENT))
         if (renameContext == null) {
-            thisLogger().warn("Rename action performed without a valid component or content context.")
+            logger.warn("Rename action performed without a valid component or content context.")
             return
         }
 
@@ -87,25 +87,20 @@ private fun invokeRenamePopup(project: Project, owner: Component, branchName: St
         val currentDisplayName = tabInfo?.displayName ?: branchName
 
         val textField = JBTextField(currentDisplayName, 17)
-        val titleLabel = JBLabel(LstCrcBundle.message("rename.popup.title"))
-
         val panel = JPanel(VerticalLayout(JBUI.scale(4), VerticalLayout.FILL)).apply {
             border = JBUI.Borders.empty(2)
-            add(titleLabel)
+            add(JBLabel(LstCrcBundle.message("rename.popup.title")))
             add(textField)
         }
 
         var balloon: Balloon? = null
-
-        val onOk = {
-            ToolWindowHelper.updateNormalizedTabAlias(project, branchName, textField.text)
-            balloon?.hide()
-        }
-
         textField.addKeyListener(object : KeyAdapter() {
             override fun keyPressed(e: KeyEvent) {
                 when (e.keyCode) {
-                    KeyEvent.VK_ENTER -> onOk()
+                    KeyEvent.VK_ENTER -> {
+                        ToolWindowHelper.updateNormalizedTabAlias(project, branchName, textField.text)
+                        balloon?.hide()
+                    }
                     KeyEvent.VK_ESCAPE -> balloon?.hide()
                 }
             }

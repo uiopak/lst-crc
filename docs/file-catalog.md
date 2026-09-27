@@ -175,7 +175,7 @@ This document lists each current `src/main` file separately and explains why it 
 ### LstCrcSettingsService.kt
 - Role: Application-level `PersistentStateComponent` holding every setting as a string map in `lstCrcSettings.xml`. Typed access goes through the setting definitions: `settings[LstCrcSettingDefinitions.X]` and `settings[LstCrcSettingDefinitions.X] = value`. `LstCrcSettingDefinitions` lists each key and its default.
 - Depends on: `PersistentStateComponent`; `PropertiesComponent` only for the one-time import of settings saved by earlier versions.
-- Connected to: `ToolWindowSettingsProvider`, the unit tests and the Starter bridge (typed access), and the Remote Robot JavaScript, which calls the raw-key accessors (`getString`, `setBoolean`, ...) by name.
+- Connected to: `ToolWindowSettingsProvider`, the unit tests and the Starter bridge (typed access), and the Remote Robot JavaScript, which calls the raw-key accessors (`getString`, `getBoolean`, `getInt`, `setValue`) by name.
 - Why it exists: Settings need typed, testable storage with defaults, and upgrades must keep the user's configuration.
 
 ### ToolWindowUiCompatibility.kt

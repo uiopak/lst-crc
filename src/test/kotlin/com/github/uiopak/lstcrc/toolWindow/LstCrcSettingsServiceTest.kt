@@ -46,7 +46,7 @@ class LstCrcSettingsServiceTest : LstCrcTestCase() {
             assertEquals(LstCrcSettingDefinitions.MIDDLE_CLICK_ACTION.defaultValue, settings[LstCrcSettingDefinitions.MIDDLE_CLICK_ACTION])
             assertTrue(settings[LstCrcSettingDefinitions.SHOW_CONTEXT_SINGLE_REPO])
         } finally {
-            LstCrcSettingDefinitions.allKeys.forEach(legacy::unsetValue)
+            LstCrcSettingDefinitions.all.forEach { legacy.unsetValue(it.key) }
         }
     }
 
@@ -68,5 +68,13 @@ class LstCrcSettingsServiceTest : LstCrcTestCase() {
         } finally {
             settings.resetToDefaults()
         }
+    }
+
+    fun testEveryDefinitionIsRegisteredOnce() {
+        val declared = LstCrcSettingDefinitions::class.java.declaredFields
+            .filter { SettingDefinition::class.java.isAssignableFrom(it.type) }
+
+        assertEquals(declared.size, LstCrcSettingDefinitions.all.size)
+        assertEquals(declared.size, LstCrcSettingDefinitions.all.map { it.key }.toSet().size)
     }
 }
