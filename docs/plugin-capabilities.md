@@ -25,6 +25,7 @@ LST-CRC is an IntelliJ Platform plugin for comparing the current working tree ag
 - `C2.1` Searchable branch picker.
 	- Users can open the add-tab branch picker from the tool window or the status-bar widget.
 	- The add-tab affordance hides itself while the temporary branch-selection tab is already open.
+	- Selecting the temporary branch-selection tab keeps the current comparison active; only the `HEAD` tab selects `HEAD`.
 - `C2.2` Primary-repository branch sourcing in multi-root projects.
 	- In multi-root projects, the add-tab branch picker is populated from the primary repository branch list.
 - `C2.3` Repository comparison toolbar dialog.
@@ -38,6 +39,7 @@ LST-CRC is an IntelliJ Platform plugin for comparing the current working tree ag
 - `C2.5` Missing-branch repair flow.
 	- If a branch target disappears in one repository, the plugin surfaces a notification that routes the user back to repository-level reconfiguration.
 	- The repair flow can reset only the broken repository root instead of discarding the whole tab.
+	- Only a target git cannot resolve counts as missing. Other `git diff` failures show that repository's untracked files and unsaved edits for one refresh and retry on the next. A branch named like a file or folder is compared as a branch.
 - `C2.6` Missing-commit handling.
 	- Missing commit hashes are treated differently from missing branches and do not follow the same warning-and-repair flow.
 
@@ -73,11 +75,13 @@ LST-CRC is an IntelliJ Platform plugin for comparing the current working tree ag
 - `C3.7` Visual gutter tracking.
 	- Line-status markers follow the active comparison target instead of only `HEAD`.
 	- Modified and deleted editor ranges are evaluated against the active comparison state.
-	- Gutter interception is still gated by `Include HEAD in scopes` and the gutter settings.
+	- Gutter interception is still gated by `Include HEAD in scopes` and the gutter settings. Changing `Include HEAD in scopes` re-evaluates scopes, tab colors and gutters right away.
+	- A moved or renamed file is compared with its old path in the target, so only its real changes are marked.
 - `C3.8` Unsaved-editor overlay support.
 	- Unsaved editor content participates in the active diff, including preserving `NEW` versus `MODIFIED` semantics when overlays merge into comparison data.
 	- Unsaved edits can appear before save.
 	- Unsaved edits to already-new files must stay `NEW`/`ADDED`, not degrade into ordinary modifications.
+	- Unsaved edits to moved files are compared with the old path, so the file stays moved and its line stats follow the text.
 - `C3.9` Tree expansion-state persistence.
 	- The comparison tree keeps user expand/collapse decisions when the active comparison tab changes and later returns.
 	- New nodes can still be revealed without forcing previously collapsed nodes open.

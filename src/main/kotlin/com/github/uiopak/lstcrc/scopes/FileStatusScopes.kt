@@ -1,5 +1,6 @@
 package com.github.uiopak.lstcrc.scopes
 
+import com.github.uiopak.lstcrc.LstCrcConstants.HEAD
 import com.github.uiopak.lstcrc.resources.LstCrcBundle
 import com.github.uiopak.lstcrc.services.ProjectActiveDiffDataService
 import com.github.uiopak.lstcrc.toolWindow.ToolWindowSettingsProvider
@@ -40,7 +41,7 @@ private class LstCrcPackageSet(private val descriptor: ScopeDescriptor) : Packag
         val branchName = diffDataService.activeBranchName ?: return false
 
         // HEAD-tab changes only count when "Include HEAD tab changes in file scopes" is enabled.
-        val scopesActive = branchName != "HEAD" || ToolWindowSettingsProvider.isIncludeHeadInScopes()
+        val scopesActive = branchName != HEAD || ToolWindowSettingsProvider.isIncludeHeadInScopes()
         return scopesActive && file.path in descriptor.paths(diffDataService)
     }
 

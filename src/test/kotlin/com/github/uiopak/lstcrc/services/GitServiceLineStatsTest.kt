@@ -2,6 +2,7 @@ package com.github.uiopak.lstcrc.services
 
 import com.intellij.openapi.command.WriteCommandAction
 import com.intellij.openapi.fileEditor.FileDocumentManager
+import com.intellij.openapi.vfs.LocalFileSystem
 import com.github.uiopak.lstcrc.testsupport.LstCrcTestCase
 import java.nio.file.Files
 import java.nio.file.Path
@@ -56,6 +57,43 @@ class GitServiceLineStatsTest : LstCrcTestCase() {
 
             assertTrue(noisyDiff, noisyDiff.lineSequence().any { it == "3\t3\tMain.txt" })
             assertTrue(normalizedDiff, normalizedDiff.split('\u0000').any { it.trim() == "1\t1\tMain.txt" })
+        } finally {
+            repoPath.toFile().deleteRecursively()
+        }
+    }
+
+    fun testTrackedDiffArgsAcceptBranchNamedLikeAFolder() {
+        val repoPath = Files.createTempDirectory("lstcrc-ambiguous-branch-")
+
+        try {
+            initializeTrackedStatsGitRepo(repoPath)
+            Files.createDirectories(repoPath.resolve("docs"))
+            Files.writeString(repoPath.resolve("docs/Guide.txt"), "guide\n")
+            runGit(repoPath, "add", "docs/Guide.txt")
+            runGit(repoPath, "commit", "-m", "Add docs")
+            runGit(repoPath, "branch", "docs")
+            Files.writeString(repoPath.resolve("docs/Guide.txt"), "guide changed\n")
+
+            // Without the trailing "--", git fails with "ambiguous argument 'docs': both revision and filename".
+            val diff = runGit(repoPath, "diff", "--raw", *trackedDiffArgs("docs", includeLineStats = false).toTypedArray())
+
+            assertTrue(diff, diff.split('\u0000').contains("docs/Guide.txt"))
+        } finally {
+            repoPath.toFile().deleteRecursively()
+        }
+    }
+
+    fun testRevisionExistsOnlyForResolvableTargets() {
+        val repoPath = Files.createTempDirectory("lstcrc-revision-exists-")
+
+        try {
+            initializeTrackedStatsGitRepo(repoPath)
+            val root = LocalFileSystem.getInstance().refreshAndFindFileByNioFile(repoPath)!!
+
+            assertTrue(revisionExists(project, root, "HEAD"))
+            assertTrue(revisionExists(project, root, "feature-line-endings"))
+            assertFalse(revisionExists(project, root, "missing-branch"))
+            assertFalse(revisionExists(project, root, "f".repeat(40)))
         } finally {
             repoPath.toFile().deleteRecursively()
         }

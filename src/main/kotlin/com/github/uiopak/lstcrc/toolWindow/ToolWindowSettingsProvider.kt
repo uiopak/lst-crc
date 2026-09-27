@@ -2,6 +2,7 @@ package com.github.uiopak.lstcrc.toolWindow
 
 import com.github.uiopak.lstcrc.resources.LstCrcBundle
 import com.github.uiopak.lstcrc.services.GitService
+import com.github.uiopak.lstcrc.services.ProjectActiveDiffDataService
 import com.github.uiopak.lstcrc.gutters.VisualTrackerManager
 import com.github.uiopak.lstcrc.services.ToolWindowStateService
 import com.intellij.openapi.application.ApplicationManager
@@ -251,10 +252,12 @@ object ToolWindowSettingsProvider {
         rootSettingsGroup.add(createBooleanSettingToggle(
             LstCrcBundle.message("settings.include.head.in.scopes"),
             LstCrcSettingDefinitions.INCLUDE_HEAD_IN_SCOPES,
+            // The diff data does not depend on this setting, so a reload would find nothing new and change
+            // nothing; re-evaluate what reads the setting instead: scopes (file statuses), tab colours and gutters.
             onChanged = { e, _ ->
-                val stateService = e.project?.service<ToolWindowStateService>()
-                if (stateService != null && stateService.getSelectedTabBranchName() == null) {
-                    stateService.refreshDataForCurrentSelection()
+                e.project?.let { project ->
+                    project.service<VisualTrackerManager>().settingsChanged()
+                    project.service<ProjectActiveDiffDataService>().refreshCurrentColorings()
                 }
             }
         ))

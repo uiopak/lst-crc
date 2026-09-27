@@ -21,6 +21,8 @@ Location: `src/test/kotlin/com/github/uiopak/lstcrc/{gutters,listeners,scopes,se
 | `GitServiceLineStatsTest.testCalculateLineStatsForNewFileContent` | `C3.10` | A new file counts all its lines as added. |
 | `GitServiceLineStatsTest.testCalculateLineStatsForDeletedFileContent` | `C3.10` | A deleted file counts all its lines as removed. |
 | `GitServiceLineStatsTest.testTrackedLineStatsDiffArgsIgnoreLineEndingOnlyChurn` | `C3.10` | `git diff --numstat` is run with `--ignore-cr-at-eol`. |
+| `GitServiceLineStatsTest.testTrackedDiffArgsAcceptBranchNamedLikeAFolder` | `C1.2` | A branch named like a folder (`docs`) is compared, not read as a path. |
+| `GitServiceLineStatsTest.testRevisionExistsOnlyForResolvableTargets` | `C2.5` | Only a target git cannot resolve counts as missing. |
 | `GitServiceLineStatsTest.testCreateLiveDocumentContentRevisionReadsLatestUnsavedDocumentText` | `C3.8` | The unsaved-overlay revision reads the editor's current text. |
 | `GitServiceLineStatsTest.testCreateLiveDocumentContentRevisionAllowsBackgroundThreadAccess` | `C3.8` | The unsaved-overlay revision can be read off the EDT. |
 | `GitServiceLineStatsTest.testLiveDocumentContentRevisionsAreEqualOnlyForTheSameText` | `C3.8` | Two loads of the same unsaved text are equal; different text is not. |
@@ -28,6 +30,7 @@ Location: `src/test/kotlin/com/github/uiopak/lstcrc/{gutters,listeners,scopes,se
 | `GitServiceOverlayMergeTest.testKeepsModificationOverlayForNonNewFiles` | `C3.8` | Unsaved edits to other files stay modifications. |
 | `GitServiceOverlayMergeTest.testTrackedAddedPathsSkipsUntrackedAndModifiedFiles` | `C3.8` | Only files `git diff` reports as added skip the target-content lookup. |
 | `GitServiceOverlayMergeTest.testUntrackedChangesKeepBackslashesInFileNames` | `C3.11` | `git ls-files -z` paths are not unescaped. |
+| `GitServiceOverlayMergeTest.testParseTrackedDiffReadsRawAndNumstatRecordsIncludingRenames` | `C3.1`, `C3.10` | `git diff --raw --numstat -z` output becomes changes and line stats, renames included, and moved files map to their old path. |
 | `LstCrcActionVisibilityTest.testShowRepoComparisonInfoActionHiddenOnHeadAndVisibleForComparisonTab` | `C2.3` | Repo-comparison toolbar action is hidden on `HEAD` and shown on comparison tabs. |
 | `LstCrcActionVisibilityTest.testCreateTabFromRevisionActionVisibleOnlyForSingleRevisionSelection` | `C1.3` | Git Log "create tab" needs exactly one selected revision. |
 | `LstCrcActionVisibilityTest.testRenameTabActionVisibleForClosableBranchTabWhenContextIsNestedUnderBaseLabel` | `C1.5` | Rename is offered from inside a closable tab's label. |
@@ -59,6 +62,7 @@ Location: `src/test/kotlin/com/github/uiopak/lstcrc/{gutters,listeners,scopes,se
 | `LstCrcStatusWidgetTest.testGetTextUsesAliasPrefixAndTruncationForSelectedTab` | `C1.5`, `C4.5` | The widget shows the alias, the optional prefix, and truncates long names. |
 | `LstCrcStatusWidgetTest.testGetTextFallsBackToPluginNameForInvalidSelectedTabIndex` | `C5.3` | An out-of-range selected index falls back to the plugin name. |
 | `LstCrcStatusWidgetTest.testPluginXmlStatusWidgetFactoryIdMatchesWidgetConstant` | `C4.5` | The widget id in `plugin.xml` matches the code. |
+| `MyToolWindowFactoryTest.testOnlyTheHeadTabSelectsHead` | `C1.1`, `C2.1` | Only the HEAD tab selects HEAD; the "Select Branch" tab keeps the current comparison. |
 | `ProjectActiveDiffDataServiceTest.testAcceptsHeadUpdateWhenHeadTabIsSelected` | `C1.1`, `C5.1` | `HEAD` results are applied while the `HEAD` tab is selected. |
 | `ProjectActiveDiffDataServiceTest.testRejectsStaleUpdateWhenSelectedBranchDoesNotMatch` | `C5.1` | Results for a tab that is no longer selected are dropped. |
 | `ProjectActiveDiffDataServiceTest.testRejectsHeadUpdateWhileComparisonTabIsSelected` | `C5.1` | `HEAD` results are dropped while a comparison tab is selected. |
@@ -90,6 +94,7 @@ Location: `src/test/kotlin/com/github/uiopak/lstcrc/{gutters,listeners,scopes,se
 | `VisualTrackerManagerBehaviorTest.testUnderlyingTrackerReportsInitialInsertedRangeForWholeNewFileAgainstEmptyBase` | `C3.7` | A new file against an empty base is one inserted range. |
 | `VisualTrackerManagerBehaviorTest.testStandaloneTrackerInstallsGutterHighlightersForWholeNewFile` | `C3.7`, `C4.8` | The standalone tracker for a new file draws gutter markers. |
 | `VisualTrackerManagerBehaviorTest.testVisualTrackerManagerCleanupOnTrackerRemoved` | `C3.7` | Visual trackers are released with the native tracker. |
+| `VisualTrackerManagerBehaviorTest.testStandaloneTrackerIsReleasedWhenItsLastEditorCloses` | `C3.7` | A standalone tracker is released when its file's last editor closes. |
 
 ## Remote Robot UI Tests
 

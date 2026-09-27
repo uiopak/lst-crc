@@ -1,5 +1,6 @@
 package com.github.uiopak.lstcrc.services
 
+import com.github.uiopak.lstcrc.LstCrcConstants.HEAD
 import com.github.uiopak.lstcrc.messaging.DIFF_DATA_CHANGED_TOPIC
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
@@ -36,6 +37,9 @@ class ProjectActiveDiffDataService(private val project: Project) : Disposable {
         val movedFilePaths: Set<String> = categorizedChanges.movedFiles.pathSet()
         val deletedFilePaths: Set<String> = categorizedChanges.deletedFiles.pathSet()
         val changedFilePaths: Set<String> = createdFilePaths + modifiedFilePaths + movedFilePaths
+        /** The old path of each moved file, by its new path: the path its content has in the target. */
+        val movedSourcePaths: Map<String, String> =
+            movedSourcePaths(categorizedChanges.allChanges).mapValues { (_, before) -> before.path }
 
         /** True when replacing this snapshot can change some file's status (it lists at least one file). */
         fun hasFiles(): Boolean = with(categorizedChanges) {
@@ -84,12 +88,15 @@ class ProjectActiveDiffDataService(private val project: Project) : Disposable {
     val changedFilePaths: Set<String>
         get() = snapshot.changedFilePaths
 
+    /** The path [path] had in the comparison target: its old path when it was moved, otherwise [path]. */
+    fun pathInTarget(path: String): String = snapshot.movedSourcePaths[path] ?: path
+
     fun updateActiveDiff(
         branchNameFromEvent: String,
         categorizedChanges: CategorizedChanges
     ) {
         // A null selection is the HEAD tab, whose loads are reported as "HEAD".
-        val currentToolWindowBranch = project.service<ToolWindowStateService>().getSelectedTabBranchName() ?: "HEAD"
+        val currentToolWindowBranch = project.service<ToolWindowStateService>().getSelectedTabBranchName() ?: HEAD
         if (branchNameFromEvent != currentToolWindowBranch) {
             logger.debug { "updateActiveDiff - Update REJECTED as stale. Event branch '$branchNameFromEvent' does NOT match current tool window branch '$currentToolWindowBranch'." }
             return

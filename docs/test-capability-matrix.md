@@ -27,6 +27,7 @@
 | `C2.1` | Branch picker can create a comparison tab from UI entry points | `LstCrcBranchComparisonUiTest.testGitBranchComparison`, `LstCrcBranchComparisonStarterUiTest.testGitBranchComparison`, `LstCrcInteractionUiTest.testStatusWidgetAndRevisionActions`, `LstCrcInteractionStarterUiTest.testStatusWidgetAndRevisionActions` |
 | `C2.1` | Branch filter keeps matching branches, selects the first match, and Enter submits it | `BranchSelectionPanelTest.testFilterSelectsFirstMatchingBranchFromStableSnapshot`, `BranchSelectionPanelTest.testEnterSubmitsSelectedBranch` |
 | `C2.1` | Branch filter does not persist when the picker is reopened | `LstCrcInteractionUiTest.testBranchSelectionFilterDoesNotPersistAcrossReopen`, `BranchSelectionPanelTest.testNewPanelReopensWithFullBranchSnapshotAfterPreviousFilter` |
+| `C2.1` | Selecting the branch-selection tab keeps the current comparison | `MyToolWindowFactoryTest.testOnlyTheHeadTabSelectsHead` |
 | `C2.1` | Add-tab action hides while the branch-selection tab already exists | `LstCrcActionVisibilityTest.testOpenBranchSelectionTabActionHiddenWhenSelectionTabAlreadyExists`, `LstCrcActionVisibilityTest.testOpenBranchSelectionTabActionVisibleWhenSelectionTabIsAbsent` |
 | `C2.2` | Multi-root branch picker uses the primary repository branch list | `LstCrcMultiRootStarterUiTest.testBranchSelectionUsesPrimaryRepositoryBranchesInMultiRootProject` |
 | `C2.3` | Repo comparison dialog changes one repository target | `LstCrcInteractionStarterUiTest.testRepositoryComparisonToolbarDialogAllowsChangingComparison` |
@@ -38,6 +39,7 @@
 | `C2.4` | VCS Log revision selection can target one repository inside a tab | `LstCrcInteractionUiTest.testStatusWidgetAndRevisionActions`, `LstCrcInteractionStarterUiTest.testStatusWidgetAndRevisionActions` |
 | `C2.4` | Repo-comparison revision action visibility requires one selected commit and an active comparison tab | `LstCrcActionVisibilityTest.testSetRevisionAsRepoComparisonActionVisibleOnlyForSingleCommitSelectionWithActiveTab` |
 | `C2.5` | Missing branch in a single repository falls back to `HEAD` and warns | `LstCrcInteractionStarterUiTest.testMissingBranchComparisonTargetRecoversToHeadAndShowsWarning` |
+| `C2.5` | Only a target git cannot resolve counts as missing; a branch named like a folder still compares | `GitServiceLineStatsTest.testRevisionExistsOnlyForResolvableTargets`, `GitServiceLineStatsTest.testTrackedDiffArgsAcceptBranchNamedLikeAFolder` |
 | `C2.5` | Missing branch repair in multi-root reconfigures only the broken repository | `LstCrcMultiRootStarterUiTest.testMissingBranchNotificationRepairReconfiguresOnlyBrokenRepository` |
 | `C2.6` | Missing commit hashes do not follow branch-repair flow | `LstCrcInteractionStarterUiTest.testMissingCommitComparisonTargetDoesNotRecoverToHeadOrWarn` |
 
@@ -69,7 +71,8 @@
 | `C3.7` | Inserted new-file gutter markers follow the active comparison | `LstCrcVisualUiTest.testVisualGutterMarkersForInsertedNewFile`, `LstCrcVisualStarterUiTest.testVisualGutterMarkersForInsertedAndDeletedRanges` |
 | `C3.7` | Modified gutter markers follow the active comparison | `LstCrcVisualUiTest.testVisualGutterMarkers`, `LstCrcVisualStarterUiTest.testVisualGutterMarkers` |
 | `C3.7` | Line-status trackers report inserted ranges for partial insertions and whole new files | `VisualTrackerManagerBehaviorTest.testUnderlyingTrackerReportsInsertedRangeForPartialInsertionAgainstExistingBase`, `VisualTrackerManagerBehaviorTest.testUnderlyingTrackerReportsInitialInsertedRangeForWholeNewFileAgainstEmptyBase` |
-| `C3.7` | The standalone tracker for a new file draws gutter markers, and visual trackers are released with the native tracker | `VisualTrackerManagerBehaviorTest.testStandaloneTrackerInstallsGutterHighlightersForWholeNewFile`, `VisualTrackerManagerBehaviorTest.testVisualTrackerManagerCleanupOnTrackerRemoved` |
+| `C3.7` | The standalone tracker for a new file draws gutter markers, and visual trackers are released with the native tracker or when the last editor closes | `VisualTrackerManagerBehaviorTest.testStandaloneTrackerInstallsGutterHighlightersForWholeNewFile`, `VisualTrackerManagerBehaviorTest.testVisualTrackerManagerCleanupOnTrackerRemoved`, `VisualTrackerManagerBehaviorTest.testStandaloneTrackerIsReleasedWhenItsLastEditorCloses` |
+| `C3.7` | Moved files are compared with their old path in the target | `GitServiceOverlayMergeTest.testParseTrackedDiffReadsRawAndNumstatRecordsIncludingRenames` |
 | `C3.7` | Deleted gutter markers follow the active comparison | `LstCrcVisualUiTest.testVisualGutterMarkersForModifiedAndDeletedRanges`, `LstCrcVisualStarterUiTest.testVisualGutterMarkersForInsertedAndDeletedRanges` |
 | `C3.8` | Unsaved edits appear before save | `LstCrcBranchComparisonUiTest.testUnsavedLocalEditAppearsWithoutSave` |
 | `C3.8` | Unsaved edits of new files preserve `NEW`/`ADDED` semantics | `LstCrcBranchComparisonUiTest.testNewFileStaysCreatedDuringUnsavedEdits`, `GitServiceOverlayMergeTest.testPreservesNewChangeTypeWhenUnsavedOverlayIsApplied` |

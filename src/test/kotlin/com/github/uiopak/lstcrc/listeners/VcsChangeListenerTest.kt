@@ -18,7 +18,7 @@ class VcsChangeListenerTest : LstCrcTestCase() {
         val listener = createListener(refreshLatch) { candidate -> candidate == trackedFile }
 
         try {
-            Thread.sleep(100)
+            waitUntil { listener.isCollectingSignals }
             listener.handleDocumentChange(trackedFile)
 
             assertTrue("Expected a refresh for repository-backed document changes", refreshLatch.await(2, TimeUnit.SECONDS))
@@ -34,7 +34,7 @@ class VcsChangeListenerTest : LstCrcTestCase() {
         val listener = createListener(refreshLatch) { candidate -> candidate == trackedFile }
 
         try {
-            Thread.sleep(100)
+            waitUntil { listener.isCollectingSignals }
             listener.handleDocumentChange(otherFile)
 
             assertFalse("Non-repository files should not trigger a refresh", refreshLatch.await(500, TimeUnit.MILLISECONDS))
@@ -56,7 +56,7 @@ class VcsChangeListenerTest : LstCrcTestCase() {
         }
 
         try {
-            Thread.sleep(100)
+            waitUntil { listener.isCollectingSignals }
             thread(start = true, isDaemon = true) {
                 listener.handleDocumentChange(trackedFile)
                 handleCompleted.countDown()
@@ -94,7 +94,7 @@ class VcsChangeListenerTest : LstCrcTestCase() {
         )
 
         try {
-            Thread.sleep(100)
+            waitUntil { listener.isCollectingSignals }
             // A burst of edits alone: one edit-only refresh.
             repeat(3) { listener.handleDocumentChange(trackedFile) }
             waitUntil { editOnlyRefreshes.get() == 1 }

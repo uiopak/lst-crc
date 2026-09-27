@@ -1,5 +1,6 @@
 package com.github.uiopak.lstcrc.services
 
+import com.github.uiopak.lstcrc.LstCrcConstants.HEAD
 import com.github.uiopak.lstcrc.messaging.TOOL_WINDOW_STATE_TOPIC
 import com.github.uiopak.lstcrc.resources.LstCrcBundle
 import com.github.uiopak.lstcrc.state.TabInfo
@@ -129,7 +130,7 @@ class ToolWindowStateService(private val project: Project, val coroutineScope: C
      * updates the data cache ([ProjectActiveDiffDataService]), and refreshes the UI.
      */
     private suspend fun loadDataForTab(tabInfo: TabInfo?, reuseDiskChanges: Boolean) {
-        val profileName = tabInfo?.branchName ?: "HEAD"
+        val profileName = tabInfo?.branchName ?: HEAD
         logger.debug { "DATA_FLOW: Initiating data load for profile: '$profileName'" }
         val gitService = project.service<GitService>()
         val diffDataService = project.service<ProjectActiveDiffDataService>()
@@ -183,7 +184,7 @@ class ToolWindowStateService(private val project: Project, val coroutineScope: C
         }
 
         if (resetRoots.isNotEmpty()) {
-            val newComparisonMap = tabInfo.comparisonMap + resetRoots.associateWith { "HEAD" }
+            val newComparisonMap = tabInfo.comparisonMap + resetRoots.associateWith { HEAD }
             logger.debug { "Tab '${tabInfo.branchName}' config updated due to missing branches. New map: $newComparisonMap" }
             // Update the state, but do NOT trigger another refresh to avoid loops within this call stack.
             updateTabComparisonMap(tabInfo.branchName, newComparisonMap, triggerRefresh = false)

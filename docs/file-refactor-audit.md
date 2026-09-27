@@ -20,6 +20,16 @@ This file lists refactoring opportunities in `src/main` that were checked agains
 
 ## Done
 
+- The 2026-09 fifth pass (bug fixes first):
+  - **A branch named like a file or folder compares.** `git diff <target>` had no `--`, so a branch `docs` next to a `docs` folder failed as an ambiguous argument and the tab fell back to `HEAD`.
+  - **A failed `git diff` resets a tab to `HEAD` only when the target is really missing** (`git rev-parse --verify` fails). Other failures show untracked files and unsaved edits for one refresh and retry.
+  - **Moved files compare with their old path**, in the gutter (which marked every line as added) and in the unsaved-edit overlay (whose line stats stayed at the disk version, after a failing `git show` per refresh).
+  - **Selecting the "Select Branch" tab keeps the current comparison.** It used to count as the HEAD tab, so picking a branch flipped gutters, scopes and the widget to `HEAD` and reloaded twice.
+  - **`Include HEAD in scopes` takes effect at once.** It asked for a reload, which finds identical data and is skipped since the first pass; it now re-evaluates trackers, file statuses and tab colors.
+  - **Standalone gutter trackers are released when their file's last editor closes**, instead of living until the project closes.
+  - The revision content cache also remembers files missing from a commit (untracked files with unsaved edits ran a failing `git show` per refresh). Edit-only refreshes that reuse every repository's git result show no progress indicator.
+  - `GitService` is split: pure helpers in `GitDiffParsing.kt`, content loading and its cache in `RevisionContent.kt`, result types in `GitChangeModels.kt`. `LstCrcConstants.HEAD` replaces 14 `"HEAD"` literals. The browser's click and context-menu handling is `ChangesTreeClickHandler`.
+  - Tests: `VcsChangeListenerTest` waits for the listener to subscribe instead of sleeping 100 ms; the viewport UI tests wait until the edit's refresh has landed before asserting, instead of sleeping or asserting right away.
 - The 2026-09 fourth pass:
   - **Refresh requests wait for their own load.** `requestRefresh` used to hand a request the running cycle's future even after that cycle's last load, so `join()` could return with the old state. Requests now queue for the next load and share its future.
   - **Untracked paths are not unescaped.** `git ls-files -z` prints raw paths; `createPathFromEscaped` turned `a\b.txt` into a control character and threw on `a\q.txt`. They now go through `createPath`, like tracked paths.

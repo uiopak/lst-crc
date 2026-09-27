@@ -2,6 +2,8 @@ package com.github.uiopak.lstcrc.gutters
 
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.fileEditor.FileDocumentManager
+import com.intellij.openapi.fileEditor.FileEditorManager
+import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.fileTypes.PlainTextFileType
 import com.intellij.openapi.vcs.ex.LocalLineStatusTracker.Mode
 import com.intellij.openapi.vcs.ex.Range
@@ -12,6 +14,10 @@ import com.intellij.testFramework.LightVirtualFile
 import com.intellij.testFramework.PlatformTestUtil
 import com.intellij.openapi.components.service
 import com.github.uiopak.lstcrc.testsupport.LstCrcTestCase
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 
 class VisualTrackerManagerBehaviorTest : LstCrcTestCase() {
 
@@ -66,6 +72,28 @@ class VisualTrackerManagerBehaviorTest : LstCrcTestCase() {
         manager.dispose()
         val tracker = manager.findStandaloneTracker(document)
         assertNull(tracker)
+    }
+
+    fun testStandaloneTrackerIsReleasedWhenItsLastEditorCloses() {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val manager = VisualTrackerManager(project, scope)
+        val file = myFixture.addFileToProject("Untracked.txt", "text\n").virtualFile
+        myFixture.openFileInEditor(file)
+        val document = FileDocumentManager.getInstance().getDocument(file)!!
+
+        try {
+            manager.init()
+            manager.ensureVisualTracker(document, file, "feature")
+            assertNotNull(manager.findStandaloneTracker(document))
+
+            FileEditorManager.getInstance(project).closeFile(file)
+            PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
+
+            assertNull("Closing the last editor should release the standalone tracker", manager.findStandaloneTracker(document))
+        } finally {
+            Disposer.dispose(manager)
+            scope.cancel()
+        }
     }
 
     private fun createTracker(text: String, baseText: String): SimpleLocalLineStatusTracker {
