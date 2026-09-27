@@ -61,7 +61,8 @@ internal fun parseTrackedDiff(project: Project, repoRoot: VirtualFile, targetRev
             }
             continue
         }
-        val tokens = field.split('\t')
+        // A path may contain tabs: with -z git prints it verbatim.
+        val tokens = field.split('\t', limit = 3)
         if (tokens.size < 3) continue
         val key = if (tokens[2].isEmpty()) {
             // Rename or copy: the old and new paths follow as separate fields.
@@ -123,7 +124,7 @@ internal fun trackedDiffArgs(target: String, includeLineStats: Boolean): List<St
  * so they must not be unescaped: a backslash in a file name is part of the name.
  */
 internal fun untrackedChanges(project: Project, root: VirtualFile, output: String): List<Change> =
-    output.split('\u0000').filter(String::isNotBlank).map { relativePath ->
+    output.split('\u0000').filter(String::isNotEmpty).map { relativePath ->
         Change(null, GitContentRevision.createRevision(GitContentRevision.createPath(root, relativePath), null, project), FileStatus.UNKNOWN)
     }
 

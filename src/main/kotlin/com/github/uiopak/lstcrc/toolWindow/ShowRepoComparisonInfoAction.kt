@@ -4,6 +4,7 @@ package com.github.uiopak.lstcrc.toolWindow
 
 import com.github.uiopak.lstcrc.resources.LstCrcBundle
 import com.github.uiopak.lstcrc.services.GitService
+import com.github.uiopak.lstcrc.state.TabInfo
 import com.intellij.icons.AllIcons
 import com.intellij.ide.DataManager
 import com.intellij.openapi.actionSystem.ActionUpdateThread
@@ -12,7 +13,9 @@ import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.DefaultActionGroup
 import com.intellij.openapi.components.service
 import com.intellij.openapi.project.DumbAwareAction
+import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.popup.JBPopupFactory
+import git4idea.repo.GitRepository
 
 /**
  * Action to open a popup showing the current comparison context for each repository
@@ -42,14 +45,7 @@ internal class ShowRepoComparisonInfoAction : DumbAwareAction(
         }
 
         // Several repositories: pick one from a popup listing each with its current target.
-        val actionGroup = DefaultActionGroup()
-        for (repo in repositories.sortedBy { it.root.name }) {
-            val currentTarget = gitService.resolveComparisonTarget(repo, tabInfo)
-            val actionText = LstCrcBundle.message("changes.browser.repo.node.full.comparison.text", repo.root.name, currentTarget)
-            actionGroup.add(object : AnAction(actionText) {
-                override fun actionPerformed(e: AnActionEvent) = SingleRepoBranchSelectionDialog(project, repo, tabInfo).show()
-            })
-        }
+        val actionGroup = DefaultActionGroup(repoComparisonItems(project, tabInfo, repositories))
 
         val dataContext = DataManager.getInstance().getDataContext(e.inputEvent?.component)
         JBPopupFactory.getInstance().createActionGroupPopup(
@@ -59,5 +55,15 @@ internal class ShowRepoComparisonInfoAction : DumbAwareAction(
             JBPopupFactory.ActionSelectionAid.MNEMONICS,
             true
         ).showInBestPositionFor(dataContext)
+    }
+}
+
+/** The popup items of [ShowRepoComparisonInfoAction]: each repository, by name, with its current target in [tabInfo]. */
+internal fun repoComparisonItems(project: Project, tabInfo: TabInfo, repositories: List<GitRepository>): List<AnAction> {
+    val gitService = project.service<GitService>()
+    return repositories.sortedBy { it.root.name }.map { repo ->
+        val currentTarget = gitService.resolveComparisonTarget(repo, tabInfo)
+        val text = LstCrcBundle.message("changes.browser.repo.node.full.comparison.text", repo.root.name, currentTarget)
+        plainTextAction(text) { SingleRepoBranchSelectionDialog(project, repo, tabInfo).show() }
     }
 }

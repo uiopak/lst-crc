@@ -119,19 +119,14 @@ class BranchSelectionPanel(
         refreshSearchSelection(searchTerm)
     }
 
-    /** Selects the first node (pre-order) whose text contains [searchTerm], or clears the selection. */
+    /**
+     * Selects the first branch left by the filter, so Enter picks it even when the term matched a folder or a
+     * category, or clears the selection when the filter is empty or leaves no branch.
+     */
     private fun refreshSearchSelection(searchTerm: String) {
         val root = tree.model.root as? DefaultMutableTreeNode
         val match = root.takeIf { searchTerm.isNotBlank() }?.let { rootNode ->
-            TreeUtil.findNode(rootNode) { node ->
-                val text = when (val userObject = node.userObject) {
-                    is BranchInfo -> userObject.fullBranchName
-                    is String -> userObject
-                    is BranchCategory -> userObject.displayName
-                    else -> ""
-                }
-                text.contains(searchTerm, ignoreCase = true)
-            }
+            TreeUtil.findNode(rootNode) { node -> node.userObject is BranchInfo }
         }
         if (match == null) {
             tree.clearSelection()

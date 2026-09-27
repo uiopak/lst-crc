@@ -48,10 +48,8 @@ class PluginStartupActivity : ProjectActivity {
         project.service<VcsChangeListener>()
         project.service<VisualTrackerManager>().init()
 
-        // Perform a quick initial refresh for tab colors of already open files.
-        withContext(Dispatchers.EDT) {
-            if (!project.isDisposed) project.service<ProjectActiveDiffDataService>().refreshCurrentColorings()
-        }
+        // A quick initial refresh of the tab colors of already open files (it runs on the EDT).
+        project.service<ProjectActiveDiffDataService>().refreshCurrentColorings()
 
         // The diff load only needs Git repositories, not indexes, so it does not wait for indexing
         // (which can take minutes on a large project).

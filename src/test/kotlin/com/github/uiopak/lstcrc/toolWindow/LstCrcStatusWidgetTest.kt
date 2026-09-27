@@ -18,6 +18,15 @@ class LstCrcStatusWidgetTest : LstCrcTestCase() {
         }
     }
 
+    // Action texts treat '_' as a mnemonic marker, which dropped it from branch names in the popup.
+    fun testPopupShowsTabNamesWithUnderscoresAsTyped() {
+        val texts = LstCrcStatusWidget(project)
+            .createPopupActions(listOf(TabInfo(branchName = "feature_login"), TabInfo(branchName = "fix", alias = "my_alias")))
+            .mapNotNull { it.templatePresentation.text }
+
+        assertTrue(texts.toString(), texts.containsAll(listOf("feature_login", "my_alias")))
+    }
+
     fun testGetTextReturnsHeadWhenHeadIsSelectedEvenIfWidgetContextEnabled() {
         val stateService = project.service<ToolWindowStateService>()
         val widget = LstCrcStatusWidget(project)

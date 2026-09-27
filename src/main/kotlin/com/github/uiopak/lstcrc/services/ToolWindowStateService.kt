@@ -93,15 +93,13 @@ class ToolWindowStateService(private val project: Project, val coroutineScope: C
 
         val updatedTabs = myState.openTabs.filterNot { it.branchName == branchName }
         val selected = myState.selectedTabIndex
-        val updatedSelectedIndex = when {
-            updatedTabs.isEmpty() || selected < 0 -> -1
-            selected > removedIndex -> selected - 1
-            selected == removedIndex -> minOf(removedIndex, updatedTabs.lastIndex)
-            else -> selected
-        }
+        // A closed selected tab hands the selection to the tab before it (HEAD before the first), as the tool window does.
+        val updatedSelectedIndex = if (selected >= removedIndex) selected - 1 else selected
 
         replaceState(myState.copy(openTabs = updatedTabs, selectedTabIndex = updatedSelectedIndex))
         logger.debug { "Tab $branchName removed from state. New state: $myState" }
+        // The tool window then selects the tab the state already selects, which loads nothing, so load it here.
+        if (selected == removedIndex) refreshDataForCurrentSelection()
     }
 
     fun setSelectedTab(index: Int) {

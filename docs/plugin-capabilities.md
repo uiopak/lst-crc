@@ -16,15 +16,19 @@ LST-CRC is an IntelliJ Platform plugin for comparing the current working tree ag
 	- Users can create a comparison tab from a VCS Log revision or commit selection.
 - `C1.4` Multiple comparison tabs.
 	- Several comparison tabs can coexist, and the selected tab defines the active diff consumed by the rest of the plugin.
+	- Closing the selected tab selects the tab before it (`HEAD` before the first) and loads its comparison.
+	- A load that fails shows its error in the selected tab.
 - `C1.5` Tab aliases.
 	- Closable comparison tabs can be renamed with aliases, and the alias becomes the display identity used by the tool window, widget, and persisted state.
 	- Rename affordances are exposed only for closable comparison tabs that carry a persistent branch or revision identity.
+	- Popups list tab, branch and repository names exactly as they are, underscores included.
 
 ### C2. Comparison target selection and reconfiguration
 
 - `C2.1` Searchable branch picker.
 	- Users can open the add-tab branch picker from the tool window or the status-bar widget.
 	- The add-tab affordance hides itself while the temporary branch-selection tab is already open.
+	- Typing a filter selects the first branch it leaves, also when the text matches a folder or the local/remote category, so Enter adds that branch.
 	- Selecting the temporary branch-selection tab keeps the current comparison active; only the `HEAD` tab selects `HEAD`.
 - `C2.2` Primary-repository branch sourcing in multi-root projects.
 	- In multi-root projects, the add-tab branch picker is populated from the primary repository branch list.

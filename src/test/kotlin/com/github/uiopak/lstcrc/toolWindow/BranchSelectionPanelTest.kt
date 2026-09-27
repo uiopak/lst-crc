@@ -28,6 +28,20 @@ class BranchSelectionPanelTest : LstCrcTestCase() {
         assertEquals(listOf("feature/beta", "origin/feature/beta"), visibleBranchNames(panel))
     }
 
+    // Selecting the matching folder (or category) left Enter with nothing to submit.
+    fun testFilterMatchingAFolderSelectsItsFirstBranch() {
+        val panel = createPanel(
+            localBranches = listOf("bugfix/main", "feature/alpha", "feature/beta"),
+            remoteBranches = listOf("origin/feature/beta")
+        )
+
+        setSearchText(panel, "feat")
+        assertEquals("feature/alpha", selectedBranchName(panel))
+
+        setSearchText(panel, "remote")
+        assertEquals("origin/feature/beta", selectedBranchName(panel))
+    }
+
     fun testEnterSubmitsSelectedBranch() {
         var selectedBranch: String? = null
         val panel = createPanel(

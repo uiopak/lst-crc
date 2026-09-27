@@ -311,9 +311,9 @@ object ToolWindowSettingsProvider {
     /**
      * Helper to create a radio-style [ToggleAction] for the settings menu.
      */
-    private fun createToggleAction(text: String, isSelected: (AnActionEvent) -> Boolean, onSelected: () -> Unit): ToggleAction {
+    private fun createToggleAction(text: String, isSelected: () -> Boolean, onSelected: () -> Unit): ToggleAction {
         return object : ToggleAction(text) {
-            override fun isSelected(e: AnActionEvent): Boolean = isSelected(e)
+            override fun isSelected(e: AnActionEvent): Boolean = isSelected()
             override fun setSelected(e: AnActionEvent, state: Boolean) {
                 if (state) {
                     onSelected()

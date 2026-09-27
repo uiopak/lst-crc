@@ -2,6 +2,7 @@ package com.github.uiopak.lstcrc.toolWindow
 
 import com.github.uiopak.lstcrc.resources.LstCrcBundle
 import com.github.uiopak.lstcrc.services.CategorizedChanges
+import com.github.uiopak.lstcrc.services.ProjectActiveDiffDataService
 import com.github.uiopak.lstcrc.services.TextContentRevision
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.service
@@ -14,6 +15,8 @@ import com.intellij.openapi.vcs.changes.ui.AsyncChangesTree
 import com.intellij.openapi.vcs.history.VcsRevisionNumber
 import com.intellij.testFramework.PlatformTestUtil
 import com.github.uiopak.lstcrc.testsupport.LstCrcTestCase
+import com.github.uiopak.lstcrc.testsupport.selectComparisonTab
+import com.github.uiopak.lstcrc.testsupport.selectHeadTab
 import com.intellij.vcsUtil.VcsUtil
 import java.awt.BorderLayout
 import java.awt.Dimension
@@ -220,6 +223,21 @@ class LstCrcChangesBrowserTest : LstCrcTestCase() {
 
             assertEquals("A refresh must not reopen a selected collapsed folder", listOf("featureA"), visibleRowNames(tree))
             assertEquals("A refresh must keep the folder, not its files, selected", listOf("featureA"), selectedRowNames(tree))
+        }
+    }
+
+    // A failed load clears the diff data. The error text went to the HEAD tab's browser, whichever tab was selected.
+    fun testClearedDiffShowsLoadErrorInSelectedTab() {
+        selectComparisonTab(project, "feature")
+        try {
+            val browser = createBrowser()
+
+            project.service<ProjectActiveDiffDataService>().clearActiveDiff()
+            flushUiEvents()
+
+            assertEquals(LstCrcBundle.message("changes.browser.error.loading", "feature"), browser.viewerTree().emptyText.text)
+        } finally {
+            selectHeadTab(project)
         }
     }
 
