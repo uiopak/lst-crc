@@ -36,7 +36,7 @@ LST-CRC is organized around one central idea: one selected comparison tab produc
 ## UI Layers
 
 - `LstCrcChangesBrowser` is the per-tab viewer. It subscribes to `DIFF_DATA_CHANGED_TOPIC`, rebuilds its tree while keeping the viewport, translates mouse gestures into the configured actions through `ChangesTreeClickHandler` (with a coroutine-based single/double-click delay), and reuses an already open diff tab for the same selection.
-- `ExpandNewNodesStateStrategy` keeps the user's expand/collapse state across rebuilds and reveals newly added changes.
+- `ExpandNewNodesStateStrategy` keeps the user's expand/collapse state and selection across rebuilds and reveals newly added changes. A selected folder is restored as the folder, not as the changes under it, so a collapsed folder stays collapsed.
 - `RepoNodeRenderer` appends comparison-context text ("(vs target)") and added/removed line counts to tree rows.
 - `BranchSelectionPanel` and `SingleRepoBranchSelectionDialog` provide the searchable branch-selection flows used by the tool window and by branch-failure recovery.
 - `LstCrcStatusWidget` mirrors the selected tab label or alias in the status bar and provides a quick popup for switching or adding tabs.
