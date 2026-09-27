@@ -154,4 +154,29 @@ class ProjectActiveDiffDataServiceTest : LstCrcTestCase() {
         assertEquals(1, notifications)
         assertEquals("two\n", diffDataService.categorizedChanges!!.allChanges.single().afterRevision!!.content)
     }
+
+    // Regression (round five): the gutter of a moved file loaded the target content by its new path, which the
+    // target doesn't have, so every line showed as added.
+    fun testMovedFileIsLookedUpByItsOldPathInTheTarget() {
+        val diffDataService = project.service<ProjectActiveDiffDataService>()
+        val root = project.basePath!!
+        val moved = com.intellij.openapi.vcs.changes.Change(
+            revision("$root/Old.txt"),
+            revision("$root/New.txt"),
+            com.intellij.openapi.vcs.FileStatus.MODIFIED
+        )
+
+        selectComparisonTab(project, "feature")
+        diffDataService.updateActiveDiff("feature", categorizedChanges().copy(allChanges = listOf(moved)))
+        flushEdt()
+
+        assertEquals("$root/Old.txt", diffDataService.pathInTarget("$root/New.txt"))
+        assertEquals("$root/Other.txt", diffDataService.pathInTarget("$root/Other.txt"))
+    }
+
+    private fun revision(path: String) = TextContentRevision(
+        com.intellij.vcsUtil.VcsUtil.getFilePath(path, false),
+        "text\n",
+        git4idea.GitRevisionNumber("feature")
+    )
 }
