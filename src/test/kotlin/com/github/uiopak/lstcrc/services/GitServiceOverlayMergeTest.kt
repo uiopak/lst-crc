@@ -56,4 +56,16 @@ class GitServiceOverlayMergeTest : LstCrcTestCase() {
 
         override fun getRevisionNumber(): VcsRevisionNumber = revisionNumber
     }
+
+    fun testUntrackedChangesKeepBackslashesInFileNames() {
+        val root = myFixture.tempDirFixture.findOrCreateDir("repo")
+
+        val changes = untrackedChanges(project, root, "a\\b.txt\u0000a\\q.txt\u0000plain.txt\u0000")
+
+        assertEquals(
+            listOf("${root.path}/a\\b.txt", "${root.path}/a\\q.txt", "${root.path}/plain.txt"),
+            changes.map { it.afterRevision!!.file.path }
+        )
+        assertTrue(changes.all { it.beforeRevision == null && it.fileStatus == FileStatus.UNKNOWN })
+    }
 }
