@@ -112,7 +112,7 @@ class LstCrcRealRepositoryStarterUiTest : LstCrcStarterUiTestBase() {
     ): Duration {
         val start = TimeSource.Monotonic.markNow()
         action()
-        waitUntil(timeout, 100.milliseconds, condition)
+        waitUntil(timeout, 100.milliseconds, condition = condition)
         return start.elapsedNow().also { LstCrcPerformanceReport.record(test, step, it, detail()) }
     }
 
