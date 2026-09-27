@@ -15,6 +15,8 @@ import javax.swing.tree.DefaultMutableTreeNode
 import javax.swing.tree.TreeNode
 import javax.swing.tree.TreePath
 
+private val LOG = logger<ExpandNewNodesStateStrategy>()
+
 /**
  * Preserves the current expansion/collapse state while ensuring newly added changes become visible.
  *
@@ -30,8 +32,6 @@ import javax.swing.tree.TreePath
  * pre-collapse-persistence behavior. When it returns `false`, collapsed directories
  * stay collapsed even if they receive new changes.
  */
-private val LOG = logger<ExpandNewNodesStateStrategy>()
-
 class ExpandNewNodesStateStrategy(
     private val expandNewFilesInCollapsedDirs: () -> Boolean = {
         ToolWindowSettingsProvider.isExpandNewFilesInCollapsedDirs()
