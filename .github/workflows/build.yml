@@ -152,6 +152,10 @@ jobs:
       contents: write
       checks: write
       pull-requests: write
+      # Upload Qodana SARIF Report sends results to code scanning, which needs this; it failed on pushes to main without it.
+      security-events: write
+      # upload-sarif reads the run's workflow details (required in private repositories).
+      actions: read
     steps:
 
       # Free GitHub Actions Environment Disk Space
