@@ -127,6 +127,7 @@ object ToolWindowHelper {
     internal fun findHeadContent(contentManager: ContentManager): Content? =
         contentManager.contents.firstOrNull { !it.isCloseable }
 
+    @Suppress("unused") // Used by the IDE Starter test bridge.
     internal fun findContentByDisplayName(contentManager: ContentManager, displayName: String): Content? =
         contentManager.contents.firstOrNull { it.displayName == displayName }
 
