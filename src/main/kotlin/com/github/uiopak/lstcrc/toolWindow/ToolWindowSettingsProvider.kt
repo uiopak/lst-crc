@@ -1,5 +1,6 @@
 package com.github.uiopak.lstcrc.toolWindow
 
+import com.github.uiopak.lstcrc.LstCrcConstants
 import com.github.uiopak.lstcrc.resources.LstCrcBundle
 import com.github.uiopak.lstcrc.services.GitService
 import com.github.uiopak.lstcrc.services.ProjectActiveDiffDataService
@@ -10,9 +11,12 @@ import com.intellij.openapi.actionSystem.ActionGroup
 import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.DefaultActionGroup
-import com.intellij.openapi.actionSystem.PlatformDataKeys
 import com.intellij.openapi.actionSystem.ToggleAction
 import com.intellij.openapi.components.service
+import com.intellij.openapi.project.Project
+import com.intellij.openapi.project.ProjectManager
+import com.intellij.openapi.wm.ToolWindow
+import com.intellij.openapi.wm.ToolWindowManager
 import javax.swing.UIManager
 
 /**
@@ -25,14 +29,25 @@ object ToolWindowSettingsProvider {
     private fun settingsService(): LstCrcSettingsService =
         ApplicationManager.getApplication().service()
 
-    /** Rebuilds the tree view of the currently active [LstCrcChangesBrowser] in the tool window. */
-    private val rebuildActiveView: (AnActionEvent, Boolean) -> Unit = { e, _ ->
-        val browser = e.getData(PlatformDataKeys.TOOL_WINDOW)?.contentManager?.selectedContent?.component
-        (browser as? LstCrcChangesBrowser)?.rebuildView()
+    /**
+     * Settings are application-wide, so a change is applied to every open project, not only to the one whose menu
+     * made it.
+     */
+    private fun forEachOpenProject(action: (Project) -> Unit) =
+        ProjectManager.getInstance().openProjects.filterNot(Project::isDisposed).forEach(action)
+
+    private fun lstCrcToolWindow(project: Project): ToolWindow? =
+        ToolWindowManager.getInstance(project).getToolWindow(LstCrcConstants.TOOL_WINDOW_ID)
+
+    /** Rebuilds the tree view of the selected [LstCrcChangesBrowser] of each project; other tabs rebuild when selected. */
+    private val rebuildActiveView: (Boolean) -> Unit = {
+        forEachOpenProject { project ->
+            (lstCrcToolWindow(project)?.contentManager?.selectedContent?.component as? LstCrcChangesBrowser)?.rebuildView()
+        }
     }
 
-    private val notifyVisualTrackerSettingsChanged: (AnActionEvent, Boolean) -> Unit = { e, _ ->
-        e.project?.service<VisualTrackerManager>()?.settingsChanged()
+    private val notifyVisualTrackerSettingsChanged: (Boolean) -> Unit = {
+        forEachOpenProject { it.service<VisualTrackerManager>().settingsChanged() }
     }
 
     // --- Keys for Click Actions ---
@@ -204,7 +219,7 @@ object ToolWindowSettingsProvider {
             add(createBooleanSettingToggle(
                 LstCrcBundle.message("settings.tree.view.show.untracked.files.as.new"),
                 LstCrcSettingDefinitions.SHOW_UNTRACKED_FILES_AS_NEW,
-                onChanged = { e, _ -> e.project?.service<ToolWindowStateService>()?.refreshDataForCurrentSelection() }
+                onChanged = { forEachOpenProject { it.service<ToolWindowStateService>().refreshDataForCurrentSelection() } }
             ))
 
             add(createBooleanSettingToggle(
@@ -238,15 +253,17 @@ object ToolWindowSettingsProvider {
         rootSettingsGroup.add(createBooleanSettingToggle(
             LstCrcBundle.message("settings.show.tool.window.title"),
             LstCrcSettingDefinitions.SHOW_TOOL_WINDOW_TITLE,
-            onChanged = { e, showTitle ->
-                e.getData(PlatformDataKeys.TOOL_WINDOW)?.let { ToolWindowUiCompatibility.setToolWindowTitleVisible(it, showTitle) }
+            onChanged = { showTitle ->
+                forEachOpenProject { project ->
+                    lstCrcToolWindow(project)?.let { ToolWindowUiCompatibility.setToolWindowTitleVisible(it, showTitle) }
+                }
             }
         ))
 
         rootSettingsGroup.add(createBooleanSettingToggle(
             LstCrcBundle.message("settings.show.widget.context"),
             LstCrcSettingDefinitions.SHOW_WIDGET_CONTEXT,
-            onChanged = { e, _ -> e.project?.let(LstCrcStatusWidget::refresh) }
+            onChanged = { forEachOpenProject(LstCrcStatusWidget::refresh) }
         ))
 
         rootSettingsGroup.add(createBooleanSettingToggle(
@@ -254,8 +271,8 @@ object ToolWindowSettingsProvider {
             LstCrcSettingDefinitions.INCLUDE_HEAD_IN_SCOPES,
             // The diff data does not depend on this setting, so a reload would find nothing new and change
             // nothing; re-evaluate what reads the setting instead: scopes (file statuses), tab colours and gutters.
-            onChanged = { e, _ ->
-                e.project?.let { project ->
+            onChanged = {
+                forEachOpenProject { project ->
                     project.service<VisualTrackerManager>().settingsChanged()
                     project.service<ProjectActiveDiffDataService>().refreshCurrentColorings()
                 }
@@ -281,13 +298,13 @@ object ToolWindowSettingsProvider {
     /**
      * A [ToggleAction] for a boolean [setting].
      *
-     * @param onChanged Called after the value changes, with the event and the new value.
+     * @param onChanged Called after the value changes, with the new value.
      * @param updateCheck Controls enabled/visible state in [ToggleAction.update].
      */
     private fun createBooleanSettingToggle(
         text: String,
         setting: SettingDefinition<Boolean>,
-        onChanged: ((AnActionEvent, Boolean) -> Unit)? = null,
+        onChanged: ((Boolean) -> Unit)? = null,
         updateCheck: ((AnActionEvent) -> Unit)? = null
     ): ToggleAction {
         return object : ToggleAction(text) {
@@ -300,7 +317,7 @@ object ToolWindowSettingsProvider {
 
             override fun setSelected(e: AnActionEvent, state: Boolean) {
                 settingsService()[setting] = state
-                onChanged?.invoke(e, state)
+                onChanged?.invoke(state)
             }
 
             override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT

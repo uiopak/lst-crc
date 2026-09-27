@@ -10,8 +10,10 @@ import com.intellij.remoterobot.data.RemoteComponent
 import com.intellij.remoterobot.fixtures.*
 import com.intellij.remoterobot.search.locators.byXpath
 import com.intellij.remoterobot.stepsProcessing.step
+import com.intellij.remoterobot.utils.keyboard
 import com.intellij.remoterobot.utils.waitFor
 import org.assertj.swing.core.MouseButton
+import java.awt.event.KeyEvent
 import java.time.Duration
 
 fun IdeaFrame.gitChangesView(function: GitChangesViewFixture.() -> Unit) {
@@ -219,6 +221,38 @@ class GitChangesViewFixture(remoteRobot: RemoteRobot, remoteComponent: RemoteCom
 
     fun rightClickChange(fileName: String) {
         clickChange(fileName, MouseButton.RIGHT_BUTTON)
+    }
+
+    /** Ctrl+clicks [fileName] (Cmd+click on macOS), which adds it to the tree's selection. */
+    fun addChangeToSelection(fileName: String) {
+        step("Add '$fileName' to the selection") {
+            waitFor(Duration.ofSeconds(10), interval = Duration.ofMillis(250)) {
+                changesTree.findAllText(fileName).isNotEmpty()
+            }
+            waitForTreeToSettle()
+            val row = changesTree.findText(fileName)
+            keyboard { pressing(if (remoteRobot.isMac()) KeyEvent.VK_META else KeyEvent.VK_CONTROL) { row.click() } }
+        }
+    }
+
+    /** The file names of the selected rows, in selection order. */
+    fun selectedChangeNames(): List<String> = step("Read selected changes tree entries") {
+        callJs<String>(
+            """
+            (function() {
+                var paths = component.viewerTree().getSelectionPaths();
+                if (paths == null) return "";
+                var names = [];
+                for (var i = 0; i < paths.length; i++) {
+                    var change = paths[i].getLastPathComponent().getUserObject();
+                    var revision = change && change.getAfterRevision ? (change.getAfterRevision() || change.getBeforeRevision()) : null;
+                    names.push(revision ? String(revision.getFile().getName()) : String(paths[i].getLastPathComponent()));
+                }
+                return names.join("\n");
+            })()
+            """.trimIndent(),
+            true
+        ).lines().filter(String::isNotBlank)
     }
 
     fun treeViewportPosition(): Pair<Int, Int> = step("Read changes tree viewport position") {

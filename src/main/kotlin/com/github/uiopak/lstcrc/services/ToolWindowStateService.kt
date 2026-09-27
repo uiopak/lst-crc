@@ -70,7 +70,8 @@ class ToolWindowStateService(private val project: Project, val coroutineScope: C
         replaceState(ToolWindowState())
     }
 
-    fun addTab(branchName: String) {
+    /** Adds a tab at [index] (its position among the comparison tabs; the end by default), keeping the selected tab. */
+    fun addTab(branchName: String, index: Int = myState.openTabs.size) {
         if (project.isDisposed) return
         logger.debug { "addTab('$branchName') called." }
         if (myState.openTabs.any { it.branchName == branchName }) {
@@ -78,7 +79,14 @@ class ToolWindowStateService(private val project: Project, val coroutineScope: C
             return
         }
 
-        replaceState(myState.copy(openTabs = myState.openTabs + TabInfo(branchName = branchName)))
+        val insertAt = index.coerceIn(0, myState.openTabs.size)
+        val selected = myState.selectedTabIndex
+        replaceState(
+            myState.copy(
+                openTabs = myState.openTabs.toMutableList().apply { add(insertAt, TabInfo(branchName = branchName)) },
+                selectedTabIndex = if (selected >= insertAt) selected + 1 else selected
+            )
+        )
         logger.debug { "Tab '$branchName' added. New state: $myState" }
     }
 

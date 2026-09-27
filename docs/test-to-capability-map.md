@@ -60,6 +60,8 @@ Location: `src/test/kotlin/com/github/uiopak/lstcrc/{gutters,listeners,scopes,se
 | `LstCrcChangesBrowserTest.testAvailableContextMenuActionsOmitProjectTreeForDeletedChange` | `C4.2` | The context menu omits "Show in Project" for deleted files. |
 | `LstCrcChangesBrowserTest.testConfiguredClickActionLookupUsesButtonSpecificSettings` | `C4.1` | Each mouse button uses its own single/double click settings. |
 | `LstCrcChangesBrowserTest.testConfiguredClickActionLookupFallsBackToNoneForUnsupportedButtons` | `C4.1` | Other mouse buttons do nothing. |
+| `LstCrcChangesBrowserTest.testCtrlClickKeepsTheMultiSelection` | `C4.1` | Regression: a Ctrl+click keeps the selection JTree built instead of selecting only the clicked change. |
+| `LstCrcChangesBrowserTest.testRightClickInsideTheSelectionKeepsIt` | `C4.1` | Regression: a right-click on a selected change keeps the selection; outside it, selects the clicked change. |
 | `LstCrcChangesBrowserTest.testToolbarActionsIncludeRepoComparisonActionImmediatelyAfterGroupByWhenPresent` | `C2.3` | The repo-comparison action sits right after the group-by action in the toolbar. |
 | `LstCrcFileStatusScopesTest.testDeletedScopeMatchesDeletedPathsWhileChangedExcludesThem` | `C3.2`, `C3.4` | `Deleted` matches deleted paths; `Changed` excludes them. |
 | `LstCrcFileStatusScopesTest.testScopesExcludeHeadChangesWhenIncludeHeadInScopesIsDisabled` | `C4.7` | Scopes ignore `HEAD` data while `Include HEAD in scopes` is off. |
@@ -76,6 +78,7 @@ Location: `src/test/kotlin/com/github/uiopak/lstcrc/{gutters,listeners,scopes,se
 | `LstCrcStatusWidgetTest.testGetTextFallsBackToPluginNameForInvalidSelectedTabIndex` | `C5.3` | An out-of-range selected index falls back to the plugin name. |
 | `LstCrcStatusWidgetTest.testPluginXmlStatusWidgetFactoryIdMatchesWidgetConstant` | `C4.5` | The widget id in `plugin.xml` matches the code. |
 | `MyToolWindowFactoryTest.testOnlyTheHeadTabSelectsHead` | `C1.1`, `C2.1` | Only the HEAD tab selects HEAD; the "Select Branch" tab keeps the current comparison. |
+| `MyToolWindowFactoryTest.testStateIndexOfATabCountsTheComparisonTabsBeforeIt` | `C1.4` | A tab's state index counts only the comparison tabs before it (not HEAD or "Select Branch"). |
 | `PluginStartupActivityTest.testInitialDiffLoadPropagatesCancellation` | `C5.1` | Regression: cancelling startup cancels the wait for the first diff load instead of logging it as a failure. |
 | `PluginStartupActivityTest.testInitialDiffLoadFailureDoesNotStopStartup` | `C5.1` | A failed first diff load is logged and startup continues. |
 | `ProjectActiveDiffDataServiceTest.testAcceptsHeadUpdateWhenHeadTabIsSelected` | `C1.1`, `C5.1` | `HEAD` results are applied while the `HEAD` tab is selected. |
@@ -84,6 +87,7 @@ Location: `src/test/kotlin/com/github/uiopak/lstcrc/{gutters,listeners,scopes,se
 | `ProjectActiveDiffDataServiceTest.testRejectsHeadUpdateWhileComparisonTabIsSelected` | `C5.1` | `HEAD` results are dropped while a comparison tab is selected. |
 | `ProjectActiveDiffDataServiceTest.testUpdateActiveDiffWithIdenticalSnapshotBypassesNotification` | `C5.1` | Identical data does not re-notify listeners. |
 | `ProjectActiveDiffDataServiceTest.testSamePathsWithNewUnsavedContentPublishesNewChanges` | `C3.8`, `C5.1` | New unsaved content on the same paths is published; the same content is not. |
+| `ProjectActiveDiffDataServiceTest.testNewUnsavedContentOfTheSameFilesKeepsFileStatuses` | `C5.1` | Regression: new unsaved text of the same files does not reset file statuses; a file joining a scope does. |
 | `ProjectActiveDiffDataServiceTest.testMovedFileIsLookedUpByItsOldPathInTheTarget` | `C3.7` | Regression: the gutter of a moved file compares with its old path in the target. |
 | `RepoNodeRendererTest.testAddedLineStatsUseBuiltInSuccessForeground` | `C3.10` | Added counts use the theme's success color. |
 | `RepoNodeRendererTest.testRemovedLineStatsUseBuiltInErrorAttributes` | `C3.10` | Removed counts use the theme's error color. |
@@ -95,6 +99,7 @@ Location: `src/test/kotlin/com/github/uiopak/lstcrc/{gutters,listeners,scopes,se
 | `ToolWindowStateServiceRefreshTest.testJoinedRefreshLoadsTheSelectionMadeBeforeTheRequest` | `C5.1` | A joined refresh has loaded the state from before the request. |
 | `ToolWindowStateServiceRefreshTest.testRemovingTheSelectedTabLoadsTheTabBeforeIt` | `C1.4` | Closing the selected tab loads the tab before it, or `HEAD` for the first tab. |
 | `ToolWindowStateServicePersistenceTest.testAddTabDeduplicatesAndRemoveTabKeepsOtherTabs` | `C5.2` | Adding an existing tab is a no-op; removing one keeps the others. |
+| `ToolWindowStateServicePersistenceTest.testAddTabAtAPositionKeepsTheSelectedTab` | `C1.4`, `C5.2` | A tab added at a position lands there and the selected tab stays selected. |
 | `ToolWindowStateServicePersistenceTest.testRemoveTabClampsSelectedIndexWhenSelectedTabIsRemoved` | `C5.2` | Removing the selected tab selects a neighbour. |
 | `ToolWindowStateServicePersistenceTest.testRemoveTabSelectsTheTabBeforeTheRemovedSelectedTab` | `C5.2` | Removing the selected tab selects the tab before it, as the tool window does. |
 | `ToolWindowStateServicePersistenceTest.testRemoveTabShiftsSelectedIndexWhenEarlierTabIsRemoved` | `C5.2` | Removing an earlier tab keeps the same tab selected. |
@@ -116,6 +121,7 @@ Location: `src/test/kotlin/com/github/uiopak/lstcrc/{gutters,listeners,scopes,se
 | `VisualTrackerManagerBehaviorTest.testStandaloneTrackerIsReleasedWhenItsLastEditorCloses` | `C3.7` | A standalone tracker is released when its file's last editor closes. |
 | `VisualTrackerManagerBehaviorTest.testRepositoryChangeRechecksTheTrackersOfVisibleEditors` | `C3.7` | Regression: a repository change re-checks the trackers of visible editors even when the diff data is unchanged. |
 | `VisualTrackerManagerBehaviorTest.testIncludeHeadToggleRechecksTrackers` | `C4.7`, `C3.7` | Regression: toggling `Include HEAD in scopes` re-checks the trackers at once. |
+| `VisualTrackerManagerBehaviorTest.testGutterToggleFromAnotherProjectRechecksThisProjectsTrackers` | `C4.8`, `C4.9` | Regression: a gutter setting changed outside this project's menu re-checks this project's trackers. |
 
 ## Remote Robot UI Tests
 
@@ -148,6 +154,7 @@ Location: `src/test/kotlin/com/github/uiopak/lstcrc/plugin (tag `ui`, run by `ui
 | `LstCrcBranchComparisonUiTest.testFileTypeFileStatuses` | `C3.1` | Rows carry `ADDED`, `DELETED` and `MODIFIED` statuses relative to the working tree. |
 | `LstCrcFileScopeUiTest.testFileOperations` | `C3.1`, `C3.2` | Create, modify, rename and delete update the tree and every named scope. |
 | `LstCrcInteractionUiTest.testToolWindowClickActions` | `C4.1` | Configured click actions open source, diff or project view. |
+| `LstCrcInteractionUiTest.testModifierClickBuildsAMultiSelectionThatARightClickKeeps` | `C4.1` | Regression: Ctrl/Cmd+click builds a multi-selection in the real IDE, and a right-click inside it keeps it. |
 | `LstCrcInteractionUiTest.testContextMenuActionsWhenEnabled` | `C4.2` | Right click opens the context menu in context-menu mode. |
 | `LstCrcInteractionUiTest.testContextMenuOpenSourceWinsOverFocusedDiffAndReusesDiff` | `C4.1`, `C4.2` | Open Source from the menu wins over a focused diff; Show Diff reuses the open diff tab. |
 | `LstCrcInteractionUiTest.testStatusWidgetAndRevisionActions` | `C1.3`, `C2.1`, `C2.4` | Widget popup and Git Log actions create and retarget tabs. |

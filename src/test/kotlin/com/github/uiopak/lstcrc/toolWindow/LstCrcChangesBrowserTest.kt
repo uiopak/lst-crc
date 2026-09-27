@@ -313,6 +313,40 @@ class LstCrcChangesBrowserTest : LstCrcTestCase() {
         assertEquals(ToolWindowSettingsProvider.ACTION_OPEN_DIFF, browser.configuredActionForClickForTest(java.awt.event.MouseEvent.BUTTON3, true))
     }
 
+    // Every click on a change selected only that change, so Ctrl/Shift/Cmd+click could not build a selection
+    // (for the multi-file diff that Enter opens).
+    fun testCtrlClickKeepsTheMultiSelection() {
+        withClickSettings {
+            withBrowserFixture {
+                displayChanges(browser, categorizedChanges(changeCount = 3))
+                waitForRowCount(tree, minimumRows = 3)
+                // JTree adds the Ctrl+clicked row to the selection when the button is pressed; the click follows.
+                onEdt { selectRowsContaining(tree, "File000.txt", "File002.txt") }
+
+                clickRowContaining(tree, "File002.txt", java.awt.event.MouseEvent.BUTTON1, java.awt.event.InputEvent.CTRL_DOWN_MASK)
+
+                assertEquals(listOf("File000.txt", "File002.txt"), selectedRowNames(tree))
+            }
+        }
+    }
+
+    // A right-click on one of several selected changes selected only it.
+    fun testRightClickInsideTheSelectionKeepsIt() {
+        withClickSettings {
+            withBrowserFixture {
+                displayChanges(browser, categorizedChanges(changeCount = 3))
+                waitForRowCount(tree, minimumRows = 3)
+                onEdt { selectRowsContaining(tree, "File000.txt", "File002.txt") }
+
+                clickRowContaining(tree, "File002.txt", java.awt.event.MouseEvent.BUTTON3, 0)
+                assertEquals(listOf("File000.txt", "File002.txt"), selectedRowNames(tree))
+
+                clickRowContaining(tree, "File001.txt", java.awt.event.MouseEvent.BUTTON3, 0)
+                assertEquals("A right-click outside the selection selects the clicked change", listOf("File001.txt"), selectedRowNames(tree))
+            }
+        }
+    }
+
     fun testConfiguredClickActionLookupFallsBackToNoneForUnsupportedButtons() {
         val browser = createBrowser()
 
@@ -505,6 +539,45 @@ class LstCrcChangesBrowserTest : LstCrcTestCase() {
             tree.getPathForRow(index)?.lastPathComponent?.toString()?.contains(text) == true
         } ?: error("Could not find a tree row containing '$text'")
         tree.setSelectionRow(row)
+    }
+
+    private fun selectRowsContaining(tree: JTree, vararg texts: String) {
+        tree.selectionPaths = texts.map { text ->
+            (0 until tree.rowCount).map(tree::getPathForRow).first { it.lastPathComponent.toString().contains(text) }
+        }.toTypedArray()
+    }
+
+    /** Sends a click (no press, as if JTree had already handled it) with [button] and [modifiers] to the row. */
+    private fun clickRowContaining(tree: JTree, text: String, button: Int, modifiers: Int) {
+        onEdt {
+            val row = (0 until tree.rowCount).first { tree.getPathForRow(it).lastPathComponent.toString().contains(text) }
+            val bounds = tree.getRowBounds(row)
+            val buttonMask = java.awt.event.InputEvent.getMaskForButton(button)
+            tree.dispatchEvent(
+                java.awt.event.MouseEvent(
+                    tree, java.awt.event.MouseEvent.MOUSE_CLICKED, System.currentTimeMillis(), modifiers or buttonMask,
+                    bounds.x + bounds.width / 2, bounds.y + bounds.height / 2, 1, false, button
+                )
+            )
+        }
+        flushUiEvents()
+    }
+
+    /** Runs [body] with every click action off and the context menu disabled, so clicks only change the selection. */
+    private fun withClickSettings(body: () -> Unit) {
+        val settingsService = ApplicationManager.getApplication().service<LstCrcSettingsService>()
+        settingsService.resetToDefaults()
+        listOf(
+            LstCrcSettingDefinitions.SINGLE_CLICK_ACTION,
+            LstCrcSettingDefinitions.DOUBLE_CLICK_ACTION,
+            LstCrcSettingDefinitions.RIGHT_CLICK_ACTION,
+            LstCrcSettingDefinitions.DOUBLE_RIGHT_CLICK_ACTION
+        ).forEach { settingsService[it] = ToolWindowSettingsProvider.ACTION_NONE }
+        try {
+            body()
+        } finally {
+            settingsService.resetToDefaults()
+        }
     }
 
     private fun flushUiEvents() {

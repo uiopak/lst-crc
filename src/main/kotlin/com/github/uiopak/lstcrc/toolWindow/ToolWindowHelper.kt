@@ -23,6 +23,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+/** The number of comparison tabs (tabs with a branch) before [content] in [contents]: its index in the state. */
+internal fun comparisonTabsBefore(contents: List<Content>, content: Content): Int =
+    contents.takeWhile { it !== content }.count { it.getUserData(LstCrcKeys.BRANCH_NAME_KEY) != null }
+
 /**
  * A helper object for common tool window UI operations.
  */
@@ -112,7 +116,8 @@ object ToolWindowHelper {
         val newContent = createBranchContent(project, branchName, branchName, contentManager, order)
         contentManager.setSelectedContent(newContent, true)
         val stateService = project.service<ToolWindowStateService>()
-        stateService.addTab(branchName)
+        // At its position in the tool window: a "Select Branch" tab replaced in the middle keeps the tabs after it.
+        stateService.addTab(branchName, comparisonTabsBefore(contentManager.contents.asList(), newContent))
         val newIndex = stateService.findTabIndex(branchName)
         if (newIndex != -1) {
             stateService.setSelectedTab(newIndex)

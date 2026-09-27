@@ -23,6 +23,22 @@ class ToolWindowStateServicePersistenceTest : LstCrcTestCase() {
         assertEquals(listOf("feature-b"), state.openTabs.map { it.branchName })
     }
 
+    // A branch picked in a "Select Branch" tab that is not the last tab opens at that tab's position.
+    fun testAddTabAtAPositionKeepsTheSelectedTab() {
+        val service = project.service<ToolWindowStateService>()
+        service.loadState(
+            ToolWindowState(
+                openTabs = listOf(TabInfo(branchName = "feature-a"), TabInfo(branchName = "feature-b"), TabInfo(branchName = "feature-c")),
+                selectedTabIndex = 1
+            )
+        )
+
+        service.addTab("feature-d", index = 1)
+
+        assertEquals(listOf("feature-a", "feature-d", "feature-b", "feature-c"), service.state.openTabs.map { it.branchName })
+        assertEquals("feature-b", service.getSelectedTabInfo()?.branchName)
+    }
+
     fun testRemoveTabClampsSelectedIndexWhenSelectedTabIsRemoved() {
         val service = project.service<ToolWindowStateService>()
         service.loadState(

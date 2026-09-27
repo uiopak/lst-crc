@@ -41,10 +41,16 @@ class ProjectActiveDiffDataService(private val project: Project) : Disposable {
         val movedSourcePaths: Map<String, String> =
             movedSourcePaths(categorizedChanges.allChanges).mapValues { (_, before) -> before.path }
 
-        /** True when replacing this snapshot can change some file's status (it lists at least one file). */
-        fun hasFiles(): Boolean = with(categorizedChanges) {
-            createdFiles.isNotEmpty() || modifiedFiles.isNotEmpty() || movedFiles.isNotEmpty() || deletedFiles.isNotEmpty()
-        }
+        /**
+         * True when replacing this snapshot with [other] can change a file's status or colour: they come from the
+         * scopes, which only depend on the branch and the path sets. New unsaved text of the same files changes neither.
+         */
+        fun scopesDifferFrom(other: ActiveDiffSnapshot): Boolean =
+            activeBranchName != other.activeBranchName ||
+                createdFilePaths != other.createdFilePaths ||
+                modifiedFilePaths != other.modifiedFilePaths ||
+                movedFilePaths != other.movedFilePaths ||
+                deletedFilePaths != other.deletedFilePaths
 
         private fun List<VirtualFile>.pathSet(): Set<String> = mapTo(HashSet(size)) { it.path }
 
@@ -142,15 +148,15 @@ class ProjectActiveDiffDataService(private val project: Project) : Disposable {
     }
 
     /**
-     * Must be called on EDT. Publishes the new data and refreshes file statuses (only when some file's
-     * status can change; `fileStatusesChanged()` invalidates every cached status) and editor tab colours.
+     * Must be called on EDT. Publishes the new data and, when the scopes changed, refreshes file statuses
+     * (`fileStatusesChanged()` invalidates every cached status in the project) and editor tab colours.
      */
     private fun replaceSnapshot(newSnapshot: ActiveDiffSnapshot) {
-        val anyFileAffected = snapshot.hasFiles() || newSnapshot.hasFiles()
+        val scopesChanged = newSnapshot.scopesDifferFrom(snapshot)
         snapshot = newSnapshot
-        if (anyFileAffected) FileStatusManager.getInstance(project).fileStatusesChanged()
+        if (scopesChanged) FileStatusManager.getInstance(project).fileStatusesChanged()
         project.messageBus.syncPublisher(DIFF_DATA_CHANGED_TOPIC).onDiffDataChanged()
-        triggerEditorTabColorRefresh()
+        if (scopesChanged) triggerEditorTabColorRefresh()
     }
 
     /** Must be called on EDT. */
