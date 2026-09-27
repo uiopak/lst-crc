@@ -6,6 +6,9 @@ import com.github.uiopak.lstcrc.plugin.pages.GitChangesViewFixture
 import com.github.uiopak.lstcrc.plugin.pages.IdeaFrame
 import com.github.uiopak.lstcrc.plugin.pages.gitChangesView
 import com.github.uiopak.lstcrc.plugin.pages.addComparisonTab
+import com.github.uiopak.lstcrc.plugin.pages.filesMatchingScope
+import com.github.uiopak.lstcrc.plugin.pages.activeDiffEntries
+import com.github.uiopak.lstcrc.plugin.pages.actionMenuItem
 import com.github.uiopak.lstcrc.plugin.pages.branchSelection
 import com.github.uiopak.lstcrc.plugin.pages.idea
 import com.github.uiopak.lstcrc.plugin.steps.PluginUiTestSteps
@@ -895,6 +898,102 @@ class LstCrcBranchComparisonUiTest : LstCrcUiTestSupport() {
                 }
             }
         }
+    }
+
+    /**
+     * Closing the selected tab from its context menu, as a user does. The tool window selects the tab before it, and
+     * that tab's comparison must become active. Regression: the plugin's state already pointed at that tab, so nothing
+     * loaded it, and the tree, scopes and gutters kept the closed tab's comparison. The test must not select tabs or
+     * edit files after closing: both would load the comparison and hide the bug.
+     */
+    @Test
+    @Video
+    fun testClosingSelectedTabActivatesTheTabBeforeIt(remoteRobot: RemoteRobot) = with(remoteRobot) {
+        val uiSteps = PluginUiTestSteps(remoteRobot)
+
+        prepareFreshProject()
+
+        idea {
+            dumbAware {}
+
+            uiSteps.initializeGitRepository()
+            resetGitChangesViewState()
+
+            uiSteps.createNewFile("Base.txt", "Base content\n")
+            uiSteps.commitChanges("Initial commit")
+            val defaultBranch = uiSteps.defaultBranchName()
+
+            // feature-1 modifies Base.txt and adds Feature1.txt; feature-2 only adds Feature2.txt.
+            uiSteps.createBranch("feature-1")
+            uiSteps.createNewFile("Feature1.txt", "Feature 1 content\n")
+            uiSteps.modifyFile("Base.txt", "Base modified in feature 1\n")
+            uiSteps.commitChanges("Feature 1 commit")
+
+            uiSteps.checkoutBranch(defaultBranch)
+            uiSteps.createBranch("feature-2")
+            uiSteps.createNewFile("Feature2.txt", "Feature 2 content\n")
+            uiSteps.commitChanges("Feature 2 commit")
+            uiSteps.checkoutBranch(defaultBranch)
+
+            openGitChangesView()
+            addComparisonTab("feature-1")
+            addComparisonTab("feature-2")
+
+            // Compared with the working tree, a file only the branch has is deleted.
+            step("Wait for feature-2, the rightmost tab, to be the active comparison") {
+                waitFor(Duration.ofSeconds(30), interval = Duration.ofMillis(500)) {
+                    val entries = activeDiffEntries().lines()
+                    entries.first().startsWith("branch=feature-2|") && "D\tFeature2.txt" in entries && entries.none { "Feature1.txt" in it }
+                }
+            }
+
+            closeTabFromContextMenu("feature-2")
+
+            step("The tab before it is selected and its comparison is active") {
+                waitFor(Duration.ofSeconds(10), interval = Duration.ofMillis(250)) {
+                    !hasLstCrcTab("feature-2") && selectedLstCrcTabName() == "feature-1"
+                }
+                waitFor(Duration.ofSeconds(30), interval = Duration.ofMillis(500)) {
+                    val entries = activeDiffEntries().lines()
+                    entries.first().startsWith("branch=feature-1|") &&
+                        "D\tFeature1.txt" in entries && "M\tBase.txt" in entries && entries.none { "Feature2.txt" in it }
+                }
+                assertEquals(setOf("Base.txt"), filesMatchingScope("LSTCRC.Modified", listOf("Base.txt")))
+                assertEquals(setOf("Feature1.txt"), filesMatchingScope("LSTCRC.Deleted", listOf("Feature1.txt", "Feature2.txt")))
+                gitChangesView {
+                    waitFor(Duration.ofSeconds(15), interval = Duration.ofMillis(500)) {
+                        changesTree.findAllText("Feature1.txt").isNotEmpty() && changesTree.findAllText("Feature2.txt").isEmpty()
+                    }
+                }
+            }
+
+            closeTabFromContextMenu("feature-1")
+
+            step("Closing the first tab activates HEAD") {
+                val headTabName = gitChangesViewHeadTabName(defaultBranch)
+                waitFor(Duration.ofSeconds(10), interval = Duration.ofMillis(250)) {
+                    !hasLstCrcTab("feature-1") && selectedLstCrcTabName() == headTabName
+                }
+                waitFor(Duration.ofSeconds(30), interval = Duration.ofMillis(500)) {
+                    val entries = activeDiffEntries().lines()
+                    entries.first().startsWith("branch=HEAD|") && entries.none { "Feature1.txt" in it || "Base.txt" in it }
+                }
+                assertEquals(emptySet<String>(), filesMatchingScope("LSTCRC.Deleted", listOf("Feature1.txt", "Feature2.txt")))
+            }
+        }
+    }
+
+    /** Closes [tabName] with the "Close Tab" item of the tab's context menu. */
+    private fun IdeaFrame.closeTabFromContextMenu(tabName: String) = step("Close tab '$tabName' from its context menu") {
+        gitChangesView { rightClickTab(tabName) }
+        waitFor(Duration.ofSeconds(10)) { remoteRobot.actionMenuItem("Close Tab").isShowing }
+        remoteRobot.actionMenuItem("Close Tab").click()
+    }
+
+    private fun IdeaFrame.gitChangesViewHeadTabName(defaultBranch: String): String {
+        var name = "HEAD"
+        gitChangesView { if (!hasTab("HEAD")) name = defaultBranch }
+        return name
     }
 
     @Test

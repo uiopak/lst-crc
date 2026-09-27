@@ -38,6 +38,7 @@ Location: `src/test/kotlin/com/github/uiopak/lstcrc/{gutters,listeners,scopes,se
 | `GitServiceOverlayMergeTest.testParseTrackedDiffKeepsTabsInNumstatPaths` | `C3.10` | A tab in a `--numstat -z` path stays part of the path, so the file keeps its line stats. |
 | `GitServiceOverlayMergeTest.testParseTrackedDiffReadsRawAndNumstatRecordsIncludingRenames` | `C3.1`, `C3.10` | `git diff --raw --numstat -z` output becomes changes and line stats, renames included, and moved files map to their old path. |
 | `LstCrcActionVisibilityTest.testShowRepoComparisonInfoActionHiddenOnHeadAndVisibleForComparisonTab` | `C2.3` | Repo-comparison toolbar action is hidden on `HEAD` and shown on comparison tabs. |
+| `LstCrcActionVisibilityTest.testRepoComparisonPopupShowsRepositoryAndTargetNamesWithUnderscores` | `C1.5`, `C2.3` | The repository popup lists each repository and its target, sorted, with underscores. |
 | `LstCrcActionVisibilityTest.testCreateTabFromRevisionActionVisibleOnlyForSingleRevisionSelection` | `C1.3` | Git Log "create tab" needs exactly one selected revision. |
 | `LstCrcActionVisibilityTest.testRenameTabActionVisibleForClosableBranchTabWhenContextIsNestedUnderBaseLabel` | `C1.5` | Rename is offered from inside a closable tab's label. |
 | `LstCrcActionVisibilityTest.testRenameTabActionHiddenWithoutRenamableTabContext` | `C1.5` | Rename is hidden for other tool windows, the `HEAD` tab, tabs without a branch key and unrelated components. |
@@ -134,6 +135,7 @@ Location: `src/test/kotlin/com/github/uiopak/lstcrc/plugin (tag `ui`, run by `ui
 | `LstCrcBranchComparisonUiTest.testNewFileStaysCreatedDuringUnsavedEdits` | `C3.8` | A new file stays created while it has unsaved edits. |
 | `LstCrcBranchComparisonUiTest.testLocalNewFileAppearsInComparisonTab` | `C3.1` | A local new file appears as created. |
 | `LstCrcBranchComparisonUiTest.testMultipleComparisonTabs` | `C1.4` | Several comparison tabs switch independently. |
+| `LstCrcBranchComparisonUiTest.testClosingSelectedTabActivatesTheTabBeforeIt` | `C1.4` | Closing the selected tab from its context menu activates the tab before it (tree, active diff, scopes), and closing the first tab activates `HEAD`. |
 | `LstCrcBranchComparisonUiTest.testTreeStatePersistsAcrossTabSwitches` | `C3.9` | Expand/collapse state survives tab switches. |
 | `LstCrcBranchComparisonUiTest.testNewFileInCollapsedDirExpandsDirWhenSettingEnabled` | `C3.9` | A collapsed folder opens for a new change when the setting is on. |
 | `LstCrcBranchComparisonUiTest.testNewFileInCollapsedDirStaysCollapsedWhenSettingDisabled` | `C3.9` | It stays collapsed when the setting is off. |

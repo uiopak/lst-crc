@@ -19,9 +19,9 @@
 | `C1.2` | Comparisons of a real repository (google/gson at pinned release commits) match what git reports | `LstCrcRealRepositoryUiTest.testBranchComparisonsMatchGit`, `LstCrcRealRepositoryStarterUiTest.testBranchComparisonsMatchGit` |
 | `C1.3` | Revision tabs can be created from VCS Log selection | `LstCrcInteractionUiTest.testStatusWidgetAndRevisionActions`, `LstCrcInteractionStarterUiTest.testStatusWidgetAndRevisionActions`, `LstCrcActionVisibilityTest.testCreateTabFromRevisionActionVisibleOnlyForSingleRevisionSelection` |
 | `C1.4` | Multiple comparison tabs can coexist and switch independently | `LstCrcBranchComparisonUiTest.testMultipleComparisonTabs`, `LstCrcBranchComparisonStarterUiTest.testMultipleComparisonTabs` |
-| `C1.4` | Closing the selected tab loads the tab before it, or `HEAD` | `ToolWindowStateServiceRefreshTest.testRemovingTheSelectedTabLoadsTheTabBeforeIt` |
+| `C1.4` | Closing the selected tab loads the tab before it, or `HEAD` | `LstCrcBranchComparisonUiTest.testClosingSelectedTabActivatesTheTabBeforeIt`, `ToolWindowStateServiceRefreshTest.testRemovingTheSelectedTabLoadsTheTabBeforeIt` |
 | `C1.4` | A failed load shows its error in the selected tab, not in the `HEAD` tab | `LstCrcChangesBrowserTest.testClearedDiffShowsLoadErrorInSelectedTab` |
-| `C1.5` | Popups show tab names and aliases with underscores as typed | `LstCrcStatusWidgetTest.testPopupShowsTabNamesWithUnderscoresAsTyped` |
+| `C1.5` | Popups show tab, branch and repository names with underscores as typed | `LstCrcStatusWidgetTest.testPopupShowsTabNamesWithUnderscoresAsTyped`, `LstCrcActionVisibilityTest.testRepoComparisonPopupShowsRepositoryAndTargetNamesWithUnderscores` |
 | `C1.5` | Alias changes update visible identity | `LstCrcInteractionUiTest.testTabRenameUpdatesWidgetContext`, `LstCrcInteractionUiTest.testRenameTabPopupRenamesSelectedTab`, `LstCrcInteractionStarterUiTest.testTabRenameUpdatesWidgetContext` |
 | `C1.5` | Rename popup accepts inline alias entry for the selected tab | `LstCrcInteractionUiTest.testRenameTabPopupRenamesSelectedTab` |
 | `C1.5` | Tool-window tab context menu exposes rename and applies the alias to the clicked tab | `LstCrcInteractionUiTest.testRenameTabContextMenuRenamesSelectedTab` |

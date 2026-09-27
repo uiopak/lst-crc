@@ -26,11 +26,28 @@ import com.intellij.vcs.log.CommitId
 import com.intellij.vcs.log.VcsLogDataKeys
 import com.intellij.vcs.log.impl.HashImpl
 import com.intellij.vcs.log.VcsLogCommitSelection
+import git4idea.repo.GitRepository
 import sun.misc.Unsafe
 import java.lang.reflect.Proxy
 import javax.swing.JPanel
 
 class LstCrcActionVisibilityTest : LstCrcTestCase() {
+
+    // Action texts treat '_' as a mnemonic marker, which dropped it from repository and branch names in this popup.
+    fun testRepoComparisonPopupShowsRepositoryAndTargetNamesWithUnderscores() {
+        val firstRoot = myFixture.tempDirFixture.findOrCreateDir("first_repo")
+        val secondRoot = myFixture.tempDirFixture.findOrCreateDir("second_repo")
+        val repositories = listOf(secondRoot, firstRoot).map { root ->
+            Proxy.newProxyInstance(GitRepository::class.java.classLoader, arrayOf(GitRepository::class.java)) { _, method, _ ->
+                if (method.name == "getRoot") root else null
+            } as GitRepository
+        }
+        val tabInfo = TabInfo(branchName = "feature_x", comparisonMap = mapOf(firstRoot.path to "release_1"))
+
+        val texts = repoComparisonItems(project, tabInfo, repositories).map { it.templatePresentation.text }
+
+        assertEquals(listOf("first_repo: (vs release_1)", "second_repo: (vs feature_x)"), texts)
+    }
 
     fun testShowRepoComparisonInfoActionHiddenOnHeadAndVisibleForComparisonTab() {
         val action = ShowRepoComparisonInfoAction()

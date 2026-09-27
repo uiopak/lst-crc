@@ -26,6 +26,7 @@ This file lists refactoring opportunities in `src/main` that were checked agains
   - **A failed load shows its error in the selected tab.** Cleared diff data has no branch name, and the browsers read that as `HEAD`, so the error went to the `HEAD` tab while the selected tab kept its old tree.
   - **The branch filter selects a branch.** It selected the first node whose text matched, often a folder (`feat` selected the `feature` folder) or the Local/Remote category, and Enter then did nothing. It now selects the first branch the filter leaves.
   - **Parsing edge cases:** a tab in a file name split the `--numstat` record (the file lost its line stats), and an untracked file whose name is only spaces was dropped.
+  - Tests: a Remote Robot test (`testClosingSelectedTabActivatesTheTabBeforeIt`, Linux, Windows and macOS) closes the selected tab from its context menu in the real IDE and checks the tree, the active diff and the scopes; the repository popup has its own underscore test.
   - Cleanups: one `runSilentGit` helper for the plugin's three git commands, the startup tab-colour refresh no longer switches to the EDT twice, and a settings toggle helper lost a parameter it never used.
 - The 2026-09 sixth pass (bug fixes, each with a regression test):
   - **A collapsed folder stays collapsed after a refresh when it is selected.** The tree saved a selected folder as the changes under it, and selecting those again made `JTree` expand the folder. This was the cause of the flaky macOS `testTreeStatePersistsAcrossTabSwitches`.

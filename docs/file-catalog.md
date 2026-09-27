@@ -233,7 +233,7 @@ This document lists each current `src/main` file separately and explains why it 
 - Why it exists: Per-repository overrides are a core multi-repo capability, and the Git log is a natural source for those revisions.
 
 ### ShowRepoComparisonInfoAction.kt
-- Role: Toolbar action (placed right after "Group By") that shows each repository's current comparison target and opens `SingleRepoBranchSelectionDialog` to change it. In a single-repository project it opens the dialog directly.
+- Role: Toolbar action (placed right after "Group By") that shows each repository's current comparison target and opens `SingleRepoBranchSelectionDialog` to change it. In a single-repository project it opens the dialog directly. `repoComparisonItems` builds the popup items.
 - Depends on: `GitService`, the selected tab (`LstCrcActionContext`), popup APIs, and `SingleRepoBranchSelectionDialog`.
 - Connected to: The browser toolbar and multi-repo configuration UI.
 - Why it exists: Users need a visible way to inspect and edit per-repository comparison targets.
