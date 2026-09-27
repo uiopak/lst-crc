@@ -102,6 +102,10 @@ internal class ChangesTreeClickHandler(
         if (SwingUtilities.isRightMouseButton(e) && ToolWindowSettingsProvider.isContextMenuEnabled()) {
             return
         }
+        // Shift/Ctrl/Cmd+click edits the selection, which JTree already did when the button was pressed.
+        if (SwingUtilities.isLeftMouseButton(e) && (e.isShiftDown || e.isControlDown || e.isMetaDown)) {
+            return
+        }
 
         val path = TreeUtil.getPathForLocation(tree, e.x, e.y) ?: return
         val change = changeAt(path) ?: return
@@ -195,8 +199,9 @@ internal class ChangesTreeClickHandler(
         })
     }
 
+    /** Selects [path] unless it is already selected, so a click inside a multi-selection keeps it. */
     private fun selectPathAndFocus(path: TreePath) {
-        if (tree.selectionPath != path) {
+        if (!tree.isPathSelected(path)) {
             tree.selectionPath = path
         }
         tree.requestFocusInWindow()

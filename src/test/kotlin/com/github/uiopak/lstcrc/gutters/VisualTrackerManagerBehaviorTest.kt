@@ -165,6 +165,46 @@ class VisualTrackerManagerBehaviorTest : LstCrcTestCase() {
         }
     }
 
+    // Settings are application-wide, but a change only reached the project whose menu made it: the gutters of the
+    // other open projects kept the old setting. An event without a project stands for the other project's menu.
+    fun testGutterToggleFromAnotherProjectRechecksThisProjectsTrackers() {
+        val manager = project.service<VisualTrackerManager>()
+        val settings = com.intellij.openapi.application.ApplicationManager.getApplication().service<com.github.uiopak.lstcrc.toolWindow.LstCrcSettingsService>()
+        val definition = com.github.uiopak.lstcrc.toolWindow.LstCrcSettingDefinitions.ENABLE_GUTTER_MARKERS
+        val original = settings[definition]
+        val file = myFixture.addFileToProject("OtherProjectToggle.txt", "text\n").virtualFile
+        myFixture.openFileInEditor(file)
+        val document = FileDocumentManager.getInstance().getDocument(file)!!
+
+        try {
+            settings[definition] = true
+            val load = project.service<com.github.uiopak.lstcrc.services.ToolWindowStateService>().refreshDataForCurrentSelection()
+            PlatformTestUtil.waitWithEventsDispatching("The first load did not finish", { load.isDone }, 10)
+            dispatchEventsFor(millis = 500)
+            manager.ensureVisualTracker(document, file, "feature")
+            dispatchEventsFor(millis = 500)
+            assertNotNull("Precondition: nothing else re-checks the tracker", manager.findStandaloneTracker(document))
+            val toggle = allActions(com.github.uiopak.lstcrc.toolWindow.ToolWindowSettingsProvider.createToolWindowSettingsGroup())
+                .filterIsInstance<com.intellij.openapi.actionSystem.ToggleAction>()
+                .single { it.templateText == com.github.uiopak.lstcrc.resources.LstCrcBundle.message("settings.gutter.enable") }
+            val event = com.intellij.testFramework.TestActionEvent.createTestEvent(
+                toggle,
+                com.intellij.openapi.actionSystem.DataContext.EMPTY_CONTEXT
+            )
+
+            toggle.setSelected(event, false)
+
+            val deadline = System.currentTimeMillis() + 10_000
+            while (manager.findStandaloneTracker(document) != null && System.currentTimeMillis() < deadline) {
+                PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
+                Thread.sleep(20)
+            }
+            assertNull("Turning gutter markers off anywhere should release this project's trackers", manager.findStandaloneTracker(document))
+        } finally {
+            settings[definition] = original
+        }
+    }
+
     private fun dispatchEventsFor(millis: Long) {
         val end = System.currentTimeMillis() + millis
         while (System.currentTimeMillis() < end) {

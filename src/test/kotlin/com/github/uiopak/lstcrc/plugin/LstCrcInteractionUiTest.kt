@@ -91,6 +91,67 @@ class LstCrcInteractionUiTest : LstCrcUiTestSupport() {
         }
     }
 
+    // Every click on a change selected only that change, so Ctrl+click (Cmd+click on macOS) could not build a
+    // selection, and a right-click on one of several selected changes dropped the others.
+    @Test
+    @Video
+    fun testModifierClickBuildsAMultiSelectionThatARightClickKeeps(remoteRobot: RemoteRobot) = with(remoteRobot) {
+        val uiSteps = PluginUiTestSteps(remoteRobot)
+
+        prepareFreshProject()
+
+        idea {
+            dumbAware {}
+
+            uiSteps.initializeGitRepository()
+            resetGitChangesViewState()
+
+            uiSteps.createNewFile("Main.txt", "Base line\n")
+            uiSteps.commitChanges("Initial commit")
+            val defaultBranch = uiSteps.defaultBranchName()
+
+            uiSteps.createBranch("feature-multi")
+            uiSteps.createNewFile("First.txt", "First\n")
+            uiSteps.createNewFile("Second.txt", "Second\n")
+            uiSteps.commitChanges("Feature multi commit")
+            uiSteps.checkoutBranch(defaultBranch)
+
+            openGitChangesView()
+            addComparisonTab("feature-multi")
+
+            // No click actions, so the clicks only select.
+            configureLstCrcClickActions(
+                singleClickAction = "NONE",
+                doubleClickAction = "NONE",
+                rightClickAction = "NONE",
+                doubleRightClickAction = "NONE",
+                showContextMenu = false
+            )
+
+            gitChangesView {
+                selectTab("feature-multi")
+                clickChange("First.txt")
+                addChangeToSelection("Second.txt")
+
+                val bothSelected = listOf("First.txt", "Second.txt")
+                var selected = emptyList<String>()
+                val built = runCatching {
+                    waitFor(Duration.ofSeconds(10), interval = Duration.ofMillis(250)) {
+                        selected = selectedChangeNames().sorted()
+                        selected == bothSelected
+                    }
+                }.isSuccess
+                assertTrue(built, "Ctrl/Cmd+click should add Second.txt to the selection. Selected: $selected")
+
+                rightClickChange("First.txt")
+                // Let the click's handling finish before reading the selection.
+                Thread.sleep(500)
+                selected = selectedChangeNames().sorted()
+                assertTrue(selected == bothSelected, "A right-click inside the selection should keep it. Selected: $selected")
+            }
+        }
+    }
+
     @Test
     @Video
     fun testContextMenuActionsWhenEnabled(remoteRobot: RemoteRobot) = with(remoteRobot) {

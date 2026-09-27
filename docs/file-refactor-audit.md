@@ -20,6 +20,11 @@ This file lists refactoring opportunities in `src/main` that were checked agains
 
 ## Done
 
+- The 2026-09 tenth pass (plugin fixes and a performance improvement, each with a test that failed before it):
+  - **Multi-selection in the changes tree.** Every click on a change selected only that change, so Ctrl/Shift/Cmd+click could not build a selection, and a right-click on one of several selected changes dropped the others. Modifier clicks now only change the selection (JTree does that on press), and a click on a selected change keeps the selection. A Remote Robot test (Linux, Windows and macOS) covers it in the real IDE.
+  - **Tab order.** A branch picked in a "Select Branch" tab that is not the last tab opened at that tab's position in the tool window but was appended to the state, so after a restart, in the widget popup and when closing the selected tab the order differed. `addTab` takes the position.
+  - **Settings reach every open project.** Settings are application-wide, but a change only updated the project whose gear menu made it; other projects kept stale gutters, scopes, trees, widget text and title visibility.
+  - **Typing no longer resets every file status.** Each edit-only refresh with new unsaved text replaced the snapshot and called `fileStatusesChanged()` plus a presentation update of every open editor tab, although no file joined or left a scope. That now happens only when the branch or a path set changes.
 - The 2026-09 ninth pass (plugin fixes and improvements, each with a test that failed before it where one can):
   - **A reused diff tab no longer shows old content.** Opening a file's diff again reused the open tab even after a fetch, commit or checkout moved the target, and the tab still compared against the old target content. The reuse key now includes the commit each repository's target points to (Git4Idea's in-memory state, no git call); a tab of the same selection opened against an older commit is closed and replaced.
   - **The "Select Branch" tab is found by its panel, not its title.** A comparison tab renamed "Select Branch" hid the add-tab action and would have been taken for the branch picker.

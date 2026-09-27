@@ -18,6 +18,7 @@ LST-CRC is an IntelliJ Platform plugin for comparing the current working tree ag
 	- Several comparison tabs can coexist, and the selected tab defines the active diff consumed by the rest of the plugin.
 	- Closing the selected tab selects the tab before it (`HEAD` before the first) and loads its comparison.
 	- A load that fails shows its error in the selected tab.
+	- A tab opened from a "Select Branch" tab takes that tab's place, and the saved tab order (after a restart, in the widget popup) matches the tool window.
 - `C1.5` Tab aliases.
 	- Closable comparison tabs can be renamed with aliases, and the alias becomes the display identity used by the tool window, widget, and persisted state.
 	- Rename affordances are exposed only for closable comparison tabs that carry a persistent branch or revision identity.
@@ -107,6 +108,7 @@ LST-CRC is an IntelliJ Platform plugin for comparing the current working tree ag
 	- Single, double, middle, and right click interactions can be mapped to source, diff, project-view, or no-op behaviors.
 	- Opening the diff for a selection that already has an open diff tab reuses that tab. For a file with unsaved edits the tab is reused only while the unsaved text is the same; after more typing a new diff opens with the current text.
 	- A diff tab is also reused only while the comparison target points to the same commit. After a fetch, commit or checkout moves it, opening the diff again replaces the old tab with one showing the current target content.
+	- Ctrl/Shift+click (Cmd/Shift+click on macOS) builds a multi-selection and runs no click action. A click on a change that is already selected keeps the selection, so the context menu and Enter act on every selected change.
 - `C4.2` Right-click mode switch.
 	- Right click can either follow the configured action model or open the context menu.
 - `C4.3` Double-click delay setting.
@@ -127,7 +129,7 @@ LST-CRC is an IntelliJ Platform plugin for comparing the current working tree ag
 	- Gutter markers can be enabled or disabled globally, and new-file gutter handling has a separate setting.
 	- New-file gutter behavior is a separate decision path from modified/deleted gutter behavior.
 - `C4.9` Settings storage.
-	- Settings are application-level and stored in `lstCrcSettings.xml`.
+	- Settings are application-level and stored in `lstCrcSettings.xml`. A change applies at once to every open project, not only to the one whose menu changed it.
 	- Values saved by earlier versions (in the IDE's `PropertiesComponent`) are imported once, so upgrading keeps the user's configuration.
 
 ### C5. Lifecycle, persistence, and failure handling
@@ -136,6 +138,7 @@ LST-CRC is an IntelliJ Platform plugin for comparing the current working tree ag
 	- Startup plus changelist, repository and document listeners keep the active comparison synchronized with local and repository changes.
 	- Refresh covers unsaved edits, saves, external file changes, branch changes, and repository-level updates, debounced so typing does not run git on every keystroke.
 	- A burst of unsaved edits alone reuses the last git result and only overlays the edited documents; saves and VCS or repository events reload the comparison from disk.
+	- File statuses and editor tab colours are reset only when a file joins or leaves a scope (or the tab changes), not when only the unsaved text of the listed files changes.
 	- Async diff application rejects stale results whose comparison identity no longer matches the selected tab, checked when the result is applied.
 - `C5.2` Persistent project UI state.
 	- Open tabs, the selected tab, aliases, and per-repository comparison overrides survive IDE restart.

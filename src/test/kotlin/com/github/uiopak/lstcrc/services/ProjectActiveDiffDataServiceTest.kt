@@ -177,6 +177,46 @@ class ProjectActiveDiffDataServiceTest : LstCrcTestCase() {
         assertEquals("two\n", diffDataService.categorizedChanges!!.allChanges.single().afterRevision!!.content)
     }
 
+    // Every pause in typing replaced the snapshot (the unsaved text changed) and reset every file status in the
+    // project, although no file joined or left a scope. File statuses (scopes, file colours) only depend on paths.
+    fun testNewUnsavedContentOfTheSameFilesKeepsFileStatuses() {
+        val diffDataService = project.service<ProjectActiveDiffDataService>()
+        val file = myFixture.addFileToProject("diff/Typed.txt", "base\n").virtualFile
+        val filePath = com.intellij.vcsUtil.VcsUtil.getFilePath(file)
+        fun unsavedEdit(text: String) = CategorizedChanges.EMPTY.copy(
+            allChanges = listOf(
+                com.intellij.openapi.vcs.changes.Change(
+                    TextContentRevision(filePath, "base\n", git4idea.GitRevisionNumber("HEAD")),
+                    TextContentRevision(filePath, text, git4idea.GitRevisionNumber("LOCAL")),
+                    com.intellij.openapi.vcs.FileStatus.MODIFIED
+                )
+            ),
+            modifiedFiles = listOf(file)
+        )
+        selectHeadTab(project)
+        diffDataService.updateActiveDiff("HEAD", unsavedEdit("one\n"))
+        flushEdt()
+
+        var fileStatusResets = 0
+        com.intellij.openapi.vcs.FileStatusManager.getInstance(project).addFileStatusListener(
+            object : com.intellij.openapi.vcs.FileStatusListener {
+                override fun fileStatusesChanged() {
+                    fileStatusResets++
+                }
+            },
+            testRootDisposable
+        )
+
+        diffDataService.updateActiveDiff("HEAD", unsavedEdit("two\n"))
+        flushEdt()
+        assertEquals("New content of the same files", 0, fileStatusResets)
+
+        val otherFile = myFixture.addFileToProject("diff/Created.txt", "new\n").virtualFile
+        diffDataService.updateActiveDiff("HEAD", unsavedEdit("three\n").copy(createdFiles = listOf(otherFile)))
+        flushEdt()
+        assertEquals("A file joined a scope", 1, fileStatusResets)
+    }
+
     // Regression (round five): the gutter of a moved file loaded the target content by its new path, which the
     // target doesn't have, so every line showed as added.
     fun testMovedFileIsLookedUpByItsOldPathInTheTarget() {
