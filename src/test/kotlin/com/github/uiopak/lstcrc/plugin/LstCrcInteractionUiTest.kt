@@ -2,6 +2,7 @@ package com.github.uiopak.lstcrc.plugin
 
 import com.automation.remarks.junit5.Video
 import com.github.uiopak.lstcrc.plugin.pages.actionMenuItem
+import com.github.uiopak.lstcrc.plugin.pages.addComparisonTab
 import com.github.uiopak.lstcrc.plugin.pages.branchSelection
 import com.github.uiopak.lstcrc.plugin.pages.gitChangesView
 import com.github.uiopak.lstcrc.plugin.pages.idea
@@ -9,10 +10,8 @@ import com.github.uiopak.lstcrc.plugin.steps.PluginUiTestSteps
 import com.intellij.remoterobot.RemoteRobot
 import com.intellij.remoterobot.fixtures.ComponentFixture
 import com.intellij.remoterobot.search.locators.byXpath
-import com.intellij.remoterobot.stepsProcessing.step
 import com.intellij.remoterobot.utils.keyboard
 import com.intellij.remoterobot.utils.waitFor
-import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -29,9 +28,7 @@ class LstCrcInteractionUiTest : LstCrcUiTestSupport() {
         prepareFreshProject()
 
         idea {
-            step("Wait for smart mode") {
-                dumbAware(Duration.ofMinutes(5)) {}
-            }
+            dumbAware {}
 
             uiSteps.initializeGitRepository()
             resetGitChangesViewState()
@@ -47,12 +44,7 @@ class LstCrcInteractionUiTest : LstCrcUiTestSupport() {
             uiSteps.checkoutBranch(defaultBranch)
 
             openGitChangesView()
-            gitChangesView {
-                addTab()
-            }
-            branchSelection {
-                searchAndSelect("feature-clicks")
-            }
+            addComparisonTab("feature-clicks")
 
             configureLstCrcClickActions(
                 singleClickAction = "OPEN_SOURCE",
@@ -107,9 +99,7 @@ class LstCrcInteractionUiTest : LstCrcUiTestSupport() {
         prepareFreshProject()
 
         idea {
-            step("Wait for smart mode") {
-                dumbAware(Duration.ofMinutes(5)) {}
-            }
+            dumbAware {}
 
             uiSteps.initializeGitRepository()
             resetGitChangesViewState()
@@ -124,12 +114,7 @@ class LstCrcInteractionUiTest : LstCrcUiTestSupport() {
             uiSteps.checkoutBranch(defaultBranch)
 
             openGitChangesView()
-            gitChangesView {
-                addTab()
-            }
-            branchSelection {
-                searchAndSelect("feature-context")
-            }
+            addComparisonTab("feature-context")
 
             configureLstCrcClickActions(showContextMenu = true)
 
@@ -154,9 +139,7 @@ class LstCrcInteractionUiTest : LstCrcUiTestSupport() {
         prepareFreshProject()
 
         idea {
-            step("Wait for smart mode") {
-                dumbAware(Duration.ofMinutes(5)) {}
-            }
+            dumbAware {}
 
             uiSteps.initializeGitRepository()
             resetGitChangesViewState()
@@ -171,12 +154,7 @@ class LstCrcInteractionUiTest : LstCrcUiTestSupport() {
             uiSteps.checkoutBranch(defaultBranch)
 
             openGitChangesView()
-            gitChangesView {
-                addTab()
-            }
-            branchSelection {
-                searchAndSelect("feature-context-focus")
-            }
+            addComparisonTab("feature-context-focus")
 
             configureLstCrcClickActions(showContextMenu = true)
 
@@ -227,9 +205,7 @@ class LstCrcInteractionUiTest : LstCrcUiTestSupport() {
         prepareFreshProject()
 
         idea {
-            step("Wait for smart mode") {
-                dumbAware(Duration.ofMinutes(5)) {}
-            }
+            dumbAware {}
 
             uiSteps.initializeGitRepository()
             resetGitChangesViewState()
@@ -250,12 +226,7 @@ class LstCrcInteractionUiTest : LstCrcUiTestSupport() {
             uiSteps.checkoutBranch(defaultBranch)
 
             openGitChangesView()
-            gitChangesView {
-                addTab()
-            }
-            branchSelection {
-                searchAndSelect("feature-widget")
-            }
+            addComparisonTab("feature-widget")
 
             waitFor(Duration.ofSeconds(10)) {
                 statusWidgetText().contains("feature-widget")
@@ -314,9 +285,7 @@ class LstCrcInteractionUiTest : LstCrcUiTestSupport() {
         prepareFreshProject()
 
         idea {
-            step("Wait for smart mode") {
-                dumbAware(Duration.ofMinutes(5)) {}
-            }
+            dumbAware {}
 
             uiSteps.initializeGitRepository()
             resetGitChangesViewState()
@@ -405,9 +374,7 @@ class LstCrcInteractionUiTest : LstCrcUiTestSupport() {
         prepareFreshProject()
 
         idea {
-            step("Wait for smart mode") {
-                dumbAware(Duration.ofMinutes(5)) {}
-            }
+            dumbAware {}
 
             uiSteps.initializeGitRepository()
             resetGitChangesViewState()
@@ -422,12 +389,7 @@ class LstCrcInteractionUiTest : LstCrcUiTestSupport() {
             uiSteps.checkoutBranch(defaultBranch)
 
             openGitChangesView()
-            gitChangesView {
-                addTab()
-            }
-            branchSelection {
-                searchAndSelect("feature-rename")
-            }
+            addComparisonTab("feature-rename")
 
             waitFor(Duration.ofSeconds(10)) {
                 statusWidgetText().contains("feature-rename")
@@ -469,9 +431,7 @@ class LstCrcInteractionUiTest : LstCrcUiTestSupport() {
         prepareFreshProject()
 
         idea {
-            step("Wait for smart mode") {
-                dumbAware(Duration.ofMinutes(5)) {}
-            }
+            dumbAware {}
 
             uiSteps.initializeGitRepository()
             resetGitChangesViewState()
@@ -486,12 +446,7 @@ class LstCrcInteractionUiTest : LstCrcUiTestSupport() {
             uiSteps.checkoutBranch(defaultBranch)
 
             openGitChangesView()
-            gitChangesView {
-                addTab()
-            }
-            branchSelection {
-                searchAndSelect("feature-rename-ui")
-            }
+            addComparisonTab("feature-rename-ui")
 
             waitFor(Duration.ofSeconds(10)) {
                 statusWidgetText().contains("feature-rename-ui")
@@ -522,9 +477,7 @@ class LstCrcInteractionUiTest : LstCrcUiTestSupport() {
         prepareFreshProject()
 
         idea {
-            step("Wait for smart mode") {
-                dumbAware(Duration.ofMinutes(5)) {}
-            }
+            dumbAware {}
 
             uiSteps.initializeGitRepository()
             resetGitChangesViewState()
@@ -539,12 +492,7 @@ class LstCrcInteractionUiTest : LstCrcUiTestSupport() {
             uiSteps.checkoutBranch(defaultBranch)
 
             openGitChangesView()
-            gitChangesView {
-                addTab()
-            }
-            branchSelection {
-                searchAndSelect("feature-rename-menu")
-            }
+            addComparisonTab("feature-rename-menu")
 
             waitFor(Duration.ofSeconds(10)) {
                 statusWidgetText().contains("feature-rename-menu")

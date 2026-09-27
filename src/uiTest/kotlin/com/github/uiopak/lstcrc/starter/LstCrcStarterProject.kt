@@ -3,6 +3,7 @@ package com.github.uiopak.lstcrc.starter
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.io.path.createDirectories
+import kotlin.io.path.appendText
 import kotlin.io.path.exists
 import kotlin.io.path.writeText
 import kotlin.time.Duration.Companion.milliseconds
@@ -27,6 +28,9 @@ class LstCrcStarterProject private constructor(val path: Path) {
         git("init")
         git("config", "user.name", "LST-CRC Starter UI Tests")
         git("config", "user.email", "lst-crc-starter-ui-tests@example.invalid")
+        // Keep the IDE's own project files out of commitAll. Otherwise a commit made while the IDE runs
+        // tracks .idea on one branch, and checking out another branch deletes .idea/vcs.xml under the IDE.
+        path.resolve(".git/info/exclude").apply { parent.createDirectories() }.appendText(".idea/\n*.iml\n")
     }
 
     fun initializeGitRepositoryAt(relativeRepoPath: String) {

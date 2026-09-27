@@ -20,6 +20,12 @@ This file lists refactoring opportunities in `src/main` that were checked agains
 
 ## Done
 
+- The 2026-09 fourth pass:
+  - **Refresh requests wait for their own load.** `requestRefresh` used to hand a request the running cycle's future even after that cycle's last load, so `join()` could return with the old state. Requests now queue for the next load and share its future.
+  - **Untracked paths are not unescaped.** `git ls-files -z` prints raw paths; `createPathFromEscaped` turned `a\b.txt` into a control character and threw on `a\q.txt`. They now go through `createPath`, like tracked paths.
+  - **Settings register themselves** in `LstCrcSettingDefinitions.all`; the hand-kept list and `allKeys` are gone. The JavaScript setters `setString`/`setBoolean`/`setInt` became one `setValue(key, text)`.
+  - Tests: the Remote Robot changes-view fixture reads the tree through `viewerTree()` instead of 12 copies of a component search; `addComparisonTab` and a plain `dumbAware {}` replace repeated test steps. The Starter perf test's external-commit wait reports the tab and git state when it times out, the Starter workflow uploads `out/ide-tests/logs` (where `idea.log` goes), and Remote Robot only waits the long server timeout before the robot first answers. That wait's message found the perf test's flake: `commitAll` also committed the IDE's untracked `.idea` files on `perf-branch`, so checking out the default branch deleted `.idea/vcs.xml` while the IDE ran and the Git mapping went away. Starter test repositories now list `.idea/` and `*.iml` in `.git/info/exclude`.
+
 - PR #85 removed dead code and single-use indirection across 10 files (−211 lines). It simplified branch filtering in `BranchSelectionPanel`, `openSource` and viewport handling in `LstCrcChangesBrowser`, the status widget's connection handling and tab selection, the shared snapshot swap in `ProjectActiveDiffDataService`, and helpers in `GitService` and `VisualTrackerManager`.
 - The follow-up cleanup turned every trace-level `INFO` log into a lazy `logger.debug { ... }`, so nothing is written to `idea.log`, and no message string is built, unless debug logging is on. Before, each refresh (which runs after every pause in typing) and each gutter load wrote `INFO` lines, some with the whole tab state. It also removed the extra `LstCrcStatusWidget.refresh` at startup, since the state broadcast already updates the widget.
 - Logging rule: use `logger.debug { ... }` for tracing, and `warn`/`error` only for problems a user or maintainer should see.

@@ -5,7 +5,6 @@ import com.github.uiopak.lstcrc.plugin.pages.gitChangesView
 import com.github.uiopak.lstcrc.plugin.pages.idea
 import com.github.uiopak.lstcrc.plugin.steps.PluginUiTestSteps
 import com.intellij.remoterobot.RemoteRobot
-import com.intellij.remoterobot.stepsProcessing.step
 import com.intellij.remoterobot.utils.waitFor
 import org.junit.jupiter.api.Assertions
 import org.junit.jupiter.api.Test
@@ -22,9 +21,7 @@ class LstCrcFileScopeUiTest : LstCrcUiTestSupport() {
         prepareFreshProject()
 
         idea {
-            step("Wait for smart mode") {
-                dumbAware(Duration.ofMinutes(5)) {}
-            }
+            dumbAware {}
 
             uiSteps.initializeGitRepository()
             resetGitChangesViewState()

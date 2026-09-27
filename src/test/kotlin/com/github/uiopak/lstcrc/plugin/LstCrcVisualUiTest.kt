@@ -1,12 +1,10 @@
 package com.github.uiopak.lstcrc.plugin
 
 import com.automation.remarks.junit5.Video
-import com.github.uiopak.lstcrc.plugin.pages.branchSelection
-import com.github.uiopak.lstcrc.plugin.pages.gitChangesView
+import com.github.uiopak.lstcrc.plugin.pages.addComparisonTab
 import com.github.uiopak.lstcrc.plugin.pages.idea
 import com.github.uiopak.lstcrc.plugin.steps.PluginUiTestSteps
 import com.intellij.remoterobot.RemoteRobot
-import com.intellij.remoterobot.stepsProcessing.step
 import com.intellij.remoterobot.utils.waitFor
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -27,9 +25,7 @@ class LstCrcVisualUiTest : LstCrcUiTestSupport() {
         prepareFreshProject()
 
         idea {
-            step("Wait for smart mode") {
-                dumbAware(Duration.ofMinutes(5)) {}
-            }
+            dumbAware {}
 
             uiSteps.initializeGitRepository()
             resetGitChangesViewState()
@@ -45,12 +41,7 @@ class LstCrcVisualUiTest : LstCrcUiTestSupport() {
             uiSteps.checkoutBranch(defaultBranch)
 
             openGitChangesView()
-            gitChangesView {
-                addTab()
-            }
-            branchSelection {
-                searchAndSelect("feature-gutter-all")
-            }
+            addComparisonTab("feature-gutter-all")
 
             setGutterSettings(enableMarkers = true, enableForNewFiles = true)
 
@@ -94,9 +85,7 @@ class LstCrcVisualUiTest : LstCrcUiTestSupport() {
         prepareFreshProject()
 
         idea {
-            step("Wait for smart mode") {
-                dumbAware(Duration.ofMinutes(5)) {}
-            }
+            dumbAware {}
 
             uiSteps.initializeGitRepository()
             resetGitChangesViewState()
@@ -113,12 +102,7 @@ class LstCrcVisualUiTest : LstCrcUiTestSupport() {
             uiSteps.createNewFile("Local.txt", "Local content\n")
 
             openGitChangesView()
-            gitChangesView {
-                addTab()
-            }
-            branchSelection {
-                searchAndSelect("feature-gutter-inserted")
-            }
+            addComparisonTab("feature-gutter-inserted")
 
             setGutterSettings(enableMarkers = true, enableForNewFiles = true)
 
@@ -147,9 +131,7 @@ class LstCrcVisualUiTest : LstCrcUiTestSupport() {
         prepareFreshProject()
 
         idea {
-            step("Wait for smart mode") {
-                dumbAware(Duration.ofMinutes(5)) {}
-            }
+            dumbAware {}
 
             uiSteps.initializeGitRepository()
             resetGitChangesViewState()
@@ -164,12 +146,7 @@ class LstCrcVisualUiTest : LstCrcUiTestSupport() {
             uiSteps.checkoutBranch(defaultBranch)
 
             openGitChangesView()
-            gitChangesView {
-                addTab()
-            }
-            branchSelection {
-                searchAndSelect("feature-gutter")
-            }
+            addComparisonTab("feature-gutter")
 
             uiSteps.modifyFile("Main.txt", "alpha local change\nbeta\n")
             openFile("Main.txt")

@@ -293,7 +293,8 @@ tasks {
         .orElse(if (isCi) "900" else "600")
     val uiTestTaskTimeoutMinutesProvider = providers.systemProperty("ui.test.task.timeout.minutes")
         .orElse(providers.environmentVariable("UI_TEST_TASK_TIMEOUT_MINUTES"))
-        .orElse(if (isCi) "45" else "30")
+        // A full macOS run takes 40 to 42 minutes on CI.
+        .orElse(if (isCi) "60" else "30")
     val starterUiTestTaskTimeoutMinutesProvider = providers.systemProperty("starter.ui.test.task.timeout.minutes")
         .orElse(providers.environmentVariable("STARTER_UI_TEST_TIMEOUT_MINUTES"))
         .orElse(if (isCi) "75" else "40")

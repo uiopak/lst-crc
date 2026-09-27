@@ -101,7 +101,13 @@ class LstCrcStarterPerformanceTest : LstCrcStarterUiTestBase() {
 
             val refreshTime = measureTime {
                 bridge.refreshProjectAfterExternalChange()
-                starterContext.waitUntil(60.seconds) {
+                starterContext.waitUntil(60.seconds, describeState = {
+                    // Tells a stale refresh apart from a tab that fell back to HEAD after a failed git diff.
+                    "tab comparison: ${bridge.selectedTabComparisonMap()}\n" +
+                        "branch errors: ${bridge.branchErrorNotificationsSnapshot()}\n" +
+                        "tree: ${bridge.selectedChangesTreeSnapshot()}\n" +
+                        "git diff --name-status perf-branch: ${project.runGit("diff", "--name-status", "perf-branch")}"
+                }) {
                     bridge.selectedChangesTreeSnapshot().contains("extra.txt")
                 }
             }

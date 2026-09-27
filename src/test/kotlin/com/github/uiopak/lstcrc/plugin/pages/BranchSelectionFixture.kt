@@ -20,6 +20,12 @@ fun IdeaFrame.branchSelection(function: BranchSelectionFixture.() -> Unit) {
     branchSelectionFixture!!.apply(function)
 }
 
+/** Opens the "Select Branch" tab through the "+" button and picks [branchName], which opens its comparison tab. */
+fun IdeaFrame.addComparisonTab(branchName: String) {
+    gitChangesView { addTab() }
+    branchSelection { searchAndSelect(branchName) }
+}
+
 @FixtureName("BranchSelection")
 class BranchSelectionFixture(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
     CommonContainerFixture(remoteRobot, remoteComponent) {

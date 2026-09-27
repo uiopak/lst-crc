@@ -204,28 +204,7 @@ class GitChangesViewFixture(remoteRobot: RemoteRobot, remoteComponent: RemoteCom
             runJs(
                 """
                 (function() {
-                    function findBrowser(root) {
-                        var queue = new java.util.LinkedList();
-                        queue.add(root);
-                        while (!queue.isEmpty()) {
-                            var current = queue.poll();
-                            if (current == null) continue;
-                            if (current.getClass().getName().endsWith("LstCrcChangesBrowser")) {
-                                return current;
-                            }
-                            try {
-                                var children = current.getComponents();
-                                if (children) {
-                                    for (var i = 0; i < children.length; i++) {
-                                        queue.add(children[i]);
-                                    }
-                                }
-                            } catch (ignored) {}
-                        }
-                        return null;
-                    }
-
-                    var browser = findBrowser(component);
+                    var browser = component;
                     if (!browser || typeof browser.scrollVisibleFileIntoViewForTest !== "function") {
                         return;
                     }
@@ -260,27 +239,9 @@ class GitChangesViewFixture(remoteRobot: RemoteRobot, remoteComponent: RemoteCom
         callJs<String>(
             """
             (function() {
-                var tree = null;
-                var queue = new java.util.LinkedList();
-                queue.add(component);
-                while (!queue.isEmpty() && !tree) {
-                    var current = queue.poll();
-                    if (current == null) continue;
-                    if (current.getClass().getName().endsWith("LstCrcAsyncChangesTree") || current.getClass().getName().endsWith("ChangesTree")) {
-                        tree = current;
-                        break;
-                    }
-                    try {
-                        var children = current.getComponents();
-                        if (children) {
-                            for (var i = 0; i < children.length; i++) {
-                                queue.add(children[i]);
-                            }
-                        }
-                    } catch (ignored) {}
-                }
+                var tree = component.viewerTree();
                 if (!tree) {
-                    return java.util.Arrays.asList(0, 0);
+                    return "0,0";
                 }
                 var parent = tree.getParent();
                 while (parent != null && !(parent instanceof javax.swing.JViewport)) {
@@ -303,25 +264,7 @@ class GitChangesViewFixture(remoteRobot: RemoteRobot, remoteComponent: RemoteCom
         callJs<String>(
             """
             (function() {
-                var tree = null;
-                var queue = new java.util.LinkedList();
-                queue.add(component);
-                while (!queue.isEmpty() && !tree) {
-                    var current = queue.poll();
-                    if (current == null) continue;
-                    if (current.getClass().getName().endsWith("LstCrcAsyncChangesTree") || current.getClass().getName().endsWith("ChangesTree")) {
-                        tree = current;
-                        break;
-                    }
-                    try {
-                        var children = current.getComponents();
-                        if (children) {
-                            for (var i = 0; i < children.length; i++) {
-                                queue.add(children[i]);
-                            }
-                        }
-                    } catch (ignored) {}
-                }
+                var tree = component.viewerTree();
                 if (!tree) {
                     return "0";
                 }
@@ -352,25 +295,7 @@ class GitChangesViewFixture(remoteRobot: RemoteRobot, remoteComponent: RemoteCom
             runJs(
                 """
                 (function() {
-                    var tree = null;
-                    var queue = new java.util.LinkedList();
-                    queue.add(component);
-                    while (!queue.isEmpty() && !tree) {
-                        var current = queue.poll();
-                        if (current == null) continue;
-                        if (current.getClass().getName().endsWith("LstCrcAsyncChangesTree") || current.getClass().getName().endsWith("ChangesTree")) {
-                            tree = current;
-                            break;
-                        }
-                        try {
-                            var children = current.getComponents();
-                            if (children) {
-                                for (var i = 0; i < children.length; i++) {
-                                    queue.add(children[i]);
-                                }
-                            }
-                        } catch (ignored) {}
-                    }
+                    var tree = component.viewerTree();
                     if (!tree) {
                         return;
                     }
@@ -442,25 +367,7 @@ class GitChangesViewFixture(remoteRobot: RemoteRobot, remoteComponent: RemoteCom
         callJs<String>(
             """
             (function() {
-                var tree = null;
-                var queue = new java.util.LinkedList();
-                queue.add(component);
-                while (!queue.isEmpty() && !tree) {
-                    var current = queue.poll();
-                    if (current == null) continue;
-                    if (current.getClass().getName().endsWith("LstCrcAsyncChangesTree") || current.getClass().getName().endsWith("ChangesTree")) {
-                        tree = current;
-                        break;
-                    }
-                    try {
-                        var children = current.getComponents();
-                        if (children) {
-                            for (var i = 0; i < children.length; i++) {
-                                queue.add(children[i]);
-                            }
-                        }
-                    } catch (ignored) {}
-                }
+                var tree = component.viewerTree();
                 if (!tree) {
                     return "0";
                 }
@@ -475,25 +382,7 @@ class GitChangesViewFixture(remoteRobot: RemoteRobot, remoteComponent: RemoteCom
         callJs<String>(
             """
             (function() {
-                var tree = null;
-                var queue = new java.util.LinkedList();
-                queue.add(component);
-                while (!queue.isEmpty() && !tree) {
-                    var current = queue.poll();
-                    if (current == null) continue;
-                    if (current.getClass().getName().endsWith("LstCrcAsyncChangesTree") || current.getClass().getName().endsWith("ChangesTree")) {
-                        tree = current;
-                        break;
-                    }
-                    try {
-                        var children = current.getComponents();
-                        if (children) {
-                            for (var i = 0; i < children.length; i++) {
-                                queue.add(children[i]);
-                            }
-                        }
-                    } catch (ignored) {}
-                }
+                var tree = component.viewerTree();
                 if (!tree) {
                     return "";
                 }
@@ -513,28 +402,7 @@ class GitChangesViewFixture(remoteRobot: RemoteRobot, remoteComponent: RemoteCom
             runJs(
                 """
                 (function() {
-                    function findTree(root) {
-                        var queue = new java.util.LinkedList();
-                        queue.add(root);
-                        while (!queue.isEmpty()) {
-                            var current = queue.poll();
-                            if (current == null) continue;
-                            if (current.getClass().getName().endsWith("LstCrcAsyncChangesTree") || current.getClass().getName().endsWith("ChangesTree")) {
-                                return current;
-                            }
-                            try {
-                                var children = current.getComponents();
-                                if (children) {
-                                    for (var i = 0; i < children.length; i++) {
-                                        queue.add(children[i]);
-                                    }
-                                }
-                            } catch (ignored) {}
-                        }
-                        return null;
-                    }
-
-                    var tree = findTree(component);
+                    var tree = component.viewerTree();
                     if (!tree) return;
 
                     var viewport = tree.getParent();
@@ -573,28 +441,7 @@ class GitChangesViewFixture(remoteRobot: RemoteRobot, remoteComponent: RemoteCom
         callJs<String>(
             """
             (function() {
-                function findTree(root) {
-                    var queue = new java.util.LinkedList();
-                    queue.add(root);
-                    while (!queue.isEmpty()) {
-                        var current = queue.poll();
-                        if (current == null) continue;
-                        if (current.getClass().getName().endsWith("LstCrcAsyncChangesTree") || current.getClass().getName().endsWith("ChangesTree")) {
-                            return current;
-                        }
-                        try {
-                            var children = current.getComponents();
-                            if (children) {
-                                for (var i = 0; i < children.length; i++) {
-                                    queue.add(children[i]);
-                                }
-                            }
-                        } catch (ignored) {}
-                    }
-                    return null;
-                }
-
-                var tree = findTree(component);
+                var tree = component.viewerTree();
                 if (!tree) return "";
 
                 var viewport = tree.getParent();
@@ -635,27 +482,6 @@ class GitChangesViewFixture(remoteRobot: RemoteRobot, remoteComponent: RemoteCom
             runJs(
                 """
                 (function() {
-                    function findTree(root) {
-                        var queue = new java.util.LinkedList();
-                        queue.add(root);
-                        while (!queue.isEmpty()) {
-                            var current = queue.poll();
-                            if (current == null) continue;
-                            if (current.getClass().getName().endsWith("LstCrcAsyncChangesTree") || current.getClass().getName().endsWith("ChangesTree")) {
-                                return current;
-                            }
-                            try {
-                                var children = current.getComponents();
-                                if (children) {
-                                    for (var i = 0; i < children.length; i++) {
-                                        queue.add(children[i]);
-                                    }
-                                }
-                            } catch (ignored) {}
-                        }
-                        return null;
-                    }
-
                     function topVisibleEntry(tree, viewport) {
                         var row = tree.getClosestRowForLocation(0, viewport.getViewPosition().y + 1);
                         if (row < 0) return "";
@@ -664,7 +490,7 @@ class GitChangesViewFixture(remoteRobot: RemoteRobot, remoteComponent: RemoteCom
                         return String(path.getLastPathComponent());
                     }
 
-                    var tree = findTree(component);
+                    var tree = component.viewerTree();
                     if (!tree) return;
 
                     var viewport = tree.getParent();
@@ -714,28 +540,7 @@ class GitChangesViewFixture(remoteRobot: RemoteRobot, remoteComponent: RemoteCom
         callJs<String>(
             """
             (function() {
-                function findTree(root) {
-                    var queue = new java.util.LinkedList();
-                    queue.add(root);
-                    while (!queue.isEmpty()) {
-                        var current = queue.poll();
-                        if (current == null) continue;
-                        if (current.getClass().getName().endsWith("LstCrcAsyncChangesTree") || current.getClass().getName().endsWith("ChangesTree")) {
-                            return current;
-                        }
-                        try {
-                            var children = current.getComponents();
-                            if (children) {
-                                for (var i = 0; i < children.length; i++) {
-                                    queue.add(children[i]);
-                                }
-                            }
-                        } catch (ignored) {}
-                    }
-                    return null;
-                }
-
-                var tree = findTree(component);
+                var tree = component.viewerTree();
                 if (!tree) return "";
 
                 var viewport = tree.getParent();
@@ -775,28 +580,7 @@ class GitChangesViewFixture(remoteRobot: RemoteRobot, remoteComponent: RemoteCom
             runJs(
                 """
                 (function() {
-                    function findBrowser(root) {
-                        var queue = new java.util.LinkedList();
-                        queue.add(root);
-                        while (!queue.isEmpty()) {
-                            var current = queue.poll();
-                            if (current == null) continue;
-                            if (current.getClass().getName().endsWith("LstCrcChangesBrowser")) {
-                                return current;
-                            }
-                            try {
-                                var children = current.getComponents();
-                                if (children) {
-                                    for (var i = 0; i < children.length; i++) {
-                                        queue.add(children[i]);
-                                    }
-                                }
-                            } catch (ignored) {}
-                        }
-                        return null;
-                    }
-
-                    var browser = findBrowser(component);
+                    var browser = component;
                     if (!browser || typeof browser.selectVisibleFileForTest !== "function") {
                         return;
                     }
@@ -814,25 +598,7 @@ class GitChangesViewFixture(remoteRobot: RemoteRobot, remoteComponent: RemoteCom
             runJs(
                 """
                 (function() {
-                    var tree = null;
-                    var queue = new java.util.LinkedList();
-                    queue.add(component);
-                    while (!queue.isEmpty() && !tree) {
-                        var current = queue.poll();
-                        if (current == null) continue;
-                        if (current.getClass().getName().endsWith("LstCrcAsyncChangesTree") || current.getClass().getName().endsWith("ChangesTree")) {
-                            tree = current;
-                            break;
-                        }
-                        try {
-                            var children = current.getComponents();
-                            if (children) {
-                                for (var i = 0; i < children.length; i++) {
-                                    queue.add(children[i]);
-                                }
-                            }
-                        } catch (ignored) {}
-                    }
+                    var tree = component.viewerTree();
                     if (!tree) {
                         return;
                     }

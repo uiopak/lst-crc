@@ -8,7 +8,6 @@ import com.intellij.remoterobot.search.locators.byXpath
 import com.intellij.remoterobot.utils.waitFor
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import okhttp3.logging.HttpLoggingInterceptor
 import org.junit.jupiter.api.extension.AfterTestExecutionCallback
 import org.junit.jupiter.api.extension.ExtensionContext
 import org.junit.jupiter.api.extension.ParameterContext
@@ -24,29 +23,20 @@ class RemoteRobotExtension : AfterTestExecutionCallback, ParameterResolver {
     private val url: String = System.getProperty("robot.server.url")
         ?: System.getProperty("remote-robot-url")
         ?: "http://127.0.0.1:8082"
-    private val explicitConnectionTimeoutSeconds = System.getProperty("ui.test.connection.timeout")?.toLongOrNull()
-    private val serverWaitTimeoutSeconds = System.getProperty("ui.test.server.wait.timeout")?.toLongOrNull()
-    private val connectionTimeout: Duration = Duration.ofSeconds(
-        when {
-            explicitConnectionTimeoutSeconds != null && serverWaitTimeoutSeconds != null -> {
-                maxOf(explicitConnectionTimeoutSeconds, serverWaitTimeoutSeconds)
-            }
-            explicitConnectionTimeoutSeconds != null -> explicitConnectionTimeoutSeconds
-            serverWaitTimeoutSeconds != null -> serverWaitTimeoutSeconds
-            else -> System.getProperty("ui.test.timeout")?.toLongOrNull() ?: 30L
-        }
-    )
-    private val remoteRobot: RemoteRobot = if (System.getProperty("debug-retrofit")?.equals("enable") == true) {
-        val interceptor: HttpLoggingInterceptor = HttpLoggingInterceptor().apply {
-            this.level = HttpLoggingInterceptor.Level.BODY
-        }
-        val client = OkHttpClient.Builder().apply {
-            this.addInterceptor(interceptor)
-        }.build()
-        RemoteRobot(url, client)
-    } else {
-        RemoteRobot(url)
-    }
+    private val connectionTimeoutSeconds = System.getProperty("ui.test.connection.timeout")?.toLongOrNull()
+        ?: System.getProperty("ui.test.timeout")?.toLongOrNull()
+        ?: 30L
+    private val serverWaitTimeoutSeconds = System.getProperty("ui.test.server.wait.timeout")?.toLongOrNull() ?: 0L
+
+    /** The first connection waits for the IDE to start. */
+    private val startupTimeout: Duration = Duration.ofSeconds(maxOf(connectionTimeoutSeconds, serverWaitTimeoutSeconds))
+
+    /**
+     * Once the robot has answered, a robot that stops answering means a hung IDE. Failing that test after the
+     * connection timeout keeps a hang from using up the `uiTest` task's time limit, which marks the rest SKIPPED.
+     */
+    private val connectionTimeout: Duration = Duration.ofSeconds(connectionTimeoutSeconds)
+    private val remoteRobot = RemoteRobot(url)
     private val client = OkHttpClient()
 
     override fun supportsParameter(parameterContext: ParameterContext, extensionContext: ExtensionContext): Boolean {
@@ -130,9 +120,10 @@ class RemoteRobotExtension : AfterTestExecutionCallback, ParameterResolver {
 
 
     private fun waitForRemoteRobot() {
+        val timeout = if (robotAnswered) connectionTimeout else startupTimeout
         val endpoint = url.trimEnd('/') + "/"
         val ready = runCatching {
-            waitFor(connectionTimeout, interval = Duration.ofSeconds(2)) {
+            waitFor(timeout, interval = Duration.ofSeconds(2)) {
                 val response = runCatching {
                     client.newCall(Request.Builder().url(endpoint).build()).execute()
                 }.getOrNull()
@@ -143,9 +134,16 @@ class RemoteRobotExtension : AfterTestExecutionCallback, ParameterResolver {
         }.getOrDefault(false)
 
         check(ready) {
-            "Remote Robot server at $url was not ready within $connectionTimeout. " +
+            "Remote Robot server at $url was not ready within $timeout. " +
                 "Start './gradlew runIdeForUiTests', wait for './gradlew uiTestReady' to pass, and then rerun the UI tests."
         }
+        robotAnswered = true
+    }
+
+    private companion object {
+        /** Shared by every test class in the JVM: set once the robot has answered any of them. */
+        @Volatile
+        var robotAnswered = false
     }
 }
 

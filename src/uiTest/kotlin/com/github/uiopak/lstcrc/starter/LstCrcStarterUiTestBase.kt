@@ -394,7 +394,13 @@ class LstCrcStarterContext(
         }
     }
 
-    fun waitUntil(timeout: Duration = 20.seconds, interval: Duration = 250.milliseconds, condition: () -> Boolean) {
+    /** Waits for [condition]; on timeout the failure message ends with [describeState], if given. */
+    fun waitUntil(
+        timeout: Duration = 20.seconds,
+        interval: Duration = 250.milliseconds,
+        describeState: (() -> String)? = null,
+        condition: () -> Boolean
+    ) {
         val deadline = System.nanoTime() + timeout.inWholeNanoseconds
         while (System.nanoTime() < deadline) {
             if (runCatching(condition).getOrDefault(false)) {
@@ -402,6 +408,9 @@ class LstCrcStarterContext(
             }
             Thread.sleep(interval.inWholeMilliseconds)
         }
-        assertTrue(condition(), "Condition did not become true within $timeout")
+        assertTrue(condition()) {
+            "Condition did not become true within $timeout" +
+                describeState?.let { describe -> "\n" + runCatching(describe).getOrElse { "state unavailable: $it" } }.orEmpty()
+        }
     }
 }

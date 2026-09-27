@@ -1,12 +1,11 @@
 package com.github.uiopak.lstcrc.plugin
 
 import com.automation.remarks.junit5.Video
-import com.github.uiopak.lstcrc.plugin.pages.branchSelection
+import com.github.uiopak.lstcrc.plugin.pages.addComparisonTab
 import com.github.uiopak.lstcrc.plugin.pages.gitChangesView
 import com.github.uiopak.lstcrc.plugin.pages.idea
 import com.github.uiopak.lstcrc.plugin.steps.PluginUiTestSteps
 import com.intellij.remoterobot.RemoteRobot
-import com.intellij.remoterobot.stepsProcessing.step
 import com.intellij.remoterobot.utils.waitFor
 import org.assertj.swing.core.MouseButton
 import org.junit.jupiter.api.Assertions.assertFalse
@@ -25,9 +24,7 @@ class LstCrcSettingsUiTest : LstCrcUiTestSupport() {
         prepareFreshProject()
 
         idea {
-            step("Wait for smart mode") {
-                dumbAware(Duration.ofMinutes(5)) {}
-            }
+            dumbAware {}
 
             uiSteps.initializeGitRepository()
             resetGitChangesViewState()
@@ -43,12 +40,7 @@ class LstCrcSettingsUiTest : LstCrcUiTestSupport() {
             uiSteps.checkoutBranch(defaultBranch)
 
             openGitChangesView()
-            gitChangesView {
-                addTab()
-            }
-            branchSelection {
-                searchAndSelect("feature-tree")
-            }
+            addComparisonTab("feature-tree")
 
             assertTrue(treeContextSettingsSnapshot() == "true|false|false", "Unexpected initial tree context settings")
 
@@ -97,9 +89,7 @@ class LstCrcSettingsUiTest : LstCrcUiTestSupport() {
         prepareFreshProject()
 
         idea {
-            step("Wait for smart mode") {
-                dumbAware(Duration.ofMinutes(5)) {}
-            }
+            dumbAware {}
 
             uiSteps.initializeGitRepository()
             resetGitChangesViewState()
@@ -149,9 +139,7 @@ class LstCrcSettingsUiTest : LstCrcUiTestSupport() {
         prepareFreshProject()
 
         idea {
-            step("Wait for smart mode") {
-                dumbAware(Duration.ofMinutes(5)) {}
-            }
+            dumbAware {}
 
             uiSteps.initializeGitRepository()
             resetGitChangesViewState()
@@ -167,12 +155,7 @@ class LstCrcSettingsUiTest : LstCrcUiTestSupport() {
             uiSteps.checkoutBranch(defaultBranch)
 
             openGitChangesView()
-            gitChangesView {
-                addTab()
-            }
-            branchSelection {
-                searchAndSelect("feature-settings-clicks")
-            }
+            addComparisonTab("feature-settings-clicks")
 
             configureLstCrcClickActions(
                 middleClickAction = "OPEN_SOURCE",
@@ -225,9 +208,7 @@ class LstCrcSettingsUiTest : LstCrcUiTestSupport() {
         prepareFreshProject()
 
         idea {
-            step("Wait for smart mode") {
-                dumbAware(Duration.ofMinutes(5)) {}
-            }
+            dumbAware {}
 
             uiSteps.initializeGitRepository()
             resetGitChangesViewState()
@@ -243,12 +224,7 @@ class LstCrcSettingsUiTest : LstCrcUiTestSupport() {
             uiSteps.checkoutBranch(defaultBranch)
 
             openGitChangesView()
-            gitChangesView {
-                addTab()
-            }
-            branchSelection {
-                searchAndSelect("feature-tree-labels")
-            }
+            addComparisonTab("feature-tree-labels")
 
             val treeSnapshotTimeout = if (System.getenv("GITHUB_ACTIONS") == "true") Duration.ofSeconds(60) else Duration.ofSeconds(10)
             fun renderedTreeContains(text: String): Boolean = selectedChangesTreeRenderedTextSnapshot().contains(text)

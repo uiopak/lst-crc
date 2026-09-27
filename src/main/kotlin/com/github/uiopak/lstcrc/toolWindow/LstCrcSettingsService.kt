@@ -11,11 +11,19 @@ class SettingDefinition<T : Any>(val key: String, val defaultValue: T, val parse
 
 private const val KEY_PREFIX = "com.github.uiopak.lstcrc.app."
 
-private fun stringSetting(name: String, defaultValue: String) = SettingDefinition(KEY_PREFIX + name, defaultValue) { it }
-private fun booleanSetting(name: String, defaultValue: Boolean) = SettingDefinition(KEY_PREFIX + name, defaultValue, String::toBooleanStrictOrNull)
-private fun intSetting(name: String, defaultValue: Int) = SettingDefinition(KEY_PREFIX + name, defaultValue, String::toIntOrNull)
-
 object LstCrcSettingDefinitions {
+    private val registered = mutableListOf<SettingDefinition<*>>()
+
+    /** Every setting: each factory below registers the definition it creates. */
+    val all: List<SettingDefinition<*>> get() = registered
+
+    private fun <T : Any> setting(name: String, defaultValue: T, parse: (String) -> T?) =
+        SettingDefinition(KEY_PREFIX + name, defaultValue, parse).also { registered += it }
+
+    private fun stringSetting(name: String, defaultValue: String) = setting(name, defaultValue) { it }
+    private fun booleanSetting(name: String, defaultValue: Boolean) = setting(name, defaultValue, String::toBooleanStrictOrNull)
+    private fun intSetting(name: String, defaultValue: Int) = setting(name, defaultValue, String::toIntOrNull)
+
     val SINGLE_CLICK_ACTION = stringSetting("singleClickAction", ToolWindowSettingsProvider.ACTION_OPEN_SOURCE)
     val DOUBLE_CLICK_ACTION = stringSetting("doubleClickAction", ToolWindowSettingsProvider.ACTION_NONE)
     val MIDDLE_CLICK_ACTION = stringSetting("middleClickAction", ToolWindowSettingsProvider.ACTION_SHOW_IN_PROJECT_TREE)
@@ -36,18 +44,6 @@ object LstCrcSettingDefinitions {
     val SHOW_CONTEXT_SINGLE_REPO = booleanSetting("showContextSingleRepo", true)
     val SHOW_CONTEXT_MULTI_REPO = booleanSetting("showContextMultiRepo", true)
     val SHOW_CONTEXT_FOR_COMMITS = booleanSetting("showContextForCommits", false)
-
-    val all: List<SettingDefinition<*>> = listOf(
-        SINGLE_CLICK_ACTION, DOUBLE_CLICK_ACTION, MIDDLE_CLICK_ACTION,
-        DOUBLE_MIDDLE_CLICK_ACTION, RIGHT_CLICK_ACTION, DOUBLE_RIGHT_CLICK_ACTION,
-        SHOW_CONTEXT_MENU, USER_DOUBLE_CLICK_DELAY, INCLUDE_HEAD_IN_SCOPES, ENABLE_GUTTER_MARKERS,
-        ENABLE_GUTTER_FOR_NEW_FILES, SHOW_TOOL_WINDOW_TITLE, SHOW_WIDGET_CONTEXT,
-        SHOW_CONTEXT_SINGLE_REPO, SHOW_CONTEXT_MULTI_REPO, SHOW_CONTEXT_FOR_COMMITS,
-        SHOW_LINE_STATS_IN_TREE, EXPAND_NEW_FILES_IN_COLLAPSED_DIRS, SHOW_UNTRACKED_FILES_AS_NEW
-    )
-
-    val allKeys: List<String>
-        get() = all.map { it.key }
 }
 
 @State(name = "LstCrcSettingsService", storages = [Storage("lstCrcSettings.xml")])
@@ -73,8 +69,8 @@ class LstCrcSettingsService : PersistentStateComponent<LstCrcSettingsService.Set
     }
 
     internal fun importLegacySettings(legacy: PropertiesComponent) {
-        LstCrcSettingDefinitions.allKeys.forEach { key ->
-            legacy.getValue(key)?.takeUnless(String::isBlank)?.let { state.values[key] = it }
+        LstCrcSettingDefinitions.all.forEach { definition ->
+            legacy.getValue(definition.key)?.takeUnless(String::isBlank)?.let { state.values[definition.key] = it }
         }
     }
 
@@ -94,8 +90,9 @@ class LstCrcSettingsService : PersistentStateComponent<LstCrcSettingsService.Set
     @Suppress("unused")
     fun getString(key: String, default: String): String = storedValue(key) ?: default
 
+    /** Stores [value] as the setting's text, for example "true" or "250". */
     @Suppress("unused")
-    fun setString(key: String, value: String) {
+    fun setValue(key: String, value: String) {
         state.values[key] = value
     }
 
@@ -104,18 +101,8 @@ class LstCrcSettingsService : PersistentStateComponent<LstCrcSettingsService.Set
         storedValue(key)?.toBooleanStrictOrNull() ?: default
 
     @Suppress("unused")
-    fun setBoolean(key: String, value: Boolean) {
-        state.values[key] = value.toString()
-    }
-
-    @Suppress("unused")
     fun getInt(key: String, default: Int): Int =
         storedValue(key)?.toIntOrNull() ?: default
-
-    @Suppress("unused")
-    fun setInt(key: String, value: Int) {
-        state.values[key] = value.toString()
-    }
 
     @Suppress("unused")
     fun resetToDefaults() {

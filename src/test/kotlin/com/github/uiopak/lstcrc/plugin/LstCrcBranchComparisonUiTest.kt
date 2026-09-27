@@ -5,6 +5,7 @@ import com.automation.remarks.junit5.Video
 import com.github.uiopak.lstcrc.plugin.pages.GitChangesViewFixture
 import com.github.uiopak.lstcrc.plugin.pages.IdeaFrame
 import com.github.uiopak.lstcrc.plugin.pages.gitChangesView
+import com.github.uiopak.lstcrc.plugin.pages.addComparisonTab
 import com.github.uiopak.lstcrc.plugin.pages.branchSelection
 import com.github.uiopak.lstcrc.plugin.pages.idea
 import com.github.uiopak.lstcrc.plugin.steps.PluginUiTestSteps
@@ -34,9 +35,7 @@ class LstCrcBranchComparisonUiTest : LstCrcUiTestSupport() {
         prepareFreshProject()
 
         idea {
-            step("Wait for smart mode") {
-                dumbAware(Duration.ofMinutes(5)) {}
-            }
+            dumbAware {}
 
             uiSteps.initializeGitRepository()
             resetGitChangesViewState()
@@ -58,12 +57,7 @@ class LstCrcBranchComparisonUiTest : LstCrcUiTestSupport() {
             )
 
             openGitChangesView()
-            gitChangesView {
-                addTab()
-            }
-            branchSelection {
-                searchAndSelect("feature-line-endings")
-            }
+            addComparisonTab("feature-line-endings")
 
             gitChangesView {
                 selectTab("feature-line-endings")
@@ -92,9 +86,7 @@ class LstCrcBranchComparisonUiTest : LstCrcUiTestSupport() {
         prepareFreshProject()
 
         idea {
-            step("Wait for smart mode") {
-                dumbAware(Duration.ofMinutes(5)) {}
-            }
+            dumbAware {}
 
             uiSteps.initializeGitRepository()
             resetGitChangesViewState()
@@ -114,12 +106,7 @@ class LstCrcBranchComparisonUiTest : LstCrcUiTestSupport() {
             uiSteps.checkoutBranch(defaultBranch)
 
             openGitChangesView()
-            gitChangesView {
-                addTab()
-            }
-            branchSelection {
-                searchAndSelect("feature-all-statuses")
-            }
+            addComparisonTab("feature-all-statuses")
 
             gitChangesView {
                 selectTab("feature-all-statuses")
@@ -220,9 +207,7 @@ class LstCrcBranchComparisonUiTest : LstCrcUiTestSupport() {
         prepareFreshProject()
 
         idea {
-            step("Wait for smart mode") {
-                dumbAware(Duration.ofMinutes(5)) {}
-            }
+            dumbAware {}
 
             uiSteps.initializeGitRepository()
             resetGitChangesViewState()
@@ -317,9 +302,7 @@ class LstCrcBranchComparisonUiTest : LstCrcUiTestSupport() {
         prepareFreshProject()
 
         idea {
-            step("Wait for smart mode") {
-                dumbAware(Duration.ofMinutes(5)) {}
-            }
+            dumbAware {}
 
             uiSteps.initializeGitRepository()
             resetGitChangesViewState()
@@ -334,12 +317,7 @@ class LstCrcBranchComparisonUiTest : LstCrcUiTestSupport() {
             uiSteps.checkoutBranch(defaultBranch)
 
             openGitChangesView()
-            gitChangesView {
-                addTab()
-            }
-            branchSelection {
-                searchAndSelect("feature-unsaved")
-            }
+            addComparisonTab("feature-unsaved")
 
             modifyFileWithoutSave("Main.txt", "Unsaved local change\n")
 
@@ -417,9 +395,7 @@ class LstCrcBranchComparisonUiTest : LstCrcUiTestSupport() {
         prepareFreshProject()
 
         idea {
-            step("Wait for smart mode") {
-                dumbAware(Duration.ofMinutes(5)) {}
-            }
+            dumbAware {}
 
             uiSteps.initializeGitRepository()
             resetGitChangesViewState()
@@ -565,9 +541,7 @@ class LstCrcBranchComparisonUiTest : LstCrcUiTestSupport() {
         prepareFreshProject()
 
         idea {
-            step("Wait for smart mode") {
-                dumbAware(Duration.ofMinutes(5)) {}
-            }
+            dumbAware {}
 
             uiSteps.initializeGitRepository()
             resetGitChangesViewState()
@@ -590,8 +564,7 @@ class LstCrcBranchComparisonUiTest : LstCrcUiTestSupport() {
             setShowUntrackedFilesAsNew(true)
 
             openGitChangesView()
-            gitChangesView { addTab() }
-            branchSelection { searchAndSelect("feature-untracked-scroll-refresh") }
+            addComparisonTab("feature-untracked-scroll-refresh")
 
             gitChangesView {
                 step("Wait for comparison tree to populate") {
@@ -674,9 +647,7 @@ class LstCrcBranchComparisonUiTest : LstCrcUiTestSupport() {
         prepareFreshProject()
 
         idea {
-            step("Wait for smart mode") {
-                dumbAware(Duration.ofMinutes(5)) {}
-            }
+            dumbAware {}
 
             uiSteps.initializeGitRepository()
             resetGitChangesViewState()
@@ -740,9 +711,7 @@ class LstCrcBranchComparisonUiTest : LstCrcUiTestSupport() {
         prepareFreshProject()
 
         idea {
-            step("Wait for smart mode") {
-                dumbAware(Duration.ofMinutes(5)) {}
-            }
+            dumbAware {}
 
             uiSteps.initializeGitRepository()
             resetGitChangesViewState()
@@ -759,12 +728,7 @@ class LstCrcBranchComparisonUiTest : LstCrcUiTestSupport() {
             uiSteps.createNewFile("Local.txt", "Local content\n")
 
             openGitChangesView()
-            gitChangesView {
-                addTab()
-            }
-            branchSelection {
-                searchAndSelect("feature-new-file-unsaved")
-            }
+            addComparisonTab("feature-new-file-unsaved")
 
             gitChangesView {
                 step("Verify new local file is visible in comparison tab") {
@@ -811,9 +775,7 @@ class LstCrcBranchComparisonUiTest : LstCrcUiTestSupport() {
         prepareFreshProject()
 
         idea {
-            step("Wait for smart mode") {
-                dumbAware(Duration.ofMinutes(5)) {}
-            }
+            dumbAware {}
 
             uiSteps.initializeGitRepository()
             resetGitChangesViewState()
@@ -828,12 +790,7 @@ class LstCrcBranchComparisonUiTest : LstCrcUiTestSupport() {
             uiSteps.checkoutBranch(defaultBranch)
 
             openGitChangesView()
-            gitChangesView {
-                addTab()
-            }
-            branchSelection {
-                searchAndSelect("feature-local-new-file")
-            }
+            addComparisonTab("feature-local-new-file")
 
             uiSteps.switchToProjectView()
             uiSteps.createNewFile("Local.txt", "Local on master\n")
@@ -865,9 +822,7 @@ class LstCrcBranchComparisonUiTest : LstCrcUiTestSupport() {
         prepareFreshProject()
 
         idea {
-            step("Wait for smart mode") {
-                dumbAware(Duration.ofMinutes(5)) {}
-            }
+            dumbAware {}
 
             uiSteps.initializeGitRepository()
             resetGitChangesViewState()
@@ -888,18 +843,8 @@ class LstCrcBranchComparisonUiTest : LstCrcUiTestSupport() {
             uiSteps.checkoutBranch(defaultBranch)
 
             openGitChangesView()
-            gitChangesView {
-                addTab()
-            }
-            branchSelection {
-                searchAndSelect("feature-1")
-            }
-            gitChangesView {
-                addTab()
-            }
-            branchSelection {
-                searchAndSelect("feature-2")
-            }
+            addComparisonTab("feature-1")
+            addComparisonTab("feature-2")
 
             gitChangesView {
                 val headTabName = if (hasTab("HEAD")) "HEAD" else defaultBranch
@@ -961,9 +906,7 @@ class LstCrcBranchComparisonUiTest : LstCrcUiTestSupport() {
         prepareFreshProject()
 
         idea {
-            step("Wait for smart mode") {
-                dumbAware(Duration.ofMinutes(5)) {}
-            }
+            dumbAware {}
 
             uiSteps.initializeGitRepository()
             resetGitChangesViewState()
@@ -984,8 +927,7 @@ class LstCrcBranchComparisonUiTest : LstCrcUiTestSupport() {
 
             openGitChangesView()
 
-            gitChangesView { addTab() }
-            branchSelection { searchAndSelect("feature-tree-a") }
+            addComparisonTab("feature-tree-a")
             gitChangesView {
                 selectTab("feature-tree-a")
                 step("Wait for OnlyA.txt to appear") {
@@ -1011,8 +953,7 @@ class LstCrcBranchComparisonUiTest : LstCrcUiTestSupport() {
                 }
             }
 
-            gitChangesView { addTab() }
-            branchSelection { searchAndSelect("feature-tree-b") }
+            addComparisonTab("feature-tree-b")
             gitChangesView {
                 selectTab("feature-tree-b")
                 step("Wait for OnlyB.txt to appear on tab B") {
@@ -1064,9 +1005,7 @@ class LstCrcBranchComparisonUiTest : LstCrcUiTestSupport() {
         prepareFreshProject()
 
         idea {
-            step("Wait for smart mode") {
-                dumbAware(Duration.ofMinutes(5)) {}
-            }
+            dumbAware {}
 
             uiSteps.initializeGitRepository()
             resetGitChangesViewState()
@@ -1085,8 +1024,7 @@ class LstCrcBranchComparisonUiTest : LstCrcUiTestSupport() {
             uiSteps.checkoutBranch(defaultBranch)
 
             openGitChangesView()
-            gitChangesView { addTab() }
-            branchSelection { searchAndSelect("feature-expand-initial") }
+            addComparisonTab("feature-expand-initial")
             gitChangesView {
                 selectTab("feature-expand-initial")
             }
@@ -1147,9 +1085,7 @@ class LstCrcBranchComparisonUiTest : LstCrcUiTestSupport() {
         prepareFreshProject()
 
         idea {
-            step("Wait for smart mode") {
-                dumbAware(Duration.ofMinutes(5)) {}
-            }
+            dumbAware {}
 
             uiSteps.initializeGitRepository()
             resetGitChangesViewState()
@@ -1168,8 +1104,7 @@ class LstCrcBranchComparisonUiTest : LstCrcUiTestSupport() {
             uiSteps.checkoutBranch(defaultBranch)
 
             openGitChangesView()
-            gitChangesView { addTab() }
-            branchSelection { searchAndSelect("feature-collapse-initial") }
+            addComparisonTab("feature-collapse-initial")
             gitChangesView {
                 selectTab("feature-collapse-initial")
             }
@@ -1257,9 +1192,7 @@ class LstCrcBranchComparisonUiTest : LstCrcUiTestSupport() {
         prepareFreshProject()
 
         idea {
-            step("Wait for smart mode") {
-                dumbAware(Duration.ofMinutes(5)) {}
-            }
+            dumbAware {}
 
             uiSteps.initializeGitRepository()
             resetGitChangesViewState()
@@ -1274,12 +1207,7 @@ class LstCrcBranchComparisonUiTest : LstCrcUiTestSupport() {
             uiSteps.checkoutBranch(defaultBranch)
 
             openGitChangesView()
-            gitChangesView {
-                addTab()
-            }
-            branchSelection {
-                searchAndSelect("feature-untracked-visible")
-            }
+            addComparisonTab("feature-untracked-visible")
             gitChangesView {
                 selectTab("feature-untracked-visible")
                 waitFor(Duration.ofSeconds(10)) {
@@ -1309,9 +1237,7 @@ class LstCrcBranchComparisonUiTest : LstCrcUiTestSupport() {
         prepareFreshProject()
 
         idea {
-            step("Wait for smart mode") {
-                dumbAware(Duration.ofMinutes(5)) {}
-            }
+            dumbAware {}
 
             uiSteps.initializeGitRepository()
             resetGitChangesViewState()
@@ -1326,12 +1252,7 @@ class LstCrcBranchComparisonUiTest : LstCrcUiTestSupport() {
             uiSteps.checkoutBranch(defaultBranch)
 
             openGitChangesView()
-            gitChangesView {
-                addTab()
-            }
-            branchSelection {
-                searchAndSelect("feature-untracked-hidden")
-            }
+            addComparisonTab("feature-untracked-hidden")
             gitChangesView {
                 selectTab("feature-untracked-hidden")
                 waitFor(Duration.ofSeconds(10)) {
@@ -1370,9 +1291,7 @@ class LstCrcBranchComparisonUiTest : LstCrcUiTestSupport() {
         prepareFreshProject()
 
         idea {
-            step("Wait for smart mode") {
-                dumbAware(Duration.ofMinutes(5)) {}
-            }
+            dumbAware {}
 
             uiSteps.initializeGitRepository()
             resetGitChangesViewState()
@@ -1387,12 +1306,7 @@ class LstCrcBranchComparisonUiTest : LstCrcUiTestSupport() {
             uiSteps.checkoutBranch(defaultBranch)
 
             openGitChangesView()
-            gitChangesView {
-                addTab()
-            }
-            branchSelection {
-                searchAndSelect("feature-file-status")
-            }
+            addComparisonTab("feature-file-status")
             gitChangesView {
                 selectTab("feature-file-status")
                 waitFor(Duration.ofSeconds(10)) {
@@ -1430,9 +1344,7 @@ class LstCrcBranchComparisonUiTest : LstCrcUiTestSupport() {
         prepareFreshProject()
 
         idea {
-            step("Wait for smart mode") {
-                dumbAware(Duration.ofMinutes(5)) {}
-            }
+            dumbAware {}
 
             uiSteps.initializeGitRepository()
             resetGitChangesViewState()
@@ -1452,12 +1364,7 @@ class LstCrcBranchComparisonUiTest : LstCrcUiTestSupport() {
             uiSteps.checkoutBranch(defaultBranch)
 
             openGitChangesView()
-            gitChangesView {
-                addTab()
-            }
-            branchSelection {
-                searchAndSelect("feature-change-types")
-            }
+            addComparisonTab("feature-change-types")
             gitChangesView {
                 selectTab("feature-change-types")
                 waitFor(Duration.ofSeconds(10)) {
@@ -1500,9 +1407,7 @@ class LstCrcBranchComparisonUiTest : LstCrcUiTestSupport() {
         prepareFreshProject()
 
         idea {
-            step("Wait for smart mode") {
-                dumbAware(Duration.ofMinutes(5)) {}
-            }
+            dumbAware {}
 
             uiSteps.initializeGitRepository()
             resetGitChangesViewState()
@@ -1521,8 +1426,7 @@ class LstCrcBranchComparisonUiTest : LstCrcUiTestSupport() {
             uiSteps.checkoutBranch(defaultBranch)
 
             openGitChangesView()
-            gitChangesView { addTab() }
-            branchSelection { searchAndSelect(branchName) }
+            addComparisonTab(branchName)
 
             gitChangesView {
                 step("Wait for comparison tree to populate") {

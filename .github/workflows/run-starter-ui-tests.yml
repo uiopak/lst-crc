@@ -76,6 +76,10 @@ jobs:
           diagnostics_dir="build/reports/starter-ui-test/ide-starter-diagnostics"
           mkdir -p "$diagnostics_dir"
 
+          # The tests write idea.log to out/ide-tests/logs/<test> (idea.log.path in LstCrcStarterUiTestBase).
+          if [ -d "out/ide-tests/logs" ]; then
+            cp -r --parents out/ide-tests/logs "$diagnostics_dir"
+          fi
           if [ -d "out/ide-tests/tests" ]; then
             find out/ide-tests/tests -type f \( -path '*/log/*' -o -path '*/reports/*' \) -exec cp --parents {} "$diagnostics_dir" \;
           fi

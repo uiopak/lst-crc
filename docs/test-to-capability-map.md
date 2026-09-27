@@ -27,6 +27,7 @@ Location: `src/test/kotlin/com/github/uiopak/lstcrc/{gutters,listeners,scopes,se
 | `GitServiceOverlayMergeTest.testPreservesNewChangeTypeWhenUnsavedOverlayIsApplied` | `C3.8` | Unsaved edits to a new file keep it `NEW`/`ADDED`. |
 | `GitServiceOverlayMergeTest.testKeepsModificationOverlayForNonNewFiles` | `C3.8` | Unsaved edits to other files stay modifications. |
 | `GitServiceOverlayMergeTest.testTrackedAddedPathsSkipsUntrackedAndModifiedFiles` | `C3.8` | Only files `git diff` reports as added skip the target-content lookup. |
+| `GitServiceOverlayMergeTest.testUntrackedChangesKeepBackslashesInFileNames` | `C3.11` | `git ls-files -z` paths are not unescaped. |
 | `LstCrcActionVisibilityTest.testShowRepoComparisonInfoActionHiddenOnHeadAndVisibleForComparisonTab` | `C2.3` | Repo-comparison toolbar action is hidden on `HEAD` and shown on comparison tabs. |
 | `LstCrcActionVisibilityTest.testCreateTabFromRevisionActionVisibleOnlyForSingleRevisionSelection` | `C1.3` | Git Log "create tab" needs exactly one selected revision. |
 | `LstCrcActionVisibilityTest.testRenameTabActionVisibleForClosableBranchTabWhenContextIsNestedUnderBaseLabel` | `C1.5` | Rename is offered from inside a closable tab's label. |
@@ -53,6 +54,7 @@ Location: `src/test/kotlin/com/github/uiopak/lstcrc/{gutters,listeners,scopes,se
 | `LstCrcSettingsServiceTest.testResetToDefaultsRestoresRepresentativeValues` | `C4.9` | Reset restores the defaults. |
 | `LstCrcSettingsServiceTest.testImportsLegacyPropertiesComponentValues` | `C4.9` | Settings from earlier versions are imported once. |
 | `LstCrcSettingsServiceTest.testSettersAndGettersRoundTripValues` | `C4.9` | Every setting round-trips through its accessors. |
+| `LstCrcSettingsServiceTest.testEveryDefinitionIsRegisteredOnce` | `C4.9` | Every setting definition is in `LstCrcSettingDefinitions.all` once. |
 | `LstCrcStatusWidgetTest.testGetTextReturnsHeadWhenHeadIsSelectedEvenIfWidgetContextEnabled` | `C1.1` | The widget shows `HEAD` on the `HEAD` tab, without the context prefix. |
 | `LstCrcStatusWidgetTest.testGetTextUsesAliasPrefixAndTruncationForSelectedTab` | `C1.5`, `C4.5` | The widget shows the alias, the optional prefix, and truncates long names. |
 | `LstCrcStatusWidgetTest.testGetTextFallsBackToPluginNameForInvalidSelectedTabIndex` | `C5.3` | An out-of-range selected index falls back to the plugin name. |
@@ -69,6 +71,7 @@ Location: `src/test/kotlin/com/github/uiopak/lstcrc/{gutters,listeners,scopes,se
 | `RepoNodeRendererTest.testBuildTrailingMetadataTextSupportsLineStatsWithoutRevision` | `C3.10` | Line counts show without a target label. |
 | `RepoNodeRendererTest.testAggregateLineStatsForFolderNodeSumsDescendantChanges` | `C3.10` | Folder rows sum their descendants. |
 | `RepoNodeRendererTest.testAggregateLineStatsForFolderNodeReturnsNullWithoutDescendantChanges` | `C3.10` | Folders without counted changes show no counts. |
+| `ToolWindowStateServiceRefreshTest.testJoinedRefreshLoadsTheSelectionMadeBeforeTheRequest` | `C5.1` | A joined refresh has loaded the state from before the request. |
 | `ToolWindowStateServicePersistenceTest.testAddTabDeduplicatesAndRemoveTabKeepsOtherTabs` | `C5.2` | Adding an existing tab is a no-op; removing one keeps the others. |
 | `ToolWindowStateServicePersistenceTest.testRemoveTabClampsSelectedIndexWhenSelectedTabIsRemoved` | `C5.2` | Removing the selected tab selects a neighbour. |
 | `ToolWindowStateServicePersistenceTest.testRemoveTabShiftsSelectedIndexWhenEarlierTabIsRemoved` | `C5.2` | Removing an earlier tab keeps the same tab selected. |

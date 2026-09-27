@@ -500,21 +500,7 @@ class GitService(private val project: Project) {
             return emptyList()
         }
 
-        return result.outputAsJoinedString
-            .split('\u0000')
-            .asSequence()
-            .filter { it.isNotBlank() }
-            .mapNotNull { relativePath ->
-                try {
-                    val afterFilePath = GitContentRevision.createPathFromEscaped(repo.root, relativePath)
-                    val afterRevision = GitContentRevision.createRevision(afterFilePath, null, project)
-                    Change(null, afterRevision, FileStatus.UNKNOWN)
-                } catch (e: Exception) {
-                    logger.error("Failed to parse untracked file path '$relativePath' for repo '${repo.root.name}'", e)
-                    null
-                }
-            }
-            .toList()
+        return untrackedChanges(project, repo.root, result.outputAsJoinedString)
     }
 
     private fun overlayUnsavedDocumentChanges(
@@ -627,15 +613,10 @@ class GitService(private val project: Project) {
             return null
         }
 
-        logger.debug { "GUTTER_GIT_SERVICE: Preparing to fetch content for revision:'${revision}' file:'${file.path}'" }
-
         val relativePath = VfsUtilCore.getRelativePath(file, repository.root, '/')
             ?: throw IllegalStateException("Could not calculate relative path for file '${file.path}' against repo root '${repository.root.path}'.")
-
-        val normalizedContent = loadRevisionText(repository, revision, relativePath, file.charset)
-
-        logger.debug { "GUTTER_GIT_SERVICE: Successfully fetched content for '${relativePath}' in revision '${revision}'." }
-        return normalizedContent
+        logger.debug { "GUTTER_GIT_SERVICE: Loading '$relativePath' at revision '$revision'." }
+        return loadRevisionText(repository, revision, relativePath, file.charset)
     }
 
     /**
@@ -763,6 +744,15 @@ internal fun loadRevisionTextContent(
  */
 internal fun trackedAddedPaths(changes: List<Change>): Set<String> =
     changes.mapNotNullTo(HashSet()) { change -> change.afterRevision?.file?.path?.takeIf { change.fileStatus == FileStatus.ADDED } }
+
+/**
+ * Changes for the NUL-separated paths of `git ls-files --others -z` in [root]. `-z` paths are not quoted,
+ * so they must not be unescaped: a backslash in a file name is part of the name.
+ */
+internal fun untrackedChanges(project: Project, root: VirtualFile, output: String): List<Change> =
+    output.split('\u0000').filter(String::isNotBlank).map { relativePath ->
+        Change(null, GitContentRevision.createRevision(GitContentRevision.createPath(root, relativePath), null, project), FileStatus.UNKNOWN)
+    }
 
 internal fun mergeUnsavedOverlayChange(existingChange: Change?, unsavedChange: Change): Change {
     if (existingChange?.type == Change.Type.NEW && unsavedChange.afterRevision != null) {

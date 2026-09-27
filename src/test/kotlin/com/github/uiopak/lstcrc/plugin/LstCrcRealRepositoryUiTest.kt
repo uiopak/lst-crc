@@ -5,7 +5,7 @@ import com.github.uiopak.lstcrc.fixtures.GitDiffOracle
 import com.github.uiopak.lstcrc.fixtures.LstCrcPerformanceReport
 import com.github.uiopak.lstcrc.plugin.pages.IdeaFrame
 import com.github.uiopak.lstcrc.plugin.pages.activeDiffEntries
-import com.github.uiopak.lstcrc.plugin.pages.branchSelection
+import com.github.uiopak.lstcrc.plugin.pages.addComparisonTab
 import com.github.uiopak.lstcrc.plugin.pages.filesMatchingScope
 import com.github.uiopak.lstcrc.plugin.pages.findInFilesPaths
 import com.github.uiopak.lstcrc.plugin.pages.gitChangesView
@@ -110,7 +110,7 @@ class LstCrcRealRepositoryUiTest : LstCrcUiTestSupport() {
     private fun RemoteRobot.startOnGsonFixture(test: String): GitDiffOracle {
         val git = GitDiffOracle(openGsonFixtureProject())
         idea {
-            step("Wait for smart mode") { dumbAware(Duration.ofMinutes(5)) {} }
+            dumbAware {}
             waitFor(Duration.ofMinutes(2), interval = Duration.ofSeconds(1)) { isGitRepositoryDetected() }
             resetGitChangesViewState()
 
@@ -126,8 +126,7 @@ class LstCrcRealRepositoryUiTest : LstCrcUiTestSupport() {
 
     /** Adds a comparison tab through the "+" button and the branch tree, and selects it. */
     private fun IdeaFrame.addTabFor(branchName: String) {
-        gitChangesView { addTab() }
-        branchSelection { searchAndSelect(branchName) }
+        addComparisonTab(branchName)
         gitChangesView { selectTab(branchName) }
     }
 

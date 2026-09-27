@@ -87,6 +87,7 @@
 | `C3.10` | Line counts on a real repository match git | `LstCrcRealRepositoryUiTest.testBranchComparisonsMatchGit`, `LstCrcRealRepositoryStarterUiTest.testBranchComparisonsMatchGit` |
 | `C3.11` | Untracked files appear only while "Show untracked files as new" is on | `LstCrcBranchComparisonUiTest.testUntrackedFileAppearsWhenSettingEnabled`, `LstCrcBranchComparisonUiTest.testUntrackedFileStaysHiddenWhenSettingDisabled`, `LstCrcBranchComparisonStarterUiTest.testUntrackedFileAppearsWhenSettingEnabled`, `LstCrcBranchComparisonStarterUiTest.testUntrackedFileStaysHiddenWhenSettingDisabled` |
 | `C3.11` | Untracked files have the `UNKNOWN` status, unlike tracked additions | `LstCrcBranchComparisonUiTest.testUntrackedFileHasUnknownFileStatus`, `LstCrcBranchComparisonStarterUiTest.testUntrackedFileHasUnknownFileStatus` |
+| `C3.11` | Untracked paths are read as `git ls-files -z` prints them, so a backslash stays part of the name | `GitServiceOverlayMergeTest.testUntrackedChangesKeepBackslashesInFileNames` |
 | `C3.12` | A refresh keeps the scroll position, including with an offscreen or bottom selection | `LstCrcChangesBrowserTest` (5 refresh tests), `LstCrcBranchComparisonUiTest.testRefreshKeepsTreeViewportWhenSelectionIsOffscreen`, `LstCrcBranchComparisonUiTest.testRefreshDoesNotMoveViewportWhenSelectionIsAtBottomAndViewportIsAtTop`, `LstCrcBranchComparisonUiTest.testRefreshDoesNotChangeTopVisibleEntryWhenSelectionIsAtBottomAndViewportIsAtTop` |
 | `C3.12` | The same holds on the `HEAD` tab and for refreshes caused by unsaved typing | `LstCrcBranchComparisonUiTest.testHeadRefreshDoesNotMoveViewportWhenSelectionIsAtBottomAndViewportIsAtTop`, `LstCrcBranchComparisonUiTest.testUnsavedRefreshDoesNotMoveViewportWhenSelectionIsAtBottomAndViewportIsAtTop`, `LstCrcBranchComparisonUiTest.testClickedScrolledUnsavedRefreshWithLineStatsDoesNotMoveVisibleTreeState`, `LstCrcBranchComparisonUiTest.testEditingSelectedUntrackedFileShownAsNewDoesNotScrollTreeToIt` |
 
@@ -112,6 +113,7 @@
 | `C4.8` | Main gutter toggle path | `LstCrcSettingsUiTest.testGutterSettingsAndIncludeHead`, `LstCrcSettingsStarterUiTest.testGutterSettingsAndIncludeHead` |
 | `C4.8` | New-file gutter setting path | `LstCrcSettingsUiTest.testGutterSettingsAndIncludeHead`, `LstCrcSettingsStarterUiTest.testGutterSettingsAndIncludeHead`, `LstCrcVisualUiTest.testVisualGutterMarkersForInsertedNewFile` |
 | `C4.9` | Settings round-trip, reset to defaults, and import from earlier versions | `LstCrcSettingsServiceTest.testSettersAndGettersRoundTripValues`, `LstCrcSettingsServiceTest.testResetToDefaultsRestoresRepresentativeValues`, `LstCrcSettingsServiceTest.testImportsLegacyPropertiesComponentValues` |
+| `C4.9` | Every setting definition is registered once, so reset and legacy import cover it | `LstCrcSettingsServiceTest.testEveryDefinitionIsRegisteredOnce` |
 
 ### Lifecycle, Persistence, And Recovery
 
@@ -120,6 +122,7 @@
 | `C5.1` | Refresh responds to local edits and tab/view changes | `LstCrcBranchComparisonUiTest.testGitBranchComparison`, `LstCrcBranchComparisonUiTest.testUnsavedLocalEditAppearsWithoutSave`, `LstCrcVisualUiTest.testVisualGutterMarkers` |
 | `C5.1` | Edits to repository files trigger one debounced refresh without blocking; other files are ignored | `VcsChangeListenerTest.testHandleDocumentChangeTriggersRefreshForRepositoryFiles`, `VcsChangeListenerTest.testHandleDocumentChangeIgnoresNonRepositoryFiles`, `VcsChangeListenerTest.testHandleDocumentChangeDoesNotBlockOnRepositoryCheck` |
 | `C5.1` | Edits alone reuse the last git result; a VCS event in the same burst forces a full reload | `VcsChangeListenerTest.testDocumentEditsAloneRequestEditOnlyRefreshWhileVcsEventsRequestFullRefresh` |
+| `C5.1` | A refresh request completes only after a load that started after it, even while other refreshes run | `ToolWindowStateServiceRefreshTest.testJoinedRefreshLoadsTheSelectionMadeBeforeTheRequest` |
 | `C5.1` | A checkout and local modify/add/delete/rename on a real repository update the comparison to match git | `LstCrcRealRepositoryUiTest.testCheckoutAndLocalEditsUpdateComparison`, `LstCrcRealRepositoryStarterUiTest.testCheckoutAndLocalEditsUpdateComparison` |
 | `C5.1` | Refresh responds during branch-repair flow | `LstCrcInteractionStarterUiTest.testMissingBranchComparisonTargetRecoversToHeadAndShowsWarning` |
 | `C5.1` | Active-diff updates apply for `HEAD` only when `HEAD` semantics are selected | `ProjectActiveDiffDataServiceTest.testAcceptsHeadUpdateWhenHeadTabIsSelected` |

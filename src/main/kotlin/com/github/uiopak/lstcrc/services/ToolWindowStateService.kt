@@ -23,13 +23,9 @@ import com.intellij.openapi.application.EDT
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.future.asCompletableFuture
 import kotlinx.coroutines.withContext
 import java.util.concurrent.CompletableFuture
-import java.util.concurrent.atomic.AtomicBoolean
-import java.util.concurrent.atomic.AtomicReference
 
 /**
  * Manages the tool window's UI state (open tabs, selected tab) and persists it.
@@ -47,11 +43,15 @@ class ToolWindowStateService(private val project: Project, val coroutineScope: C
     @Volatile
     private var myState = ToolWindowState()
     private val logger = thisLogger()
-    private val activeRefresh = AtomicReference<CompletableFuture<Unit>?>(null)
-    private val refreshQueued = AtomicBoolean(false)
 
+    // Refresh sequencing, guarded by refreshLock: requests queue for the next load, and one coroutine runs loads
+    // while any are queued.
+    private val refreshLock = Any()
+    /** Completes when the next load has run. Every request made before that load starts gets this future. */
+    private var queuedRefresh: CompletableFuture<Unit>? = null
+    private var refreshRunning = false
     /** True while a queued request needs a full reload; see [refreshAfterDocumentEdit]. */
-    private val fullReloadQueued = AtomicBoolean(true)
+    private var fullReloadQueued = true
 
     override fun getState(): ToolWindowState {
         logger.debug { "getState() called. Current state: $myState" }
@@ -253,41 +253,56 @@ class ToolWindowStateService(private val project: Project, val coroutineScope: C
      */
     fun refreshAfterDocumentEdit(): CompletableFuture<Unit> = requestRefresh(fullReload = false)
 
+    /**
+     * Queues a load. Requests that arrive before the queued load starts share it, so a burst of requests runs
+     * one load, and the returned future only completes after a load that started after this request.
+     */
     private fun requestRefresh(fullReload: Boolean): CompletableFuture<Unit> {
         if (project.isDisposed) return CompletableFuture.completedFuture(Unit)
-
-        if (fullReload) fullReloadQueued.set(true)
-        refreshQueued.set(true)
-
-        activeRefresh.get()?.let {
-            logger.debug { "ACTION: Refresh already in progress. Coalescing another refresh request." }
-            return it
-        }
-
-        val refreshFuture = coroutineScope.async {
-            runRefreshCycle()
-        }.asCompletableFuture()
-
-        if (!activeRefresh.compareAndSet(null, refreshFuture)) {
-            logger.debug { "ACTION: Refresh was scheduled concurrently. Reusing the active refresh future." }
-            return activeRefresh.get() ?: refreshFuture
-        }
-
-        refreshFuture.whenComplete { _, _ ->
-            if (activeRefresh.compareAndSet(refreshFuture, null) && refreshQueued.get() && !project.isDisposed) {
-                logger.debug { "ACTION: A refresh request arrived during completion. Scheduling another coalesced cycle." }
-                // The pending request already recorded in fullReloadQueued whether it needs a full reload.
-                requestRefresh(fullReload = false)
+        synchronized(refreshLock) {
+            if (fullReload) fullReloadQueued = true
+            queuedRefresh?.let { return it }
+            val refresh = CompletableFuture<Unit>()
+            queuedRefresh = refresh
+            if (!refreshRunning) {
+                refreshRunning = true
+                coroutineScope.launch { runRefreshCycle() }.invokeOnCompletion { cause ->
+                    // Cancelled (the project is closing) or never started: fail what is still queued.
+                    if (cause != null) synchronized(refreshLock) {
+                        refreshRunning = false
+                        queuedRefresh?.completeExceptionally(cause)
+                        queuedRefresh = null
+                    }
+                }
+            } else {
+                logger.debug { "ACTION: Refresh already in progress. Queued another refresh cycle." }
             }
+            return refresh
         }
-
-        return refreshFuture
     }
 
     private suspend fun runRefreshCycle() {
-        // Requests that arrive while a load is running are folded into one more iteration.
-        while (!project.isDisposed && refreshQueued.getAndSet(false)) {
-            loadDataForTab(getSelectedTabInfo(), reuseDiskChanges = !fullReloadQueued.getAndSet(false))
+        while (true) {
+            val (refresh, reuseDiskChanges) = synchronized(refreshLock) {
+                val next = queuedRefresh
+                if (next == null || project.isDisposed) {
+                    refreshRunning = false
+                    queuedRefresh = null
+                    next?.complete(Unit)
+                    return
+                }
+                queuedRefresh = null
+                val reuse = !fullReloadQueued
+                fullReloadQueued = false
+                next to reuse
+            }
+            try {
+                loadDataForTab(getSelectedTabInfo(), reuseDiskChanges)
+            } catch (e: Throwable) {
+                refresh.completeExceptionally(e)
+                throw e
+            }
+            refresh.complete(Unit)
         }
     }
 
