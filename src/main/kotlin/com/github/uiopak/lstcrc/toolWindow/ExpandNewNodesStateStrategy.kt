@@ -1,5 +1,7 @@
 package com.github.uiopak.lstcrc.toolWindow
 
+import com.intellij.openapi.diagnostic.debug
+import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.vcs.changes.Change
 import com.intellij.openapi.vcs.changes.ui.ChangesTree
 import com.intellij.openapi.vcs.changes.ui.VcsTreeModelData
@@ -19,7 +21,8 @@ import javax.swing.tree.TreePath
  * Selection restore is handled manually instead of delegating to `TreeState.applyTo()`. IntelliJ's
  * generic tree-state restore recenters the selected row through `TreeUtil.showRowCentered(...)`,
  * which breaks the comparison browser's requirement to preserve the user's current viewport when
- * the selected change is offscreen.
+ * the selected change is offscreen. Selected folders are restored as folders: selecting the changes
+ * under a collapsed folder would make `JTree` expand it again.
  *
  * When [expandNewFilesInCollapsedDirs] returns `true` (the default, driven by the
  * "Expand Collapsed Folders for New Changes" setting), directories that are currently
@@ -27,6 +30,8 @@ import javax.swing.tree.TreePath
  * pre-collapse-persistence behavior. When it returns `false`, collapsed directories
  * stay collapsed even if they receive new changes.
  */
+private val LOG = logger<ExpandNewNodesStateStrategy>()
+
 class ExpandNewNodesStateStrategy(
     private val expandNewFilesInCollapsedDirs: () -> Boolean = {
         ToolWindowSettingsProvider.isExpandNewFilesInCollapsedDirs()
@@ -55,7 +60,9 @@ class ExpandNewNodesStateStrategy(
         val changes: Set<ChangeKey>,
         val selectedChanges: List<ChangeKey>,
         val expandedPaths: Set<String>,
-        val collapsedPaths: Set<String>
+        val collapsedPaths: Set<String>,
+        /** Selected folder (and other non-change) nodes, by path key. */
+        val selectedNodePaths: List<String>
     )
 
     private fun userObjectKey(userObject: Any?): String {
@@ -96,9 +103,14 @@ class ExpandNewNodesStateStrategy(
             .userObjects(Change::class.java)
             .map { it.asChangeKey() }
             .toSet()
-        val selectedChanges = VcsTreeModelData.selected(tree)
-            .userObjects(Change::class.java)
-            .map { it.asChangeKey() }
+        // Only the selected nodes themselves: `VcsTreeModelData.selected` would also return the changes under a
+        // selected folder, and selecting those again would expand the folder.
+        val selectedChanges = mutableListOf<ChangeKey>()
+        val selectedNodePaths = mutableListOf<String>()
+        tree.selectionPaths.orEmpty().forEach { path ->
+            val change = (path.lastPathComponent as? DefaultMutableTreeNode)?.userObject as? Change
+            if (change != null) selectedChanges.add(change.asChangeKey()) else if (path.pathCount > 1) selectedNodePaths.add(pathKey(path))
+        }
 
         val expandedPaths = mutableSetOf<String>()
         val collapsedPaths = mutableSetOf<String>()
@@ -114,7 +126,7 @@ class ExpandNewNodesStateStrategy(
             }
         }
 
-        return State(currentChanges, selectedChanges, expandedPaths, collapsedPaths)
+        return State(currentChanges, selectedChanges, expandedPaths, collapsedPaths, selectedNodePaths)
     }
 
     override fun restoreState(tree: ChangesTree, savedState: State, scrollToSelection: Boolean) {
@@ -160,6 +172,7 @@ class ExpandNewNodesStateStrategy(
                 }
             }
 
+            LOG.debug { "Expanding folders for new changes: $newChangeKeys" }
             val sortedPaths = pathsToExpand.sortedWith(Comparator.comparingInt(TreePath::getPathCount))
             for (path in sortedPaths) {
                 tree.expandPath(path)
@@ -178,8 +191,8 @@ class ExpandNewNodesStateStrategy(
             .sortedByDescending { it.pathCount }
             .forEach { tree.collapsePath(it) }
 
-        val selectedPaths = savedState.selectedChanges
-            .mapNotNull { changeKey -> pathsByChange[changeKey] }
+        val selectedPaths = savedState.selectedChanges.mapNotNull { changeKey -> pathsByChange[changeKey] } +
+            savedState.selectedNodePaths.mapNotNull { key -> pathKeyToTreePath[key] }
         if (selectedPaths.isNotEmpty()) {
             // Preserve selection without recentering it into view.
             tree.selectionPaths = selectedPaths.toTypedArray()
