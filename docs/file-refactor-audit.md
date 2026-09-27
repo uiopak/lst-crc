@@ -20,6 +20,11 @@ This file lists refactoring opportunities in `src/main` that were checked agains
 
 ## Done
 
+- The 2026-09 eighth pass (Remote Robot test code only, no plugin change):
+  - `plugin/utils/JsScripts.kt` holds the JavaScript the scripts shared by copy: the open project, the plugin class loader, the tool window, "reload the selected comparison and wait" and "notice external changes". `IdeaFrame`, `GitChangesViewFixture`, `BranchSelectionFixture`, `ActiveDiffQueries` and `PluginUiTestSteps` use it instead of their own copies.
+  - `PluginUiTestSteps` has one refresh after git commands and file writes (it now also refreshes the VFS after git commands, which change files on disk).
+  - Three hand-written scope scripts (about 50 lines each) in `LstCrcFileScopeUiTest` and `LstCrcBranchComparisonUiTest` became `filesMatchingScope` checks. They now compare exact scope contents; the old scripts looked up moved and created files under names the comparison does not give them, and only checked that a file was in a scope.
+
 - The 2026-09 seventh pass (bug fixes, each with a regression test):
   - **Closing the selected tab loads the tab that takes its place.** The tool window selects the tab before a closed selected tab, and the state had already moved its selection there, so the tool window's selection loaded nothing. After closing the rightmost tab, the tab before it kept its old tree while gutters, scopes and tab colours still used the closed tab's comparison. `removeTab` now selects the tab before it (`HEAD` before the first), as the tool window does, and loads it.
   - **Underscores stay in popup names.** The status widget popup and the repository popup passed tab, branch and repository names as action text, which reads `_` as a mnemonic marker, so `feature_login` showed as `featurelogin`. They use `plainTextAction`.

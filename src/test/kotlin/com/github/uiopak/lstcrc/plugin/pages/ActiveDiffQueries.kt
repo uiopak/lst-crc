@@ -1,5 +1,8 @@
 package com.github.uiopak.lstcrc.plugin.pages
 
+import com.github.uiopak.lstcrc.plugin.utils.jsNoticeExternalChanges
+import com.github.uiopak.lstcrc.plugin.utils.jsOpenProject
+import com.github.uiopak.lstcrc.plugin.utils.jsPluginClassLoader
 import com.github.uiopak.lstcrc.plugin.utils.toJsStringLiteral
 import com.intellij.remoterobot.RemoteRobot
 
@@ -9,11 +12,9 @@ import com.intellij.remoterobot.RemoteRobot
  * compare against the same `GitDiffOracle` expectations. Paths are relative to the project root.
  */
 
-private const val PROJECT_AND_PLUGIN_LOOKUP = """
-    var project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
-    var plugin = com.intellij.ide.plugins.PluginManagerCore.getPlugin(
-        com.intellij.openapi.extensions.PluginId.getId("com.github.uiopak.lstcrc"));
-    var cl = plugin.getPluginClassLoader();
+private val PROJECT_AND_PLUGIN_LOOKUP = """
+    ${jsOpenProject()}
+    ${jsPluginClassLoader()}
     var basePath = String(project.getBasePath()).split('\\').join('/');
     while (basePath.length > 1 && basePath.charAt(basePath.length - 1) == '/') basePath = basePath.substring(0, basePath.length - 1);
     function rel(path) {
@@ -155,20 +156,7 @@ fun RemoteRobot.findInFilesPaths(text: String, scopeDisplayName: String): List<S
  * a VFS refresh of the project and `.git`, and a dirty VCS scope. The plugin's own listeners must turn
  * that into a refresh; nothing here asks the plugin to reload.
  */
-fun RemoteRobot.refreshAfterExternalChange() = runJs(
-    """
-    var project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
-    var projectDir = com.intellij.openapi.vfs.LocalFileSystem.getInstance()
-        .refreshAndFindFileByPath(String(project.getBasePath()).split('\\').join('/'));
-    if (projectDir != null) {
-        projectDir.refresh(false, true);
-        var gitDir = projectDir.findChild(".git");
-        if (gitDir != null) gitDir.refresh(false, true);
-    }
-    com.intellij.openapi.vcs.changes.VcsDirtyScopeManager.getInstance(project).markEverythingDirty();
-    """.trimIndent(),
-    false
-)
+fun RemoteRobot.refreshAfterExternalChange() = runJs("${jsOpenProject()}\n${jsNoticeExternalChanges()}", false)
 
 /** True once the plugin has found the project's Git repository. */
 fun RemoteRobot.isGitRepositoryDetected(): Boolean = callJs(

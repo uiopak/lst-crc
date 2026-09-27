@@ -1,6 +1,7 @@
 package com.github.uiopak.lstcrc.plugin
 
 import com.automation.remarks.junit5.Video
+import com.github.uiopak.lstcrc.plugin.pages.filesMatchingScope
 import com.github.uiopak.lstcrc.plugin.pages.gitChangesView
 import com.github.uiopak.lstcrc.plugin.pages.idea
 import com.github.uiopak.lstcrc.plugin.steps.PluginUiTestSteps
@@ -47,95 +48,22 @@ class LstCrcFileScopeUiTest : LstCrcUiTestSupport() {
                 selectTab("HEAD")
             }
 
-            var scopesDebug = ""
-            waitFor(Duration.ofSeconds(20), interval = Duration.ofMillis(500)) {
-                scopesDebug = callJs(
-                    """
-                    (function() {
-                        const result = new java.util.concurrent.atomic.AtomicReference("projectMissing=true");
-                        com.intellij.openapi.application.ApplicationManager.getApplication().invokeAndWait(new java.lang.Runnable({
-                            run: function() {
-                                const project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
-                                if (!project) {
-                                    result.set("projectMissing=true");
-                                    return;
-                                }
-
-                                const vfs = com.intellij.openapi.vfs.LocalFileSystem.getInstance();
-                                const normalizedBasePath = String(project.getBasePath()).split('\\').join('/');
-                                const getPluginClass = (className) => {
-                                    const pluginId = com.intellij.openapi.extensions.PluginId.getId("com.github.uiopak.lstcrc");
-                                    const plugin = com.intellij.ide.plugins.PluginManagerCore.getPlugin(pluginId);
-                                    if (plugin && plugin.getPluginClassLoader()) {
-                                        return java.lang.Class.forName(className, true, plugin.getPluginClassLoader());
-                                    }
-                                    return java.lang.Class.forName(className);
-                                };
-                                const namedScopeManager = com.intellij.psi.search.scope.packageSet.NamedScopeManager.getInstance(project);
-                                const createdScope = getPluginClass("com.github.uiopak.lstcrc.scopes.CreatedFilesScope").getDeclaredConstructor().newInstance();
-                                const modifiedScope = getPluginClass("com.github.uiopak.lstcrc.scopes.ModifiedFilesScope").getDeclaredConstructor().newInstance();
-                                const movedScope = getPluginClass("com.github.uiopak.lstcrc.scopes.MovedFilesScope").getDeclaredConstructor().newInstance();
-                                const deletedScope = getPluginClass("com.github.uiopak.lstcrc.scopes.DeletedFilesScope").getDeclaredConstructor().newInstance();
-                                const diffDataServiceClass = getPluginClass("com.github.uiopak.lstcrc.services.ProjectActiveDiffDataService");
-                                const diffDataService = project.getService(diffDataServiceClass);
-
-                                    function findBySuffix(files, suffix) {
-                                        if (!files) return null;
-                                        for (let i = 0; i < files.size(); i++) {
-                                            var candidate = files.get(i);
-                                            if (String(candidate.getPath()).endsWith("/" + suffix) || String(candidate.getPath()).endsWith("\\" + suffix)) {
-                                                return candidate;
-                                            }
-                                        }
-                                        return null;
-                                }
-
-                                    const createdFile = diffDataService ? findBySuffix(diffDataService.getCreatedFiles(), "NewFile.txt") : null;
-                                    const modifiedFile = diffDataService ? findBySuffix(diffDataService.getModifiedFiles(), "Main.txt") : null;
-                                    const movedFile = diffDataService ? findBySuffix(diffDataService.getMovedFiles(), "Moved.txt") : null;
-                                    const deletedFile = diffDataService ? findBySuffix(diffDataService.getDeletedFiles(), "ToDelete.txt") : null;
-
-                                    function contains(scope, file) {
-                                        if (!(scope && file && scope.getValue())) {
-                                            return false;
-                                        }
-                                        return scope.getValue().contains(file, project, namedScopeManager) === true;
-                                }
-
-                                result.set([
-                                        "activeBranch=" + (diffDataService ? diffDataService.getActiveBranchName() : "null"),
-                                    "createdFilePresent=" + (createdFile != null),
-                                    "modifiedFilePresent=" + (modifiedFile != null),
-                                    "movedFilePresent=" + (movedFile != null),
-                                        "created=" + contains(createdScope, createdFile),
-                                        "modified=" + contains(modifiedScope, modifiedFile),
-                                        "moved=" + contains(movedScope, movedFile),
-                                        "deleted=" + contains(deletedScope, deletedFile),
-                                    "deletedFilePresent=" + (deletedFile != null)
-                                ].join(";"));
-                            }
-                        }));
-                        return String(result.get());
-                    })();
-                    """.trimIndent(),
-                    true
-                )
-                
-                (
-                    scopesDebug.contains("created=true") &&
-                    scopesDebug.contains("modified=true") &&
-                    scopesDebug.contains("moved=true") &&
-                    scopesDebug.contains("deleted=true")
-                )
-            }
-
-            Assertions.assertTrue(
-                scopesDebug.contains("created=true") &&
-                    scopesDebug.contains("modified=true") &&
-                    scopesDebug.contains("moved=true") &&
-                    scopesDebug.contains("deleted=true"),
-                "HEAD scopes should classify created/modified/moved/deleted files correctly: $scopesDebug"
+            // On the HEAD tab each file is in its own scope and no other.
+            val expected = mapOf(
+                "LSTCRC.Created" to setOf("NewFile.txt"),
+                "LSTCRC.Modified" to setOf("Main.txt"),
+                "LSTCRC.Moved" to setOf("Moved.txt"),
+                "LSTCRC.Deleted" to setOf("ToDelete.txt")
             )
+            val candidates = listOf("NewFile.txt", "Main.txt", "Moved.txt", "ToDelete.txt")
+            var actual = emptyMap<String, Set<String>>()
+            runCatching {
+                waitFor(Duration.ofSeconds(20), interval = Duration.ofMillis(500)) {
+                    actual = expected.keys.associateWith { filesMatchingScope(it, candidates) }
+                    actual == expected
+                }
+            }
+            Assertions.assertEquals(expected, actual, "HEAD scopes should classify created/modified/moved/deleted files")
         }
     }
 }
