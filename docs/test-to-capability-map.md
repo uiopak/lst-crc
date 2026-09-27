@@ -44,6 +44,7 @@ Location: `src/test/kotlin/com/github/uiopak/lstcrc/{gutters,listeners,scopes,se
 | `LstCrcActionVisibilityTest.testRenameTabActionHiddenWithoutRenamableTabContext` | `C1.5` | Rename is hidden for other tool windows, the `HEAD` tab, tabs without a branch key and unrelated components. |
 | `LstCrcActionVisibilityTest.testOpenBranchSelectionTabActionHiddenWhenSelectionTabAlreadyExists` | `C2.1` | The add-tab action hides while the branch-selection tab is open. |
 | `LstCrcActionVisibilityTest.testOpenBranchSelectionTabActionVisibleWhenSelectionTabIsAbsent` | `C2.1` | The add-tab action shows when no branch-selection tab is open. |
+| `LstCrcActionVisibilityTest.testOpenBranchSelectionTabActionVisibleWhenAComparisonTabIsNamedLikeTheSelectionTab` | `C2.1` | A comparison tab renamed "Select Branch" does not hide the add-tab action. |
 | `LstCrcActionVisibilityTest.testSetRevisionAsRepoComparisonActionVisibleOnlyForSingleCommitSelectionWithActiveTab` | `C2.4` | Git Log repo-comparison action needs one selected commit and an active comparison tab. |
 | `LstCrcChangesBrowserTest.testRefreshPreservesTreeViewportPosition` | `C3.12` | A refresh keeps the scroll position. |
 | `LstCrcChangesBrowserTest.testRepeatedRefreshPreservesTreeViewportPosition` | `C3.12` | Repeated refreshes keep the scroll position. |
@@ -53,6 +54,7 @@ Location: `src/test/kotlin/com/github/uiopak/lstcrc/{gutters,listeners,scopes,se
 | `LstCrcChangesBrowserTest.testRefreshKeepsCollapsedFolderCollapsed` | `C3.9` | A refresh keeps a collapsed folder collapsed. |
 | `LstCrcChangesBrowserTest.testRefreshKeepsSelectedCollapsedFolderCollapsedAndSelected` | `C3.9` | Regression: a selected collapsed folder stays collapsed and selected after a refresh (the macOS tab-switch flake). |
 | `LstCrcChangesBrowserTest.testDiffKeyOfUnsavedEditChangesWithItsText` | `C4.1` | An open diff tab of an unsaved file is reused only for the same unsaved text. |
+| `LstCrcChangesBrowserTest.testDiffKeyChangesWhenTheTargetMovesToAnotherCommit` | `C4.1` | A diff tab opened before the target moved is not reused; it is replaced. |
 | `LstCrcChangesBrowserTest.testClearedDiffShowsLoadErrorInSelectedTab` | `C1.4` | Cleared diff data (a failed load) shows the error in the selected tab's browser. |
 | `LstCrcChangesBrowserTest.testAvailableContextMenuActionsIncludeProjectTreeForNonDeletedChange` | `C4.2` | The context menu offers "Show in Project" for existing files. |
 | `LstCrcChangesBrowserTest.testAvailableContextMenuActionsOmitProjectTreeForDeletedChange` | `C4.2` | The context menu omits "Show in Project" for deleted files. |
@@ -70,7 +72,7 @@ Location: `src/test/kotlin/com/github/uiopak/lstcrc/{gutters,listeners,scopes,se
 | `LstCrcSettingsServiceTest.testEveryDefinitionIsRegisteredOnce` | `C4.9` | Every setting definition is in `LstCrcSettingDefinitions.all` once. |
 | `LstCrcStatusWidgetTest.testPopupShowsTabNamesWithUnderscoresAsTyped` | `C1.5` | The widget popup shows branch names and aliases with underscores. |
 | `LstCrcStatusWidgetTest.testGetTextReturnsHeadWhenHeadIsSelectedEvenIfWidgetContextEnabled` | `C1.1` | The widget shows `HEAD` on the `HEAD` tab, without the context prefix. |
-| `LstCrcStatusWidgetTest.testGetTextUsesAliasPrefixAndTruncationForSelectedTab` | `C1.5`, `C4.5` | The widget shows the alias, the optional prefix, and truncates long names. |
+| `LstCrcStatusWidgetTest.testGetTextUsesAliasPrefixAndTruncationForSelectedTab` | `C1.5`, `C4.5` | The widget shows the alias and the optional prefix, cuts long names with an ellipsis, and its tooltip has the whole name. |
 | `LstCrcStatusWidgetTest.testGetTextFallsBackToPluginNameForInvalidSelectedTabIndex` | `C5.3` | An out-of-range selected index falls back to the plugin name. |
 | `LstCrcStatusWidgetTest.testPluginXmlStatusWidgetFactoryIdMatchesWidgetConstant` | `C4.5` | The widget id in `plugin.xml` matches the code. |
 | `MyToolWindowFactoryTest.testOnlyTheHeadTabSelectsHead` | `C1.1`, `C2.1` | Only the HEAD tab selects HEAD; the "Select Branch" tab keeps the current comparison. |
@@ -78,6 +80,7 @@ Location: `src/test/kotlin/com/github/uiopak/lstcrc/{gutters,listeners,scopes,se
 | `PluginStartupActivityTest.testInitialDiffLoadFailureDoesNotStopStartup` | `C5.1` | A failed first diff load is logged and startup continues. |
 | `ProjectActiveDiffDataServiceTest.testAcceptsHeadUpdateWhenHeadTabIsSelected` | `C1.1`, `C5.1` | `HEAD` results are applied while the `HEAD` tab is selected. |
 | `ProjectActiveDiffDataServiceTest.testRejectsStaleUpdateWhenSelectedBranchDoesNotMatch` | `C5.1` | Results for a tab that is no longer selected are dropped. |
+| `ProjectActiveDiffDataServiceTest.testRejectsUpdateWhenTheTabIsSwitchedBeforeItIsApplied` | `C5.1` | A result sent from a background thread is dropped when the tab changes before it is applied. |
 | `ProjectActiveDiffDataServiceTest.testRejectsHeadUpdateWhileComparisonTabIsSelected` | `C5.1` | `HEAD` results are dropped while a comparison tab is selected. |
 | `ProjectActiveDiffDataServiceTest.testUpdateActiveDiffWithIdenticalSnapshotBypassesNotification` | `C5.1` | Identical data does not re-notify listeners. |
 | `ProjectActiveDiffDataServiceTest.testSamePathsWithNewUnsavedContentPublishesNewChanges` | `C3.8`, `C5.1` | New unsaved content on the same paths is published; the same content is not. |

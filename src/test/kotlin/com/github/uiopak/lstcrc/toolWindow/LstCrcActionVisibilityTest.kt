@@ -5,6 +5,9 @@ import com.github.uiopak.lstcrc.resources.LstCrcBundle
 import com.github.uiopak.lstcrc.state.TabInfo
 import com.github.uiopak.lstcrc.state.ToolWindowState
 import com.github.uiopak.lstcrc.services.ToolWindowStateService
+import com.intellij.openapi.util.Disposer
+import com.github.uiopak.lstcrc.services.GitService
+import com.github.uiopak.lstcrc.services.BranchSnapshot
 import com.github.uiopak.lstcrc.utils.LstCrcKeys
 import com.intellij.openapi.actionSystem.ActionUiKind
 import com.intellij.openapi.actionSystem.AnActionEvent
@@ -144,12 +147,26 @@ class LstCrcActionVisibilityTest : LstCrcTestCase() {
 
     fun testOpenBranchSelectionTabActionHiddenWhenSelectionTabAlreadyExists() {
         val selectionTabName = LstCrcBundle.message("tab.name.select.branch")
-        val action = OpenBranchSelectionTabAction(project, toolWindowWithContents(createNamedContent(selectionTabName)))
+        val panel = BranchSelectionPanel(project.service<GitService>(), null, BranchSnapshot(listOf("main"), emptyList())) {}
+        Disposer.register(testRootDisposable, panel)
+        val selectionTab = ContentFactory.getInstance().createContent(panel, selectionTabName, false)
+        val action = OpenBranchSelectionTabAction(project, toolWindowWithContents(selectionTab))
 
         val event = actionEvent(action)
         action.update(event)
 
         assertFalse(event.presentation.isEnabledAndVisible)
+    }
+
+    // The "Select Branch" tab was found by its title, so a comparison tab renamed to that text hid the add-tab action.
+    fun testOpenBranchSelectionTabActionVisibleWhenAComparisonTabIsNamedLikeTheSelectionTab() {
+        val selectionTabName = LstCrcBundle.message("tab.name.select.branch")
+        val action = OpenBranchSelectionTabAction(project, toolWindowWithContents(createNamedContent(selectionTabName)))
+
+        val event = actionEvent(action)
+        action.update(event)
+
+        assertTrue(event.presentation.isEnabledAndVisible)
     }
 
     fun testOpenBranchSelectionTabActionVisibleWhenSelectionTabIsAbsent() {

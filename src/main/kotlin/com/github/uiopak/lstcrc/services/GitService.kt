@@ -92,7 +92,8 @@ class GitService(private val project: Project) {
             repositoryManager.getRepositoryForFile(projectBasePath)?.let { return it }
         }
 
-        logger.warn("Multiple Git repositories found, but none contains the project base path. Using the first one: ${repositories.first().root.path}")
+        // A normal multi-root layout (no repository at the project root), so not worth a warning on every call.
+        logger.debug { "Multiple Git repositories found, but none contains the project base path. Using the first one: ${repositories.first().root.path}" }
         return repositories.first()
     }
 

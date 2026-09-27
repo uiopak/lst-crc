@@ -95,14 +95,14 @@ class ProjectActiveDiffDataService(private val project: Project) : Disposable {
         branchNameFromEvent: String,
         categorizedChanges: CategorizedChanges
     ) {
-        // A null selection is the HEAD tab, whose loads are reported as "HEAD".
-        val currentToolWindowBranch = project.service<ToolWindowStateService>().getSelectedTabBranchName() ?: HEAD
-        if (branchNameFromEvent != currentToolWindowBranch) {
-            logger.debug { "updateActiveDiff - Update REJECTED as stale. Event branch '$branchNameFromEvent' does NOT match current tool window branch '$currentToolWindowBranch'." }
-            return
-        }
-
         onEdt {
+            // Checked where the result is applied: the selection may change before a later EDT turn.
+            // A null selection is the HEAD tab, whose loads are reported as "HEAD".
+            val currentToolWindowBranch = project.service<ToolWindowStateService>().getSelectedTabBranchName() ?: HEAD
+            if (branchNameFromEvent != currentToolWindowBranch) {
+                logger.debug { "updateActiveDiff - Update REJECTED as stale. Event branch '$branchNameFromEvent' does NOT match current tool window branch '$currentToolWindowBranch'." }
+                return@onEdt
+            }
             // Most edit-only refreshes return the same data; compare before building the path sets.
             val current = snapshot
             if (current.activeBranchName != branchNameFromEvent || !current.categorizedChanges.sameAs(categorizedChanges)) {

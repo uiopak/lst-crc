@@ -4,8 +4,10 @@ import com.github.uiopak.lstcrc.testsupport.categorizedChanges
 import com.github.uiopak.lstcrc.testsupport.flushEdt
 import com.github.uiopak.lstcrc.testsupport.selectComparisonTab
 import com.github.uiopak.lstcrc.testsupport.selectHeadTab
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.service
 import com.github.uiopak.lstcrc.testsupport.LstCrcTestCase
+import java.util.concurrent.TimeUnit
 
 class ProjectActiveDiffDataServiceTest : LstCrcTestCase() {
 
@@ -54,6 +56,26 @@ class ProjectActiveDiffDataServiceTest : LstCrcTestCase() {
         assertFalse(diffDataService.changedFilePaths.contains(staleFile.path))
         assertTrue(diffDataService.createdFilePaths.contains(selectedFile.path))
         assertFalse(diffDataService.createdFilePaths.contains(staleFile.path))
+    }
+
+    // A result sent from a background thread is applied on a later EDT turn; the tab may be switched before that.
+    fun testRejectsUpdateWhenTheTabIsSwitchedBeforeItIsApplied() {
+        val diffDataService = project.service<ProjectActiveDiffDataService>()
+        val staleFile = myFixture.addFileToProject("diff/SwitchedAway.txt", "stale\n").virtualFile
+
+        selectComparisonTab(project, "first-branch")
+        diffDataService.updateActiveDiff("first-branch", categorizedChanges())
+        flushEdt()
+
+        // Sent while "first-branch" is still selected, applied only when this EDT turn ends.
+        ApplicationManager.getApplication().executeOnPooledThread {
+            diffDataService.updateActiveDiff("first-branch", categorizedChanges(createdFiles = listOf(staleFile)))
+        }.get(10, TimeUnit.SECONDS)
+        selectComparisonTab(project, "second-branch")
+        flushEdt()
+
+        assertFalse(diffDataService.createdFilePaths.contains(staleFile.path))
+        selectHeadTab(project)
     }
 
     fun testRejectsHeadUpdateWhileComparisonTabIsSelected() {
