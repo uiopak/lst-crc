@@ -20,6 +20,12 @@ This file lists refactoring opportunities in `src/main` that were checked agains
 
 ## Done
 
+- The 2026-09 ninth pass (plugin fixes and improvements, each with a test that failed before it where one can):
+  - **A reused diff tab no longer shows old content.** Opening a file's diff again reused the open tab even after a fetch, commit or checkout moved the target, and the tab still compared against the old target content. The reuse key now includes the commit each repository's target points to (Git4Idea's in-memory state, no git call); a tab of the same selection opened against an older commit is closed and replaced.
+  - **The "Select Branch" tab is found by its panel, not its title.** A comparison tab renamed "Select Branch" hid the add-tab action and would have been taken for the branch picker.
+  - **Stale results are rejected where they are applied.** `updateActiveDiff` checked the selected tab before scheduling the update on the EDT; a tab switch in between let a result for the old tab through.
+  - **The status widget cuts long names with an ellipsis** (at 20 characters in all) instead of silently, and its tooltip shows the whole name.
+  - A multi-root project without a repository at the project root no longer logs a warning on every primary-repository lookup; that layout is normal.
 - The 2026-09 eighth pass (Remote Robot test code only, no plugin change):
   - `plugin/utils/JsScripts.kt` holds the JavaScript the scripts shared by copy: the open project, the plugin class loader, the tool window, "reload the selected comparison and wait" and "notice external changes". `IdeaFrame`, `GitChangesViewFixture`, `BranchSelectionFixture`, `ActiveDiffQueries` and `PluginUiTestSteps` use it instead of their own copies.
   - `PluginUiTestSteps` has one refresh after git commands and file writes (it now also refreshes the VFS after git commands, which change files on disk).

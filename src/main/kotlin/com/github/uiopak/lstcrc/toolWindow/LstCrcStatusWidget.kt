@@ -49,6 +49,9 @@ class LstCrcStatusWidget(private val project: Project) : StatusBarWidget, Status
     companion object {
         const val ID = "LstCrcStatusWidget"
 
+        /** The longest tab name the widget shows in full. */
+        private const val MAX_LABEL_LENGTH = 20
+
         fun refresh(project: Project) {
             WindowManager.getInstance().getStatusBar(project)?.updateWidget(ID)
         }
@@ -78,17 +81,27 @@ class LstCrcStatusWidget(private val project: Project) : StatusBarWidget, Status
      */
     override fun getText(): String {
         if (project.isDisposed) return ""
-        // Read the live selection rather than `state`, which deep-copies all tabs on every status bar repaint.
-        val stateService = project.service<ToolWindowStateService>()
-        val selectedTab = stateService.getSelectedTabInfo() ?: return LstCrcBundle.message(
-            if (stateService.isHeadSelected()) "tab.name.head" else "plugin.name.short"
-        )
+        val (label, isComparisonTab) = selectedTabLabel()
+        if (!isComparisonTab) return label
         val prefix = if (ToolWindowSettingsProvider.isShowWidgetContext()) LstCrcBundle.message("widget.context.prefix") else ""
-        return prefix + selectedTab.displayName.take(20)
+        // Long names are cut with an ellipsis, so a cut name is not mistaken for the whole one; the tooltip has it all.
+        val shownLabel = if (label.length > MAX_LABEL_LENGTH) label.take(MAX_LABEL_LENGTH - 1) + "\u2026" else label
+        return prefix + shownLabel
     }
 
+    override fun getTooltipText(): String =
+        if (project.isDisposed) "" else LstCrcBundle.message("widget.tooltip", selectedTabLabel().first)
 
-    override fun getTooltipText(): String = LstCrcBundle.message("widget.tooltip")
+    /**
+     * The selected tab's full name and whether it is a comparison tab. Reads the live selection rather than `state`,
+     * which deep-copies all tabs on every status bar repaint.
+     */
+    private fun selectedTabLabel(): Pair<String, Boolean> {
+        val stateService = project.service<ToolWindowStateService>()
+        val selectedTab = stateService.getSelectedTabInfo()
+            ?: return LstCrcBundle.message(if (stateService.isHeadSelected()) "tab.name.head" else "plugin.name.short") to false
+        return selectedTab.displayName to true
+    }
 
     override fun getAlignment(): Float {
         return Component.CENTER_ALIGNMENT

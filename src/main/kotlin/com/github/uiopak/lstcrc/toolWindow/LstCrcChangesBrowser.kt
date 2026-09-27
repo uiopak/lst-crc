@@ -6,9 +6,11 @@ import com.github.uiopak.lstcrc.messaging.DIFF_DATA_CHANGED_TOPIC
 import com.github.uiopak.lstcrc.resources.LstCrcBundle
 import com.github.uiopak.lstcrc.scopes.DELETED_SCOPE_ID
 import com.github.uiopak.lstcrc.services.CategorizedChanges
+import com.github.uiopak.lstcrc.services.GitService
 import com.github.uiopak.lstcrc.services.ProjectActiveDiffDataService
 import com.github.uiopak.lstcrc.services.TextContentRevision
 import com.github.uiopak.lstcrc.services.ToolWindowStateService
+import com.github.uiopak.lstcrc.services.resolveCommitHash
 import com.intellij.diff.editor.ChainDiffVirtualFile
 import com.intellij.diff.editor.DiffEditorTabFilesManager
 import com.intellij.ide.projectView.ProjectView
@@ -71,11 +73,6 @@ class LstCrcChangesBrowser(
     private val targetBranchToCompare: String,
     parentDisposable: Disposable
 ) : AsyncChangesBrowserBase(project, false, true), Disposable, UiDataProvider {
-
-    private data class DiffSelectionKey(
-        val comparisonTarget: String,
-        val changes: List<DiffChangeKey>
-    )
 
     private class ReusableChangeDiffVirtualFile(
         chain: ChangeDiffRequestChain,
@@ -239,12 +236,13 @@ class LstCrcChangesBrowser(
     private fun openDiff(changes: List<Change>) {
         if (changes.isEmpty()) return
 
-        val diffKey = DiffSelectionKey(targetBranchToCompare, changes.map { it.toDiffChangeKey() })
+        val diffKey = DiffSelectionKey(targetBranchToCompare, changes.map { it.toDiffChangeKey() }, currentTargetCommits())
         val diffFilesManager = DiffEditorTabFilesManager.getInstance(project)
-        FileEditorManager.getInstance(project).openFiles
-            .filterIsInstance<ReusableChangeDiffVirtualFile>()
-            .firstOrNull { it.diffKey == diffKey }
-            ?.let { diffFilesManager.showDiffFile(it, true); return }
+        val fileEditorManager = FileEditorManager.getInstance(project)
+        val openDiffs = fileEditorManager.openFiles.filterIsInstance<ReusableChangeDiffVirtualFile>()
+        openDiffs.firstOrNull { it.diffKey == diffKey }?.let { diffFilesManager.showDiffFile(it, true); return }
+        // The same selection against an older commit of the target (a fetch or commit moved it) shows old content.
+        openDiffs.filter { it.diffKey.isOlderVersionOf(diffKey) }.forEach(fileEditorManager::closeFile)
 
         val producers = changes.mapNotNull { ChangeDiffRequestProducer.create(project, it) }
         if (producers.size != changes.size) {
@@ -254,6 +252,14 @@ class LstCrcChangesBrowser(
 
         val chain = ChangeDiffRequestChain(ListSelection.createAt(producers, 0))
         diffFilesManager.showDiffFile(ReusableChangeDiffVirtualFile(chain, diffKey, changes.first().diffFileDisplayName()), true)
+    }
+
+    /** The commit each repository's comparison target points to now, from Git4Idea's in-memory state. */
+    private fun currentTargetCommits(): Map<String, String?> {
+        val targets = project.service<ProjectActiveDiffDataService>().activeComparisonContext
+        return project.service<GitService>().getRepositories()
+            .mapNotNull { repo -> targets[repo.root.path]?.let { repo.root.path to resolveCommitHash(repo, it) } }
+            .toMap()
     }
 
     private fun Change.diffFileDisplayName(): String {
@@ -609,6 +615,20 @@ class LstCrcChangesBrowser(
         })
     }
 
+}
+
+/**
+ * Identifies an open diff tab, so opening the same selection again reuses it. [targetCommits] (repository root to the
+ * commit its target pointed to, or null when that is unknown) makes a tab opened before the target moved not match.
+ */
+internal data class DiffSelectionKey(
+    val comparisonTarget: String,
+    val changes: List<DiffChangeKey>,
+    val targetCommits: Map<String, String?>
+) {
+    /** The same selection, opened while the target pointed to another commit. */
+    fun isOlderVersionOf(other: DiffSelectionKey): Boolean =
+        this != other && comparisonTarget == other.comparisonTarget && changes == other.changes
 }
 
 /**

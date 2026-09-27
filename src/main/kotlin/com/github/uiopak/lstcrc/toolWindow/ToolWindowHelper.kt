@@ -130,8 +130,9 @@ object ToolWindowHelper {
     internal fun findContentByDisplayName(contentManager: ContentManager, displayName: String): Content? =
         contentManager.contents.firstOrNull { it.displayName == displayName }
 
+    /** The "Select Branch" tab, found by its panel: a comparison tab may be renamed to the same text. */
     internal fun findBranchSelectionContent(contentManager: ContentManager): Content? =
-        findContentByDisplayName(contentManager, branchSelectionTabName())
+        contentManager.contents.firstOrNull { it.component is BranchSelectionPanel }
 
     /**
      * Opens a temporary "Select Branch" tab in the tool window.

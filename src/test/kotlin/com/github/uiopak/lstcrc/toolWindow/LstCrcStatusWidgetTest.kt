@@ -50,10 +50,18 @@ class LstCrcStatusWidgetTest : LstCrcTestCase() {
             )
         )
 
+        // A cut name ends with an ellipsis (20 characters in all), and the tooltip shows the whole name.
         assertEquals(
-            LstCrcBundle.message("widget.context.prefix") + longAlias.take(20),
+            LstCrcBundle.message("widget.context.prefix") + longAlias.take(19) + "\u2026",
             widget.getText()
         )
+        assertTrue(widget.getTooltipText(), widget.getTooltipText().contains(longAlias))
+
+        // A name of exactly 20 characters is shown whole.
+        stateService.loadState(
+            ToolWindowState(openTabs = listOf(TabInfo(branchName = "renamed-feature-menu")), selectedTabIndex = 0)
+        )
+        assertEquals(LstCrcBundle.message("widget.context.prefix") + "renamed-feature-menu", widget.getText())
     }
 
     fun testGetTextFallsBackToPluginNameForInvalidSelectedTabIndex() {

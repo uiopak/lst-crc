@@ -149,7 +149,7 @@ This document lists each current `src/main` file separately and explains why it 
 ## Tool Window UI And Actions
 
 ### ToolWindowHelper.kt
-- Role: Shared helper for creating tabs, opening the branch-selection tab, and standardizing content setup.
+- Role: Shared helper for creating tabs, opening the branch-selection tab (found by its `BranchSelectionPanel`, not its title), and standardizing content setup.
 - Depends on: Tool-window content APIs, `ToolWindowStateService`, `GitService`, `LstCrcChangesBrowser`, and `BranchSelectionPanel`.
 - Connected to: `MyToolWindowFactory`, tool-window actions, and the UI test bridge.
 - Why it exists: Tab creation and branch-selection tab management are shared workflows used from multiple entry points.
@@ -167,7 +167,7 @@ This document lists each current `src/main` file separately and explains why it 
 - Why it exists: Branch selection is a real workflow of its own and needs a reusable, testable UI component.
 
 ### LstCrcChangesBrowser.kt
-- Role: Main per-tab changes browser. It subscribes to `DIFF_DATA_CHANGED_TOPIC`, rebuilds the tree while keeping the viewport, defines the change actions (diff, source, project tree), colors deleted rows, reuses open diff tabs, and exposes `*ForTest` hooks for the UI tests.
+- Role: Main per-tab changes browser. It subscribes to `DIFF_DATA_CHANGED_TOPIC`, rebuilds the tree while keeping the viewport, defines the change actions (diff, source, project tree), colors deleted rows, reuses open diff tabs (only while the target points to the same commit), and exposes `*ForTest` hooks for the UI tests.
 - Depends on: `AsyncChangesBrowserBase`, tree models, `ToolWindowSettingsProvider`, `ProjectActiveDiffDataService`, diff APIs, `RepoNodeRenderer`, `ExpandNewNodesStateStrategy`, and `ChangesTreeClickHandler`.
 - Connected to: `ToolWindowHelper`, `MyToolWindowFactory`, `ToolWindowSettingsProvider` (view rebuilds), and the UI tests.
 - Why it exists: It is the primary user-facing comparison UI and the place where active diff data becomes an interactive tree.

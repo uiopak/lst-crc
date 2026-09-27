@@ -241,6 +241,19 @@ class LstCrcChangesBrowserTest : LstCrcTestCase() {
         }
     }
 
+    // A diff tab opened before the target moved (a fetch or commit) was reused and showed the old target content.
+    fun testDiffKeyChangesWhenTheTargetMovesToAnotherCommit() {
+        val changeKeys = listOf(change("Main.txt", beforeContent = "base\n", afterContent = "updated\n").toDiffChangeKey())
+        val opened = DiffSelectionKey("feature", changeKeys, mapOf("/repo" to "1".repeat(40)))
+        val reopened = opened.copy(targetCommits = mapOf("/repo" to "2".repeat(40)))
+
+        assertFalse("a moved target must not reuse the tab", opened == reopened)
+        assertTrue("the old tab is replaced", opened.isOlderVersionOf(reopened))
+        assertFalse(reopened.isOlderVersionOf(reopened))
+        assertFalse("another selection is left open", opened.copy(changes = emptyList()).isOlderVersionOf(reopened))
+        assertFalse("another tab's diff is left open", opened.copy(comparisonTarget = "other").isOlderVersionOf(reopened))
+    }
+
     fun testDiffKeyOfUnsavedEditChangesWithItsText() {
         val filePath = VcsUtil.getFilePath("/repo/Main.txt", false)
         fun unsavedEdit(text: String) = Change(

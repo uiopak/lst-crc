@@ -32,7 +32,7 @@
 | `C2.1` | A filter matching a folder or category selects its first branch | `BranchSelectionPanelTest.testFilterMatchingAFolderSelectsItsFirstBranch` |
 | `C2.1` | Branch filter does not persist when the picker is reopened | `LstCrcInteractionUiTest.testBranchSelectionFilterDoesNotPersistAcrossReopen`, `BranchSelectionPanelTest.testNewPanelReopensWithFullBranchSnapshotAfterPreviousFilter` |
 | `C2.1` | Selecting the branch-selection tab keeps the current comparison | `MyToolWindowFactoryTest.testOnlyTheHeadTabSelectsHead` |
-| `C2.1` | Add-tab action hides while the branch-selection tab already exists | `LstCrcActionVisibilityTest.testOpenBranchSelectionTabActionHiddenWhenSelectionTabAlreadyExists`, `LstCrcActionVisibilityTest.testOpenBranchSelectionTabActionVisibleWhenSelectionTabIsAbsent` |
+| `C2.1` | Add-tab action hides while the branch-selection tab already exists | `LstCrcActionVisibilityTest.testOpenBranchSelectionTabActionHiddenWhenSelectionTabAlreadyExists`, `LstCrcActionVisibilityTest.testOpenBranchSelectionTabActionVisibleWhenSelectionTabIsAbsent`, `LstCrcActionVisibilityTest.testOpenBranchSelectionTabActionVisibleWhenAComparisonTabIsNamedLikeTheSelectionTab` |
 | `C2.2` | Multi-root branch picker uses the primary repository branch list | `LstCrcMultiRootStarterUiTest.testBranchSelectionUsesPrimaryRepositoryBranchesInMultiRootProject` |
 | `C2.3` | Repo comparison dialog changes one repository target | `LstCrcInteractionStarterUiTest.testRepositoryComparisonToolbarDialogAllowsChangingComparison` |
 | `C2.3` | Per-repository overrides affect only the selected root | `LstCrcMultiRootStarterUiTest.testMultiRootComparisonOverrideAppliesOnlyToSelectedRepository` |
@@ -110,6 +110,7 @@
 | `C4.1` | Configured click actions trigger the expected behaviors | `LstCrcInteractionUiTest.testToolWindowClickActions`, `LstCrcInteractionStarterUiTest.testToolWindowClickActions`, `LstCrcSettingsUiTest.testAdditionalClickSettings`, `LstCrcSettingsStarterUiTest.testAdditionalClickSettings` |
 | `C4.1` | Each mouse button uses its own settings; other buttons do nothing | `LstCrcChangesBrowserTest.testConfiguredClickActionLookupUsesButtonSpecificSettings`, `LstCrcChangesBrowserTest.testConfiguredClickActionLookupFallsBackToNoneForUnsupportedButtons` |
 | `C4.1` | An open diff tab of an unsaved file is reused only for the same unsaved text | `LstCrcChangesBrowserTest.testDiffKeyOfUnsavedEditChangesWithItsText` |
+| `C4.1` | An open diff tab is replaced, not reused, once the target points to another commit | `LstCrcChangesBrowserTest.testDiffKeyChangesWhenTheTargetMovesToAnotherCommit` |
 | `C4.1` | Open Source wins over a focused diff, and Show Diff reuses an open diff tab | `LstCrcInteractionUiTest.testContextMenuOpenSourceWinsOverFocusedDiffAndReusesDiff`, `LstCrcInteractionStarterUiTest.testContextMenuOpenSourceWinsOverFocusedDiffAndReusesDiff` |
 | `C4.2` | Right-click can switch from configured actions to context-menu mode | `LstCrcInteractionUiTest.testContextMenuActionsWhenEnabled`, `LstCrcInteractionStarterUiTest.testContextMenuActionsWhenEnabled`, `LstCrcSettingsUiTest.testAdditionalClickSettings`, `LstCrcSettingsStarterUiTest.testAdditionalClickSettings` |
 | `C4.2` | The context menu offers "Show in Project" only for files that exist | `LstCrcChangesBrowserTest.testAvailableContextMenuActionsIncludeProjectTreeForNonDeletedChange`, `LstCrcChangesBrowserTest.testAvailableContextMenuActionsOmitProjectTreeForDeletedChange` |
@@ -141,7 +142,7 @@
 | `C5.1` | Refresh responds during branch-repair flow | `LstCrcInteractionStarterUiTest.testMissingBranchComparisonTargetRecoversToHeadAndShowsWarning` |
 | `C5.1` | Active-diff updates apply for `HEAD` only when `HEAD` semantics are selected | `ProjectActiveDiffDataServiceTest.testAcceptsHeadUpdateWhenHeadTabIsSelected` |
 | `C5.1` | Active-diff updates reject `HEAD` events while a comparison tab is selected | `ProjectActiveDiffDataServiceTest.testRejectsHeadUpdateWhileComparisonTabIsSelected` |
-| `C5.1` | Active-diff updates reject stale branch results after tab selection changes | `ProjectActiveDiffDataServiceTest.testRejectsStaleUpdateWhenSelectedBranchDoesNotMatch` |
+| `C5.1` | Active-diff updates reject stale branch results after tab selection changes, also when the tab changes before the result is applied | `ProjectActiveDiffDataServiceTest.testRejectsStaleUpdateWhenSelectedBranchDoesNotMatch`, `ProjectActiveDiffDataServiceTest.testRejectsUpdateWhenTheTabIsSwitchedBeforeItIsApplied` |
 | `C5.1` | Identical data does not re-notify listeners | `ProjectActiveDiffDataServiceTest.testUpdateActiveDiffWithIdenticalSnapshotBypassesNotification` |
 | `C5.2` | Persisted tab state is defensively copied | `ToolWindowStateServicePersistenceTest.testLoadStateAndGetStateDefensivelyCopyNestedTabState` |
 | `C5.2` | Alias and repo-override state persists across restart | `LstCrcMultiRootStarterUiTest.testTabsAliasesAndRepoOverridesRestoreAfterRestart`, `ToolWindowStateServicePersistenceTest.testUpdateTabComparisonMapCopiesOverridesWithoutRefreshWhenDisabled` |

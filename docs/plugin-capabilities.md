@@ -27,7 +27,7 @@ LST-CRC is an IntelliJ Platform plugin for comparing the current working tree ag
 
 - `C2.1` Searchable branch picker.
 	- Users can open the add-tab branch picker from the tool window or the status-bar widget.
-	- The add-tab affordance hides itself while the temporary branch-selection tab is already open.
+	- The add-tab affordance hides itself while the temporary branch-selection tab is already open. That tab is recognized by its content, so a comparison tab renamed "Select Branch" does not count.
 	- Typing a filter selects the first branch it leaves, also when the text matches a folder or the local/remote category, so Enter adds that branch.
 	- Selecting the temporary branch-selection tab keeps the current comparison active; only the `HEAD` tab selects `HEAD`.
 - `C2.2` Primary-repository branch sourcing in multi-root projects.
@@ -106,6 +106,7 @@ LST-CRC is an IntelliJ Platform plugin for comparing the current working tree ag
 - `C4.1` Configurable click actions.
 	- Single, double, middle, and right click interactions can be mapped to source, diff, project-view, or no-op behaviors.
 	- Opening the diff for a selection that already has an open diff tab reuses that tab. For a file with unsaved edits the tab is reused only while the unsaved text is the same; after more typing a new diff opens with the current text.
+	- A diff tab is also reused only while the comparison target points to the same commit. After a fetch, commit or checkout moves it, opening the diff again replaces the old tab with one showing the current target content.
 - `C4.2` Right-click mode switch.
 	- Right click can either follow the configured action model or open the context menu.
 - `C4.3` Double-click delay setting.
@@ -114,6 +115,7 @@ LST-CRC is an IntelliJ Platform plugin for comparing the current working tree ag
 	- Users can show or hide the tool-window title independently of the rest of the UI.
 - `C4.5` Status widget context prefix.
 	- The widget can optionally show the `LST-CRC:` context prefix before the active tab label.
+	- Tab names longer than 20 characters are cut with an ellipsis; the widget's tooltip shows the whole name.
 - `C4.6` Context-label visibility settings.
 	- Context labels are configurable separately for single-repo tabs, multi-repo tabs, and revision/commit tabs.
 	- The multi-repo label toggle is distinct from the single-repo label toggle.
@@ -134,7 +136,7 @@ LST-CRC is an IntelliJ Platform plugin for comparing the current working tree ag
 	- Startup plus changelist, repository and document listeners keep the active comparison synchronized with local and repository changes.
 	- Refresh covers unsaved edits, saves, external file changes, branch changes, and repository-level updates, debounced so typing does not run git on every keystroke.
 	- A burst of unsaved edits alone reuses the last git result and only overlays the edited documents; saves and VCS or repository events reload the comparison from disk.
-	- Async diff application rejects stale results whose comparison identity no longer matches the selected tab.
+	- Async diff application rejects stale results whose comparison identity no longer matches the selected tab, checked when the result is applied.
 - `C5.2` Persistent project UI state.
 	- Open tabs, the selected tab, aliases, and per-repository comparison overrides survive IDE restart.
 	- Alias state and per-root overrides survive restart together.
