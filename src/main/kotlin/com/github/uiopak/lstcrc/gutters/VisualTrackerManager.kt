@@ -100,9 +100,7 @@ class VisualTrackerManager(
             }
         })
 
-        busConnection.subscribe(GitRepository.GIT_REPO_CHANGE, GitRepositoryChangeListener {
-            loadedRevisions.clear()
-        })
+        busConnection.subscribe(GitRepository.GIT_REPO_CHANGE, GitRepositoryChangeListener { onRepositoryChanged() })
 
         // Listen for Diff Data changes (Tab switching)
         busConnection.subscribe(DIFF_DATA_CHANGED_TOPIC, ActiveDiffDataChangedListener { refreshAllTrackers() })
@@ -119,6 +117,16 @@ class VisualTrackerManager(
             }
         })
 
+    }
+
+    /**
+     * A branch or HEAD may now point elsewhere, so forget which revisions were loaded and re-check the editors on
+     * screen (others are re-checked when selected). The refresh that follows only re-checks trackers when the diff
+     * data changed, which it may not (same files, same line stats) even though the target moved.
+     */
+    internal fun onRepositoryChanged() {
+        loadedRevisions.clear()
+        refreshAllTrackers(visibleOnly = true)
     }
 
     /**

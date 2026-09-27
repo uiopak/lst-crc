@@ -96,6 +96,86 @@ class VisualTrackerManagerBehaviorTest : LstCrcTestCase() {
         }
     }
 
+    // Regression: a repository change only forgot the loaded revisions, so an open editor kept comparing against
+    // the old commit when the refresh that followed published no new diff data.
+    fun testRepositoryChangeRechecksTheTrackersOfVisibleEditors() {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val manager = VisualTrackerManager(project, scope)
+        val file = myFixture.addFileToProject("Visible.txt", "text\n").virtualFile
+        myFixture.openFileInEditor(file)
+        val document = FileDocumentManager.getInstance().getDocument(file)!!
+
+        try {
+            manager.ensureVisualTracker(document, file, "feature")
+            assertNotNull(manager.findStandaloneTracker(document))
+
+            // The file is in no repository, so a re-check finds no target and releases its tracker.
+            manager.onRepositoryChanged()
+
+            val deadline = System.currentTimeMillis() + 10_000
+            while (manager.findStandaloneTracker(document) != null && System.currentTimeMillis() < deadline) {
+                PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
+                Thread.sleep(20)
+            }
+            assertNull("A repository change should re-check the visible editor's tracker", manager.findStandaloneTracker(document))
+        } finally {
+            Disposer.dispose(manager)
+            scope.cancel()
+        }
+    }
+
+    // Regression (round five): toggling "Include HEAD tab changes in file scopes" only asked for a reload, which found
+    // the same data and changed nothing, so gutters (and file colours) ignored the new value.
+    fun testIncludeHeadToggleRechecksTrackers() {
+        val manager = project.service<VisualTrackerManager>()
+        val settings = com.intellij.openapi.application.ApplicationManager.getApplication().service<com.github.uiopak.lstcrc.toolWindow.LstCrcSettingsService>()
+        val definition = com.github.uiopak.lstcrc.toolWindow.LstCrcSettingDefinitions.INCLUDE_HEAD_IN_SCOPES
+        val original = settings[definition]
+        val file = myFixture.addFileToProject("IncludeHead.txt", "text\n").virtualFile
+        myFixture.openFileInEditor(file)
+        val document = FileDocumentManager.getInstance().getDocument(file)!!
+
+        try {
+            // Load the data first, so the reload an old version of the toggle asked for finds nothing new.
+            val load = project.service<com.github.uiopak.lstcrc.services.ToolWindowStateService>().refreshDataForCurrentSelection()
+            PlatformTestUtil.waitWithEventsDispatching("The first load did not finish", { load.isDone }, 10)
+            dispatchEventsFor(millis = 500) // lets the re-check that the first load triggered finish
+            manager.ensureVisualTracker(document, file, "feature")
+            dispatchEventsFor(millis = 500)
+            assertNotNull("Precondition: nothing else re-checks the tracker", manager.findStandaloneTracker(document))
+            val toggle = allActions(com.github.uiopak.lstcrc.toolWindow.ToolWindowSettingsProvider.createToolWindowSettingsGroup())
+                .filterIsInstance<com.intellij.openapi.actionSystem.ToggleAction>()
+                .single { it.templateText == com.github.uiopak.lstcrc.resources.LstCrcBundle.message("settings.include.head.in.scopes") }
+            val event = com.intellij.testFramework.TestActionEvent.createTestEvent(
+                toggle,
+                com.intellij.openapi.actionSystem.impl.SimpleDataContext.getProjectContext(project)
+            )
+
+            toggle.setSelected(event, !original)
+
+            // The file is in no repository, so the re-check finds no target and releases its tracker.
+            val deadline = System.currentTimeMillis() + 10_000
+            while (manager.findStandaloneTracker(document) != null && System.currentTimeMillis() < deadline) {
+                PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
+                Thread.sleep(20)
+            }
+            assertNull("Toggling the setting should re-check gutter trackers", manager.findStandaloneTracker(document))
+        } finally {
+            settings[definition] = original
+        }
+    }
+
+    private fun dispatchEventsFor(millis: Long) {
+        val end = System.currentTimeMillis() + millis
+        while (System.currentTimeMillis() < end) {
+            PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
+            Thread.sleep(20)
+        }
+    }
+
+    private fun allActions(action: com.intellij.openapi.actionSystem.AnAction): List<com.intellij.openapi.actionSystem.AnAction> =
+        listOf(action) + ((action as? com.intellij.openapi.actionSystem.DefaultActionGroup)?.childActionsOrStubs.orEmpty().flatMap { allActions(it) })
+
     private fun createTracker(text: String, baseText: String): SimpleLocalLineStatusTracker {
         val file = LightVirtualFile("tracker-behavior.txt", PlainTextFileType.INSTANCE, text)
         return createTracker(file, baseText)
