@@ -128,14 +128,10 @@ internal fun untrackedChanges(project: Project, root: VirtualFile, output: Strin
     }
 
 /**
- * Paths `git diff` reported as added. They have no content in the target, so loading it for the unsaved-edit
- * overlay could only fail. Untracked files (status UNKNOWN) are not included: they can exist in the target.
- */
-/**
  * What a repository shows after its `git diff` failed: nothing when the target is missing (the tab then resets
  * to HEAD), otherwise its last result for the same target and settings, so a passing failure (another git
  * command holding a lock) doesn't blank the tree and reopen collapsed folders when the changes come back.
- * Without such a result, [withoutTrackedChanges]. The next refresh runs `git diff` again either way.
+ * Without such a result, what `withoutTrackedChanges` builds. The next refresh runs `git diff` again either way.
  */
 internal inline fun <T : Any> diskChangesAfterDiffFailure(targetMissing: Boolean, lastResult: T?, withoutTrackedChanges: () -> T): T? =
     when {
@@ -144,6 +140,10 @@ internal inline fun <T : Any> diskChangesAfterDiffFailure(targetMissing: Boolean
         else -> withoutTrackedChanges()
     }
 
+/**
+ * Paths `git diff` reported as added. They have no content in the target, so loading it for the unsaved-edit
+ * overlay could only fail. Untracked files (status UNKNOWN) are not included: they can exist in the target.
+ */
 internal fun trackedAddedPaths(changes: List<Change>): Set<String> =
     changes.mapNotNullTo(HashSet()) { change -> change.afterRevision?.file?.path?.takeIf { change.fileStatus == FileStatus.ADDED } }
 

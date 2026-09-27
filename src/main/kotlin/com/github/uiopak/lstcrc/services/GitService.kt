@@ -221,8 +221,11 @@ class GitService(private val project: Project) {
                 loadTrackedChangesAgainstWorkingTree(repo, key.target, key.includeLineStats)
             } catch (e: VcsException) {
                 logger.warn("git diff failed for repo '${repo.root.name}' against target '${key.target}': ${e.message}")
-                val targetMissing = failures != null && !revisionExists(project, repo.root, key.target)
-                if (targetMissing) failures?.set(repo, key.target)
+                var targetMissing = false
+                if (failures != null && !revisionExists(project, repo.root, key.target)) {
+                    failures[repo] = key.target
+                    targetMissing = true
+                }
                 val lastResult = lastDiskChanges[repo.root.path]?.takeIf { it.key == key }
                 return diskChangesAfterDiffFailure(targetMissing, lastResult) {
                     buildDiskChanges(repo, key, LoadedChanges.EMPTY)
