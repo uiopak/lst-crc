@@ -1,5 +1,6 @@
 package com.github.uiopak.lstcrc.services
 
+import com.intellij.openapi.vcs.VcsException
 import com.github.uiopak.lstcrc.state.TabInfo
 import com.intellij.testFramework.LightVirtualFile
 import com.github.uiopak.lstcrc.testsupport.LstCrcTestCase
@@ -70,5 +71,35 @@ class GitServiceComparisonTargetTest : LstCrcTestCase() {
         assertNull(resolveCommitHash(repo, "v1.0"))
         assertNull(resolveCommitHash(repo, "4444444"))
         assertNull(resolveCommitHash(repo, "missing-branch"))
+    }
+
+    // Regression: any git diff failure blanked the repository for one refresh; the changes then came back as "new"
+    // and reopened every collapsed folder. A missing target still resets the tab (round five).
+    fun testDiffFailureKeepsTheLastResultUnlessTheTargetIsMissing() {
+        val lastResult = "last"
+
+        assertEquals("last", diskChangesAfterDiffFailure(targetMissing = false, lastResult = lastResult) { "empty" })
+        assertEquals("empty", diskChangesAfterDiffFailure<String>(targetMissing = false, lastResult = null) { "empty" })
+        assertNull(diskChangesAfterDiffFailure(targetMissing = true, lastResult = lastResult) { "empty" })
+    }
+
+    // Regression (round five): an untracked file with unsaved edits ran a failing `git show` on every refresh.
+    fun testRevisionContentCacheRemembersFilesMissingFromACommit() {
+        val cache = RevisionContentCache()
+        var loads = 0
+        val missing = { loads++; throw VcsException("Path 'New.txt' does not exist in 'abc'") }
+
+        repeat(2) {
+            assertThrows(VcsException::class.java) { cache.get("/repo", "a".repeat(40), "New.txt", Charsets.UTF_8, missing) }
+        }
+        assertEquals("A missing file must be looked up once per commit", 1, loads)
+
+        var otherFailures = 0
+        repeat(2) {
+            assertThrows(VcsException::class.java) {
+                cache.get("/repo", "a".repeat(40), "Other.txt", Charsets.UTF_8) { otherFailures++; throw VcsException("fatal: unable to read") }
+            }
+        }
+        assertEquals("Other failures must not be remembered", 2, otherFailures)
     }
 }

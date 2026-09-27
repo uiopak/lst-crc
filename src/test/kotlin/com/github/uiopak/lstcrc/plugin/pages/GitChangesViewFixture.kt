@@ -164,13 +164,18 @@ class GitChangesViewFixture(remoteRobot: RemoteRobot, remoteComponent: RemoteCom
     }
 
     /**
-     * The changes tree of the selected tab. Uses a longer lookup timeout than Remote Robot's 2 s default:
-     * a failed lookup throws, and `waitFor` does not retry on exceptions, so a tab that takes a little
-     * longer to build its tree (slow CI runners) would otherwise abort the whole surrounding wait.
+     * The changes tree of the selected tab. Searched from the IDE root rather than this fixture, which may be a
+     * tab that was switched away from, but only inside the visible browser, so a tab being switched out can't
+     * answer instead. Uses a longer lookup timeout than Remote Robot's 2 s default: a failed lookup throws, and
+     * `waitFor` does not retry on exceptions, so a tab that takes a little longer to build its tree (slow CI
+     * runners) would otherwise abort the whole surrounding wait.
      */
     val changesTree: ContainerFixture
         get() = remoteRobot.find(
-            byXpath("//div[@class='LstCrcAsyncChangesTree' or @class='ChangesTree']"),
+            byXpath(
+                "//div[@class='LstCrcChangesBrowser' and @visible='true']" +
+                    "//div[@class='LstCrcAsyncChangesTree' or @class='ChangesTree']"
+            ),
             Duration.ofSeconds(10)
         )
 

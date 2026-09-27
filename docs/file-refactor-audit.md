@@ -20,9 +20,15 @@ This file lists refactoring opportunities in `src/main` that were checked agains
 
 ## Done
 
+- The 2026-09 sixth pass (bug fixes, each with a regression test):
+  - **A collapsed folder stays collapsed after a refresh when it is selected.** The tree saved a selected folder as the changes under it, and selecting those again made `JTree` expand the folder. This was the cause of the flaky macOS `testTreeStatePersistsAcrossTabSwitches`.
+  - **A passing `git diff` failure keeps the repository's last result** instead of showing only untracked files and unsaved edits for one refresh.
+  - **Gutter markers are re-checked when the repository changes** (commit, checkout, reset), even when the active diff data stays the same.
+  - Tests were added for earlier fixes that had none: startup cancellation, moved files in the gutter and in the unsaved-edit overlay, the `Include HEAD in scopes` toggle, and the negative revision-content cache.
+  - Diagnostics: Remote Robot runs log the plugin at debug level and upload the IDE log, and a failed run prints the plugin's log lines in the job output.
 - The 2026-09 fifth pass (bug fixes first):
   - **A branch named like a file or folder compares.** `git diff <target>` had no `--`, so a branch `docs` next to a `docs` folder failed as an ambiguous argument and the tab fell back to `HEAD`.
-  - **A failed `git diff` resets a tab to `HEAD` only when the target is really missing** (`git rev-parse --verify` fails). Other failures show untracked files and unsaved edits for one refresh and retry.
+  - **A failed `git diff` resets a tab to `HEAD` only when the target is really missing** (`git rev-parse --verify` fails). Other failures show untracked files and unsaved edits for one refresh and retry (since the sixth pass they keep the last result).
   - **Moved files compare with their old path**, in the gutter (which marked every line as added) and in the unsaved-edit overlay (whose line stats stayed at the disk version, after a failing `git show` per refresh).
   - **Selecting the "Select Branch" tab keeps the current comparison.** It used to count as the HEAD tab, so picking a branch flipped gutters, scopes and the widget to `HEAD` and reloaded twice.
   - **`Include HEAD in scopes` takes effect at once.** It asked for a reload, which finds identical data and is skipped since the first pass; it now re-evaluates trackers, file statuses and tab colors.

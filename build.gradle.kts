@@ -652,6 +652,8 @@ intellijPlatformTesting {
                         "-Djetbrainsd.discovery.enabled=false",
                         "-Djetbrainsd.uri.handling.enabled=false",
                         "-Djetbrainsd.launch.on.start=false",
+                        // The plugin's debug lines (refreshes, tree state) go to idea.log, which a failed CI run uploads.
+                        "-Didea.log.debug.categories=#com.github.uiopak.lstcrc",
                     )
                 }
             }

@@ -15,6 +15,8 @@ Location: `src/test/kotlin/com/github/uiopak/lstcrc/{gutters,listeners,scopes,se
 | `BranchSelectionPanelTest.testNewPanelReopensWithFullBranchSnapshotAfterPreviousFilter` | `C2.1` | A new panel starts unfiltered after an earlier panel was filtered. |
 | `GitServiceComparisonTargetTest.testResolveComparisonTargetPrecedence` | `C2.3` | A per-repository override wins over the tab target; the `HEAD` tab compares against `HEAD`. |
 | `GitServiceComparisonTargetTest.testResolveCommitHashUsesRepositoryStateAndRejectsAmbiguousRevisions` | `C3.8` | Revision content is cached only under a commit hash resolved from `HEAD`, a branch or a full hash; tags and short hashes are not cached. |
+| `GitServiceComparisonTargetTest.testDiffFailureKeepsTheLastResultUnlessTheTargetIsMissing` | `C2.5` | Regression: a passing `git diff` failure keeps the last result; a missing target gives no result. |
+| `GitServiceComparisonTargetTest.testRevisionContentCacheRemembersFilesMissingFromACommit` | `C3.8` | Regression: a file missing from a commit is remembered, so `git show` does not run on every refresh. |
 | `GitServiceLineStatsTest.testCalculateLineStatsIgnoresLineEndingOnlyDifferences` | `C3.10` | CRLF/LF-only differences count as no change. |
 | `GitServiceLineStatsTest.testCalculateLineStatsCountsRealChangesWhenLineEndingsAlsoDiffer` | `C3.10` | Real edits still count when line endings differ too. |
 | `GitServiceLineStatsTest.testCalculateLineStatsForSingleLineReplacement` | `C3.10` | A replaced line counts as one added and one removed. |
@@ -26,6 +28,7 @@ Location: `src/test/kotlin/com/github/uiopak/lstcrc/{gutters,listeners,scopes,se
 | `GitServiceLineStatsTest.testCreateLiveDocumentContentRevisionReadsLatestUnsavedDocumentText` | `C3.8` | The unsaved-overlay revision reads the editor's current text. |
 | `GitServiceLineStatsTest.testCreateLiveDocumentContentRevisionAllowsBackgroundThreadAccess` | `C3.8` | The unsaved-overlay revision can be read off the EDT. |
 | `GitServiceLineStatsTest.testLiveDocumentContentRevisionsAreEqualOnlyForTheSameText` | `C3.8` | Two loads of the same unsaved text are equal; different text is not. |
+| `GitServiceLineStatsTest.testUnsavedEditOfMovedFileIsComparedWithItsOldPath` | `C3.8` | Regression: an unsaved edit of a moved file is compared with the old path's content in the target. |
 | `GitServiceOverlayMergeTest.testPreservesNewChangeTypeWhenUnsavedOverlayIsApplied` | `C3.8` | Unsaved edits to a new file keep it `NEW`/`ADDED`. |
 | `GitServiceOverlayMergeTest.testKeepsModificationOverlayForNonNewFiles` | `C3.8` | Unsaved edits to other files stay modifications. |
 | `GitServiceOverlayMergeTest.testTrackedAddedPathsSkipsUntrackedAndModifiedFiles` | `C3.8` | Only files `git diff` reports as added skip the target-content lookup. |
@@ -43,6 +46,8 @@ Location: `src/test/kotlin/com/github/uiopak/lstcrc/{gutters,listeners,scopes,se
 | `LstCrcChangesBrowserTest.testRefreshPreservesTopViewportWhenSelectionIsOffscreen` | `C3.12` | A refresh keeps the view at the top when the selection is offscreen. |
 | `LstCrcChangesBrowserTest.testRefreshDoesNotMoveViewportWhileSelectionIsOffscreen` | `C3.12` | A refresh does not scroll to an offscreen selection. |
 | `LstCrcChangesBrowserTest.testRefreshDoesNotMoveViewportForSelectedAddedFileWhileOffscreen` | `C3.12` | A refresh does not scroll to an offscreen selected added file. |
+| `LstCrcChangesBrowserTest.testRefreshKeepsCollapsedFolderCollapsed` | `C3.9` | A refresh keeps a collapsed folder collapsed. |
+| `LstCrcChangesBrowserTest.testRefreshKeepsSelectedCollapsedFolderCollapsedAndSelected` | `C3.9` | Regression: a selected collapsed folder stays collapsed and selected after a refresh (the macOS tab-switch flake). |
 | `LstCrcChangesBrowserTest.testDiffKeyOfUnsavedEditChangesWithItsText` | `C4.1` | An open diff tab of an unsaved file is reused only for the same unsaved text. |
 | `LstCrcChangesBrowserTest.testAvailableContextMenuActionsIncludeProjectTreeForNonDeletedChange` | `C4.2` | The context menu offers "Show in Project" for existing files. |
 | `LstCrcChangesBrowserTest.testAvailableContextMenuActionsOmitProjectTreeForDeletedChange` | `C4.2` | The context menu omits "Show in Project" for deleted files. |
@@ -63,11 +68,14 @@ Location: `src/test/kotlin/com/github/uiopak/lstcrc/{gutters,listeners,scopes,se
 | `LstCrcStatusWidgetTest.testGetTextFallsBackToPluginNameForInvalidSelectedTabIndex` | `C5.3` | An out-of-range selected index falls back to the plugin name. |
 | `LstCrcStatusWidgetTest.testPluginXmlStatusWidgetFactoryIdMatchesWidgetConstant` | `C4.5` | The widget id in `plugin.xml` matches the code. |
 | `MyToolWindowFactoryTest.testOnlyTheHeadTabSelectsHead` | `C1.1`, `C2.1` | Only the HEAD tab selects HEAD; the "Select Branch" tab keeps the current comparison. |
+| `PluginStartupActivityTest.testInitialDiffLoadPropagatesCancellation` | `C5.1` | Regression: cancelling startup cancels the wait for the first diff load instead of logging it as a failure. |
+| `PluginStartupActivityTest.testInitialDiffLoadFailureDoesNotStopStartup` | `C5.1` | A failed first diff load is logged and startup continues. |
 | `ProjectActiveDiffDataServiceTest.testAcceptsHeadUpdateWhenHeadTabIsSelected` | `C1.1`, `C5.1` | `HEAD` results are applied while the `HEAD` tab is selected. |
 | `ProjectActiveDiffDataServiceTest.testRejectsStaleUpdateWhenSelectedBranchDoesNotMatch` | `C5.1` | Results for a tab that is no longer selected are dropped. |
 | `ProjectActiveDiffDataServiceTest.testRejectsHeadUpdateWhileComparisonTabIsSelected` | `C5.1` | `HEAD` results are dropped while a comparison tab is selected. |
 | `ProjectActiveDiffDataServiceTest.testUpdateActiveDiffWithIdenticalSnapshotBypassesNotification` | `C5.1` | Identical data does not re-notify listeners. |
 | `ProjectActiveDiffDataServiceTest.testSamePathsWithNewUnsavedContentPublishesNewChanges` | `C3.8`, `C5.1` | New unsaved content on the same paths is published; the same content is not. |
+| `ProjectActiveDiffDataServiceTest.testMovedFileIsLookedUpByItsOldPathInTheTarget` | `C3.7` | Regression: the gutter of a moved file compares with its old path in the target. |
 | `RepoNodeRendererTest.testAddedLineStatsUseBuiltInSuccessForeground` | `C3.10` | Added counts use the theme's success color. |
 | `RepoNodeRendererTest.testRemovedLineStatsUseBuiltInErrorAttributes` | `C3.10` | Removed counts use the theme's error color. |
 | `RepoNodeRendererTest.testBuildTrailingMetadataTextIncludesVisibleLineStatsAndRevision` | `C3.5`, `C3.10` | Rows show the target and the line counts. |
@@ -95,6 +103,8 @@ Location: `src/test/kotlin/com/github/uiopak/lstcrc/{gutters,listeners,scopes,se
 | `VisualTrackerManagerBehaviorTest.testStandaloneTrackerInstallsGutterHighlightersForWholeNewFile` | `C3.7`, `C4.8` | The standalone tracker for a new file draws gutter markers. |
 | `VisualTrackerManagerBehaviorTest.testVisualTrackerManagerCleanupOnTrackerRemoved` | `C3.7` | Visual trackers are released with the native tracker. |
 | `VisualTrackerManagerBehaviorTest.testStandaloneTrackerIsReleasedWhenItsLastEditorCloses` | `C3.7` | A standalone tracker is released when its file's last editor closes. |
+| `VisualTrackerManagerBehaviorTest.testRepositoryChangeRechecksTheTrackersOfVisibleEditors` | `C3.7` | Regression: a repository change re-checks the trackers of visible editors even when the diff data is unchanged. |
+| `VisualTrackerManagerBehaviorTest.testIncludeHeadToggleRechecksTrackers` | `C4.7`, `C3.7` | Regression: toggling `Include HEAD in scopes` re-checks the trackers at once. |
 
 ## Remote Robot UI Tests
 

@@ -142,6 +142,44 @@ class GitServiceLineStatsTest : LstCrcTestCase() {
         assertEquals("alphaX\nbetaY\n", content)
     }
 
+    // Regression (round five): an unsaved edit of a moved file was compared with the file's new path, which the
+    // target doesn't have, so its line stats never followed the text (and git show failed on every refresh).
+    fun testUnsavedEditOfMovedFileIsComparedWithItsOldPath() {
+        val repoPath = Files.createTempDirectory("lstcrc-moved-unsaved-")
+        var document: com.intellij.openapi.editor.Document? = null
+
+        try {
+            initializeTrackedStatsGitRepo(repoPath)
+            runGit(repoPath, "mv", "Main.txt", "Moved.txt")
+            val head = runGit(repoPath, "rev-parse", "HEAD").trim()
+            val root = LocalFileSystem.getInstance().refreshAndFindFileByNioFile(repoPath)!!
+            val moved = LocalFileSystem.getInstance().refreshAndFindFileByNioFile(repoPath.resolve("Moved.txt"))!!
+            document = FileDocumentManager.getInstance().getDocument(moved)!!
+            WriteCommandAction.runWriteCommandAction(project) { document.setText("alpha\nbeta edited\ngamma\n") }
+            val repo = java.lang.reflect.Proxy.newProxyInstance(
+                git4idea.repo.GitRepository::class.java.classLoader,
+                arrayOf(git4idea.repo.GitRepository::class.java)
+            ) { _, method, _ ->
+                when (method.name) {
+                    "getRoot" -> root
+                    "getCurrentRevision" -> head
+                    "getBranches" -> git4idea.branch.GitBranchesCollection(emptyMap(), emptyMap(), emptyList())
+                    else -> null
+                }
+            } as git4idea.repo.GitRepository
+            val oldPath = com.intellij.vcsUtil.VcsUtil.getFilePath(repoPath.resolve("Main.txt").toString(), false)
+
+            val changes = GitService(project).collectUnsavedDocumentChanges(repo, "HEAD", emptySet(), mapOf(moved.path to oldPath))
+
+            assertEquals(1, changes.size)
+            assertEquals("alpha\nbeta\ngamma\n", changes.single().beforeRevision?.content)
+            assertEquals("alpha\nbeta edited\ngamma\n", changes.single().afterRevision?.content)
+        } finally {
+            document?.let { doc -> WriteCommandAction.runWriteCommandAction(project) { FileDocumentManager.getInstance().reloadFromDisk(doc) } }
+            repoPath.toFile().deleteRecursively()
+        }
+    }
+
     private fun initializeTrackedStatsGitRepo(projectPath: Path) {
         runGit(projectPath, "init", "--initial-branch=main")
         runGit(projectPath, "config", "user.name", "LST-CRC Tests")

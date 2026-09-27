@@ -158,7 +158,7 @@ This document lists each current `src/main` file separately and explains why it 
 - Role: Tree-state strategy that preserves user expansion state while auto-expanding parents of newly added changes.
 - Depends on: Changes-tree state APIs, `TreeUtil`, `VirtualFile`, `FilePath`, and `File` for typed node identity resolution.
 - Connected to: `LstCrcChangesBrowser` tree rebuilding.
-- Why it exists: The browser needs to surface newly introduced files without discarding the user's manual tree state, and it must restore selection without `TreeState.applyTo()` so offscreen selections do not recenter the viewport.
+- Why it exists: The browser needs to surface newly introduced files without discarding the user's manual tree state, and it must restore selection without `TreeState.applyTo()` so offscreen selections do not recenter the viewport. A selected folder is restored as the folder, because selecting the changes under it would expand it again.
 
 ### BranchSelectionPanel.kt
 - Role: Searchable tree UI for choosing a branch. Typing filters the tree (rebuilt from the matching branch names) and selects the first match; Enter or a click picks the branch.

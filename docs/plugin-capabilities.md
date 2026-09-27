@@ -39,7 +39,7 @@ LST-CRC is an IntelliJ Platform plugin for comparing the current working tree ag
 - `C2.5` Missing-branch repair flow.
 	- If a branch target disappears in one repository, the plugin surfaces a notification that routes the user back to repository-level reconfiguration.
 	- The repair flow can reset only the broken repository root instead of discarding the whole tab.
-	- Only a target git cannot resolve counts as missing. Other `git diff` failures show that repository's untracked files and unsaved edits for one refresh and retry on the next. A branch named like a file or folder is compared as a branch.
+	- Only a target git cannot resolve counts as missing. Other `git diff` failures keep that repository's last result (or show only its untracked files and unsaved edits when there is none yet) and retry on the next refresh. A branch named like a file or folder is compared as a branch.
 - `C2.6` Missing-commit handling.
 	- Missing commit hashes are treated differently from missing branches and do not follow the same warning-and-repair flow.
 

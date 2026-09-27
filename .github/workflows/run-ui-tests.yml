@@ -441,11 +441,29 @@ jobs:
           fi
         shell: bash
 
+      # runIdeForUiTests writes the IDE log to .intellijPlatform/sandbox/<project>/<ide>/log_runIdeForUiTests.
       - name: Copy logs
         if: ${{ failure() }}
         run: |
-          if [ -d "build/idea-sandbox/system/log" ]; then
-            mv build/idea-sandbox/system/log build/reports/
+          for log_dir in .intellijPlatform/sandbox/*/*/log_runIdeForUiTests; do
+            if [ -d "$log_dir" ]; then
+              mkdir -p build/reports/ide-log
+              cp -R "$log_dir"/. build/reports/ide-log/
+            fi
+          done
+        shell: bash
+
+      # The artifact needs a separate download; the job log is readable wherever the run is.
+      - name: Print IDE log excerpt
+        if: ${{ failure() }}
+        run: |
+          log=build/reports/ide-log/idea.log
+          if [ -f "$log" ]; then
+            # Plugin categories are abbreviated in the log: com.github.uiopak.lstcrc -> #c.g.u.l.
+            echo "LST-CRC, WARN and ERROR lines of the IDE log (last 300):"
+            grep -E '#c\.g\.u\.l\.|WARN|ERROR' "$log" | tail -n 300 || true
+          else
+            echo "No IDE log found at $log"
           fi
         shell: bash
 

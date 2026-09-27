@@ -10,6 +10,7 @@ import com.intellij.openapi.vcs.FilePath
 import com.intellij.openapi.vcs.FileStatus
 import com.intellij.openapi.vcs.changes.Change
 import com.intellij.openapi.vcs.changes.ContentRevision
+import com.intellij.openapi.vcs.changes.ui.AsyncChangesTree
 import com.intellij.openapi.vcs.history.VcsRevisionNumber
 import com.intellij.testFramework.PlatformTestUtil
 import com.github.uiopak.lstcrc.testsupport.LstCrcTestCase
@@ -185,6 +186,40 @@ class LstCrcChangesBrowserTest : LstCrcTestCase() {
                 listOf(initialPosition),
                 viewportPositions.distinct()
             )
+        }
+    }
+
+    fun testRefreshKeepsCollapsedFolderCollapsed() {
+        withBrowserFixture {
+            displayChanges(browser, nestedDeletedFileChanges())
+            waitForRowCount(tree, minimumRows = 2)
+            onEdt { assertTrue(browser.setExpandedForVisibleNodeTextForTest("featureA", false)) }
+            flushUiEvents()
+
+            displayChangesAndWaitForRebuild(browser, nestedDeletedFileChanges())
+
+            assertEquals("A refresh must not reopen a collapsed folder", listOf("featureA"), visibleRowNames(tree))
+        }
+    }
+
+    // Regression: the selection was restored as the changes under a selected folder, and selecting them made
+    // JTree expand the folder again (the macOS flake of testTreeStatePersistsAcrossTabSwitches).
+    fun testRefreshKeepsSelectedCollapsedFolderCollapsedAndSelected() {
+        withBrowserFixture {
+            displayChanges(browser, nestedDeletedFileChanges())
+            waitForRowCount(tree, minimumRows = 2)
+            onEdt {
+                selectRowContaining(tree, "OnlyA.txt")
+                // Collapsing a folder moves the selection from its file to the folder.
+                assertTrue(browser.setExpandedForVisibleNodeTextForTest("featureA", false))
+            }
+            flushUiEvents()
+            assertEquals("Precondition: the collapsed folder is selected", listOf("featureA"), selectedRowNames(tree))
+
+            displayChangesAndWaitForRebuild(browser, nestedDeletedFileChanges())
+
+            assertEquals("A refresh must not reopen a selected collapsed folder", listOf("featureA"), visibleRowNames(tree))
+            assertEquals("A refresh must keep the folder, not its files, selected", listOf("featureA"), selectedRowNames(tree))
         }
     }
 
@@ -389,6 +424,38 @@ class LstCrcChangesBrowserTest : LstCrcTestCase() {
             scrollPane.viewport.doLayout()
         }
         flushUiEvents()
+    }
+
+    /** One file deleted in the comparison, two folders deep, so the tree shows a folder row and a file row. */
+    private fun nestedDeletedFileChanges(): CategorizedChanges = CategorizedChanges(
+        allChanges = listOf(change(path = "${project.basePath}/nested/featureA/OnlyA.txt", beforeContent = "only a\n", afterContent = null)),
+        createdFiles = emptyList(),
+        modifiedFiles = emptyList(),
+        movedFiles = emptyList(),
+        deletedFiles = emptyList(),
+        comparisonContext = emptyMap(),
+        lineStatsByChange = emptyMap()
+    )
+
+    /** Displays [changes] and waits until the tree has applied the rebuilt model. */
+    private fun displayChangesAndWaitForRebuild(browser: LstCrcChangesBrowser, changes: CategorizedChanges) {
+        val rebuilt = java.util.concurrent.CountDownLatch(1)
+        displayChanges(browser, changes)
+        onEdt { (browser.viewerTree() as AsyncChangesTree).invokeAfterRefresh { rebuilt.countDown() } }
+        repeat(100) {
+            if (rebuilt.count == 0L) return flushUiEvents()
+            flushUiEvents()
+            Thread.sleep(50)
+        }
+        fail("The changes tree was not rebuilt")
+    }
+
+    private fun visibleRowNames(tree: JTree): List<String> = onEdt {
+        (0 until tree.rowCount).map { tree.getPathForRow(it).lastPathComponent.toString().substringAfterLast('/') }
+    }
+
+    private fun selectedRowNames(tree: JTree): List<String> = onEdt {
+        tree.selectionPaths.orEmpty().map { it.lastPathComponent.toString().substringAfterLast('/') }
     }
 
     private fun waitForRowCount(tree: JTree, minimumRows: Int) {

@@ -213,7 +213,6 @@ class GitService(private val project: Project) {
         failures: MutableMap<GitRepository, String>?
     ): DiskChanges? {
         repo.update()
-        var cacheable = true
         val trackedChanges = if (repo.isFresh) {
             logger.debug { "Repo '${repo.root.name}' is fresh. Showing only untracked files and unsaved edits for target '${key.target}'." }
             LoadedChanges.EMPTY
@@ -222,28 +221,30 @@ class GitService(private val project: Project) {
                 loadTrackedChangesAgainstWorkingTree(repo, key.target, key.includeLineStats)
             } catch (e: VcsException) {
                 logger.warn("git diff failed for repo '${repo.root.name}' against target '${key.target}': ${e.message}")
-                // Only a target git cannot resolve is reported, which resets the tab to HEAD for good. Any other
-                // failure (for example while another git command runs) shows no tracked changes this time and is
-                // retried on the next refresh.
+                var targetMissing = false
                 if (failures != null && !revisionExists(project, repo.root, key.target)) {
                     failures[repo] = key.target
-                    lastDiskChanges.remove(repo.root.path)
-                    return null
+                    targetMissing = true
                 }
-                cacheable = false
-                LoadedChanges.EMPTY
+                val lastResult = lastDiskChanges[repo.root.path]?.takeIf { it.key == key }
+                return diskChangesAfterDiffFailure(targetMissing, lastResult) {
+                    buildDiskChanges(repo, key, LoadedChanges.EMPTY)
+                }.also { if (it !== lastResult) lastDiskChanges.remove(repo.root.path) }
             }
         }
 
+        return buildDiskChanges(repo, key, trackedChanges).also { lastDiskChanges[repo.root.path] = it }
+    }
+
+    /** [trackedChanges] plus [repo]'s untracked files (when shown) and, with line stats on, their counts. */
+    private fun buildDiskChanges(repo: GitRepository, key: DiskChangesKey, trackedChanges: LoadedChanges): DiskChanges {
         val untrackedChanges = if (key.includeUntracked) loadUntrackedChanges(repo) else emptyList()
         val changes = trackedChanges.changes + untrackedChanges
         val loaded = LoadedChanges(
             changes = changes,
             lineStatsByChange = if (key.includeLineStats) buildLineStats(changes, trackedChanges.lineStatsByChange, emptySet()) else emptyMap()
         )
-        val diskChanges = DiskChanges(key, loaded, overlayTarget = if (repo.isFresh) HEAD else key.target)
-        if (cacheable) lastDiskChanges[repo.root.path] = diskChanges else lastDiskChanges.remove(repo.root.path)
-        return diskChanges
+        return DiskChanges(key, loaded, overlayTarget = if (repo.isFresh) HEAD else key.target)
     }
 
     /**
@@ -402,7 +403,7 @@ class GitService(private val project: Project) {
      * Changes for [repo]'s unsaved documents against [targetRevision]. A moved file is compared with its old
      * path ([movedFrom]), which is where the target has it.
      */
-    private fun collectUnsavedDocumentChanges(
+    internal fun collectUnsavedDocumentChanges(
         repo: GitRepository,
         targetRevision: String,
         addedPaths: Set<String>,
