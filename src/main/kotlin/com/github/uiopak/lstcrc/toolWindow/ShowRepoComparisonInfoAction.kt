@@ -7,7 +7,6 @@ import com.github.uiopak.lstcrc.services.GitService
 import com.intellij.icons.AllIcons
 import com.intellij.ide.DataManager
 import com.intellij.openapi.actionSystem.ActionUpdateThread
-import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.DefaultActionGroup
 import com.intellij.openapi.components.service
@@ -46,9 +45,7 @@ internal class ShowRepoComparisonInfoAction : DumbAwareAction(
         for (repo in repositories.sortedBy { it.root.name }) {
             val currentTarget = gitService.resolveComparisonTarget(repo, tabInfo)
             val actionText = LstCrcBundle.message("changes.browser.repo.node.full.comparison.text", repo.root.name, currentTarget)
-            actionGroup.add(object : AnAction(actionText) {
-                override fun actionPerformed(e: AnActionEvent) = SingleRepoBranchSelectionDialog(project, repo, tabInfo).show()
-            })
+            actionGroup.add(plainTextAction(actionText) { SingleRepoBranchSelectionDialog(project, repo, tabInfo).show() })
         }
 
         val dataContext = DataManager.getInstance().getDataContext(e.inputEvent?.component)

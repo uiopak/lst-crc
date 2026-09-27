@@ -41,6 +41,20 @@ class ToolWindowStateServicePersistenceTest : LstCrcTestCase() {
         assertEquals("feature-a", service.getSelectedTabInfo()?.branchName)
     }
 
+    fun testRemoveTabSelectsTheTabBeforeTheRemovedSelectedTab() {
+        val service = project.service<ToolWindowStateService>()
+        service.loadState(
+            ToolWindowState(
+                openTabs = listOf(TabInfo(branchName = "feature-a"), TabInfo(branchName = "feature-b"), TabInfo(branchName = "feature-c")),
+                selectedTabIndex = 1
+            )
+        )
+
+        service.removeTab("feature-b")
+
+        assertEquals("feature-a", service.getSelectedTabInfo()?.branchName)
+    }
+
     fun testRemoveTabShiftsSelectedIndexWhenEarlierTabIsRemoved() {
         val service = project.service<ToolWindowStateService>()
         service.loadState(

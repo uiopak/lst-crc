@@ -83,7 +83,7 @@ This document lists each current `src/main` file separately and explains why it 
 ## Core Services
 
 ### GitService.kt
-- Role: Sole Git and Git4Idea integration boundary for repository discovery, change loading, revision content, and branch snapshots. It keeps the last on-disk diff per repository, which edit-only refreshes reuse, and overlays unsaved documents (a moved file against its old path). A failed `git diff` is reported as a missing target only when `git rev-parse` cannot resolve it.
+- Role: Sole Git and Git4Idea integration boundary for repository discovery, change loading, revision content, and branch snapshots. It keeps the last on-disk diff per repository, which edit-only refreshes reuse, and overlays unsaved documents (a moved file against its old path). A failed `git diff` is reported as a missing target only when `git rev-parse` cannot resolve it. Its `runSilentGit` runs the plugin's own git commands without echoing them to the VCS console.
 - Depends on: Git4Idea, low-level Git commands, VCS `Change` models, and plugin state types such as `TabInfo`.
 - Connected to: `ToolWindowStateService`, `VisualTrackerManager`, settings code, and branch-selection flows.
 - Why it exists: Centralizing all Git logic keeps the rest of the plugin from depending directly on IntelliJ VCS internals.
@@ -161,7 +161,7 @@ This document lists each current `src/main` file separately and explains why it 
 - Why it exists: The browser needs to surface newly introduced files without discarding the user's manual tree state, and it must restore selection without `TreeState.applyTo()` so offscreen selections do not recenter the viewport. A selected folder is restored as the folder, because selecting the changes under it would expand it again.
 
 ### BranchSelectionPanel.kt
-- Role: Searchable tree UI for choosing a branch. Typing filters the tree (rebuilt from the matching branch names) and selects the first match; Enter or a click picks the branch.
+- Role: Searchable tree UI for choosing a branch. Typing filters the tree (rebuilt from the matching branch names) and selects the first branch left, also when the text matched a folder or category; Enter or a click picks the branch.
 - Depends on: `GitService` or a pre-fetched `BranchSnapshot`, Swing and IntelliJ tree/search components, and localized strings. It never runs git itself, so it can be built on the EDT.
 - Connected to: `ToolWindowHelper`, `SingleRepoBranchSelectionDialog`, and branch-selection tests.
 - Why it exists: Branch selection is a real workflow of its own and needs a reusable, testable UI component.
@@ -209,9 +209,9 @@ This document lists each current `src/main` file separately and explains why it 
 - Why it exists: The public API cannot hide the tool-window title after creation; keeping the internal calls here makes them easy to find on IDE upgrades.
 
 ### LstCrcActionContext.kt
-- Role: Small helpers for actions: the selected LST-CRC tab, and the single selected revision or commit in the Git Log.
+- Role: Small helpers for actions: the selected LST-CRC tab, the single selected revision or commit in the Git Log, and `plainTextAction`, a popup item whose text keeps its underscores (plain action texts read `_` as a mnemonic).
 - Depends on: `ToolWindowStateService`, `VcsDataKeys`, and `VcsLogDataKeys`.
-- Connected to: `CreateTabFromRevisionAction`, `SetRevisionAsRepoComparisonAction`, and `ShowRepoComparisonInfoAction`.
+- Connected to: `CreateTabFromRevisionAction`, `SetRevisionAsRepoComparisonAction`, `ShowRepoComparisonInfoAction`, and `LstCrcStatusWidget`.
 - Why it exists: Several actions need the same selection lookups.
 
 ### OpenBranchSelectionTabAction.kt

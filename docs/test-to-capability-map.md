@@ -11,6 +11,7 @@ Location: `src/test/kotlin/com/github/uiopak/lstcrc/{gutters,listeners,scopes,se
 | Test | Capability IDs | What it checks |
 | --- | --- | --- |
 | `BranchSelectionPanelTest.testFilterSelectsFirstMatchingBranchFromStableSnapshot` | `C2.1` | Typing a filter keeps matching branches and selects the first match. |
+| `BranchSelectionPanelTest.testFilterMatchingAFolderSelectsItsFirstBranch` | `C2.1` | A filter matching a folder or category selects its first branch, so Enter has a branch to add. |
 | `BranchSelectionPanelTest.testEnterSubmitsSelectedBranch` | `C2.1` | Enter on the selected branch submits it. |
 | `BranchSelectionPanelTest.testNewPanelReopensWithFullBranchSnapshotAfterPreviousFilter` | `C2.1` | A new panel starts unfiltered after an earlier panel was filtered. |
 | `GitServiceComparisonTargetTest.testResolveComparisonTargetPrecedence` | `C2.3` | A per-repository override wins over the tab target; the `HEAD` tab compares against `HEAD`. |
@@ -33,6 +34,8 @@ Location: `src/test/kotlin/com/github/uiopak/lstcrc/{gutters,listeners,scopes,se
 | `GitServiceOverlayMergeTest.testKeepsModificationOverlayForNonNewFiles` | `C3.8` | Unsaved edits to other files stay modifications. |
 | `GitServiceOverlayMergeTest.testTrackedAddedPathsSkipsUntrackedAndModifiedFiles` | `C3.8` | Only files `git diff` reports as added skip the target-content lookup. |
 | `GitServiceOverlayMergeTest.testUntrackedChangesKeepBackslashesInFileNames` | `C3.11` | `git ls-files -z` paths are not unescaped. |
+| `GitServiceOverlayMergeTest.testUntrackedChangesKeepFileNamesMadeOfSpaces` | `C3.11` | An untracked file whose name is only spaces is kept. |
+| `GitServiceOverlayMergeTest.testParseTrackedDiffKeepsTabsInNumstatPaths` | `C3.10` | A tab in a `--numstat -z` path stays part of the path, so the file keeps its line stats. |
 | `GitServiceOverlayMergeTest.testParseTrackedDiffReadsRawAndNumstatRecordsIncludingRenames` | `C3.1`, `C3.10` | `git diff --raw --numstat -z` output becomes changes and line stats, renames included, and moved files map to their old path. |
 | `LstCrcActionVisibilityTest.testShowRepoComparisonInfoActionHiddenOnHeadAndVisibleForComparisonTab` | `C2.3` | Repo-comparison toolbar action is hidden on `HEAD` and shown on comparison tabs. |
 | `LstCrcActionVisibilityTest.testCreateTabFromRevisionActionVisibleOnlyForSingleRevisionSelection` | `C1.3` | Git Log "create tab" needs exactly one selected revision. |
@@ -49,6 +52,7 @@ Location: `src/test/kotlin/com/github/uiopak/lstcrc/{gutters,listeners,scopes,se
 | `LstCrcChangesBrowserTest.testRefreshKeepsCollapsedFolderCollapsed` | `C3.9` | A refresh keeps a collapsed folder collapsed. |
 | `LstCrcChangesBrowserTest.testRefreshKeepsSelectedCollapsedFolderCollapsedAndSelected` | `C3.9` | Regression: a selected collapsed folder stays collapsed and selected after a refresh (the macOS tab-switch flake). |
 | `LstCrcChangesBrowserTest.testDiffKeyOfUnsavedEditChangesWithItsText` | `C4.1` | An open diff tab of an unsaved file is reused only for the same unsaved text. |
+| `LstCrcChangesBrowserTest.testClearedDiffShowsLoadErrorInSelectedTab` | `C1.4` | Cleared diff data (a failed load) shows the error in the selected tab's browser. |
 | `LstCrcChangesBrowserTest.testAvailableContextMenuActionsIncludeProjectTreeForNonDeletedChange` | `C4.2` | The context menu offers "Show in Project" for existing files. |
 | `LstCrcChangesBrowserTest.testAvailableContextMenuActionsOmitProjectTreeForDeletedChange` | `C4.2` | The context menu omits "Show in Project" for deleted files. |
 | `LstCrcChangesBrowserTest.testConfiguredClickActionLookupUsesButtonSpecificSettings` | `C4.1` | Each mouse button uses its own single/double click settings. |
@@ -63,6 +67,7 @@ Location: `src/test/kotlin/com/github/uiopak/lstcrc/{gutters,listeners,scopes,se
 | `LstCrcSettingsServiceTest.testImportsLegacyPropertiesComponentValues` | `C4.9` | Settings from earlier versions are imported once. |
 | `LstCrcSettingsServiceTest.testSettersAndGettersRoundTripValues` | `C4.9` | Every setting round-trips through its accessors. |
 | `LstCrcSettingsServiceTest.testEveryDefinitionIsRegisteredOnce` | `C4.9` | Every setting definition is in `LstCrcSettingDefinitions.all` once. |
+| `LstCrcStatusWidgetTest.testPopupShowsTabNamesWithUnderscoresAsTyped` | `C1.5` | The widget popup shows branch names and aliases with underscores. |
 | `LstCrcStatusWidgetTest.testGetTextReturnsHeadWhenHeadIsSelectedEvenIfWidgetContextEnabled` | `C1.1` | The widget shows `HEAD` on the `HEAD` tab, without the context prefix. |
 | `LstCrcStatusWidgetTest.testGetTextUsesAliasPrefixAndTruncationForSelectedTab` | `C1.5`, `C4.5` | The widget shows the alias, the optional prefix, and truncates long names. |
 | `LstCrcStatusWidgetTest.testGetTextFallsBackToPluginNameForInvalidSelectedTabIndex` | `C5.3` | An out-of-range selected index falls back to the plugin name. |
@@ -84,8 +89,10 @@ Location: `src/test/kotlin/com/github/uiopak/lstcrc/{gutters,listeners,scopes,se
 | `RepoNodeRendererTest.testAggregateLineStatsForFolderNodeSumsDescendantChanges` | `C3.10` | Folder rows sum their descendants. |
 | `RepoNodeRendererTest.testAggregateLineStatsForFolderNodeReturnsNullWithoutDescendantChanges` | `C3.10` | Folders without counted changes show no counts. |
 | `ToolWindowStateServiceRefreshTest.testJoinedRefreshLoadsTheSelectionMadeBeforeTheRequest` | `C5.1` | A joined refresh has loaded the state from before the request. |
+| `ToolWindowStateServiceRefreshTest.testRemovingTheSelectedTabLoadsTheTabBeforeIt` | `C1.4` | Closing the selected tab loads the tab before it, or `HEAD` for the first tab. |
 | `ToolWindowStateServicePersistenceTest.testAddTabDeduplicatesAndRemoveTabKeepsOtherTabs` | `C5.2` | Adding an existing tab is a no-op; removing one keeps the others. |
 | `ToolWindowStateServicePersistenceTest.testRemoveTabClampsSelectedIndexWhenSelectedTabIsRemoved` | `C5.2` | Removing the selected tab selects a neighbour. |
+| `ToolWindowStateServicePersistenceTest.testRemoveTabSelectsTheTabBeforeTheRemovedSelectedTab` | `C5.2` | Removing the selected tab selects the tab before it, as the tool window does. |
 | `ToolWindowStateServicePersistenceTest.testRemoveTabShiftsSelectedIndexWhenEarlierTabIsRemoved` | `C5.2` | Removing an earlier tab keeps the same tab selected. |
 | `ToolWindowStateServicePersistenceTest.testLoadStateAndGetStateDefensivelyCopyNestedTabState` | `C5.2` | Loaded and returned state are defensive copies. |
 | `ToolWindowStateServicePersistenceTest.testNoStateLoadedResetsToHeadSelectionSemantics` | `C1.1`, `C5.3` | With no saved state the `HEAD` tab is selected. |

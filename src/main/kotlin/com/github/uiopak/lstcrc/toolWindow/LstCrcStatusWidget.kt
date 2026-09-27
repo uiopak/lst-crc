@@ -9,7 +9,6 @@ import com.github.uiopak.lstcrc.state.TabInfo
 import com.github.uiopak.lstcrc.state.displayName
 import com.intellij.ide.DataManager
 import com.intellij.openapi.actionSystem.AnAction
-import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.DefaultActionGroup
 import com.intellij.openapi.actionSystem.Separator
 import com.intellij.openapi.components.service
@@ -117,23 +116,19 @@ class LstCrcStatusWidget(private val project: Project) : StatusBarWidget, Status
         }
     }
 
-    private fun createPopupActions(openTabs: List<TabInfo>): List<AnAction> = buildList {
-        add(popupAction(LstCrcBundle.message("tab.name.head")) { selectToolWindowContent(ToolWindowHelper::findHeadContent) })
+    internal fun createPopupActions(openTabs: List<TabInfo>): List<AnAction> = buildList {
+        add(plainTextAction(LstCrcBundle.message("tab.name.head")) { selectToolWindowContent(ToolWindowHelper::findHeadContent) })
         openTabs.forEach { tabInfo ->
-            add(popupAction(tabInfo.displayName) {
+            add(plainTextAction(tabInfo.displayName) {
                 selectToolWindowContent { ToolWindowHelper.findContentByBranchName(it, tabInfo.branchName) }
             })
         }
         add(Separator.getInstance())
-        add(popupAction(LstCrcBundle.message("widget.action.add.tab")) {
+        add(plainTextAction(LstCrcBundle.message("widget.action.add.tab")) {
             // openBranchSelectionTab activates the tool window itself.
             ToolWindowManager.getInstance(project).getToolWindow(LstCrcConstants.TOOL_WINDOW_ID)
                 ?.let { ToolWindowHelper.openBranchSelectionTab(project, it) }
         })
-    }
-
-    private fun popupAction(text: String, perform: () -> Unit): AnAction = object : AnAction(text) {
-        override fun actionPerformed(e: AnActionEvent) = perform()
     }
 
     /** Activates the tool window and selects the tab [findContent] returns, if any. */

@@ -146,7 +146,10 @@ class LstCrcChangesBrowser(
         connection.subscribe(DIFF_DATA_CHANGED_TOPIC, ActiveDiffDataChangedListener {
             if (project.isDisposed) return@ActiveDiffDataChangedListener
             val diffDataService = project.service<ProjectActiveDiffDataService>()
-            val branchName = diffDataService.activeBranchName ?: HEAD
+            // Cleared data (a failed load) has no branch; the error belongs to the selected tab.
+            val branchName = diffDataService.activeBranchName
+                ?: project.service<ToolWindowStateService>().getSelectedTabBranchName()
+                ?: HEAD
             if (branchName == targetBranchToCompare) {
                 displayChanges(diffDataService.categorizedChanges, branchName)
             }

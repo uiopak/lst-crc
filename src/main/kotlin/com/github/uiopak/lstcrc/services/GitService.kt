@@ -29,15 +29,12 @@ import com.github.uiopak.lstcrc.toolWindow.ToolWindowSettingsProvider
 import git4idea.GitRevisionNumber
 import git4idea.commands.Git
 import git4idea.commands.GitCommand
+import git4idea.commands.GitCommandResult
 import git4idea.commands.GitLineHandler
 import git4idea.repo.GitRepository
 import git4idea.repo.GitRepositoryManager
 import java.nio.charset.Charset
 import java.util.concurrent.ConcurrentHashMap
-
-
-
-
 
 /**
  * A project-level service responsible for all interactions with the Git4Idea plugin API.
@@ -257,15 +254,9 @@ class GitService(private val project: Project) {
         return parseTrackedDiff(project, repo.root, GitRevisionNumber(target), output)
     }
 
-    /** Runs a silent `git diff` in [repo] and returns its stdout, throwing [VcsException] on failure. */
-    @Suppress("UsePropertyAccessSyntax")
-    private fun runGitDiff(repo: GitRepository, vararg params: String): String {
-        val handler = GitLineHandler(project, repo.root, GitCommand.DIFF)
-        handler.setSilent(true)
-        handler.setStdoutSuppressed(true)
-        handler.addParameters(*params)
-        return Git.getInstance().runCommand(handler).getOutputOrThrow()
-    }
+    /** Runs `git diff` in [repo] and returns its stdout, throwing [VcsException] on failure. */
+    private fun runGitDiff(repo: GitRepository, vararg params: String): String =
+        runSilentGit(project, repo.root, GitCommand.DIFF, *params).getOutputOrThrow()
 
     /** Splits changes into created/modified/moved/deleted files in one pass. */
     private fun buildCategorizedChanges(
@@ -323,12 +314,8 @@ class GitService(private val project: Project) {
         )
     }
 
-    @Suppress("UsePropertyAccessSyntax")
     private fun loadUntrackedChanges(repo: GitRepository): List<Change> {
-        val handler = GitLineHandler(project, repo.root, GitCommand.LS_FILES)
-        handler.setSilent(true)
-        handler.addParameters("--others", "--exclude-standard", "-z")
-        val result = Git.getInstance().runCommand(handler)
+        val result = runSilentGit(project, repo.root, GitCommand.LS_FILES, "--others", "--exclude-standard", "-z")
 
         if (result.exitCode != 0) {
             logger.warn(
@@ -489,4 +476,14 @@ class GitService(private val project: Project) {
         val content = runCatching { loadRevisionText(repo, revision, relativePath, charset) }.getOrElse { return null }
         return TextContentRevision(path, content, GitRevisionNumber(revision))
     }
+}
+
+/** Runs git [command] in [root] without echoing it or its output to the VCS console. */
+@Suppress("UsePropertyAccessSyntax")
+internal fun runSilentGit(project: Project, root: VirtualFile, command: GitCommand, vararg params: String): GitCommandResult {
+    val handler = GitLineHandler(project, root, command)
+    handler.setSilent(true)
+    handler.setStdoutSuppressed(true)
+    handler.addParameters(*params)
+    return Git.getInstance().runCommand(handler)
 }

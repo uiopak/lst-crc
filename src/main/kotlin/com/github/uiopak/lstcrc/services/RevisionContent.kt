@@ -13,9 +13,7 @@ import com.intellij.openapi.vcs.history.VcsRevisionNumber
 import com.intellij.openapi.vfs.VfsUtilCore
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.vcsUtil.VcsUtil
-import git4idea.commands.Git
 import git4idea.commands.GitCommand
-import git4idea.commands.GitLineHandler
 import git4idea.repo.GitRepository
 import git4idea.util.GitFileUtils
 import org.apache.commons.io.ByteOrderMark
@@ -86,13 +84,8 @@ internal fun isFileMissingInRevision(error: Throwable): Boolean {
 }
 
 /** True when git resolves [revision] to a commit in [root]; false for a missing branch, tag or hash. */
-@Suppress("UsePropertyAccessSyntax")
-internal fun revisionExists(project: Project, root: VirtualFile, revision: String): Boolean {
-    val handler = GitLineHandler(project, root, GitCommand.REV_PARSE)
-    handler.setSilent(true)
-    handler.addParameters("--verify", "--quiet", "$revision^{commit}")
-    return Git.getInstance().runCommand(handler).exitCode == 0
-}
+internal fun revisionExists(project: Project, root: VirtualFile, revision: String): Boolean =
+    runSilentGit(project, root, GitCommand.REV_PARSE, "--verify", "--quiet", "$revision^{commit}").exitCode == 0
 
 /**
  * The commit [revision] points to, read from Git4Idea's in-memory repository state (no git call), or

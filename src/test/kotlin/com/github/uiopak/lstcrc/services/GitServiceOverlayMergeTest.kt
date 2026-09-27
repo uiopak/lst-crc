@@ -91,6 +91,24 @@ class GitServiceOverlayMergeTest : LstCrcTestCase() {
         assertEquals(mapOf("${root.path}/New.txt" to "${root.path}/Old.txt"), movedSourcePaths(loaded.changes).mapValues { it.value.path })
     }
 
+    fun testParseTrackedDiffKeepsTabsInNumstatPaths() {
+        val root = myFixture.tempDirFixture.findOrCreateDir("repo")
+        val output = listOf(":100644 100644 1111111 0000000 M", "a\tb.txt", "1\t2\ta\tb.txt", "").joinToString("\u0000")
+
+        val loaded = parseTrackedDiff(project, root, GitRevisionNumber("feature"), output)
+
+        val path = "${root.path}/a\tb.txt"
+        assertEquals(mapOf(ChangeLineStatsKey.fromPaths(path, path) to ChangeLineStats(1, 2)), loaded.lineStatsByChange)
+    }
+
+    fun testUntrackedChangesKeepFileNamesMadeOfSpaces() {
+        val root = myFixture.tempDirFixture.findOrCreateDir("repo")
+
+        val changes = untrackedChanges(project, root, " \u0000plain.txt\u0000")
+
+        assertEquals(listOf("${root.path}/ ", "${root.path}/plain.txt"), changes.map { it.afterRevision?.file?.path })
+    }
+
     fun testUntrackedChangesKeepBackslashesInFileNames() {
         val root = myFixture.tempDirFixture.findOrCreateDir("repo")
 
