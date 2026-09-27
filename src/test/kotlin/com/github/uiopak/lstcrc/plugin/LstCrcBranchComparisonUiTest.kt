@@ -115,90 +115,15 @@ class LstCrcBranchComparisonUiTest : LstCrcUiTestSupport() {
                 selectTab("feature-all-statuses")
             }
 
-            var scopeDebug = ""
-            waitFor(Duration.ofSeconds(10), interval = Duration.ofMillis(500)) {
-                scopeDebug = callJs(
-                    """
-                    (function() {
-                        const result = new java.util.concurrent.atomic.AtomicReference("projectMissing=true");
-                        com.intellij.openapi.application.ApplicationManager.getApplication().invokeAndWait(new java.lang.Runnable({
-                            run: function() {
-                                const project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
-                                if (!project) {
-                                    result.set("projectMissing=true");
-                                    return;
-                                }
-
-                                const getPluginClass = (className) => {
-                                    const pluginId = com.intellij.openapi.extensions.PluginId.getId("com.github.uiopak.lstcrc");
-                                    const plugin = com.intellij.ide.plugins.PluginManagerCore.getPlugin(pluginId);
-                                    if (plugin && plugin.getPluginClassLoader()) {
-                                        return java.lang.Class.forName(className, true, plugin.getPluginClassLoader());
-                                    }
-                                    return java.lang.Class.forName(className);
-                                };
-                                const namedScopeManager = com.intellij.psi.search.scope.packageSet.NamedScopeManager.getInstance(project);
-                                const createdScope = getPluginClass("com.github.uiopak.lstcrc.scopes.CreatedFilesScope").getDeclaredConstructor().newInstance();
-                                const modifiedScope = getPluginClass("com.github.uiopak.lstcrc.scopes.ModifiedFilesScope").getDeclaredConstructor().newInstance();
-                                const movedScope = getPluginClass("com.github.uiopak.lstcrc.scopes.MovedFilesScope").getDeclaredConstructor().newInstance();
-                                const deletedScope = getPluginClass("com.github.uiopak.lstcrc.scopes.DeletedFilesScope").getDeclaredConstructor().newInstance();
-                                const diffDataServiceClass = getPluginClass("com.github.uiopak.lstcrc.services.ProjectActiveDiffDataService");
-                                const diffDataService = project.getService(diffDataServiceClass);
-
-                                function findBySuffix(files, suffix) {
-                                    if (!files) return null;
-                                    for (let i = 0; i < files.size(); i++) {
-                                        var candidate = files.get(i);
-                                        if (String(candidate.getPath()).endsWith("/" + suffix) || String(candidate.getPath()).endsWith("\\" + suffix)) {
-                                            return candidate;
-                                        }
-                                    }
-                                    return null;
-                                }
-
-                                const modifiedFile = diffDataService ? findBySuffix(diffDataService.getModifiedFiles(), "Modified.txt") : null;
-                                const createdFile = diffDataService ? findBySuffix(diffDataService.getCreatedFiles(), "Created.txt") : null;
-                                const movedFile = diffDataService ? findBySuffix(diffDataService.getMovedFiles(), "Renamed.txt") : null;
-                                const deletedFile = diffDataService ? findBySuffix(diffDataService.getDeletedFiles(), "DeleteMe.txt") : null;
-
-                                function contains(scope, file) {
-                                    if (!(scope && file && scope.getValue())) {
-                                        return false;
-                                    }
-                                    return scope.getValue().contains(file, project, namedScopeManager) === true;
-                                }
-
-                                result.set([
-                                    "activeBranch=" + (diffDataService ? diffDataService.getActiveBranchName() : "null"),
-                                    "createdFilePresent=" + (createdFile != null),
-                                    "modifiedFilePresent=" + (modifiedFile != null),
-                                    "movedFilePresent=" + (movedFile != null),
-                                    "createdPathCached=" + (diffDataService && createdFile ? diffDataService.getCreatedFilePaths().contains(String(createdFile.getPath())) : false),
-                                    "modifiedPathCached=" + (diffDataService && modifiedFile ? diffDataService.getModifiedFilePaths().contains(String(modifiedFile.getPath())) : false),
-                                    "movedPathCached=" + (diffDataService && movedFile ? diffDataService.getMovedFilePaths().contains(String(movedFile.getPath())) : false),
-                                    "deletedPathCached=" + (diffDataService && deletedFile ? diffDataService.getDeletedFilePaths().contains(String(deletedFile.getPath())) : false),
-                                    "createdScopeClass=" + (createdScope.getValue() ? createdScope.getValue().getClass().getName() : "null"),
-                                    "modifiedScopeClass=" + (modifiedScope.getValue() ? modifiedScope.getValue().getClass().getName() : "null"),
-                                    "created=" + contains(createdScope, createdFile),
-                                    "modified=" + contains(modifiedScope, modifiedFile),
-                                    "moved=" + contains(movedScope, movedFile),
-                                    "deleted=" + contains(deletedScope, deletedFile),
-                                    "deletedFilePresent=" + (deletedFile != null)
-                                ].join(";"));
-                            }
-                        }));
-                        return String(result.get());
-                    })();
-                    """.trimIndent(),
-                    true
-                )
-                scopeDebug.contains("activeBranch=feature-all-statuses") && scopeDebug.contains("modified=true")
+            var modifiedScope = emptySet<String>()
+            runCatching {
+                waitFor(Duration.ofSeconds(10), interval = Duration.ofMillis(500)) {
+                    modifiedScope = filesMatchingScope("LSTCRC.Modified", listOf("Modified.txt"))
+                    activeDiffEntries().startsWith("branch=feature-all-statuses|") && modifiedScope == setOf("Modified.txt")
+                }
             }
-
-            assertTrue(
-                scopeDebug.contains("activeBranch=feature-all-statuses") && scopeDebug.contains("modified=true"),
-                "Branch comparison should update the active branch and modified scope correctly: $scopeDebug"
-            )
+            assertTrue(activeDiffEntries().startsWith("branch=feature-all-statuses|"), "The branch comparison should be active")
+            assertEquals(setOf("Modified.txt"), modifiedScope, "The modified scope should follow the branch comparison")
         }
     }
 
@@ -267,33 +192,14 @@ class LstCrcBranchComparisonUiTest : LstCrcUiTestSupport() {
                 }
             }
 
-            var scopesDebug = ""
-            waitFor(Duration.ofSeconds(10), interval = Duration.ofSeconds(1)) {
-                scopesDebug = callJs(
-                    """
-                    const project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
-                    const namedScopeManager = com.intellij.psi.search.scope.packageSet.NamedScopeManager.getInstance(project);
-                    const modifiedScopeClass = com.intellij.ide.plugins.PluginManagerCore
-                        .getPlugin(com.intellij.openapi.extensions.PluginId.getId("com.github.uiopak.lstcrc"))
-                        .getPluginClassLoader()
-                        .loadClass("com.github.uiopak.lstcrc.scopes.ModifiedFilesScope");
-                    const modifiedScope = modifiedScopeClass.getDeclaredConstructor().newInstance();
-                    const modifiedHolder = namedScopeManager;
-
-                    const mainFile = com.intellij.openapi.vfs.LocalFileSystem.getInstance().refreshAndFindFileByPath(project.getBasePath() + "/Main.txt");
-                    const scopeFound = modifiedScope != null;
-                    const fileFound = mainFile != null;
-                    const containsFile = scopeFound && fileFound && modifiedScope.getValue() != null && modifiedScope.getValue().contains(mainFile, project, modifiedHolder);
-                    "result=" + containsFile + ";scopeFound=" + scopeFound + ";fileFound=" + fileFound;
-                    """.trimIndent(),
-                    true
-                )
-                scopesDebug.contains("result=true")
+            var modifiedScope = emptySet<String>()
+            runCatching {
+                waitFor(Duration.ofSeconds(10), interval = Duration.ofSeconds(1)) {
+                    modifiedScope = filesMatchingScope("LSTCRC.Modified", listOf("Main.txt"))
+                    modifiedScope == setOf("Main.txt")
+                }
             }
-
-            if (scopesDebug.contains("scopeFound=true")) {
-                assertTrue(scopesDebug.contains("result=true"), "Custom scopes should be updated with modified files: $scopesDebug")
-            }
+            assertEquals(setOf("Main.txt"), modifiedScope, "Custom scopes should be updated with modified files")
         }
     }
 

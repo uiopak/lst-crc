@@ -2,6 +2,9 @@
 
 package com.github.uiopak.lstcrc.plugin.pages
 
+import com.github.uiopak.lstcrc.plugin.utils.jsOpenProject
+import com.github.uiopak.lstcrc.plugin.utils.jsPluginClassLoader
+import com.github.uiopak.lstcrc.plugin.utils.jsToolWindow
 import com.github.uiopak.lstcrc.plugin.utils.toJsStringLiteral
 import com.github.uiopak.lstcrc.toolWindow.LstCrcSettingDefinitions
 import com.github.uiopak.lstcrc.toolWindow.LstCrcStatusWidget
@@ -164,7 +167,7 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
             runJs(
                 """
                 (function() {
-                    ${openProjectLookupStatements()}
+                    ${jsOpenProject()}
                     if (project) {
                         var toolWindow = com.intellij.openapi.wm.ToolWindowManager.getInstance(project).getToolWindow("GitChangesView");
                         if (toolWindow) {
@@ -224,7 +227,7 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
             callJs<Boolean>(
                 """
                 (function() {
-                    ${toolWindowLookupStatements()}
+                    ${jsToolWindow()}
                     if (!toolWindow || !toolWindow.isVisible()) return false;
 
                     const contentManager = toolWindow.getContentManager();
@@ -666,7 +669,7 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
     private fun statusWidgetScript(body: String): String =
         """
         (function() {
-            ${openProjectLookupStatements()}
+            ${jsOpenProject()}
             if (!project) return "";
 
             const statusBar = com.intellij.openapi.wm.WindowManager.getInstance().getStatusBar(project);
@@ -682,7 +685,7 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
     fun selectedBrowserScript(body: String): String =
         """
         (function() {
-            ${toolWindowLookupStatements()}
+            ${jsToolWindow()}
             if (!project) return;
 
             const browser = toolWindow && toolWindow.getContentManager().getSelectedContent()
@@ -694,23 +697,12 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
         })();
         """.trimIndent()
 
-    private fun toolWindowLookupStatements(
-        projectVariableName: String = "project",
-        toolWindowVariableName: String = "toolWindow"
-    ): String =
-        """
-        ${openProjectLookupStatements(projectVariableName)}
-        var $toolWindowVariableName = $projectVariableName
-            ? com.intellij.openapi.wm.ToolWindowManager.getInstance($projectVariableName).getToolWindow("GitChangesView")
-            : null;
-        """.trimIndent()
-
     private fun fileEditorManagerLookupStatements(
         projectVariableName: String = "project",
         managerVariableName: String = "manager"
     ): String =
         """
-        ${openProjectLookupStatements(projectVariableName)}
+        ${jsOpenProject(projectVariableName)}
         var $managerVariableName = $projectVariableName
             ? com.intellij.openapi.fileEditor.FileEditorManager.getInstance($projectVariableName)
             : null;
@@ -761,7 +753,7 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
         stateServiceVariableName: String = "stateService"
     ): String =
         """
-        ${toolWindowLookupStatements(projectVariableName, toolWindowVariableName)}
+        ${jsToolWindow(projectVariableName, toolWindowVariableName)}
         var $contentVariableName = $toolWindowVariableName ? $toolWindowVariableName.getContentManager().getSelectedContent() : null;
         var $classLoaderVariableName = $contentVariableName
             ? $contentVariableName.getComponent().getClass().getClassLoader()
@@ -777,10 +769,10 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
     private fun visualTrackerManagerScript(body: String): String =
         """
         (function() {
-            ${openProjectLookupStatements()}
+            ${jsOpenProject()}
             if (!project) return "ERROR: project is null";
 
-            ${pluginClassLoaderLookupStatements("classLoader")}
+            ${jsPluginClassLoader("classLoader")}
             if (!classLoader) return "ERROR: classLoader is null";
 
             try {
@@ -792,18 +784,6 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
                 return "ERROR: " + e.toString() + "\n" + (e.stack || "");
             }
         })();
-        """.trimIndent()
-
-    private fun openProjectLookupStatements(projectVariableName: String = "project"): String =
-        """
-        var $projectVariableName = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
-        """.trimIndent()
-
-    private fun pluginClassLoaderLookupStatements(classLoaderVariableName: String = "cl"): String =
-        """
-        var pluginId = com.intellij.openapi.extensions.PluginId.getId("com.github.uiopak.lstcrc");
-        var plugin = com.intellij.ide.plugins.PluginManagerCore.getPlugin(pluginId);
-        var $classLoaderVariableName = plugin ? plugin.getPluginClassLoader() : null;
         """.trimIndent()
 
     fun setShowWidgetContext(show: Boolean) {
@@ -818,10 +798,10 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
             runJs(
                 """
                 (function() {
-                    ${toolWindowLookupStatements()}
+                    ${jsToolWindow()}
                     if (!project || !toolWindow) return;
 
-                    ${pluginClassLoaderLookupStatements("cl")}
+                    ${jsPluginClassLoader("cl")}
                     if (cl) {
                         try {
                             const compatibilityClass = cl.loadClass("com.github.uiopak.lstcrc.toolWindow.ToolWindowUiCompatibility");
@@ -844,10 +824,10 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
             callJs(
                 """
                 (function() {
-                    ${toolWindowLookupStatements()}
+                    ${jsToolWindow()}
                     if (!project || !toolWindow) return false;
 
-                    ${pluginClassLoaderLookupStatements("cl")}
+                    ${jsPluginClassLoader("cl")}
                     if (cl) {
                         try {
                             const compatibilityClass = cl.loadClass("com.github.uiopak.lstcrc.toolWindow.ToolWindowUiCompatibility");
@@ -971,10 +951,10 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
             callJs(
                 """
                 (function() {
-                    ${openProjectLookupStatements()}
+                    ${jsOpenProject()}
                     if (!project) return "";
 
-                    ${pluginClassLoaderLookupStatements("classLoader")}
+                    ${jsPluginClassLoader("classLoader")}
                     if (!classLoader) return "plugin=missing";
 
                     const serviceClass = classLoader.loadClass("com.github.uiopak.lstcrc.services.ProjectActiveDiffDataService");
@@ -1021,7 +1001,7 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
         return callJs(
             """
             (function() {
-                ${toolWindowLookupStatements()}
+                ${jsToolWindow()}
                 const content = toolWindow ? toolWindow.getContentManager().getSelectedContent() : null;
                 const browser = content ? content.getComponent() : null;
                 if (!browser || !browser.visibleRowTextsForTest) return "";
@@ -1076,7 +1056,7 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
             callJs(
                 """
                 (function() {
-                    ${toolWindowLookupStatements()}
+                    ${jsToolWindow()}
                     if (!project || !toolWindow) return "";
 
                     const content = toolWindow.getContentManager().getSelectedContent();
@@ -1389,7 +1369,7 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
     private fun settingsServiceScript(body: String): String =
         """
         (function() {
-            ${pluginClassLoaderLookupStatements()}
+            ${jsPluginClassLoader()}
             if (!cl) return;
             try {
                 var settingsClass = cl.loadClass("com.github.uiopak.lstcrc.toolWindow.LstCrcSettingsService");
@@ -1402,7 +1382,7 @@ class IdeaFrame(remoteRobot: RemoteRobot, remoteComponent: RemoteComponent) :
 
     private fun settingsServiceLookupStatements(serviceVariableName: String): String =
         """
-        ${pluginClassLoaderLookupStatements()}
+        ${jsPluginClassLoader()}
         var $serviceVariableName = null;
         if (cl) {
             try {

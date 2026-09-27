@@ -1,5 +1,9 @@
 package com.github.uiopak.lstcrc.plugin.pages
 
+import com.github.uiopak.lstcrc.plugin.utils.jsOpenProject
+import com.github.uiopak.lstcrc.plugin.utils.jsPluginClassLoader
+import com.github.uiopak.lstcrc.plugin.utils.jsRefreshSelectedComparison
+import com.github.uiopak.lstcrc.plugin.utils.jsToolWindow
 import com.github.uiopak.lstcrc.plugin.utils.toJsStringLiteral
 import com.intellij.remoterobot.RemoteRobot
 import com.intellij.remoterobot.data.RemoteComponent
@@ -29,24 +33,11 @@ class GitChangesViewFixture(remoteRobot: RemoteRobot, remoteComponent: RemoteCom
     private val branchSelectionPanelLocator = byXpath("//div[@class='BranchSelectionPanel']")
 
 
-    private fun contentManagerLookupStatements(
-        projectVariableName: String = "project",
-        toolWindowVariableName: String = "toolWindow",
-        contentManagerVariableName: String = "contentManager"
-    ): String =
+    /** Declares `project`, `toolWindow` and `contentManager` (null when missing). */
+    private fun contentManagerLookupStatements(): String =
         """
-        var $projectVariableName = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
-        var $toolWindowVariableName = $projectVariableName
-            ? com.intellij.openapi.wm.ToolWindowManager.getInstance($projectVariableName).getToolWindow("GitChangesView")
-            : null;
-        var $contentManagerVariableName = $toolWindowVariableName ? $toolWindowVariableName.getContentManager() : null;
-        """.trimIndent()
-
-    private fun pluginClassLoaderLookupStatements(classLoaderVariableName: String = "classLoader"): String =
-        """
-        var pluginId = com.intellij.openapi.extensions.PluginId.getId("com.github.uiopak.lstcrc");
-        var plugin = com.intellij.ide.plugins.PluginManagerCore.getPlugin(pluginId);
-        var $classLoaderVariableName = plugin ? plugin.getPluginClassLoader() : null;
+        ${jsToolWindow()}
+        var contentManager = toolWindow ? toolWindow.getContentManager() : null;
         """.trimIndent()
 
     private fun tabLocator(tabName: String) = byXpath(
@@ -144,18 +135,8 @@ class GitChangesViewFixture(remoteRobot: RemoteRobot, remoteComponent: RemoteCom
             runJs(
                 """
                 (function() {
-                    var project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
-                    if (project) {
-                        ${pluginClassLoaderLookupStatements()}
-                        if (classLoader != null) {
-                            var stateServiceClass = classLoader
-                                .loadClass("com.github.uiopak.lstcrc.services.ToolWindowStateService");
-                            var stateService = project.getService(stateServiceClass);
-                            if (stateService != null) {
-                                stateService.refreshDataForCurrentSelection().join();
-                            }
-                        }
-                    }
+                    ${jsOpenProject()}
+                    ${jsRefreshSelectedComparison()}
                 })();
                 """.trimIndent(),
                 false
@@ -704,7 +685,7 @@ class GitChangesViewFixture(remoteRobot: RemoteRobot, remoteComponent: RemoteCom
                         var project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
                         if (project) {
                             var toolWindow = com.intellij.openapi.wm.ToolWindowManager.getInstance(project).getToolWindow("GitChangesView");
-                            ${pluginClassLoaderLookupStatements()}
+                            ${jsPluginClassLoader("classLoader")}
                             if (toolWindow != null && classLoader != null) {
                                 var helperClass = classLoader
                                     .loadClass("com.github.uiopak.lstcrc.toolWindow.ToolWindowHelper");

@@ -9,7 +9,14 @@ The active UI tests live in `com.github.uiopak.lstcrc.plugin` and are split by f
 1. `LstCrcBranchComparisonUiTest`
 2. `LstCrcFileScopeUiTest`
 3. `LstCrcInteractionUiTest`
-4. `LstCrcVisualUiTest`
+4. `LstCrcRealRepositoryUiTest` (google/gson scenarios checked against `GitDiffOracle`)
+5. `LstCrcSettingsUiTest`
+6. `LstCrcVisualUiTest`
+
+Page objects are in `plugin/pages` and shared helpers in `plugin/utils`. The JavaScript the tests send to the IDE
+builds on `plugin/utils/JsScripts.kt` (open project, plugin class loader, tool window, "reload the selected comparison
+and wait", "notice external changes") and quotes values with `toJsStringLiteral`. Read the plugin's state through
+`plugin/pages/ActiveDiffQueries.kt` (`activeDiffEntries`, `filesMatchingScope`) instead of writing new scripts.
 
 All Remote Robot classes are tagged as `ui` and only run when `runUiTests=true` is set. That keeps normal `test` runs and generic IDE `Run Tests` actions from accidentally launching Robot tests.
 

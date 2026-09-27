@@ -1,5 +1,8 @@
 package com.github.uiopak.lstcrc.plugin.steps
 
+import com.github.uiopak.lstcrc.plugin.utils.jsNoticeExternalChanges
+import com.github.uiopak.lstcrc.plugin.utils.jsOpenProject
+import com.github.uiopak.lstcrc.plugin.utils.jsRefreshSelectedComparison
 import com.github.uiopak.lstcrc.plugin.utils.toJsStringLiteral
 import com.intellij.remoterobot.RemoteRobot
 import com.intellij.remoterobot.fixtures.ComponentFixture
@@ -69,7 +72,7 @@ class PluginUiTestSteps(private val remoteRobot: RemoteRobot) {
     fun commitChanges(commitMessage: String) = step("Commit changes with message: $commitMessage") {
         runGitCommand("add", "-A")
         runGitCommand("commit", "-m", commitMessage, "--no-gpg-sign")
-        refreshProjectAfterGitCommand()
+        refreshProjectAfterExternalChange()
 
         waitForNoLocalChanges()
     }
@@ -79,7 +82,7 @@ class PluginUiTestSteps(private val remoteRobot: RemoteRobot) {
      */
     fun createBranch(branchName: String) = step("Create branch: $branchName") {
         runGitCommand("checkout", "-B", branchName)
-        refreshProjectAfterGitCommand()
+        refreshProjectAfterExternalChange()
 
         waitForBranch(branchName)
     }
@@ -89,7 +92,7 @@ class PluginUiTestSteps(private val remoteRobot: RemoteRobot) {
      */
     fun checkoutBranch(branchName: String) = step("Checkout branch: $branchName") {
         runGitCommand("checkout", branchName)
-        refreshProjectAfterGitCommand()
+        refreshProjectAfterExternalChange()
 
         waitForBranch(branchName)
     }
@@ -360,7 +363,7 @@ class PluginUiTestSteps(private val remoteRobot: RemoteRobot) {
                 const changeListManagerEx = com.intellij.openapi.vcs.changes.ChangeListManagerEx.getInstanceEx(project);
                 changeListManagerEx.waitForUpdate();
 
-                ${refreshCurrentSelectionScript()}
+                ${jsRefreshSelectedComparison()}
             }
             """.trimIndent(),
             false
@@ -391,72 +394,23 @@ class PluginUiTestSteps(private val remoteRobot: RemoteRobot) {
     }
 
 
-    private fun refreshCurrentSelectionScript(projectVariableName: String = "project"): String =
-        """
-        const pluginId = com.intellij.openapi.extensions.PluginId.getId("com.github.uiopak.lstcrc");
-        const plugin = com.intellij.ide.plugins.PluginManagerCore.getPlugin(pluginId);
-        if (plugin != null) {
-            const stateServiceClass = plugin.getPluginClassLoader()
-                .loadClass("com.github.uiopak.lstcrc.services.ToolWindowStateService");
-            const stateService = $projectVariableName.getService(stateServiceClass);
-            if (stateService != null) {
-                stateService.refreshDataForCurrentSelection().join();
-            }
-        }
-        """.trimIndent()
-
-    private fun refreshProjectAfterGitCommand() = with(remoteRobot) {
-        runJs(
-            """
-            const project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
-            if (project) {
-                const vcsManager = com.intellij.openapi.vcs.ProjectLevelVcsManager.getInstance(project);
-                vcsManager.scheduleMappedRootsUpdate();
-                com.intellij.openapi.vcs.changes.VcsDirtyScopeManager.getInstance(project).markEverythingDirty();
-
-                const changeListManagerEx = com.intellij.openapi.vcs.changes.ChangeListManagerEx.getInstanceEx(project);
-                changeListManagerEx.waitForUpdate();
-
-                ${refreshCurrentSelectionScript()}
-            }
-            """,
-            false
-        )
-    }
-
     private fun stageAllGitChanges() {
         runGitCommand("add", "-A")
-        refreshProjectAfterGitCommand()
+        refreshProjectAfterExternalChange()
     }
 
+    /**
+     * Makes the IDE and the plugin catch up with changes made outside the IDE (git commands, file writes): a VFS
+     * refresh and a dirty VCS scope, a wait for the change list update, then a reload of the selected comparison.
+     */
     private fun refreshProjectAfterExternalChange() = with(remoteRobot) {
         runJs(
             """
-            const project = com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()[0];
-            if (project) {
-                const basePath = project.getBasePath();
-                if (basePath != null) {
-                    const fileSystem = com.intellij.openapi.vfs.LocalFileSystem.getInstance();
-                    const normalizedBasePath = String(basePath).split('\\\\').join('/');
-                    const projectDir = fileSystem.refreshAndFindFileByPath(normalizedBasePath);
-                    if (projectDir != null) {
-                        projectDir.refresh(false, true);
-                        const gitDir = projectDir.findChild('.git');
-                        if (gitDir != null) {
-                            gitDir.refresh(false, true);
-                        }
-                    }
-                }
-
-                const vcsManager = com.intellij.openapi.vcs.ProjectLevelVcsManager.getInstance(project);
-                vcsManager.scheduleMappedRootsUpdate();
-                com.intellij.openapi.vcs.changes.VcsDirtyScopeManager.getInstance(project).markEverythingDirty();
-
-                const changeListManagerEx = com.intellij.openapi.vcs.changes.ChangeListManagerEx.getInstanceEx(project);
-                changeListManagerEx.waitForUpdate();
-
-                ${refreshCurrentSelectionScript()}
-            }
+            ${jsOpenProject()}
+            if (project) com.intellij.openapi.vcs.ProjectLevelVcsManager.getInstance(project).scheduleMappedRootsUpdate();
+            ${jsNoticeExternalChanges()}
+            if (project) com.intellij.openapi.vcs.changes.ChangeListManagerEx.getInstanceEx(project).waitForUpdate();
+            ${jsRefreshSelectedComparison()}
             """.trimIndent(),
             false
         )
