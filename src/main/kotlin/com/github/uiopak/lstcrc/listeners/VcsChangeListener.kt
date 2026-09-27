@@ -76,6 +76,10 @@ class VcsChangeListener internal constructor(
         onBufferOverflow = BufferOverflow.DROP_OLDEST
     )
 
+    /** True once the debounced collector below listens; signals sent before that are dropped. For unit tests. */
+    internal val isCollectingSignals: Boolean
+        get() = refreshSignals.subscriptionCount.value > 0
+
     /** Set when the current burst contains anything but unsaved edits; read and cleared by the refresh. */
     private val fullRefreshPending = AtomicBoolean(false)
 

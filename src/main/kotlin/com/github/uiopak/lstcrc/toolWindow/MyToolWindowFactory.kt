@@ -1,5 +1,6 @@
 package com.github.uiopak.lstcrc.toolWindow
 
+import com.github.uiopak.lstcrc.LstCrcConstants.HEAD
 import com.github.uiopak.lstcrc.messaging.TOOL_WINDOW_STATE_TOPIC
 import com.github.uiopak.lstcrc.messaging.ToolWindowStateListener
 import com.github.uiopak.lstcrc.resources.LstCrcBundle
@@ -94,7 +95,7 @@ class MyToolWindowFactory : ToolWindowFactory {
         val contentFactory = ContentFactory.getInstance()
         val headDisposable = Disposer.newDisposable("LST-CRC HEAD tab")
         Disposer.register(toolWindow.disposable, headDisposable)
-        val headView = LstCrcChangesBrowser(project, "HEAD", headDisposable)
+        val headView = LstCrcChangesBrowser(project, HEAD, headDisposable)
         val headContent = contentFactory.createContent(headView, LstCrcBundle.message("tab.name.head"), false).apply {
             isCloseable = false
             isPinned = true
@@ -144,11 +145,19 @@ class MyToolWindowFactory : ToolWindowFactory {
             override fun selectionChanged(event: ContentManagerEvent) {
                 if (project.isDisposed || toolWindow.isDisposed) return
                 val selectedContent = toolWindow.contentManager.selectedContent ?: return
-                // HEAD has no branch name. A comparison tab not yet added to the state is registered by its creator.
-                val branchName = selectedContent.getUserData(LstCrcKeys.BRANCH_NAME_KEY)
-                val index = if (branchName == null) -1 else stateService.findTabIndex(branchName).takeIf { it != -1 } ?: return
-                stateService.setSelectedTab(index)
+                stateService.setSelectedTab(selectedTabIndex(selectedContent, stateService::findTabIndex) ?: return)
             }
         })
     }
+}
+
+/**
+ * The state index [content] selects: -1 for the HEAD tab (the only tab that cannot be closed), a comparison tab's
+ * index, or null to keep the current comparison. That covers the "Select Branch" tab, which has no branch, and a
+ * comparison tab not yet added to the state (its creator registers it).
+ */
+internal fun selectedTabIndex(content: Content, findTabIndex: (String) -> Int): Int? {
+    val branchName = content.getUserData(LstCrcKeys.BRANCH_NAME_KEY)
+        ?: return if (content.isCloseable) null else -1
+    return findTabIndex(branchName).takeIf { it != -1 }
 }

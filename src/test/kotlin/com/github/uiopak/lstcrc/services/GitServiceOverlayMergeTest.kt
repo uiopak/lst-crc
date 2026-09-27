@@ -7,6 +7,7 @@ import com.intellij.openapi.vcs.changes.Change
 import com.intellij.openapi.vcs.changes.ContentRevision
 import com.github.uiopak.lstcrc.testsupport.LstCrcTestCase
 import com.intellij.vcsUtil.VcsUtil
+import git4idea.GitRevisionNumber
 
 class GitServiceOverlayMergeTest : LstCrcTestCase() {
 
@@ -55,6 +56,39 @@ class GitServiceOverlayMergeTest : LstCrcTestCase() {
         override fun getContent(): String? = null
 
         override fun getRevisionNumber(): VcsRevisionNumber = revisionNumber
+    }
+
+    fun testParseTrackedDiffReadsRawAndNumstatRecordsIncludingRenames() {
+        val root = myFixture.tempDirFixture.findOrCreateDir("repo")
+        val output = listOf(
+            ":100644 100644 1111111 0000000 M", "Main.txt",
+            ":100644 100644 2222222 0000000 R090", "Old.txt", "New.txt",
+            ":000000 100644 0000000 0000000 A", "Added.bin",
+            "1\t2\tMain.txt",
+            "3\t0\t", "Old.txt", "New.txt",
+            "-\t-\tAdded.bin",
+            ""
+        ).joinToString("\u0000")
+
+        val loaded = parseTrackedDiff(project, root, GitRevisionNumber("feature"), output)
+
+        assertEquals(
+            listOf(
+                Triple("${root.path}/Main.txt", "${root.path}/Main.txt", FileStatus.MODIFIED),
+                Triple("${root.path}/Old.txt", "${root.path}/New.txt", FileStatus.MODIFIED),
+                Triple(null, "${root.path}/Added.bin", FileStatus.ADDED)
+            ),
+            loaded.changes.map { Triple(it.beforeRevision?.file?.path, it.afterRevision?.file?.path, it.fileStatus) }
+        )
+        assertEquals(
+            mapOf(
+                ChangeLineStatsKey.fromPaths("${root.path}/Main.txt", "${root.path}/Main.txt") to ChangeLineStats(1, 2),
+                ChangeLineStatsKey.fromPaths("${root.path}/Old.txt", "${root.path}/New.txt") to ChangeLineStats(3, 0)
+            ),
+            loaded.lineStatsByChange
+        )
+        // Moved files map their new path to the path they have in the target.
+        assertEquals(mapOf("${root.path}/New.txt" to "${root.path}/Old.txt"), movedSourcePaths(loaded.changes).mapValues { it.value.path })
     }
 
     fun testUntrackedChangesKeepBackslashesInFileNames() {

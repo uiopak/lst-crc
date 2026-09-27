@@ -25,9 +25,9 @@ This document lists each current `src/main` file separately and explains why it 
 ## Root And Shared Support
 
 ### LstCrcConstants.kt
-- Role: Central constant holder for shared identifiers, especially the tool-window id.
+- Role: Central constant holder for shared identifiers: the tool-window id and `HEAD` (the git revision, and the profile name of the HEAD tab).
 - Depends on: No runtime services; only Kotlin constants.
-- Connected to: Tool-window lookups in `ToolWindowHelper`, `CreateTabFromRevisionAction`, and `RenameTabAction`.
+- Connected to: Tool-window lookups in `ToolWindowHelper`, `CreateTabFromRevisionAction`, and `RenameTabAction`; `HEAD` checks in the services, scopes, gutters and browser.
 - Why it exists: It keeps the tool-window id canonical and avoids string drift between platform registrations and runtime lookups.
 
 ### LstCrcBundle.kt
@@ -83,10 +83,28 @@ This document lists each current `src/main` file separately and explains why it 
 ## Core Services
 
 ### GitService.kt
-- Role: Sole Git and Git4Idea integration boundary for repository discovery, change loading, revision content, and branch snapshots. It keeps the last on-disk diff per repository, which edit-only refreshes reuse, and a small LRU cache of file content at a revision, keyed by the resolved commit hash.
+- Role: Sole Git and Git4Idea integration boundary for repository discovery, change loading, revision content, and branch snapshots. It keeps the last on-disk diff per repository, which edit-only refreshes reuse, and overlays unsaved documents (a moved file against its old path). A failed `git diff` is reported as a missing target only when `git rev-parse` cannot resolve it.
 - Depends on: Git4Idea, low-level Git commands, VCS `Change` models, and plugin state types such as `TabInfo`.
 - Connected to: `ToolWindowStateService`, `VisualTrackerManager`, settings code, and branch-selection flows.
 - Why it exists: Centralizing all Git logic keeps the rest of the plugin from depending directly on IntelliJ VCS internals.
+
+### GitDiffParsing.kt
+- Role: `GitService`'s pure helpers: the `git diff` options (ending in `--` so a branch named like a folder is not read as a path), parsing `git diff --raw [--numstat] -z` and `git ls-files -z` output, the unsaved-overlay merge rule, moved-file source paths and in-process line counts.
+- Depends on: VCS `Change` models and `GitContentRevision`.
+- Connected to: `GitService`, `ProjectActiveDiffDataService` (moved-file paths) and the unit tests, which call these functions directly.
+- Why it exists: Keeps the parsing testable without a repository and `GitService` focused on orchestration.
+
+### RevisionContent.kt
+- Role: File content at a revision: `git show` with BOM and line-ending handling, `RevisionContentCache` (a small LRU keyed by the resolved commit hash, which also remembers files that do not exist in a commit), commit-hash and revision resolution, and the text-backed revisions used for unsaved edits.
+- Depends on: Git4Idea commands and repository state, `FileDocumentManager`.
+- Connected to: `GitService` (overlay and gutter content) and `VisualTrackerManager` (`isFileMissingInRevision`).
+- Why it exists: Separates content loading and caching from change loading.
+
+### GitChangeModels.kt
+- Role: Result types of a load: `CategorizedChanges`, `ChangeLineStats`, `ChangeLineStatsKey`, `BranchSnapshot` and `GetChangesResult`.
+- Depends on: VCS `Change` and `VirtualFile`.
+- Connected to: `GitService`, `ProjectActiveDiffDataService`, the browser and the renderer.
+- Why it exists: The data types are shared by most of the plugin, not only `GitService`.
 
 ### ProjectActiveDiffDataService.kt
 - Role: Active-diff cache storing categorized file sets and comparison context for the selected tab.
@@ -125,7 +143,7 @@ This document lists each current `src/main` file separately and explains why it 
 ### VisualTrackerManager.kt
 - Role: Intercepts line-status tracking and renders active-comparison gutter markers against the selected diff target.
 - Depends on: `ProjectActiveDiffDataService`, `GitService`, `ToolWindowSettingsProvider`, and line-status tracker APIs.
-- Connected to: Editor gutter state, diff-change notifications, settings changes, and active file lookups. Diff-data and settings changes re-check every open editor; switching editor tabs only re-checks the selected editor of each split, since hidden editors are checked when they are selected.
+- Connected to: Editor gutter state, diff-change notifications, settings changes, and active file lookups. Diff-data and settings changes re-check every open editor; switching editor tabs only re-checks the selected editor of each split, since hidden editors are checked when they are selected. A moved file's base content is loaded from its old path. A standalone tracker (for a file the platform does not track) is released when the file's last editor closes.
 - Why it exists: The plugin's comparison target can differ from `HEAD`, so the standard gutter behavior is not sufficient.
 
 ## Tool Window UI And Actions
@@ -149,15 +167,21 @@ This document lists each current `src/main` file separately and explains why it 
 - Why it exists: Branch selection is a real workflow of its own and needs a reusable, testable UI component.
 
 ### LstCrcChangesBrowser.kt
-- Role: Main per-tab changes browser. It subscribes to `DIFF_DATA_CHANGED_TOPIC`, rebuilds the tree while keeping the viewport, handles the configured mouse gestures and context menu, colors deleted rows, reuses open diff tabs, and exposes `*ForTest` hooks for the UI tests.
-- Depends on: `AsyncChangesBrowserBase`, tree models, `ToolWindowSettingsProvider`, `ProjectActiveDiffDataService`, diff APIs, `RepoNodeRenderer`, and `ExpandNewNodesStateStrategy`. Uses a coroutine-based delay to tell single from double clicks.
+- Role: Main per-tab changes browser. It subscribes to `DIFF_DATA_CHANGED_TOPIC`, rebuilds the tree while keeping the viewport, defines the change actions (diff, source, project tree), colors deleted rows, reuses open diff tabs, and exposes `*ForTest` hooks for the UI tests.
+- Depends on: `AsyncChangesBrowserBase`, tree models, `ToolWindowSettingsProvider`, `ProjectActiveDiffDataService`, diff APIs, `RepoNodeRenderer`, `ExpandNewNodesStateStrategy`, and `ChangesTreeClickHandler`.
 - Connected to: `ToolWindowHelper`, `MyToolWindowFactory`, `ToolWindowSettingsProvider` (view rebuilds), and the UI tests.
 - Why it exists: It is the primary user-facing comparison UI and the place where active diff data becomes an interactive tree.
+
+### ChangesTreeClickHandler.kt
+- Role: Mouse, Enter-key and context-menu handling of a browser's tree. Runs the configured action for each button, waiting for the double-click delay (a coroutine) when a double-click action is also set.
+- Depends on: `ToolWindowSettingsProvider` and the browser's action definitions.
+- Connected to: `LstCrcChangesBrowser`, which owns and disposes it and delegates `configuredActionForClickForTest` to it.
+- Why it exists: Keeps input handling out of the browser's tree and data code.
 
 ### MyToolWindowFactory.kt
 - Role: Platform factory that creates the tool window, restores tabs, installs listeners, and wires toolbar/settings actions.
 - Depends on: Tool-window APIs, `ToolWindowStateService`, `GitService`, `ToolWindowHelper`, `OpenBranchSelectionTabAction`, and settings/menu builders.
-- Connected to: `plugin.xml`, startup flow, tab restoration, and rename synchronization.
+- Connected to: `plugin.xml`, startup flow, tab restoration, and rename synchronization. Selecting a tab selects its comparison; only the non-closable `HEAD` tab selects `HEAD`, so the temporary "Select Branch" tab keeps the current comparison.
 - Why it exists: Tool windows in IntelliJ are created through a dedicated factory; this file is the plugin's shell entry point.
 
 ### LstCrcStatusWidget.kt
@@ -167,7 +191,7 @@ This document lists each current `src/main` file separately and explains why it 
 - Why it exists: It gives users lightweight access to the plugin without forcing the tool window to be visible.
 
 ### ToolWindowSettingsProvider.kt
-- Role: Read accessors for every setting plus the gear-menu builder for click behavior, gutter options, context labels, line stats, untracked files, widget display, and `Include HEAD in scopes`. When a toggle changes it calls the affected component directly (browser rebuild, tracker refresh, data refresh, widget refresh).
+- Role: Read accessors for every setting plus the gear-menu builder for click behavior, gutter options, context labels, line stats, untracked files, widget display, and `Include HEAD in scopes`. When a toggle changes it calls the affected component directly (browser rebuild, tracker refresh, data refresh, widget refresh). `Include HEAD in scopes` re-evaluates trackers, file statuses and tab colors rather than reloading data, which does not depend on it.
 - Depends on: `LstCrcSettingsService` for storage, toggle-action APIs, and `ToolWindowUiCompatibility` for title visibility.
 - Connected to: `MyToolWindowFactory`, `VisualTrackerManager`, `LstCrcChangesBrowser`, `LstCrcStatusWidget`, `GitService`, scopes, and the UI test bridge.
 - Why it exists: The plugin exposes many interaction toggles and needs one place that builds them and reads their values.

@@ -1,121 +1,43 @@
 package com.github.uiopak.lstcrc.services
 
+import com.github.uiopak.lstcrc.LstCrcConstants.HEAD
 import com.github.uiopak.lstcrc.resources.LstCrcBundle
 import com.github.uiopak.lstcrc.state.TabInfo
-import com.github.uiopak.lstcrc.utils.isCommitHash
-import com.intellij.diff.comparison.ComparisonManager
-import com.intellij.diff.comparison.ComparisonPolicy
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.diagnostic.debug
 import com.intellij.openapi.diagnostic.thisLogger
-import com.intellij.openapi.progress.DumbProgressIndicator
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.platform.ide.progress.withBackgroundProgress
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import com.intellij.openapi.util.text.StringUtil
+import com.intellij.openapi.util.io.FileUtil
 import com.intellij.openapi.vcs.FilePath
 import com.intellij.openapi.vcs.FileStatus
 import com.intellij.openapi.vcs.VcsException
 import com.intellij.openapi.vcs.changes.Change
 import com.intellij.openapi.vcs.changes.ChangesUtil
 import com.intellij.openapi.vcs.changes.ContentRevision
-import com.intellij.openapi.vcs.history.VcsRevisionNumber
 import com.intellij.openapi.vcs.vfs.ContentRevisionVirtualFile
 import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.openapi.vfs.VfsUtilCore
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.vcsUtil.VcsUtil
 import com.github.uiopak.lstcrc.toolWindow.ToolWindowSettingsProvider
-import git4idea.GitContentRevision
 import git4idea.GitRevisionNumber
 import git4idea.commands.Git
 import git4idea.commands.GitCommand
 import git4idea.commands.GitLineHandler
 import git4idea.repo.GitRepository
 import git4idea.repo.GitRepositoryManager
-import git4idea.util.GitFileUtils
-import org.apache.commons.io.ByteOrderMark
-import org.apache.commons.io.input.BOMInputStream
-import java.io.ByteArrayInputStream
 import java.nio.charset.Charset
 import java.util.concurrent.ConcurrentHashMap
 
-private const val DIFF_FILTER_PARAM = "--diff-filter=ADCMRUXT"
-private const val IGNORE_CR_AT_EOL_PARAM = "--ignore-cr-at-eol"
-
-/** Revision contents kept by [GitService]; larger files are loaded every time. */
-private const val REVISION_CONTENT_CACHE_ENTRIES = 64
-private const val REVISION_CONTENT_CACHE_MAX_CHARS = 512 * 1024
 
 
-/**
- * Holds the result of a Git diff, with files categorized by their change type.
- *
- * @param allChanges The raw list of [Change] objects from the VCS API.
- * @param createdFiles A list of files considered new in the comparison.
- * @param modifiedFiles A list of files with content modifications.
- * @param movedFiles A list of files that were moved or renamed.
- * @param deletedFiles A list of virtual files representing deleted files.
- * @param comparisonContext A map of a repository root path to the branch/revision it was compared against.
- */
-data class CategorizedChanges(
-    val allChanges: List<Change>,
-    val createdFiles: List<VirtualFile>,
-    val modifiedFiles: List<VirtualFile>,
-    val movedFiles: List<VirtualFile>,
-    val deletedFiles: List<VirtualFile>,
-    val comparisonContext: Map<String, String>,
-    val lineStatsByChange: Map<ChangeLineStatsKey, ChangeLineStats>,
-    /** False when the load skipped line stats because "Show line stats" was off. */
-    val lineStatsIncluded: Boolean = true
-) {
-    companion object {
-        val EMPTY = CategorizedChanges(emptyList(), emptyList(), emptyList(), emptyList(), emptyList(), emptyMap(), emptyMap())
-    }
-}
 
-data class ChangeLineStats(
-    val addedLines: Int,
-    val removedLines: Int
-)
-
-data class ChangeLineStatsKey(
-    val beforePath: String?,
-    val afterPath: String?
-) {
-    companion object {
-        fun from(change: Change): ChangeLineStatsKey =
-            fromPaths(change.beforeRevision?.file?.path, change.afterRevision?.file?.path)
-
-        fun fromPaths(beforePath: String?, afterPath: String?): ChangeLineStatsKey = ChangeLineStatsKey(
-            beforePath = normalizePath(beforePath),
-            afterPath = normalizePath(afterPath)
-        )
-
-        private fun normalizePath(path: String?): String? = path?.replace('\\', '/')
-    }
-}
-
-data class BranchSnapshot(
-    val localBranches: List<String>,
-    val remoteBranches: List<String>
-)
-
-/**
- * Encapsulates the complete result of a `getChanges` operation, including both successfully
- * retrieved changes and any failures that occurred for specific repositories.
- *
- * @param categorizedChanges Successfully categorized changes from all valid repositories.
- * @param failures A map of repositories that failed to a string representing the invalid revision.
- */
-data class GetChangesResult(
-    val categorizedChanges: CategorizedChanges,
-    val failures: Map<GitRepository, String>
-)
 
 /**
  * A project-level service responsible for all interactions with the Git4Idea plugin API.
@@ -126,24 +48,7 @@ data class GetChangesResult(
 class GitService(private val project: Project) {
 
     private val logger = thisLogger()
-
-    private data class RevisionContentKey(
-        val root: String,
-        val commitHash: String,
-        val relativePath: String,
-        val charset: Charset
-    )
-
-    /**
-     * File contents at a commit. Refreshes while typing (the unsaved-edit overlay) and gutter loads
-     * ask for the same content again and again, and every miss runs `git show`. Entries are keyed by
-     * commit hash rather than branch name, so they never go stale.
-     */
-    private val revisionContentCache =
-        object : LinkedHashMap<RevisionContentKey, String>(16, 0.75f, true) {
-            override fun removeEldestEntry(eldest: MutableMap.MutableEntry<RevisionContentKey, String>): Boolean =
-                size > REVISION_CONTENT_CACHE_ENTRIES
-        }
+    private val revisionContentCache = RevisionContentCache()
 
     /** What decides a repository's changes on disk, apart from the files themselves. */
     private data class DiskChangesKey(
@@ -168,15 +73,6 @@ class GitService(private val project: Project) {
      * because nothing changed on disk; every other refresh reloads and replaces them.
      */
     private val lastDiskChanges = ConcurrentHashMap<String, DiskChanges>()
-
-    private data class LoadedChanges(
-        val changes: List<Change>,
-        val lineStatsByChange: Map<ChangeLineStatsKey, ChangeLineStats>
-    ) {
-        companion object {
-            val EMPTY = LoadedChanges(emptyList(), emptyMap())
-        }
-    }
 
     internal fun getRepositoryForFile(file: VirtualFile): GitRepository? =
         GitRepositoryManager.getInstance(project).getRepositoryForFile(file)
@@ -232,7 +128,7 @@ class GitService(private val project: Project) {
         dispatcher: CoroutineDispatcher = Dispatchers.IO
     ): GetChangesResult {
         val repositories = getRepositories()
-        val profileName = tabInfo?.branchName ?: "HEAD"
+        val profileName = tabInfo?.branchName ?: HEAD
 
         logger.debug { "getChanges called for profile: $profileName" }
 
@@ -243,15 +139,22 @@ class GitService(private val project: Project) {
         // Line stats cost an extra `git diff --numstat` per repository plus in-process diffs of
         // untracked/unsaved files, so they are only computed while the tree shows them.
         val includeLineStats = ToolWindowSettingsProvider.isShowLineStatsInTree()
-        return withBackgroundProgress(project, LstCrcBundle.message("git.task.loading.changes")) {
-            withContext(dispatcher) {
-                loadChangesResult(repositories, tabInfo, includeLineStats, reuseDiskChanges)
-            }
+        // An edit-only refresh that can reuse every repository's last git result runs no git diff, so it shows
+        // no progress indicator (it would flicker in the status bar after every pause in typing).
+        val load: suspend () -> GetChangesResult = {
+            withContext(dispatcher) { loadChangesResult(repositories, tabInfo, includeLineStats, reuseDiskChanges) }
         }
+        val reusesAll = reuseDiskChanges && repositories.all { repo ->
+            lastDiskChanges[repo.root.path]?.key == diskChangesKey(resolveComparisonTarget(repo, tabInfo), includeLineStats)
+        }
+        return if (reusesAll) load() else withBackgroundProgress(project, LstCrcBundle.message("git.task.loading.changes")) { load() }
     }
 
+    private fun diskChangesKey(target: String, includeLineStats: Boolean) =
+        DiskChangesKey(target, includeLineStats, ToolWindowSettingsProvider.isShowUntrackedFilesAsNew())
+
     fun resolveComparisonTarget(repo: GitRepository, tabInfo: TabInfo?): String {
-        if (tabInfo == null) return "HEAD"
+        if (tabInfo == null) return HEAD
         return tabInfo.comparisonMap[repo.root.path] ?: tabInfo.branchName
     }
 
@@ -283,8 +186,8 @@ class GitService(private val project: Project) {
      * against [target] (HEAD for the HEAD tab). A per-repository override only changes the target;
      * it is never a commit-to-commit comparison, so the tree matches what the gutter markers show.
      *
-     * If `git diff` fails, a comparison tab records [target] in [failures] and shows nothing for the
-     * repository; the HEAD tab ([failures] == null) still shows untracked files and unsaved edits.
+     * If `git diff` fails because [target] does not exist, a comparison tab records it in [failures] and shows
+     * nothing for the repository. Otherwise the repository shows untracked files and unsaved edits only.
      */
     private fun loadChanges(
         repo: GitRepository,
@@ -293,7 +196,7 @@ class GitService(private val project: Project) {
         failures: MutableMap<GitRepository, String>?,
         reuseDiskChanges: Boolean
     ): LoadedChanges {
-        val key = DiskChangesKey(target, includeLineStats, ToolWindowSettingsProvider.isShowUntrackedFilesAsNew())
+        val key = diskChangesKey(target, includeLineStats)
         val diskChanges = lastDiskChanges[repo.root.path]?.takeIf { reuseDiskChanges && it.key == key }
             ?: loadDiskChanges(repo, key, failures)
             ?: return LoadedChanges.EMPTY
@@ -319,7 +222,10 @@ class GitService(private val project: Project) {
                 loadTrackedChangesAgainstWorkingTree(repo, key.target, key.includeLineStats)
             } catch (e: VcsException) {
                 logger.warn("git diff failed for repo '${repo.root.name}' against target '${key.target}': ${e.message}")
-                if (failures != null) {
+                // Only a target git cannot resolve is reported, which resets the tab to HEAD for good. Any other
+                // failure (for example while another git command runs) shows no tracked changes this time and is
+                // retried on the next refresh.
+                if (failures != null && !revisionExists(project, repo.root, key.target)) {
                     failures[repo] = key.target
                     lastDiskChanges.remove(repo.root.path)
                     return null
@@ -335,7 +241,7 @@ class GitService(private val project: Project) {
             changes = changes,
             lineStatsByChange = if (key.includeLineStats) buildLineStats(changes, trackedChanges.lineStatsByChange, emptySet()) else emptyMap()
         )
-        val diskChanges = DiskChanges(key, loaded, overlayTarget = if (repo.isFresh) "HEAD" else key.target)
+        val diskChanges = DiskChanges(key, loaded, overlayTarget = if (repo.isFresh) HEAD else key.target)
         if (cacheable) lastDiskChanges[repo.root.path] = diskChanges else lastDiskChanges.remove(repo.root.path)
         return diskChanges
     }
@@ -347,7 +253,7 @@ class GitService(private val project: Project) {
      */
     private fun loadTrackedChangesAgainstWorkingTree(repo: GitRepository, target: String, includeLineStats: Boolean): LoadedChanges {
         val output = runGitDiff(repo, "--raw", *trackedDiffArgs(target, includeLineStats).toTypedArray())
-        return parseTrackedDiff(repo, GitRevisionNumber(target), output)
+        return parseTrackedDiff(project, repo.root, GitRevisionNumber(target), output)
     }
 
     /** Runs a silent `git diff` in [repo] and returns its stdout, throwing [VcsException] on failure. */
@@ -358,81 +264,6 @@ class GitService(private val project: Project) {
         handler.setStdoutSuppressed(true)
         handler.addParameters(*params)
         return Git.getInstance().runCommand(handler).getOutputOrThrow()
-    }
-
-    /**
-     * Parses `git diff --raw -z` output, optionally followed by `--numstat -z` output. The "before" side of
-     * each change is [targetRevision], the "after" side is the working tree. Paths are unquoted with `-z`.
-     *
-     * - Raw records are `:<modes> <hashes> <status><NUL><path><NUL>`, with a second path for renames and copies.
-     * - Numstat records are `added<TAB>removed<TAB>path<NUL>`, or for renames `added<TAB>removed<TAB><NUL>old<NUL>new<NUL>`.
-     *   Binary files report `-` counts and get no stats.
-     */
-    private fun parseTrackedDiff(repo: GitRepository, targetRevision: GitRevisionNumber, output: String): LoadedChanges {
-        val root = repo.root.path
-        fun path(relativePath: String) = GitContentRevision.createPath(repo.root, relativePath)
-        fun before(path: FilePath) = GitContentRevision.createRevision(path, targetRevision, project)
-        fun after(path: FilePath) = GitContentRevision.createRevision(path, null, project)
-
-        val changes = mutableListOf<Change>()
-        val stats = mutableListOf<Pair<ChangeLineStatsKey, ChangeLineStats?>>()
-        val fields = output.split('\u0000').iterator()
-        while (fields.hasNext()) {
-            val field = fields.next().trim('\n')
-            if (field.startsWith(':')) {
-                val status = field.substringAfterLast(' ').firstOrNull()
-                val first = if (fields.hasNext()) fields.next() else break
-                changes += when (status) {
-                    'A' -> Change(null, after(path(first)), FileStatus.ADDED)
-                    'D' -> Change(before(path(first)), null, FileStatus.DELETED)
-                    'M', 'T', 'U', 'X' -> path(first).let { Change(before(it), after(it), FileStatus.MODIFIED) }
-                    'R', 'C' -> {
-                        val second = if (fields.hasNext()) fields.next() else break
-                        Change(before(path(first)), after(path(second)), FileStatus.MODIFIED)
-                    }
-                    else -> continue
-                }
-                continue
-            }
-            val tokens = field.split('\t')
-            if (tokens.size < 3) continue
-            val key = if (tokens[2].isEmpty()) {
-                // Rename or copy: the old and new paths follow as separate fields.
-                val oldPath = if (fields.hasNext()) fields.next() else break
-                val newPath = if (fields.hasNext()) fields.next() else break
-                ChangeLineStatsKey.fromPaths("$root/$oldPath", "$root/$newPath")
-            } else {
-                ChangeLineStatsKey.fromPaths(null, "$root/${tokens[2]}")
-            }
-            val addedLines = tokens[0].toIntOrNull()
-            val removedLines = tokens[1].toIntOrNull()
-            stats += key to if (addedLines != null && removedLines != null) ChangeLineStats(addedLines, removedLines) else null
-        }
-        return LoadedChanges(changes, matchLineStats(changes, stats))
-    }
-
-    /**
-     * Maps numstat entries to the keys of [changes]. A plain path matches a change by its after path, else by
-     * its before path (deletions); a rename entry must match a change's key exactly.
-     */
-    private fun matchLineStats(
-        changes: List<Change>,
-        stats: List<Pair<ChangeLineStatsKey, ChangeLineStats?>>
-    ): Map<ChangeLineStatsKey, ChangeLineStats> {
-        if (stats.isEmpty()) return emptyMap()
-        val keys = changes.mapTo(LinkedHashSet(), ChangeLineStatsKey::from)
-        val byAfterPath = keys.filter { it.afterPath != null }.associateBy { it.afterPath!! }
-        val byBeforePath = keys.filter { it.beforePath != null }.associateBy { it.beforePath!! }
-        val result = linkedMapOf<ChangeLineStatsKey, ChangeLineStats>()
-        for ((entry, lineStats) in stats) {
-            val key = if (entry.beforePath != null) {
-                entry.takeIf { it in keys }
-            } else {
-                byAfterPath[entry.afterPath] ?: byBeforePath[entry.afterPath]
-            } ?: continue
-            result[key] = lineStats ?: continue
-        }
-        return result
     }
 
     /** Splits changes into created/modified/moved/deleted files in one pass. */
@@ -471,7 +302,13 @@ class GitService(private val project: Project) {
 
     /** Overlays [repo]'s unsaved documents on [diskChanges] and adds line stats for the edited files. */
     private fun overlayUnsavedDocuments(repo: GitRepository, diskChanges: DiskChanges): LoadedChanges {
-        val unsavedChanges = collectUnsavedDocumentChanges(repo, diskChanges.overlayTarget, trackedAddedPaths(diskChanges.loaded.changes))
+        val diskChangeList = diskChanges.loaded.changes
+        val unsavedChanges = collectUnsavedDocumentChanges(
+            repo,
+            diskChanges.overlayTarget,
+            trackedAddedPaths(diskChangeList),
+            movedSourcePaths(diskChangeList)
+        )
         val allChanges = overlayUnsavedDocumentChanges(diskChanges.loaded.changes, unsavedChanges)
         if (!diskChanges.key.includeLineStats) return LoadedChanges(allChanges, emptyMap())
         return LoadedChanges(
@@ -561,7 +398,16 @@ class GitService(private val project: Project) {
         }
     }
 
-    private fun collectUnsavedDocumentChanges(repo: GitRepository, targetRevision: String, addedPaths: Set<String>): List<Change> {
+    /**
+     * Changes for [repo]'s unsaved documents against [targetRevision]. A moved file is compared with its old
+     * path ([movedFrom]), which is where the target has it.
+     */
+    private fun collectUnsavedDocumentChanges(
+        repo: GitRepository,
+        targetRevision: String,
+        addedPaths: Set<String>,
+        movedFrom: Map<String, FilePath>
+    ): List<Change> {
         val fileDocumentManager = FileDocumentManager.getInstance()
         val unsavedFiles = ApplicationManager.getApplication().runReadAction<List<VirtualFile>> {
             fileDocumentManager.unsavedDocuments.asSequence()
@@ -576,13 +422,14 @@ class GitService(private val project: Project) {
 
         return unsavedFiles.asSequence()
             .filter { file -> file.path !in addedPaths }
-            .mapNotNull { file -> createUnsavedDocumentChange(repo, file, targetRevision) }
+            .mapNotNull { file -> createUnsavedDocumentChange(repo, file, targetRevision, movedFrom[file.path]) }
             .toList()
     }
 
-    private fun createUnsavedDocumentChange(repo: GitRepository, file: VirtualFile, targetRevision: String): Change? {
+    private fun createUnsavedDocumentChange(repo: GitRepository, file: VirtualFile, targetRevision: String, movedFrom: FilePath?): Change? {
         return try {
-            val beforeRevision = createTargetContentRevision(repo, file, targetRevision) ?: return null
+            val targetPath = movedFrom ?: VcsUtil.getFilePath(file)
+            val beforeRevision = createTargetContentRevision(repo, targetPath, file.charset, targetRevision) ?: return null
             val afterRevision = createLiveDocumentContentRevision(file)
             Change(beforeRevision, afterRevision, FileStatus.MODIFIED)
         } catch (e: Exception) {
@@ -605,7 +452,11 @@ class GitService(private val project: Project) {
             .getOrNull()
     }
 
-    fun getFileContentForRevision(revision: String, file: VirtualFile): String? {
+    /**
+     * [file]'s content at [revision]. [pathInRevision] is the absolute path the file has there, when it differs
+     * (a moved file is compared with its old path).
+     */
+    fun getFileContentForRevision(revision: String, file: VirtualFile, pathInRevision: String = file.path): String? {
         val repository = getRepositoryForFile(file)
 
         if (repository == null) {
@@ -613,151 +464,28 @@ class GitService(private val project: Project) {
             return null
         }
 
-        val relativePath = VfsUtilCore.getRelativePath(file, repository.root, '/')
-            ?: throw IllegalStateException("Could not calculate relative path for file '${file.path}' against repo root '${repository.root.path}'.")
+        val relativePath = FileUtil.getRelativePath(repository.root.path, pathInRevision, '/')
+            ?: throw IllegalStateException("Could not calculate relative path for '$pathInRevision' against repo root '${repository.root.path}'.")
         logger.debug { "GUTTER_GIT_SERVICE: Loading '$relativePath' at revision '$revision'." }
         return loadRevisionText(repository, revision, relativePath, file.charset)
     }
 
     /**
-     * [relativePath]'s text at [revision], with LF line endings. Throws [VcsException] when git fails,
-     * for example when the file does not exist in that revision; failures are not cached.
+     * [relativePath]'s text at [revision], with LF line endings. Throws [VcsException] when git fails, for example
+     * when the file does not exist in that revision. Content is cached when [revision] resolves to a commit.
      */
     private fun loadRevisionText(repo: GitRepository, revision: String, relativePath: String, charset: Charset): String {
         val commitHash = resolveCommitHash(repo, revision)
             ?: return loadRevisionTextContent(project, repo.root, revision, relativePath, charset)
-        val key = RevisionContentKey(repo.root.path, commitHash, relativePath, charset)
-        synchronized(revisionContentCache) { revisionContentCache[key] }?.let { return it }
-
-        val content = loadRevisionTextContent(project, repo.root, commitHash, relativePath, charset)
-        if (content.length <= REVISION_CONTENT_CACHE_MAX_CHARS) {
-            synchronized(revisionContentCache) { revisionContentCache[key] = content }
+        return revisionContentCache.get(repo.root.path, commitHash, relativePath, charset) {
+            loadRevisionTextContent(project, repo.root, commitHash, relativePath, charset)
         }
-        return content
     }
 
-    /** [file]'s content at [revision] as a [ContentRevision], or null when it cannot be loaded. */
-    private fun createTargetContentRevision(repo: GitRepository, file: VirtualFile, revision: String): ContentRevision? {
-        val relativePath = VfsUtilCore.getRelativePath(file, repo.root, '/') ?: return null
-        val content = runCatching { loadRevisionText(repo, revision, relativePath, file.charset) }.getOrElse { return null }
-        return TextContentRevision(VcsUtil.getFilePath(file), content, GitRevisionNumber(revision))
+    /** The content of [path] at [revision] as a [ContentRevision], or null when it cannot be loaded. */
+    private fun createTargetContentRevision(repo: GitRepository, path: FilePath, charset: Charset, revision: String): ContentRevision? {
+        val relativePath = FileUtil.getRelativePath(repo.root.path, path.path, '/') ?: return null
+        val content = runCatching { loadRevisionText(repo, revision, relativePath, charset) }.getOrElse { return null }
+        return TextContentRevision(path, content, GitRevisionNumber(revision))
     }
-}
-
-/**
- * The commit [revision] points to, read from Git4Idea's in-memory repository state (no git call), or
- * null when that state cannot tell: tags, abbreviated hashes, a repository without commits.
- */
-internal fun resolveCommitHash(repo: GitRepository, revision: String): String? {
-    if (revision == "HEAD") return repo.currentRevision
-    val branches = repo.branches
-    branches.findBranchByName(revision)?.let { return branches.getHash(it)?.asString() }
-    return revision.takeIf { it.length == 40 && isCommitHash(it) }
-}
-
-internal fun calculateLineStats(beforeContent: String, afterContent: String): ChangeLineStats {
-    val normalizedBeforeContent = StringUtil.convertLineSeparators(beforeContent)
-    val normalizedAfterContent = StringUtil.convertLineSeparators(afterContent)
-    val fragments = ComparisonManager.getInstance().compareLines(
-        normalizedBeforeContent,
-        normalizedAfterContent,
-        ComparisonPolicy.DEFAULT,
-        DumbProgressIndicator.INSTANCE
-    ).toList()
-    return ChangeLineStats(
-        addedLines = fragments.sumOf { it.endLine2 - it.startLine2 },
-        removedLines = fragments.sumOf { it.endLine1 - it.startLine1 }
-    )
-}
-
-/** `git diff` options for the tracked changes against [target]; with [includeLineStats] also `--numstat`. */
-internal fun trackedDiffArgs(target: String, includeLineStats: Boolean): List<String> = buildList {
-    if (includeLineStats) {
-        add("--numstat")
-        add(IGNORE_CR_AT_EOL_PARAM)
-    }
-    add("-z")
-    add(DIFF_FILTER_PARAM)
-    add("-M")
-    add(target)
-}
-
-/**
- * A revision whose text is already loaded: the target side and the live-document side of an unsaved edit.
- * Unlike an anonymous [ContentRevision], two loads of the same text are equal, so a refresh that finds the
- * same unsaved content is recognized as unchanged (see `ProjectActiveDiffDataService.updateActiveDiff`).
- */
-internal data class TextContentRevision(
-    private val filePath: FilePath,
-    private val text: String,
-    private val revision: VcsRevisionNumber
-) : ContentRevision {
-    override fun getFile(): FilePath = filePath
-
-    override fun getContent(): String = text
-
-    override fun getRevisionNumber(): VcsRevisionNumber = revision
-}
-
-/** The revision number of live-document content. One instance, so equal content means equal revisions. */
-private object LocalRevisionNumber : VcsRevisionNumber {
-    override fun asString(): String = "LOCAL"
-
-    override fun compareTo(other: VcsRevisionNumber): Int = 0
-}
-
-internal fun createLiveDocumentContentRevision(file: VirtualFile): ContentRevision {
-    val content = ApplicationManager.getApplication().runReadAction<String> {
-        FileDocumentManager.getInstance().getDocument(file)?.immutableCharSequence?.toString()
-            ?: VfsUtilCore.loadText(file)
-    }
-    return TextContentRevision(VcsUtil.getFilePath(file), content, LocalRevisionNumber)
-}
-
-internal fun loadRevisionTextContent(
-    project: Project,
-    repoRoot: VirtualFile,
-    revision: String,
-    relativePath: String,
-    charset: Charset
-): String {
-    val revisionContentBytes = GitFileUtils.getFileContent(project, repoRoot, revision, relativePath)
-    val rawContent = BOMInputStream.builder()
-        .setInputStream(ByteArrayInputStream(revisionContentBytes))
-        .setByteOrderMarks(
-            ByteOrderMark.UTF_8,
-            ByteOrderMark.UTF_16LE,
-            ByteOrderMark.UTF_16BE,
-            ByteOrderMark.UTF_32LE,
-            ByteOrderMark.UTF_32BE
-        )
-        .get()
-        .use { it.reader(charset).readText() }
-
-    // The IntelliJ Document model requires LF ('\n') line endings, but Git on Windows might return CRLF ('\r\n').
-    return StringUtil.convertLineSeparators(rawContent)
-}
-
-/**
- * Paths `git diff` reported as added. They have no content in the target, so loading it for the unsaved-edit
- * overlay could only fail. Untracked files (status UNKNOWN) are not included: they can exist in the target.
- */
-internal fun trackedAddedPaths(changes: List<Change>): Set<String> =
-    changes.mapNotNullTo(HashSet()) { change -> change.afterRevision?.file?.path?.takeIf { change.fileStatus == FileStatus.ADDED } }
-
-/**
- * Changes for the NUL-separated paths of `git ls-files --others -z` in [root]. `-z` paths are not quoted,
- * so they must not be unescaped: a backslash in a file name is part of the name.
- */
-internal fun untrackedChanges(project: Project, root: VirtualFile, output: String): List<Change> =
-    output.split('\u0000').filter(String::isNotBlank).map { relativePath ->
-        Change(null, GitContentRevision.createRevision(GitContentRevision.createPath(root, relativePath), null, project), FileStatus.UNKNOWN)
-    }
-
-internal fun mergeUnsavedOverlayChange(existingChange: Change?, unsavedChange: Change): Change {
-    if (existingChange?.type == Change.Type.NEW && unsavedChange.afterRevision != null) {
-        return Change(null, unsavedChange.afterRevision, FileStatus.ADDED)
-    }
-
-    return unsavedChange
 }

@@ -1,9 +1,11 @@
 package com.github.uiopak.lstcrc.gutters
 
+import com.github.uiopak.lstcrc.LstCrcConstants.HEAD
 import com.github.uiopak.lstcrc.messaging.ActiveDiffDataChangedListener
 import com.github.uiopak.lstcrc.messaging.DIFF_DATA_CHANGED_TOPIC
 import com.github.uiopak.lstcrc.services.GitService
 import com.github.uiopak.lstcrc.services.ProjectActiveDiffDataService
+import com.github.uiopak.lstcrc.services.isFileMissingInRevision
 import com.github.uiopak.lstcrc.toolWindow.ToolWindowSettingsProvider
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
@@ -75,11 +77,11 @@ class VisualTrackerManager(
     private val updateJobs = ConcurrentHashMap<Document, Job>()
 
     /**
-     * The target revision each visual tracker's base content was loaded for (or is loading).
+     * The target revision and path each visual tracker's base content was loaded for (or is loading).
      * Lets tab switches and edit-driven refreshes skip `git show` when nothing relevant changed.
      * Cleared on any repository change, because a branch or HEAD may now point elsewhere.
      */
-    private val loadedRevisions = ConcurrentHashMap<Document, String>()
+    private val loadedRevisions = ConcurrentHashMap<Document, Pair<String, String>>()
 
     fun init() {
         val busConnection = project.messageBus.connect(this)
@@ -109,6 +111,11 @@ class VisualTrackerManager(
             // Only the editors on screen need a check now; others are checked when they are selected.
             override fun selectionChanged(event: FileEditorManagerEvent) {
                 refreshAllTrackers(visibleOnly = true)
+            }
+
+            // A standalone tracker has no native tracker whose removal would release it.
+            override fun fileClosed(source: FileEditorManager, file: VirtualFile) {
+                if (!source.isFileOpen(file)) releaseStandaloneTracker(file)
             }
         })
 
@@ -234,6 +241,15 @@ class VisualTrackerManager(
         }
     }
 
+    /** Releases [file]'s visual tracker when the platform does not track the file (after its last editor closed). */
+    internal fun releaseStandaloneTracker(file: VirtualFile) {
+        val document = FileDocumentManager.getInstance().getCachedDocument(file) ?: return
+        if (LineStatusTrackerManager.getInstance(project).getLineStatusTracker(document) != null) return
+        if (releaseVisualTracker(document)) {
+            logger.debug { "VISUAL_TRACKER: Released standalone visual tracker for closed ${file.name}." }
+        }
+    }
+
     /** Cancels any pending load and releases the visual tracker for [document]. Returns true if one existed. */
     private fun releaseVisualTracker(document: Document): Boolean {
         updateJobs.remove(document)?.cancel()
@@ -256,7 +272,7 @@ class VisualTrackerManager(
         // The native tracker already compares against the current revision, unless HEAD is included in scopes.
         val isTargetSameAsCurrent = targetRevision == repository.currentBranchName ||
             targetRevision == repository.currentRevision ||
-            targetRevision == "HEAD"
+            targetRevision == HEAD
         if (isTargetSameAsCurrent && !ToolWindowSettingsProvider.isIncludeHeadInScopes()) return null
 
         if (!ToolWindowSettingsProvider.isGutterForNewFilesEnabled() && file.path in diffDataService.createdFilePaths) return null
@@ -281,7 +297,7 @@ class VisualTrackerManager(
      * Makes sure [document] has a visual tracker whose base content is [targetRevision].
      * Skips the git lookup when that revision is already loaded or loading.
      */
-    private fun ensureVisualTracker(document: Document, file: VirtualFile, targetRevision: String) {
+    internal fun ensureVisualTracker(document: Document, file: VirtualFile, targetRevision: String) {
         val visualTracker = visualTrackers.computeIfAbsent(document) {
             logger.debug { "VISUAL_TRACKER: Creating visual tracker for ${file.name}" }
             val tracker = SimpleLocalLineStatusTracker.createTracker(project, document, file)
@@ -289,13 +305,16 @@ class VisualTrackerManager(
             localTracker.mode = VISIBLE_MODE
             tracker
         }
-        if (loadedRevisions.put(document, targetRevision) == targetRevision) return
+        // A moved file is compared with its old path, which is where the target has it.
+        val pathInTarget = project.service<ProjectActiveDiffDataService>().pathInTarget(file.path)
+        val loadKey = targetRevision to pathInTarget
+        if (loadedRevisions.put(document, loadKey) == loadKey) return
 
         updateJobs.remove(document)?.cancel()
         updateJobs[document] = coroutineScope.launch {
             try {
-                val content = loadTargetContent(file, targetRevision)
-                if (content == null) loadedRevisions.remove(document, targetRevision)
+                val content = loadTargetContent(file, targetRevision, pathInTarget)
+                if (content == null) loadedRevisions.remove(document, loadKey)
                 val baseContent = content ?: readActionBlocking { document.text }
                 withContext(dispatchers.ui) {
                     if (visualTrackers[document] === visualTracker) {
@@ -309,10 +328,10 @@ class VisualTrackerManager(
     }
 
     /**
-     * Loads [file]'s content at [revision]. Returns "" when the file does not exist there,
-     * or null when loading failed (the caller then shows no changes and retries next refresh).
+     * Loads [file]'s content at [revision], where it is at [pathInTarget]. Returns "" when the file does not
+     * exist there, or null when loading failed (the caller then shows no changes and retries next refresh).
      */
-    private suspend fun loadTargetContent(file: VirtualFile, revision: String): CharSequence? {
+    private suspend fun loadTargetContent(file: VirtualFile, revision: String, pathInTarget: String): CharSequence? {
         // A file that is new in the comparison has no content in the target revision.
         if (file.path in project.service<ProjectActiveDiffDataService>().createdFilePaths) {
             return ""
@@ -321,16 +340,13 @@ class VisualTrackerManager(
         val gitService = project.service<GitService>()
         return withContext(dispatchers.io) {
             try {
-                gitService.getFileContentForRevision(revision, file)
+                gitService.getFileContentForRevision(revision, file, pathInTarget)
             } catch (e: Exception) {
-                val vcsError = generateSequence<Throwable>(e) { it.cause }.firstOrNull { it is VcsException }
-                val message = vcsError?.message.orEmpty()
                 // The file does not exist in the target revision: compare against empty content.
-                if (message.contains("does not exist in", ignoreCase = true) ||
-                    message.contains("exists on disk, but not in", ignoreCase = true)
-                ) {
+                if (isFileMissingInRevision(e)) {
                     ""
                 } else {
+                    val vcsError = generateSequence<Throwable>(e) { it.cause }.firstOrNull { it is VcsException }
                     logger.warn("VISUAL_TRACKER: Failed to load content for ${file.path}: ${(vcsError ?: e).message}")
                     null
                 }

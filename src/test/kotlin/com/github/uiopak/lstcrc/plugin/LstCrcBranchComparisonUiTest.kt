@@ -354,10 +354,7 @@ class LstCrcBranchComparisonUiTest : LstCrcUiTestSupport() {
                 assertTrue(beforeRefreshPosition.second > 0, "Precondition failed: expected tree viewport to be scrolled")
 
                 uiSteps.updateFileWithoutStaging("Main.txt", "${baseContent}local refresh change\n")
-
-                step("Wait for viewport position to settle after refresh") {
-                    Thread.sleep(2_000)
-                }
+                waitForRefreshShowingModified("Main.txt")
 
                 val afterRefreshPosition = treeViewportPosition()
                 assertEquals(
@@ -470,6 +467,7 @@ class LstCrcBranchComparisonUiTest : LstCrcUiTestSupport() {
 
                 val topVisibleHistory = tracking({ beginTopVisibleEntryTracking() }, { stopTopVisibleEntryTracking() }) {
                     uiSteps.updateFileWithoutStaging("Main.txt", "${baseContent}local refresh change\n")
+                    waitForRefreshShowingModified("Main.txt")
                 }
 
                 assertEquals(
@@ -514,6 +512,7 @@ class LstCrcBranchComparisonUiTest : LstCrcUiTestSupport() {
                     focusEditorFile("Main.txt")
                     moveCaretToLineEnd(0)
                     insertSingleCharacterAtCaretWithoutSave()
+                    waitForRefreshShowingModified("Main.txt")
                     waitFor(Duration.ofSeconds(5)) {
                         treeViewportPosition() == beforeRefreshPosition
                     }
@@ -1469,11 +1468,28 @@ class LstCrcBranchComparisonUiTest : LstCrcUiTestSupport() {
             action = action
         )
 
-    /** Asserts that the tree viewport never moves while [action] runs and the refresh it causes settles. */
+    /**
+     * Waits until the active diff lists [fileName] as modified (the refresh caused by editing it has landed) and
+     * the tree has been rebuilt from it. Without this, a viewport assertion right after an edit can run before
+     * the refresh and pass without testing anything.
+     */
+    private fun GitChangesViewFixture.waitForRefreshShowingModified(fileName: String) {
+        val frame = remoteRobot.find(IdeaFrame::class.java, Duration.ofSeconds(10))
+        step("Wait for the refresh to show '$fileName' as modified") {
+            waitFor(Duration.ofSeconds(30), interval = Duration.ofMillis(250)) {
+                frame.activeDiffSnapshot().substringAfter("modified=").substringBefore('|')
+                    .split(',').any { it.endsWith("/$fileName") }
+            }
+        }
+        waitForTreeToSettle()
+    }
+
+    /** Asserts that the tree viewport never moves while [action] edits Main.txt and the refresh it causes settles. */
     private fun GitChangesViewFixture.assertViewportStaysDuring(message: String, action: () -> Unit) {
         val beforeRefreshPosition = treeViewportPosition()
         val viewportHistory = tracking({ beginTreeViewportTracking() }, { stopTreeViewportTracking() }) {
             action()
+            waitForRefreshShowingModified("Main.txt")
             waitFor(Duration.ofSeconds(5)) {
                 treeViewportPosition() == beforeRefreshPosition
             }
