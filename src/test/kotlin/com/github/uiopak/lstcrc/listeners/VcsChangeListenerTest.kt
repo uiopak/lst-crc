@@ -85,7 +85,7 @@ class VcsChangeListenerTest : LstCrcTestCase() {
         val fullRefreshes = AtomicInteger()
         val editOnlyRefreshes = AtomicInteger()
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-        val listener = VcsChangeListener.createForTest(
+        val listener = VcsChangeListener(
             project,
             scope,
             refreshCurrentSelection = { fullRefreshes.incrementAndGet() },
@@ -127,6 +127,6 @@ class VcsChangeListenerTest : LstCrcTestCase() {
         isRepositoryFile: (com.intellij.openapi.vfs.VirtualFile) -> Boolean
     ): VcsChangeListener {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-        return VcsChangeListener.createForTest(project, scope, { refreshLatch.countDown() }, isRepositoryFile)
+        return VcsChangeListener(project, scope, { refreshLatch.countDown() }, isRepositoryFile)
     }
 }

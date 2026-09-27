@@ -31,6 +31,17 @@ class GitServiceOverlayMergeTest : LstCrcTestCase() {
         assertSame(unsavedOverlay, mergedChange)
     }
 
+    fun testTrackedAddedPathsSkipsUntrackedAndModifiedFiles() {
+        val changes = listOf(
+            Change(null, StubRevision("C:/repo/Added.txt"), FileStatus.ADDED),
+            Change(null, StubRevision("C:/repo/Untracked.txt"), FileStatus.UNKNOWN),
+            Change(StubRevision("C:/repo/Main.txt"), StubRevision("C:/repo/Main.txt"), FileStatus.MODIFIED),
+            Change(StubRevision("C:/repo/Gone.txt"), null, FileStatus.DELETED)
+        )
+
+        assertEquals(setOf("C:/repo/Added.txt"), trackedAddedPaths(changes))
+    }
+
     private class StubRevision(path: String) : ContentRevision {
         private val filePath: FilePath = VcsUtil.getFilePath(path, false)
         private val revisionNumber = object : VcsRevisionNumber {

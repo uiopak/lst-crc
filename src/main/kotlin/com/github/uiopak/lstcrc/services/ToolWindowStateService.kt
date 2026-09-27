@@ -1,6 +1,5 @@
 package com.github.uiopak.lstcrc.services
 
-
 import com.github.uiopak.lstcrc.messaging.TOOL_WINDOW_STATE_TOPIC
 import com.github.uiopak.lstcrc.resources.LstCrcBundle
 import com.github.uiopak.lstcrc.state.TabInfo
@@ -8,10 +7,9 @@ import com.github.uiopak.lstcrc.state.ToolWindowState
 import com.github.uiopak.lstcrc.state.displayName
 import com.github.uiopak.lstcrc.toolWindow.SingleRepoBranchSelectionDialog
 import com.github.uiopak.lstcrc.utils.isCommitHash
+import com.intellij.notification.NotificationAction
 import com.intellij.notification.NotificationGroupManager
 import com.intellij.notification.NotificationType
-import com.intellij.openapi.actionSystem.AnAction
-import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.components.PersistentStateComponent
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.State
@@ -225,16 +223,14 @@ class ToolWindowStateService(private val project: Project, val coroutineScope: C
         // Add an action for each failed repository, allowing the user to fix the configuration.
         failures.keys.forEach { repo ->
             val actionText = LstCrcBundle.message("notification.action.change.comparison", repo.root.name)
-            notification.addAction(object : AnAction(actionText) {
-                override fun actionPerformed(e: AnActionEvent) {
-                    val currentTabInfo = state.openTabs.find { it.branchName == tabInfo.branchName }
-                    if (currentTabInfo != null) {
-                        SingleRepoBranchSelectionDialog(project, repo, currentTabInfo).show()
-                    } else {
-                        logger.warn("Could not find tab '${tabInfo.branchName}' to show branch selection dialog from notification.")
-                    }
-                    notification.expire() // Close notification after action is clicked.
+            notification.addAction(NotificationAction.createSimple(actionText) {
+                val currentTabInfo = state.openTabs.find { it.branchName == tabInfo.branchName }
+                if (currentTabInfo != null) {
+                    SingleRepoBranchSelectionDialog(project, repo, currentTabInfo).show()
+                } else {
+                    logger.warn("Could not find tab '${tabInfo.branchName}' to show branch selection dialog from notification.")
                 }
+                notification.expire() // Close notification after action is clicked.
             })
         }
 

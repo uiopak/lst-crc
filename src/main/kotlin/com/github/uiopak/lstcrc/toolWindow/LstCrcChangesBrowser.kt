@@ -1,18 +1,18 @@
 package com.github.uiopak.lstcrc.toolWindow
 
+import com.github.uiopak.lstcrc.messaging.ActiveDiffDataChangedListener
+import com.github.uiopak.lstcrc.messaging.DIFF_DATA_CHANGED_TOPIC
 import com.github.uiopak.lstcrc.resources.LstCrcBundle
 import com.github.uiopak.lstcrc.scopes.DELETED_SCOPE_ID
 import com.github.uiopak.lstcrc.services.CategorizedChanges
 import com.github.uiopak.lstcrc.services.ProjectActiveDiffDataService
+import com.github.uiopak.lstcrc.services.TextContentRevision
 import com.github.uiopak.lstcrc.services.ToolWindowStateService
-import com.github.uiopak.lstcrc.messaging.DIFF_DATA_CHANGED_TOPIC
-import com.github.uiopak.lstcrc.messaging.ActiveDiffDataChangedListener
-import com.intellij.util.ui.tree.TreeUtil
-import com.intellij.ide.projectView.ProjectView
 import com.intellij.diff.editor.ChainDiffVirtualFile
 import com.intellij.diff.editor.DiffEditorTabFilesManager
-import com.intellij.openapi.ListSelection
+import com.intellij.ide.projectView.ProjectView
 import com.intellij.openapi.Disposable
+import com.intellij.openapi.ListSelection
 import com.intellij.openapi.actionSystem.ActionManager
 import com.intellij.openapi.actionSystem.ActionPlaces
 import com.intellij.openapi.actionSystem.ActionUpdateThread
@@ -20,62 +20,70 @@ import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.DefaultActionGroup
 import com.intellij.openapi.actionSystem.UiDataProvider
-import com.intellij.openapi.application.EDT
 import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.application.EDT
 import com.intellij.openapi.components.service
 import com.intellij.openapi.diagnostic.debug
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.fileEditor.OpenFileDescriptor
-import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.project.DumbAwareAction
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.Messages
+import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.vcs.changes.Change
-import com.intellij.openapi.vcs.changes.ContentRevision
 import com.intellij.openapi.vcs.changes.ChangesUtil
+import com.intellij.openapi.vcs.changes.ContentRevision
 import com.intellij.openapi.vcs.changes.actions.diff.ChangeDiffRequestProducer
 import com.intellij.openapi.vcs.changes.actions.diff.ShowDiffAction
-import com.intellij.openapi.vcs.changes.ui.*
+import com.intellij.openapi.vcs.changes.ui.AsyncChangesBrowserBase
+import com.intellij.openapi.vcs.changes.ui.AsyncChangesTree
+import com.intellij.openapi.vcs.changes.ui.AsyncChangesTreeModel
+import com.intellij.openapi.vcs.changes.ui.ChangeDiffRequestChain
+import com.intellij.openapi.vcs.changes.ui.ChangesBrowserNode
+import com.intellij.openapi.vcs.changes.ui.SimpleAsyncChangesTreeModel
+import com.intellij.openapi.vcs.changes.ui.TreeModelBuilder
+import com.intellij.openapi.vcs.changes.ui.VcsTreeModelData
 import com.intellij.openapi.vcs.vfs.ContentRevisionVirtualFile
-import java.awt.Color
-import java.awt.Point
-import com.intellij.ui.FileColorManager
-import com.intellij.ui.JBColor
+import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.openapi.wm.ToolWindowId
 import com.intellij.openapi.wm.ToolWindowManager
-import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.psi.PsiManager
+import com.intellij.ui.FileColorManager
+import com.intellij.ui.JBColor
 import com.intellij.ui.PopupHandler
 import com.intellij.ui.render.RenderingHelper
 import com.intellij.ui.treeStructure.Tree
 import com.intellij.util.ui.JBUI
-import javax.swing.plaf.basic.BasicTreeUI
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import kotlin.time.Duration.Companion.milliseconds
+import com.intellij.util.ui.tree.TreeModelAdapter
+import com.intellij.util.ui.tree.TreeUtil
+import java.awt.BorderLayout
+import java.awt.Color
 import java.awt.Component
+import java.awt.Point
+import java.awt.event.ComponentAdapter
+import java.awt.event.ComponentEvent
 import java.awt.event.KeyAdapter
 import java.awt.event.KeyEvent
 import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
-import javax.swing.SwingUtilities
-import javax.swing.tree.DefaultMutableTreeNode
-import javax.swing.tree.TreePath
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
-import java.awt.BorderLayout
-import java.awt.event.ComponentAdapter
-import java.awt.event.ComponentEvent
 import javax.swing.JComponent
 import javax.swing.JPanel
 import javax.swing.JViewport
-import com.intellij.util.ui.tree.TreeModelAdapter
+import javax.swing.SwingUtilities
 import javax.swing.event.TreeModelListener
+import javax.swing.plaf.basic.BasicTreeUI
+import javax.swing.tree.DefaultMutableTreeNode
+import javax.swing.tree.TreePath
+import kotlin.time.Duration.Companion.milliseconds
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * The main UI part for displaying the tree of file changes for a specific branch comparison.
@@ -88,14 +96,6 @@ class LstCrcChangesBrowser(
     parentDisposable: Disposable
 ) : AsyncChangesBrowserBase(project, false, true), Disposable, UiDataProvider {
 
-
-    private data class DiffChangeKey(
-        val type: Change.Type,
-        val beforePath: String?,
-        val beforeRevision: String?,
-        val afterPath: String?,
-        val afterRevision: String?
-    )
 
     private data class DiffSelectionKey(
         val comparisonTarget: String,
@@ -177,14 +177,12 @@ class LstCrcChangesBrowser(
         viewer.emptyText.text = LstCrcBundle.message("changes.browser.loading")
         
         val connection = project.messageBus.connect(this)
-        connection.subscribe(DIFF_DATA_CHANGED_TOPIC, object : ActiveDiffDataChangedListener {
-            override fun onDiffDataChanged() {
-                if (project.isDisposed) return
-                val diffDataService = project.service<ProjectActiveDiffDataService>()
-                val branchName = diffDataService.activeBranchName ?: "HEAD"
-                if (branchName == targetBranchToCompare) {
-                    displayChanges(diffDataService.categorizedChanges, branchName)
-                }
+        connection.subscribe(DIFF_DATA_CHANGED_TOPIC, ActiveDiffDataChangedListener {
+            if (project.isDisposed) return@ActiveDiffDataChangedListener
+            val diffDataService = project.service<ProjectActiveDiffDataService>()
+            val branchName = diffDataService.activeBranchName ?: "HEAD"
+            if (branchName == targetBranchToCompare) {
+                displayChanges(diffDataService.categorizedChanges, branchName)
             }
         })
         
@@ -207,14 +205,20 @@ class LstCrcChangesBrowser(
             }
         })
 
-        installConfigurableMouseHandler()
+        viewer.addMouseListener(object : MouseAdapter() {
+            override fun mouseClicked(e: MouseEvent) = handleMouseClick(e)
+        })
         installContextMenuHandler()
         configureRendererWidthCacheReset()
         configureDynamicToolbarBorder()
     }
 
+    /** The base toolbar, with the repository comparison action right after "Group By" (or at the end). */
     override fun createToolbarActions(): MutableList<AnAction> {
-        return toolbarActionsWithRepoComparison(super.createToolbarActions(), ShowRepoComparisonInfoAction())
+        val actions = super.createToolbarActions().toMutableList()
+        val groupByActionIndex = actions.indexOfFirst { it.javaClass.simpleName == "GroupByActionGroup" }
+        actions.add(if (groupByActionIndex >= 0) groupByActionIndex + 1 else actions.size, ShowRepoComparisonInfoAction())
+        return actions
     }
 
 
@@ -300,16 +304,6 @@ class LstCrcChangesBrowser(
 
         val chain = ChangeDiffRequestChain(ListSelection.createAt(producers, 0))
         diffFilesManager.showDiffFile(ReusableChangeDiffVirtualFile(chain, diffKey, changes.first().diffFileDisplayName()), true)
-    }
-
-    private fun Change.toDiffChangeKey(): DiffChangeKey {
-        return DiffChangeKey(
-            type = type,
-            beforePath = beforeRevision?.file?.path,
-            beforeRevision = beforeRevision?.revisionNumber?.asString(),
-            afterPath = afterRevision?.file?.path,
-            afterRevision = afterRevision?.revisionNumber?.asString()
-        )
     }
 
     private fun Change.diffFileDisplayName(): String {
@@ -496,18 +490,11 @@ class LstCrcChangesBrowser(
             .mapNotNull { row -> viewer.getPathForRow(row)?.let { row to it } }
     }
 
-    private fun visibleRowForFileName(fileName: String): Int? {
-        return visibleRowPaths()
-            .firstOrNull { (_, path) -> changeAtPathMatchesFileName(path, fileName) }
-            ?.first
-    }
-
-    private fun changeAtPathMatchesFileName(path: TreePath, fileName: String): Boolean {
-        val node = path.lastPathComponent as? DefaultMutableTreeNode ?: return false
-        val change = node.userObject as? Change ?: return false
-        val file = change.afterRevision?.file ?: change.beforeRevision?.file ?: return false
-        return file.name == fileName || file.path.replace('\\', '/').endsWith("/$fileName")
-    }
+    private fun visibleRowForFileName(fileName: String): Int? = visibleRowPaths().firstOrNull { (_, path) ->
+        val change = (path.lastPathComponent as? DefaultMutableTreeNode)?.userObject as? Change
+        val file = change?.afterRevision?.file ?: change?.beforeRevision?.file
+        file != null && (file.name == fileName || file.path.replace('\\', '/').endsWith("/$fileName"))
+    }?.first
 
     private fun renderedRowTextForTest(path: TreePath, row: Int): String? {
         val renderer = viewer.cellRenderer as? RepoNodeRenderer ?: return null
@@ -594,12 +581,7 @@ class LstCrcChangesBrowser(
         model?.addTreeModelListener(listener)
         viewer.rebuildTree()
 
-        ApplicationManager.getApplication().invokeLater {
-            if (!restoreScheduled) {
-                model?.removeTreeModelListener(listener)
-                restoreViewportOnce()
-            }
-        }
+        ApplicationManager.getApplication().invokeLater { restoreViewportOnce() }
     }
 
     private fun restoreTreeViewport(viewPosition: Point) {
@@ -624,14 +606,6 @@ class LstCrcChangesBrowser(
     }
 
     private var pendingClickJob: Job? = null
-
-    private fun installConfigurableMouseHandler() {
-        viewer.addMouseListener(object : MouseAdapter() {
-            override fun mouseClicked(e: MouseEvent) {
-                handleMouseClick(e)
-            }
-        })
-    }
 
     private fun handleMouseClick(e: MouseEvent) {
         val clickCount = e.clickCount
@@ -741,7 +715,8 @@ class LstCrcChangesBrowser(
     }
 
     private fun configureDynamicToolbarBorder() {
-        val fullToolbarComponent = findToolbarComponent()
+        val topPanel = (layout as? BorderLayout)?.getLayoutComponent(BorderLayout.NORTH) as? JPanel
+        val fullToolbarComponent = (topPanel?.layout as? BorderLayout)?.getLayoutComponent(BorderLayout.CENTER) as? JComponent
         if (fullToolbarComponent == null) {
             logger.warn("Could not find full toolbar component; cannot apply dynamic toolbar border.")
             return
@@ -796,23 +771,6 @@ class LstCrcChangesBrowser(
         })
     }
 
-    private fun findToolbarComponent(): JComponent? {
-        val mainLayout = this.layout as? BorderLayout ?: return null
-        val topPanel = mainLayout.getLayoutComponent(BorderLayout.NORTH) as? JPanel ?: return null
-        return (topPanel.layout as? BorderLayout)?.getLayoutComponent(BorderLayout.CENTER) as? JComponent
-    }
-
-    private fun toolbarActionsWithRepoComparison(
-        baseActions: List<AnAction>,
-        configureAction: AnAction
-    ): MutableList<AnAction> {
-        val actions = baseActions.toMutableList()
-        val groupByActionIndex = actions.indexOfFirst { it.javaClass.simpleName == "GroupByActionGroup" }
-        val insertionIndex = if (groupByActionIndex >= 0) groupByActionIndex + 1 else actions.size
-        actions.add(insertionIndex, configureAction)
-        return actions
-    }
-
     private fun selectPathAndFocus(path: TreePath) {
         if (viewer.selectionPath != path) {
             viewer.selectionPath = path
@@ -821,3 +779,26 @@ class LstCrcChangesBrowser(
     }
 
 }
+
+/**
+ * Identifies the diff of one change, so an open diff tab for the same selection is reused. Unsaved edits
+ * carry their text ([TextContentRevision]) and are always labeled `LOCAL`, so their text is part of the key:
+ * after more typing, the diff opens with the new text instead of the tab showing the old one.
+ */
+internal data class DiffChangeKey(
+    val type: Change.Type,
+    val beforePath: String?,
+    val beforeRevision: String?,
+    val afterPath: String?,
+    val afterRevision: String?,
+    val loadedTexts: List<String?>
+)
+
+internal fun Change.toDiffChangeKey(): DiffChangeKey = DiffChangeKey(
+    type = type,
+    beforePath = beforeRevision?.file?.path,
+    beforeRevision = beforeRevision?.revisionNumber?.asString(),
+    afterPath = afterRevision?.file?.path,
+    afterRevision = afterRevision?.revisionNumber?.asString(),
+    loadedTexts = listOf(beforeRevision, afterRevision).map { (it as? TextContentRevision)?.content }
+)

@@ -52,9 +52,8 @@ class BranchSelectionPanel(
     }
 
     // Data classes to represent nodes in the tree clearly.
-    private data class BranchCategory(val type: BranchCategoryType, val displayName: String)
+    private data class BranchCategory(val displayName: String, val icon: Icon)
     private data class BranchInfo(val displayName: String, val fullBranchName: String)
-    private enum class BranchCategoryType { LOCAL, REMOTE }
 
     init {
         // Use the pre-fetched snapshot if available; otherwise fall back to the
@@ -65,7 +64,43 @@ class BranchSelectionPanel(
             ?: targetRepo?.branches?.localBranches?.map { it.name }.orEmpty()
         remoteBranches = branchSnapshot?.remoteBranches?.takeIf { it.isNotEmpty() }
             ?: targetRepo?.branches?.remoteBranches?.map { it.name }.orEmpty()
-        tree = createBranchSelectionTree()
+        tree = Tree(buildBranchTreeModel()).apply {
+            isRootVisible = false
+            showsRootHandles = true
+            cellRenderer = object : ColoredTreeCellRenderer() {
+                override fun customizeCellRenderer(
+                    jtree: JTree, value: Any?, selected: Boolean, expanded: Boolean,
+                    leaf: Boolean, row: Int, hasFocus: Boolean
+                ) {
+                    val (text, nodeIcon) = resolveBranchNodePresentation(value as? DefaultMutableTreeNode ?: return) ?: return
+                    icon = nodeIcon
+                    appendSearchAwareText(text, searchTextField.text)
+                }
+            }
+            TreeUtil.expandAll(this)
+            addMouseListener(object : MouseAdapter() {
+                override fun mouseClicked(e: MouseEvent) {
+                    val node = TreeUtil.getPathForLocation(this@apply, e.x, e.y)?.lastPathComponent as? DefaultMutableTreeNode ?: return
+                    selectBranchNode(node)
+                }
+            })
+            addKeyListener(object : KeyAdapter() {
+                override fun keyTyped(e: KeyEvent) {
+                    // Typing in the tree goes to the search field (plain characters only, no shortcuts).
+                    if (searchTextField.textEditor.hasFocus() || e.keyChar == KeyEvent.CHAR_UNDEFINED || e.keyChar < ' ') return
+                    if (e.isControlDown || e.isMetaDown || e.isAltDown) return
+                    searchTextField.requestFocusInWindow()
+                    searchTextField.text += e.keyChar
+                    e.consume()
+                }
+
+                override fun keyPressed(e: KeyEvent) {
+                    if (e.keyCode != KeyEvent.VK_ENTER) return
+                    val node = selectionPath?.lastPathComponent as? DefaultMutableTreeNode ?: return
+                    if (selectBranchNode(node)) e.consume()
+                }
+            })
+        }
 
         searchTextField.addDocumentListener(filterDocumentListener)
 
@@ -79,8 +114,6 @@ class BranchSelectionPanel(
 
     private fun filterTree() {
         val searchTerm = searchTextField.text
-        tree.putClientProperty("search.term", searchTerm)
-
         tree.model = buildBranchTreeModel(searchTerm)
         TreeUtil.expandAll(tree)
         refreshSearchSelection(searchTerm)
@@ -140,39 +173,13 @@ class BranchSelectionPanel(
         return false
     }
 
-    private fun createBranchSelectionTree(): Tree {
-        return Tree(buildBranchTreeModel()).apply {
-            isRootVisible = false
-            showsRootHandles = true
-            cellRenderer = createBranchTreeCellRenderer()
-            TreeUtil.expandAll(this)
-            addMouseListener(createBranchTreeMouseListener(this))
-            addKeyListener(createBranchTreeKeyListener(this))
-        }
-    }
-
-    private fun createBranchTreeCellRenderer(): ColoredTreeCellRenderer {
-        return object : ColoredTreeCellRenderer() {
-            override fun customizeCellRenderer(
-                jtree: JTree, value: Any?, selected: Boolean, expanded: Boolean,
-                leaf: Boolean, row: Int, hasFocus: Boolean
-            ) {
-                val node = value as? DefaultMutableTreeNode ?: return
-                val (text, nodeIcon) = resolveBranchNodePresentation(node) ?: return
-                val searchTerm = jtree.getClientProperty("search.term") as? String
-                icon = nodeIcon
-
-                if (searchTerm.isNullOrBlank()) {
-                    append(text, SimpleTextAttributes.REGULAR_ATTRIBUTES)
-                } else {
-                    appendSearchAwareText(text, searchTerm)
-                }
-            }
-        }
-    }
-
+    /** Appends [text], highlighting every case-insensitive occurrence of a non-blank [searchTerm]. */
     private fun ColoredTreeCellRenderer.appendSearchAwareText(text: String, searchTerm: String) {
         val attributes = SimpleTextAttributes.REGULAR_ATTRIBUTES
+        if (searchTerm.isBlank()) {
+            append(text, attributes)
+            return
+        }
         val highlightAttributes = SimpleTextAttributes(
             attributes.style or SimpleTextAttributes.STYLE_SEARCH_MATCH,
             attributes.fgColor
@@ -195,52 +202,11 @@ class BranchSelectionPanel(
 
     private fun resolveBranchNodePresentation(node: DefaultMutableTreeNode): Pair<String, Icon>? {
         return when (val userObject = node.userObject) {
-            is BranchCategory -> userObject.displayName to when (userObject.type) {
-                BranchCategoryType.LOCAL -> AllIcons.Nodes.Folder
-                BranchCategoryType.REMOTE -> AllIcons.Nodes.WebFolder
-            }
+            is BranchCategory -> userObject.displayName to userObject.icon
             is BranchInfo -> userObject.displayName to AllIcons.Vcs.Branch
             is String -> userObject to AllIcons.Nodes.Folder
             else -> null
         }
-    }
-
-    private fun createBranchTreeMouseListener(tree: Tree): MouseAdapter {
-        return object : MouseAdapter() {
-            override fun mouseClicked(e: MouseEvent) {
-                if (e.clickCount < 1) return
-
-                val node = TreeUtil.getPathForLocation(tree, e.x, e.y)?.lastPathComponent as? DefaultMutableTreeNode ?: return
-                selectBranchNode(node)
-            }
-        }
-    }
-
-    private fun createBranchTreeKeyListener(tree: Tree): KeyAdapter {
-        return object : KeyAdapter() {
-            override fun keyTyped(e: KeyEvent) {
-                if (!shouldRedirectKeyTypedToSearch(e)) return
-
-                searchTextField.requestFocusInWindow()
-                searchTextField.text += e.keyChar
-                e.consume()
-            }
-
-            override fun keyPressed(e: KeyEvent) {
-                if (e.keyCode != KeyEvent.VK_ENTER) return
-
-                val node = tree.selectionPath?.lastPathComponent as? DefaultMutableTreeNode ?: return
-                if (selectBranchNode(node)) {
-                    e.consume()
-                }
-            }
-        }
-    }
-
-    private fun shouldRedirectKeyTypedToSearch(e: KeyEvent): Boolean {
-        if (searchTextField.textEditor.hasFocus()) return false
-        if (e.keyChar == KeyEvent.CHAR_UNDEFINED || e.keyChar < ' ') return false
-        return !e.isControlDown && !e.isMetaDown && !e.isAltDown
     }
 
     private fun selectBranchNode(node: DefaultMutableTreeNode): Boolean {
@@ -258,8 +224,8 @@ class BranchSelectionPanel(
      */
     private fun buildBranchTreeModel(searchTerm: String = ""): DefaultTreeModel {
         val rootNode = DefaultMutableTreeNode("Root")
-        val localCategory = BranchCategory(BranchCategoryType.LOCAL, LstCrcBundle.message("branch.type.local"))
-        val remoteCategory = BranchCategory(BranchCategoryType.REMOTE, LstCrcBundle.message("branch.type.remote"))
+        val localCategory = BranchCategory(LstCrcBundle.message("branch.type.local"), AllIcons.Nodes.Folder)
+        val remoteCategory = BranchCategory(LstCrcBundle.message("branch.type.remote"), AllIcons.Nodes.WebFolder)
         addBranchCategoryNode(rootNode, localCategory, localBranches, searchTerm)
         addBranchCategoryNode(rootNode, remoteCategory, remoteBranches, searchTerm)
         return DefaultTreeModel(rootNode)

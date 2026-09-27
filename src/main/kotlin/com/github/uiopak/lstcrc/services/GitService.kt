@@ -471,7 +471,7 @@ class GitService(private val project: Project) {
 
     /** Overlays [repo]'s unsaved documents on [diskChanges] and adds line stats for the edited files. */
     private fun overlayUnsavedDocuments(repo: GitRepository, diskChanges: DiskChanges): LoadedChanges {
-        val unsavedChanges = collectUnsavedDocumentChanges(repo, diskChanges.overlayTarget)
+        val unsavedChanges = collectUnsavedDocumentChanges(repo, diskChanges.overlayTarget, trackedAddedPaths(diskChanges.loaded.changes))
         val allChanges = overlayUnsavedDocumentChanges(diskChanges.loaded.changes, unsavedChanges)
         if (!diskChanges.key.includeLineStats) return LoadedChanges(allChanges, emptyMap())
         return LoadedChanges(
@@ -575,7 +575,7 @@ class GitService(private val project: Project) {
         }
     }
 
-    private fun collectUnsavedDocumentChanges(repo: GitRepository, targetRevision: String): List<Change> {
+    private fun collectUnsavedDocumentChanges(repo: GitRepository, targetRevision: String, addedPaths: Set<String>): List<Change> {
         val fileDocumentManager = FileDocumentManager.getInstance()
         val unsavedFiles = ApplicationManager.getApplication().runReadAction<List<VirtualFile>> {
             fileDocumentManager.unsavedDocuments.asSequence()
@@ -589,6 +589,7 @@ class GitService(private val project: Project) {
         }
 
         return unsavedFiles.asSequence()
+            .filter { file -> file.path !in addedPaths }
             .mapNotNull { file -> createUnsavedDocumentChange(repo, file, targetRevision) }
             .toList()
     }
@@ -755,6 +756,13 @@ internal fun loadRevisionTextContent(
     // The IntelliJ Document model requires LF ('\n') line endings, but Git on Windows might return CRLF ('\r\n').
     return StringUtil.convertLineSeparators(rawContent)
 }
+
+/**
+ * Paths `git diff` reported as added. They have no content in the target, so loading it for the unsaved-edit
+ * overlay could only fail. Untracked files (status UNKNOWN) are not included: they can exist in the target.
+ */
+internal fun trackedAddedPaths(changes: List<Change>): Set<String> =
+    changes.mapNotNullTo(HashSet()) { change -> change.afterRevision?.file?.path?.takeIf { change.fileStatus == FileStatus.ADDED } }
 
 internal fun mergeUnsavedOverlayChange(existingChange: Change?, unsavedChange: Change): Change {
     if (existingChange?.type == Change.Type.NEW && unsavedChange.afterRevision != null) {

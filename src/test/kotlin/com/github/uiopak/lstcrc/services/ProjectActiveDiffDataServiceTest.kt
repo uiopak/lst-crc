@@ -99,11 +99,7 @@ class ProjectActiveDiffDataServiceTest : LstCrcTestCase() {
         var notifications = 0
         project.messageBus.connect(testRootDisposable).subscribe(
             com.github.uiopak.lstcrc.messaging.DIFF_DATA_CHANGED_TOPIC,
-            object : com.github.uiopak.lstcrc.messaging.ActiveDiffDataChangedListener {
-                override fun onDiffDataChanged() {
-                    notifications++
-                }
-            }
+            com.github.uiopak.lstcrc.messaging.ActiveDiffDataChangedListener { notifications++ }
         )
 
         diffDataService.updateActiveDiff(
@@ -146,11 +142,7 @@ class ProjectActiveDiffDataServiceTest : LstCrcTestCase() {
         var notifications = 0
         project.messageBus.connect(testRootDisposable).subscribe(
             com.github.uiopak.lstcrc.messaging.DIFF_DATA_CHANGED_TOPIC,
-            object : com.github.uiopak.lstcrc.messaging.ActiveDiffDataChangedListener {
-                override fun onDiffDataChanged() {
-                    notifications++
-                }
-            }
+            com.github.uiopak.lstcrc.messaging.ActiveDiffDataChangedListener { notifications++ }
         )
 
         diffDataService.updateActiveDiff("HEAD", unsavedEdit("one\n"))
