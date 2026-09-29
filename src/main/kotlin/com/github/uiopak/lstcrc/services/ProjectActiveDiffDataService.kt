@@ -2,6 +2,7 @@ package com.github.uiopak.lstcrc.services
 
 import com.github.uiopak.lstcrc.LstCrcConstants.HEAD
 import com.github.uiopak.lstcrc.messaging.DIFF_DATA_CHANGED_TOPIC
+import com.github.uiopak.lstcrc.toolWindow.ToolWindowSettingsProvider
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.Service
@@ -43,14 +44,22 @@ class ProjectActiveDiffDataService(private val project: Project) : Disposable {
 
         /**
          * True when replacing this snapshot with [other] can change a file's status or colour: they come from the
-         * scopes, which only depend on the branch and the path sets. New unsaved text of the same files changes neither.
+         * scopes, which depend on path sets and whether HEAD participates. Target names and unsaved text do not
+         * affect membership when these stay the same.
          */
-        fun scopesDifferFrom(other: ActiveDiffSnapshot): Boolean =
-            activeBranchName != other.activeBranchName ||
-                createdFilePaths != other.createdFilePaths ||
+        fun scopesDifferFrom(other: ActiveDiffSnapshot): Boolean {
+            val includeHead = ToolWindowSettingsProvider.isIncludeHeadInScopes()
+            val active = activeBranchName != null && (activeBranchName != HEAD || includeHead)
+            val otherActive = other.activeBranchName != null && (other.activeBranchName != HEAD || includeHead)
+            if (active != otherActive) {
+                val included = if (active) this else other
+                return included.changedFilePaths.isNotEmpty() || included.deletedFilePaths.isNotEmpty()
+            }
+            return active && (createdFilePaths != other.createdFilePaths ||
                 modifiedFilePaths != other.modifiedFilePaths ||
                 movedFilePaths != other.movedFilePaths ||
-                deletedFilePaths != other.deletedFilePaths
+                deletedFilePaths != other.deletedFilePaths)
+        }
 
         private fun List<VirtualFile>.pathSet(): Set<String> = mapTo(HashSet(size)) { it.path }
 
@@ -104,9 +113,16 @@ class ProjectActiveDiffDataService(private val project: Project) : Disposable {
         onEdt {
             // Checked where the result is applied: the selection may change before a later EDT turn.
             // A null selection is the HEAD tab, whose loads are reported as "HEAD".
-            val currentToolWindowBranch = project.service<ToolWindowStateService>().getSelectedTabBranchName() ?: HEAD
+            val selectedTab = project.service<ToolWindowStateService>().getSelectedTabInfo()
+            val currentToolWindowBranch = selectedTab?.branchName ?: HEAD
             if (branchNameFromEvent != currentToolWindowBranch) {
                 logger.debug { "updateActiveDiff - Update REJECTED as stale. Event branch '$branchNameFromEvent' does NOT match current tool window branch '$currentToolWindowBranch'." }
+                return@onEdt
+            }
+            if (categorizedChanges.comparisonContext.any { (root, target) ->
+                    target != (selectedTab?.comparisonMap?.get(root) ?: currentToolWindowBranch)
+                }) {
+                logger.debug { "updateActiveDiff - Rejected stale repository targets: ${categorizedChanges.comparisonContext}" }
                 return@onEdt
             }
             // Most edit-only refreshes return the same data; compare before building the path sets.

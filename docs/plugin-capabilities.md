@@ -44,6 +44,7 @@ LST-CRC is an IntelliJ Platform plugin for comparing the current working tree ag
 - `C2.5` Missing-branch repair flow.
 	- If a branch target disappears in one repository, the plugin surfaces a notification that routes the user back to repository-level reconfiguration.
 	- The repair flow can reset only the broken repository root instead of discarding the whole tab.
+	- Failures from an older load only reset targets still selected for that repository. Newer overrides in any repository are preserved.
 	- Only a target git cannot resolve counts as missing. Other `git diff` failures keep that repository's last result (or show only its untracked files and unsaved edits when there is none yet) and retry on the next refresh. A branch named like a file or folder is compared as a branch.
 - `C2.6` Missing-commit handling.
 	- Missing commit hashes are treated differently from missing branches and do not follow the same warning-and-repair flow.
@@ -82,10 +83,14 @@ LST-CRC is an IntelliJ Platform plugin for comparing the current working tree ag
 	- Modified and deleted editor ranges are evaluated against the active comparison state.
 	- Gutter interception is still gated by `Include HEAD in scopes` and the gutter settings. Changing `Include HEAD in scopes` re-evaluates scopes, tab colors and gutters right away.
 	- A moved or renamed file is compared with its old path in the target, so only its real changes are marked.
+	- Switching comparisons with identical file text keeps the existing gutter base and markers. A target-name change with unchanged scope membership also avoids resetting file statuses and editor tab colors; switching to or from `HEAD` still accounts for `Include HEAD in scopes`.
+	- Delayed gutter refreshes cannot overwrite or remove newer markers or recreate trackers after the last file editor closes or the manager is disposed. Editor selection and repository events keep pending full refreshes of the other open files covered.
+	- Refreshes consider this project's open text file editors. Preview editors for files outside those file editors do not create persistent comparison trackers.
+	- Cancelled target-content loads stop without substituting the document text and remain retryable. Older loads cannot clear a newer load's reservation for the same target and path.
 - `C3.8` Unsaved-editor overlay support.
 	- Unsaved editor content participates in the active diff, including preserving `NEW` versus `MODIFIED` semantics when overlays merge into comparison data.
 	- Unsaved edits can appear before save.
-	- Unsaved edits to already-new files must stay `NEW`/`ADDED`, not degrade into ordinary modifications.
+	- Unsaved edits to already-new files keep their latest text and line counts, with `NEW`/`ADDED` semantics for tracked additions and `NEW`/`UNKNOWN` for untracked files. Neither needs a target-content lookup.
 	- Unsaved edits to moved files are compared with the old path, so the file stays moved and its line stats follow the text.
 - `C3.9` Tree expansion-state persistence.
 	- The comparison tree keeps user expand/collapse decisions when the active comparison tab changes and later returns.
@@ -96,6 +101,7 @@ LST-CRC is an IntelliJ Platform plugin for comparing the current working tree ag
 	- Counts ignore CRLF/LF-only churn, so they match the visible diff and gutter ranges rather than raw `git diff --numstat` output.
 	- Unsaved edits update the counts before save.
 	- Line stats are only computed while the setting is on; turning it on reloads the data.
+	- Tracked binary files have no line counts and do not load content for a fallback calculation. A content-read failure or unavailable text omits that file's counts without failing the comparison.
 - `C3.11` Untracked files as new.
 	- With "Show untracked files as new" enabled, files git does not track (and does not ignore) appear as created entries with the IDE's "unknown" file status.
 	- With the setting disabled they stay out of the comparison.
@@ -138,8 +144,10 @@ LST-CRC is an IntelliJ Platform plugin for comparing the current working tree ag
 	- Startup plus changelist, repository and document listeners keep the active comparison synchronized with local and repository changes.
 	- Refresh covers unsaved edits, saves, external file changes, branch changes, and repository-level updates, debounced so typing does not run git on every keystroke.
 	- A burst of unsaved edits alone reuses the last git result and only overlays the edited documents; saves and VCS or repository events reload the comparison from disk.
+	- Heavy edit bursts retain saves, VCS events and pending repository-file edits, including amid events from other projects. Repeated pending edits to one file share a background repository check; foreign files and saves are ignored.
+	- Revision-content and unsaved-overlay loading propagate platform and coroutine cancellation.
 	- File statuses and editor tab colours are reset only when a file joins or leaves a scope (or the tab changes), not when only the unsaved text of the listed files changes.
-	- Async diff application rejects stale results whose comparison identity no longer matches the selected tab, checked when the result is applied.
+	- Async diff application rejects stale results whose tab or per-repository targets no longer match the selection, checked when the result is applied.
 - `C5.2` Persistent project UI state.
 	- Open tabs, the selected tab, aliases, and per-repository comparison overrides survive IDE restart.
 	- Alias state and per-root overrides survive restart together.

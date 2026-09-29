@@ -8,9 +8,11 @@ import com.intellij.openapi.components.Service
 import com.intellij.openapi.diagnostic.debug
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.progress.ProcessCanceledException
 import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.platform.ide.progress.withBackgroundProgress
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import com.intellij.openapi.util.io.FileUtil
@@ -134,8 +136,8 @@ class GitService(private val project: Project) {
             return GetChangesResult(CategorizedChanges.EMPTY, emptyMap())
         }
 
-        // Line stats cost an extra `git diff --numstat` per repository plus in-process diffs of
-        // untracked/unsaved files, so they are only computed while the tree shows them.
+        // Line stats add `--numstat` to the tracked diff plus in-process diffs of untracked/unsaved
+        // files, so they are only computed while the tree shows them.
         val includeLineStats = ToolWindowSettingsProvider.isShowLineStatsInTree()
         // An edit-only refresh that can reuse every repository's last git result runs no git diff, so it shows
         // no progress indicator (it would flicker in the status bar after every pause in typing).
@@ -240,7 +242,13 @@ class GitService(private val project: Project) {
         val changes = trackedChanges.changes + untrackedChanges
         val loaded = LoadedChanges(
             changes = changes,
-            lineStatsByChange = if (key.includeLineStats) buildLineStats(changes, trackedChanges.lineStatsByChange, emptySet()) else emptyMap()
+            lineStatsByChange = if (key.includeLineStats) buildLineStats(
+                changes,
+                trackedChanges.lineStatsByChange,
+                emptySet(),
+                // Git already computed every tracked entry, including binary files whose counts are absent.
+                knownKeys = trackedChanges.changes.mapTo(HashSet()) { ChangeLineStatsKey.from(it) }
+            ) else emptyMap()
         )
         return DiskChanges(key, loaded, overlayTarget = if (repo.isFresh) HEAD else key.target)
     }
@@ -299,7 +307,7 @@ class GitService(private val project: Project) {
         val unsavedChanges = collectUnsavedDocumentChanges(
             repo,
             diskChanges.overlayTarget,
-            trackedAddedPaths(diskChangeList),
+            newFilePaths(diskChangeList),
             movedSourcePaths(diskChangeList)
         )
         val allChanges = overlayUnsavedDocumentChanges(diskChanges.loaded.changes, unsavedChanges)
@@ -376,25 +384,30 @@ class GitService(private val project: Project) {
     }
 
     private fun computeFallbackLineStats(change: Change): ChangeLineStats? {
-        val beforeContent = change.beforeRevision?.content ?: ""
-        val afterContent = change.afterRevision?.content ?: ""
-
-        return runCatching {
+        return try {
+            // A missing side is empty; an existing revision with no text (such as a binary file) has no line stats.
+            val beforeContent = change.beforeRevision?.let { it.content ?: return null } ?: ""
+            val afterContent = change.afterRevision?.let { it.content ?: return null } ?: ""
             calculateLineStats(beforeContent, afterContent)
-        }.getOrElse { error ->
-            logger.debug(error) { "Failed to compute fallback line stats for '${change.afterRevision?.file?.path ?: change.beforeRevision?.file?.path}'." }
+        } catch (e: ProcessCanceledException) {
+            throw e
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            logger.debug(e) { "Failed to compute fallback line stats for '${change.afterRevision?.file?.path ?: change.beforeRevision?.file?.path}'." }
             null
         }
     }
 
     /**
      * Changes for [repo]'s unsaved documents against [targetRevision]. A moved file is compared with its old
-     * path ([movedFrom]), which is where the target has it.
+     * path ([movedFrom]), which is where the target has it. Files already new in the comparison
+     * ([newPaths]) overlay their live text without loading a before revision.
      */
     internal fun collectUnsavedDocumentChanges(
         repo: GitRepository,
         targetRevision: String,
-        addedPaths: Set<String>,
+        newPaths: Set<String>,
         movedFrom: Map<String, FilePath>
     ): List<Change> {
         val fileDocumentManager = FileDocumentManager.getInstance()
@@ -410,17 +423,22 @@ class GitService(private val project: Project) {
         }
 
         return unsavedFiles.asSequence()
-            .filter { file -> file.path !in addedPaths }
-            .mapNotNull { file -> createUnsavedDocumentChange(repo, file, targetRevision, movedFrom[file.path]) }
+            .mapNotNull { file -> createUnsavedDocumentChange(repo, file, targetRevision, file.path in newPaths, movedFrom[file.path]) }
             .toList()
     }
 
-    private fun createUnsavedDocumentChange(repo: GitRepository, file: VirtualFile, targetRevision: String, movedFrom: FilePath?): Change? {
+    private fun createUnsavedDocumentChange(repo: GitRepository, file: VirtualFile, targetRevision: String, isNew: Boolean, movedFrom: FilePath?): Change? {
         return try {
-            val targetPath = movedFrom ?: VcsUtil.getFilePath(file)
-            val beforeRevision = createTargetContentRevision(repo, targetPath, file.charset, targetRevision) ?: return null
+            val beforeRevision = if (isNew) null else {
+                val targetPath = movedFrom ?: VcsUtil.getFilePath(file)
+                createTargetContentRevision(repo, targetPath, file.charset, targetRevision) ?: return null
+            }
             val afterRevision = createLiveDocumentContentRevision(file)
-            Change(beforeRevision, afterRevision, FileStatus.MODIFIED)
+            Change(beforeRevision, afterRevision, if (isNew) FileStatus.ADDED else FileStatus.MODIFIED)
+        } catch (e: ProcessCanceledException) {
+            throw e
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             logger.warn("Failed to create unsaved document change for '${file.path}' against '$targetRevision'", e)
             null
@@ -474,7 +492,15 @@ class GitService(private val project: Project) {
     /** The content of [path] at [revision] as a [ContentRevision], or null when it cannot be loaded. */
     private fun createTargetContentRevision(repo: GitRepository, path: FilePath, charset: Charset, revision: String): ContentRevision? {
         val relativePath = FileUtil.getRelativePath(repo.root.path, path.path, '/') ?: return null
-        val content = runCatching { loadRevisionText(repo, revision, relativePath, charset) }.getOrElse { return null }
+        val content = try {
+            loadRevisionText(repo, revision, relativePath, charset)
+        } catch (e: ProcessCanceledException) {
+            throw e
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            return null
+        }
         return TextContentRevision(path, content, GitRevisionNumber(revision))
     }
 }

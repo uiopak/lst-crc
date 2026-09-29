@@ -78,6 +78,42 @@ class ProjectActiveDiffDataServiceTest : LstCrcTestCase() {
         selectHeadTab(project)
     }
 
+    fun testRejectsUpdateWhenRepositoryTargetChangesBeforeItIsApplied() {
+        val diffData = project.service<ProjectActiveDiffDataService>()
+        val state = project.service<ToolWindowStateService>()
+        val staleFile = myFixture.addFileToProject("diff/OldTarget.txt", "stale\n").virtualFile
+        val root = project.basePath!!
+        selectComparisonTab(project, "feature")
+        state.updateTabRepoComparison("feature", root, "old-target", triggerRefresh = false)
+        diffData.updateActiveDiff("feature", categorizedChanges().copy(comparisonContext = mapOf(root to "old-target")))
+
+        var notifications = 0
+        project.messageBus.connect(testRootDisposable).subscribe(
+            com.github.uiopak.lstcrc.messaging.DIFF_DATA_CHANGED_TOPIC,
+            com.github.uiopak.lstcrc.messaging.ActiveDiffDataChangedListener { notifications++ }
+        )
+        ApplicationManager.getApplication().executeOnPooledThread {
+            diffData.updateActiveDiff(
+                "feature",
+                categorizedChanges(createdFiles = listOf(staleFile)).copy(comparisonContext = mapOf(root to "old-target"))
+            )
+        }.get(10, TimeUnit.SECONDS)
+        state.updateTabRepoComparison("feature", root, "new-target", triggerRefresh = false)
+        flushEdt()
+
+        assertFalse("A result for the old repository target must be rejected", diffData.createdFilePaths.contains(staleFile.path))
+        assertEquals(0, notifications)
+
+        diffData.updateActiveDiff(
+            "feature",
+            categorizedChanges(createdFiles = listOf(staleFile)).copy(comparisonContext = mapOf(root to "new-target"))
+        )
+        flushEdt()
+        assertEquals(1, notifications)
+        assertEquals(mapOf(root to "new-target"), diffData.activeComparisonContext)
+        selectHeadTab(project)
+    }
+
     fun testRejectsHeadUpdateWhileComparisonTabIsSelected() {
         val diffDataService = project.service<ProjectActiveDiffDataService>()
         val selectedFile = myFixture.addFileToProject("diff/BranchSelected.txt", "branch selected\n").virtualFile
@@ -193,8 +229,8 @@ class ProjectActiveDiffDataServiceTest : LstCrcTestCase() {
             ),
             modifiedFiles = listOf(file)
         )
-        selectHeadTab(project)
-        diffDataService.updateActiveDiff("HEAD", unsavedEdit("one\n"))
+        selectComparisonTab(project, "feature")
+        diffDataService.updateActiveDiff("feature", unsavedEdit("one\n"))
         flushEdt()
 
         var fileStatusResets = 0
@@ -207,14 +243,88 @@ class ProjectActiveDiffDataServiceTest : LstCrcTestCase() {
             testRootDisposable
         )
 
-        diffDataService.updateActiveDiff("HEAD", unsavedEdit("two\n"))
+        diffDataService.updateActiveDiff("feature", unsavedEdit("two\n"))
         flushEdt()
         assertEquals("New content of the same files", 0, fileStatusResets)
 
         val otherFile = myFixture.addFileToProject("diff/Created.txt", "new\n").virtualFile
-        diffDataService.updateActiveDiff("HEAD", unsavedEdit("three\n").copy(createdFiles = listOf(otherFile)))
+        diffDataService.updateActiveDiff("feature", unsavedEdit("three\n").copy(createdFiles = listOf(otherFile)))
         flushEdt()
         assertEquals("A file joined a scope", 1, fileStatusResets)
+        selectHeadTab(project)
+    }
+
+    fun testSwitchingComparisonTabsWithSameScopesKeepsFileStatuses() {
+        val diffData = project.service<ProjectActiveDiffDataService>()
+        val file = myFixture.addFileToProject("diff/Same.txt", "text\n").virtualFile
+        val changes = categorizedChanges(modifiedFiles = listOf(file))
+        selectComparisonTab(project, "first-base")
+        diffData.updateActiveDiff("first-base", changes)
+        flushEdt()
+
+        var fileStatusResets = 0
+        var diffUpdates = 0
+        com.intellij.openapi.vcs.FileStatusManager.getInstance(project).addFileStatusListener(
+            object : com.intellij.openapi.vcs.FileStatusListener {
+                override fun fileStatusesChanged() { fileStatusResets++ }
+            }, testRootDisposable
+        )
+        project.messageBus.connect(testRootDisposable).subscribe(
+            com.github.uiopak.lstcrc.messaging.DIFF_DATA_CHANGED_TOPIC,
+            com.github.uiopak.lstcrc.messaging.ActiveDiffDataChangedListener { diffUpdates++ }
+        )
+
+        selectComparisonTab(project, "second-base")
+        diffData.updateActiveDiff("second-base", changes)
+        flushEdt()
+
+        assertEquals("Unchanged scope membership must not reload every native tracker", 0, fileStatusResets)
+        assertEquals("The new comparison must still reach the browser and gutters", 1, diffUpdates)
+        assertEquals("second-base", diffData.activeBranchName)
+
+        diffData.updateActiveDiff("second-base", categorizedChanges(createdFiles = listOf(file)))
+        flushEdt()
+        assertEquals("Reclassifying a file must still refresh its status", 1, fileStatusResets)
+    }
+
+    fun testHeadSwitchOnlyResetsFileStatusesWhenScopeMembershipChanges() {
+        val diffData = project.service<ProjectActiveDiffDataService>()
+        val settings = ApplicationManager.getApplication().service<com.github.uiopak.lstcrc.toolWindow.LstCrcSettingsService>()
+        val definition = com.github.uiopak.lstcrc.toolWindow.LstCrcSettingDefinitions.INCLUDE_HEAD_IN_SCOPES
+        val original = settings[definition]
+        val file = myFixture.addFileToProject("diff/HeadMembership.txt", "text\n").virtualFile
+        val changes = categorizedChanges(modifiedFiles = listOf(file))
+        var fileStatusResets = 0
+        com.intellij.openapi.vcs.FileStatusManager.getInstance(project).addFileStatusListener(
+            object : com.intellij.openapi.vcs.FileStatusListener {
+                override fun fileStatusesChanged() { fileStatusResets++ }
+            }, testRootDisposable
+        )
+
+        try {
+            listOf(false, true).forEach { includeHead ->
+                settings[definition] = includeHead
+                selectComparisonTab(project, "feature-base")
+                diffData.updateActiveDiff("feature-base", changes)
+                flushEdt()
+                fileStatusResets = 0
+
+                selectHeadTab(project)
+                diffData.updateActiveDiff("HEAD", changes)
+                flushEdt()
+                val expectedResets = if (includeHead) 0 else 1
+                assertEquals("Switch to HEAD with Include HEAD=$includeHead", expectedResets, fileStatusResets)
+
+                fileStatusResets = 0
+                selectComparisonTab(project, "feature-base")
+                diffData.updateActiveDiff("feature-base", changes)
+                flushEdt()
+                assertEquals("Switch from HEAD with Include HEAD=$includeHead", expectedResets, fileStatusResets)
+            }
+        } finally {
+            settings[definition] = original
+            selectHeadTab(project)
+        }
     }
 
     // Regression (round five): the gutter of a moved file loaded the target content by its new path, which the

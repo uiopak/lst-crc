@@ -32,7 +32,20 @@ class GitServiceOverlayMergeTest : LstCrcTestCase() {
         assertSame(unsavedOverlay, mergedChange)
     }
 
-    fun testTrackedAddedPathsSkipsUntrackedAndModifiedFiles() {
+    fun testPreservesUntrackedStatusWhenUnsavedOverlayIsApplied() {
+        val existingChange = Change(null, StubRevision("C:/repo/Untracked.txt"), FileStatus.UNKNOWN)
+        val overlayRevision = StubRevision("C:/repo/Untracked.txt")
+        val unsavedOverlay = Change(null, overlayRevision, FileStatus.ADDED)
+
+        val mergedChange = mergeUnsavedOverlayChange(existingChange, unsavedOverlay)
+
+        assertEquals(Change.Type.NEW, mergedChange.type)
+        assertEquals(FileStatus.UNKNOWN, mergedChange.fileStatus)
+        assertNull(mergedChange.beforeRevision)
+        assertSame(overlayRevision, mergedChange.afterRevision)
+    }
+
+    fun testNewFilePathsIncludesAddedAndUntrackedFiles() {
         val changes = listOf(
             Change(null, StubRevision("C:/repo/Added.txt"), FileStatus.ADDED),
             Change(null, StubRevision("C:/repo/Untracked.txt"), FileStatus.UNKNOWN),
@@ -40,7 +53,7 @@ class GitServiceOverlayMergeTest : LstCrcTestCase() {
             Change(StubRevision("C:/repo/Gone.txt"), null, FileStatus.DELETED)
         )
 
-        assertEquals(setOf("C:/repo/Added.txt"), trackedAddedPaths(changes))
+        assertEquals(setOf("C:/repo/Added.txt", "C:/repo/Untracked.txt"), newFilePaths(changes))
     }
 
     private class StubRevision(path: String) : ContentRevision {
@@ -101,6 +114,17 @@ class GitServiceOverlayMergeTest : LstCrcTestCase() {
         assertEquals(mapOf(ChangeLineStatsKey.fromPaths(path, path) to ChangeLineStats(1, 2)), loaded.lineStatsByChange)
     }
 
+    fun testParseTrackedDiffKeepsNewlinesAtTheEndOfNumstatPaths() {
+        val root = myFixture.tempDirFixture.findOrCreateDir("repo")
+        val name = "line\nbreak\n"
+        val output = listOf(":100644 100644 1111111 0000000 M", name, "\n1\t2\t$name", "").joinToString("\u0000")
+
+        val loaded = parseTrackedDiff(project, root, GitRevisionNumber("feature"), output)
+
+        val path = "${root.path}/$name"
+        assertEquals(mapOf(ChangeLineStatsKey.fromPaths(path, path) to ChangeLineStats(1, 2)), loaded.lineStatsByChange)
+    }
+
     fun testUntrackedChangesKeepFileNamesMadeOfSpaces() {
         val root = myFixture.tempDirFixture.findOrCreateDir("repo")
 
@@ -110,6 +134,8 @@ class GitServiceOverlayMergeTest : LstCrcTestCase() {
     }
 
     fun testUntrackedChangesKeepBackslashesInFileNames() {
+        // Windows treats backslashes as separators and cannot create these Unix file names.
+        if (com.intellij.openapi.util.SystemInfo.isWindows) return
         val root = myFixture.tempDirFixture.findOrCreateDir("repo")
 
         val changes = untrackedChanges(project, root, "a\\b.txt\u0000a\\q.txt\u0000plain.txt\u0000")

@@ -43,9 +43,10 @@ internal fun parseTrackedDiff(project: Project, repoRoot: VirtualFile, targetRev
 
     val changes = mutableListOf<Change>()
     val stats = mutableListOf<Pair<ChangeLineStatsKey, ChangeLineStats?>>()
-    val fields = output.split('\u0000').iterator()
+    val fields = output.splitToSequence('\u0000').iterator()
     while (fields.hasNext()) {
-        val field = fields.next().trim('\n')
+        // Git may separate raw and numstat sections with a newline, but trailing newlines belong to the path.
+        val field = fields.next().trimStart('\n')
         if (field.startsWith(':')) {
             val status = field.substringAfterLast(' ').firstOrNull()
             val first = if (fields.hasNext()) fields.next() else break
@@ -142,11 +143,11 @@ internal inline fun <T : Any> diskChangesAfterDiffFailure(targetMissing: Boolean
     }
 
 /**
- * Paths `git diff` reported as added. They have no content in the target, so loading it for the unsaved-edit
- * overlay could only fail. Untracked files (status UNKNOWN) are not included: they can exist in the target.
+ * Files already classified as new in the comparison. Their overlays keep a null before revision,
+ * including untracked files, so neither needs a target-content lookup.
  */
-internal fun trackedAddedPaths(changes: List<Change>): Set<String> =
-    changes.mapNotNullTo(HashSet()) { change -> change.afterRevision?.file?.path?.takeIf { change.fileStatus == FileStatus.ADDED } }
+internal fun newFilePaths(changes: List<Change>): Set<String> =
+    changes.mapNotNullTo(HashSet()) { change -> change.afterRevision?.file?.path?.takeIf { change.type == Change.Type.NEW } }
 
 /** The old path of each moved (renamed or copied) file in [changes], by its new path. */
 internal fun movedSourcePaths(changes: List<Change>): Map<String, FilePath> =
@@ -158,7 +159,7 @@ internal fun movedSourcePaths(changes: List<Change>): Map<String, FilePath> =
 
 internal fun mergeUnsavedOverlayChange(existingChange: Change?, unsavedChange: Change): Change {
     if (existingChange?.type == Change.Type.NEW && unsavedChange.afterRevision != null) {
-        return Change(null, unsavedChange.afterRevision, FileStatus.ADDED)
+        return Change(null, unsavedChange.afterRevision, existingChange.fileStatus)
     }
 
     return unsavedChange

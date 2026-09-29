@@ -516,11 +516,11 @@ class LstCrcChangesBrowserTest : LstCrcTestCase() {
     }
 
     private fun visibleRowNames(tree: JTree): List<String> = onEdt {
-        (0 until tree.rowCount).map { tree.getPathForRow(it).lastPathComponent.toString().substringAfterLast('/') }
+        (0 until tree.rowCount).map { tree.getPathForRow(it).lastPathComponent.toString().substringAfterLast('/').substringAfterLast('\\') }
     }
 
     private fun selectedRowNames(tree: JTree): List<String> = onEdt {
-        tree.selectionPaths.orEmpty().map { it.lastPathComponent.toString().substringAfterLast('/') }
+        tree.selectionPaths.orEmpty().map { it.lastPathComponent.toString().substringAfterLast('/').substringAfterLast('\\') }
     }
 
     private fun waitForRowCount(tree: JTree, minimumRows: Int) {
