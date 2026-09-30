@@ -156,6 +156,11 @@ class ToolWindowStateService(private val project: Project, val coroutineScope: C
         } catch (e: Exception) {
             withContext(Dispatchers.EDT) {
                 if (project.isDisposed) return@withContext
+                val selectedTab = getSelectedTabInfo()
+                if (selectedTab?.branchName != tabInfo?.branchName || selectedTab?.comparisonMap != tabInfo?.comparisonMap) {
+                    logger.debug { "DATA_FLOW: Ignoring failed load for obsolete comparison '$profileName'." }
+                    return@withContext
+                }
                 logger.error("DATA_FLOW: Error loading changes for '$profileName': ${e.message}", e)
                 diffDataService.clearActiveDiff()
             }
@@ -320,20 +325,26 @@ class ToolWindowStateService(private val project: Project, val coroutineScope: C
         project.messageBus.syncPublisher(TOOL_WINDOW_STATE_TOPIC).stateChanged(normalizeState(myState))
     }
 
-    fun getSelectedTabInfo(): TabInfo? = myState.openTabs.getOrNull(myState.selectedTabIndex)
+    /** Returns a snapshot; callers must use the update methods to change persisted comparison targets. */
+    fun getSelectedTabInfo(): TabInfo? = myState.let { state ->
+        state.openTabs.getOrNull(state.selectedTabIndex)?.defensiveCopy()
+    }
 
     fun isHeadSelected(): Boolean = myState.let { it.selectedTabIndex == -1 || it.openTabs.isEmpty() }
 
     fun findTabIndex(branchName: String): Int = myState.openTabs.indexOfFirst { it.branchName == branchName }
 
     @Suppress("unused") // Used by UI tests.
-    fun findTabByDisplayName(displayName: String): TabInfo? = myState.openTabs.getOrNull(findTabIndexByDisplayName(displayName))
+    fun findTabByDisplayName(displayName: String): TabInfo? =
+        myState.openTabs.firstOrNull { it.branchName == displayName || it.alias == displayName }?.defensiveCopy()
 
     @Suppress("unused") // Used by UI tests.
     fun findTabIndexByDisplayName(displayName: String): Int =
         myState.openTabs.indexOfFirst { it.branchName == displayName || it.alias == displayName }
 
-    fun getSelectedTabBranchName(): String? = getSelectedTabInfo()?.branchName
+    fun getSelectedTabBranchName(): String? = myState.let { state ->
+        state.openTabs.getOrNull(state.selectedTabIndex)?.branchName
+    }
 
     fun updateTabAlias(branchName: String, newAlias: String?) {
         updateTab(branchName, triggerRefresh = false) { it.copy(alias = newAlias) }
@@ -368,9 +379,11 @@ class ToolWindowStateService(private val project: Project, val coroutineScope: C
     }
 
     private fun normalizeState(state: ToolWindowState): ToolWindowState = ToolWindowState(
-        openTabs = state.openTabs.map { it.copy(comparisonMap = it.comparisonMap.toMutableMap()) },
+        openTabs = state.openTabs.map { it.defensiveCopy() },
         selectedTabIndex = state.selectedTabIndex
     )
+
+    private fun TabInfo.defensiveCopy(): TabInfo = copy(comparisonMap = comparisonMap.toMutableMap())
 
     /** Replaces one tab via [transform]; no-op (no broadcast, no refresh) when the tab is missing or unchanged. */
     private fun updateTab(branchName: String, triggerRefresh: Boolean, transform: (TabInfo) -> TabInfo) {

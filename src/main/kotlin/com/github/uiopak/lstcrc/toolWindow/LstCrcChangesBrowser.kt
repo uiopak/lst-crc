@@ -25,6 +25,7 @@ import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.fileEditor.OpenFileDescriptor
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.progress.ProcessCanceledException
 import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.vcs.changes.Change
@@ -62,6 +63,8 @@ import javax.swing.event.TreeModelListener
 import javax.swing.plaf.basic.BasicTreeUI
 import javax.swing.tree.DefaultMutableTreeNode
 import javax.swing.tree.TreePath
+import java.util.concurrent.Future
+import kotlinx.coroutines.CancellationException
 
 /**
  * The main UI part for displaying the tree of file changes for a specific branch comparison.
@@ -92,6 +95,10 @@ class LstCrcChangesBrowser(
 
     // This field will hold the changes and context for the async tree model builder.
     private var currentChanges: CategorizedChanges? = null
+    @Volatile
+    private var disposed = false
+
+    private fun isAlive(): Boolean = !disposed && !project.isDisposed
 
     private val browserChangeActions: List<BrowserChangeActionDefinition> by lazy(LazyThreadSafetyMode.NONE) {
         listOf(
@@ -141,7 +148,7 @@ class LstCrcChangesBrowser(
         
         val connection = project.messageBus.connect(this)
         connection.subscribe(DIFF_DATA_CHANGED_TOPIC, ActiveDiffDataChangedListener {
-            if (project.isDisposed) return@ActiveDiffDataChangedListener
+            if (!isAlive()) return@ActiveDiffDataChangedListener
             val diffDataService = project.service<ProjectActiveDiffDataService>()
             // Cleared data (a failed load) has no branch; the error belongs to the selected tab.
             val branchName = diffDataService.activeBranchName
@@ -279,6 +286,7 @@ class LstCrcChangesBrowser(
         if (fileToSelect != null && fileToSelect.isValid) {
             val toolWindow = ToolWindowManager.getInstance(project).getToolWindow(ToolWindowId.PROJECT_VIEW)
             toolWindow?.activate({
+                if (!isAlive()) return@activate
                 val projectView = ProjectView.getInstance(project)
                 val psiFile = PsiManager.getInstance(project).findFile(fileToSelect)
                 val elementToSelect: Any = psiFile ?: fileToSelect
@@ -301,20 +309,26 @@ class LstCrcChangesBrowser(
         openRevisionSource(change.afterRevision ?: change.beforeRevision ?: return)
     }
 
-    private fun openRevisionSource(revision: ContentRevision) {
+    private fun openRevisionSource(revision: ContentRevision): Future<*> =
         ApplicationManager.getApplication().executeOnPooledThread {
+            if (!isAlive()) return@executeOnPooledThread
             try {
                 ChangesUtil.loadContentRevision(revision)
 
                 ApplicationManager.getApplication().invokeLater {
-                    if (project.isDisposed) return@invokeLater
+                    if (!isAlive()) return@invokeLater
                     val virtualFile = ContentRevisionVirtualFile.create(revision)
                     FileEditorManager.getInstance(project).openFile(virtualFile, true, true)
                 }
+            } catch (e: ProcessCanceledException) {
+                throw e
+            } catch (e: CancellationException) {
+                // This task runs in the platform pool, which logs unhandled coroutine cancellation as an error.
+                return@executeOnPooledThread
             } catch (e: Exception) {
                 logger.warn("Failed to preload revision-backed file '${revision.file.path}'.", e)
                 ApplicationManager.getApplication().invokeLater {
-                    if (project.isDisposed) return@invokeLater
+                    if (!isAlive()) return@invokeLater
                     Messages.showWarningDialog(
                         project,
                         LstCrcBundle.message("changes.browser.open.source.error.message", revision.file.path),
@@ -323,8 +337,6 @@ class LstCrcChangesBrowser(
                 }
             }
         }
-    }
-
     @Suppress("unused")
     fun viewerTree(): Tree = viewer
 
@@ -470,7 +482,7 @@ class LstCrcChangesBrowser(
      */
     private fun displayChanges(categorizedChanges: CategorizedChanges?, forBranchName: String) {
         ApplicationManager.getApplication().invokeLater {
-            if (project.isDisposed) return@invokeLater
+            if (!isAlive()) return@invokeLater
 
             val hasChanges = categorizedChanges?.allChanges?.isNotEmpty() ?: false
 
@@ -490,6 +502,7 @@ class LstCrcChangesBrowser(
      * Initiates a refresh of the data for this browser's target branch.
      */
     fun requestRefreshData() {
+        if (!isAlive()) return
         logger.debug { "UI_REFRESH: Browser for '$targetBranchToCompare' is requesting a data refresh." }
         project.service<ToolWindowStateService>().refreshDataForCurrentSelection()
     }
@@ -498,12 +511,13 @@ class LstCrcChangesBrowser(
      * Rebuilds the tree view. Called when a display setting (like showing comparison context) is changed.
      */
     fun rebuildView() {
+        if (!isAlive()) return
         // Line stats are only computed while shown; after switching them on, reload the data first.
         if (ToolWindowSettingsProvider.isShowLineStatsInTree() && currentChanges?.lineStatsIncluded == false) {
             requestRefreshData()
         }
         ApplicationManager.getApplication().invokeLater {
-            if (!project.isDisposed) {
+            if (isAlive()) {
                 rebuildTreePreservingViewport()
             }
         }
@@ -525,7 +539,7 @@ class LstCrcChangesBrowser(
             restoreScheduled = true
             model?.removeTreeModelListener(listener)
             ApplicationManager.getApplication().invokeLater {
-                if (!project.isDisposed) {
+                if (isAlive()) {
                     restoreTreeViewport(viewPosition)
                 }
             }
@@ -554,6 +568,7 @@ class LstCrcChangesBrowser(
     }
 
     override fun dispose() {
+        disposed = true
         shutdown()
         logger.debug { "LstCrcChangesBrowser for branch '$targetBranchToCompare' disposed." }
     }
@@ -575,7 +590,7 @@ class LstCrcChangesBrowser(
         }
 
         ApplicationManager.getApplication().invokeLater {
-            if (!project.isDisposed) {
+            if (isAlive()) {
                 updateToolbarBorder()
             }
         }
@@ -599,7 +614,7 @@ class LstCrcChangesBrowser(
         }
 
         ApplicationManager.getApplication().invokeLater {
-            if (!project.isDisposed) {
+            if (isAlive()) {
                 resetRendererWidthCache()
             }
         }

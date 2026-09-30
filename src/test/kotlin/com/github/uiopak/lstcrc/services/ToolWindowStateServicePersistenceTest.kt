@@ -142,6 +142,32 @@ class ToolWindowStateServicePersistenceTest : LstCrcTestCase() {
         assertNull(service.getSelectedTabBranchName())
     }
 
+    fun testSelectedTabInfoCannotMutateStoredComparisonTargets() {
+        assertLookupCannotMutateStoredComparisonTargets { it.getSelectedTabInfo() }
+    }
+
+    fun testDisplayNameLookupCannotMutateStoredComparisonTargets() {
+        assertLookupCannotMutateStoredComparisonTargets { it.findTabByDisplayName("Feature A") }
+    }
+
+    private fun assertLookupCannotMutateStoredComparisonTargets(lookup: (ToolWindowStateService) -> TabInfo?) {
+        val service = project.service<ToolWindowStateService>()
+        val expectedTargets = mapOf("C:/repo-a" to "origin/main")
+        service.loadState(
+            ToolWindowState(
+                openTabs = listOf(TabInfo("feature-a", "Feature A", expectedTargets)),
+                selectedTabIndex = 0
+            )
+        )
+
+        val returnedTab = lookup(service) ?: error("Expected the comparison tab")
+        (returnedTab.comparisonMap as? MutableMap<String, String>)?.set("C:/repo-a", "changed-without-refresh")
+        assertEquals("Changing a lookup result must not bypass state updates", expectedTargets, service.state.openTabs.single().comparisonMap)
+
+        returnedTab.comparisonMap = mapOf("C:/repo-b" to "release/2")
+        assertEquals("Replacing a lookup result's targets must not change persisted state", expectedTargets, service.state.openTabs.single().comparisonMap)
+    }
+
     fun testUpdateTabComparisonMapCopiesOverridesWithoutRefreshWhenDisabled() {
         val service = project.service<ToolWindowStateService>()
         service.loadState(

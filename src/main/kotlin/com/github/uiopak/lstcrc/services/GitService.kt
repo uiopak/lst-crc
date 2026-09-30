@@ -16,6 +16,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import com.intellij.openapi.util.io.FileUtil
+import com.intellij.openapi.util.text.StringUtil
 import com.intellij.openapi.vcs.FilePath
 import com.intellij.openapi.vcs.FileStatus
 import com.intellij.openapi.vcs.VcsException
@@ -248,7 +249,8 @@ class GitService(private val project: Project) {
                 emptySet(),
                 // Git already computed every tracked entry, including binary files whose counts are absent.
                 knownKeys = trackedChanges.changes.mapTo(HashSet()) { ChangeLineStatsKey.from(it) }
-            ) else emptyMap()
+            ) else emptyMap(),
+            contentOnlyBlobIds = trackedChanges.contentOnlyBlobIds
         )
         return DiskChanges(key, loaded, overlayTarget = if (repo.isFresh) HEAD else key.target)
     }
@@ -310,7 +312,15 @@ class GitService(private val project: Project) {
             newFilePaths(diskChangeList),
             movedSourcePaths(diskChangeList)
         )
-        val allChanges = overlayUnsavedDocumentChanges(diskChanges.loaded.changes, unsavedChanges)
+        val diskPaths = diskChangeList.mapTo(HashSet()) { ChangesUtil.getFilePath(it).path }
+        val allChanges = overlayUnsavedDocumentChanges(diskChangeList, unsavedChanges).filterNot { change ->
+            val before = change.beforeRevision as? TextContentRevision ?: return@filterNot false
+            val after = change.afterRevision as? TextContentRevision ?: return@filterNot false
+            if (before.file.path != after.file.path || before.content != after.content) return@filterNot false
+            if (after.file.path !in diskPaths) return@filterNot true
+            val targetBlob = diskChanges.loaded.contentOnlyBlobIds[after.file.path] ?: return@filterNot false
+            liveDocumentMatchesBlob(repo, after, targetBlob)
+        }
         if (!diskChanges.key.includeLineStats) return LoadedChanges(allChanges, emptyMap())
         return LoadedChanges(
             changes = allChanges,
@@ -335,6 +345,25 @@ class GitService(private val project: Project) {
         }
 
         return untrackedChanges(project, repo.root, result.outputAsJoinedString)
+    }
+
+    /** Compare restored editor bytes with the target, including encoding, BOM, line endings and Git filters. */
+    private fun liveDocumentMatchesBlob(repo: GitRepository, revision: TextContentRevision, targetBlob: String): Boolean {
+        val file = revision.file.virtualFile?.takeIf { it.isValid } ?: return false
+        val relativePath = FileUtil.getRelativePath(repo.root.path, file.path, '/') ?: return false
+        val bytes = ApplicationManager.getApplication().runReadAction<ByteArray> {
+            val separator = FileDocumentManager.getInstance().getLineSeparator(file, project)
+            val encoded = StringUtil.convertLineSeparators(revision.content, separator).toByteArray(file.charset)
+            val bom = file.bom
+            if (bom == null || encoded.take(bom.size).toByteArray().contentEquals(bom)) encoded else bom + encoded
+        }
+        return try {
+            runSilentGit(project, repo.root, GitCommand.HASH_OBJECT, arrayOf("--path=$relativePath", "--stdin"), bytes)
+                .getOutputOrThrow().trim().startsWith(targetBlob)
+        } catch (e: VcsException) {
+            logger.debug(e) { "Could not verify restored unsaved content for '${file.path}'." }
+            false
+        }
     }
 
     private fun overlayUnsavedDocumentChanges(
@@ -423,6 +452,11 @@ class GitService(private val project: Project) {
         }
 
         return unsavedFiles.asSequence()
+            .filter { file ->
+                // A nested repository owns its files even though the parent root is also an ancestor.
+                val owner = getRepositoryForFile(file)
+                owner == null || owner.root == repo.root
+            }
             .mapNotNull { file -> createUnsavedDocumentChange(repo, file, targetRevision, file.path in newPaths, movedFrom[file.path]) }
             .toList()
     }
@@ -506,11 +540,17 @@ class GitService(private val project: Project) {
 }
 
 /** Runs git [command] in [root] without echoing it or its output to the VCS console. */
-@Suppress("UsePropertyAccessSyntax")
 internal fun runSilentGit(project: Project, root: VirtualFile, command: GitCommand, vararg params: String): GitCommandResult {
+    return runSilentGit(project, root, command, params, null)
+}
+
+/** The same silent command setup, with optional bytes for commands such as `hash-object --stdin`. */
+@Suppress("UsePropertyAccessSyntax")
+private fun runSilentGit(project: Project, root: VirtualFile, command: GitCommand, params: Array<out String>, input: ByteArray?): GitCommandResult {
     val handler = GitLineHandler(project, root, command)
     handler.setSilent(true)
     handler.setStdoutSuppressed(true)
     handler.addParameters(*params)
+    if (input != null) handler.setInputProcessor { output -> output.use { it.write(input) } }
     return Git.getInstance().runCommand(handler)
 }

@@ -60,6 +60,10 @@ internal class ChangesTreeClickHandler(
     private val logger = thisLogger()
     private val clickScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private var pendingClickJob: Job? = null
+    @Volatile
+    private var disposed = false
+
+    private fun isAlive(): Boolean = !disposed && !project.isDisposed
 
     private val selectedChanges: List<Change>
         get() = VcsTreeModelData.selected(tree).userObjects(Change::class.java)
@@ -67,6 +71,7 @@ internal class ChangesTreeClickHandler(
     fun install() {
         tree.addKeyListener(object : KeyAdapter() {
             override fun keyPressed(e: KeyEvent) {
+                if (!isAlive()) return
                 if (e.keyCode == KeyEvent.VK_ENTER) {
                     val changes = selectedChanges
                     if (changes.isNotEmpty()) {
@@ -84,6 +89,7 @@ internal class ChangesTreeClickHandler(
     }
 
     override fun dispose() {
+        disposed = true
         pendingClickJob?.cancel()
         clickScope.cancel()
     }
@@ -96,6 +102,7 @@ internal class ChangesTreeClickHandler(
     }
 
     private fun handleMouseClick(e: MouseEvent) {
+        if (!isAlive()) return
         val clickCount = e.clickCount
         val button = e.button
 
@@ -130,7 +137,7 @@ internal class ChangesTreeClickHandler(
             pendingClickJob = clickScope.launch {
                 delay(delayMs.milliseconds)
                 withContext(Dispatchers.EDT) {
-                    if (!project.isDisposed) performConfiguredAction(change, singleAction)
+                    if (isAlive()) performConfiguredAction(change, singleAction)
                 }
             }
         } else if (clickCount == 2) {
@@ -144,7 +151,7 @@ internal class ChangesTreeClickHandler(
     /** Runs the configured action after the current mouse event has been fully processed. */
     private fun performConfiguredActionLater(change: Change, actionType: String) {
         ApplicationManager.getApplication().invokeLater {
-            if (!project.isDisposed) performConfiguredAction(change, actionType)
+            if (isAlive()) performConfiguredAction(change, actionType)
         }
     }
 
@@ -166,9 +173,11 @@ internal class ChangesTreeClickHandler(
     ): AnAction {
         return object : DumbAwareAction(LstCrcBundle.message(definition.titleKey)) {
             override fun update(e: AnActionEvent) {
-                e.presentation.isEnabled = definition.isEnabled(selectedChanges)
+                e.presentation.isEnabled = isAlive() && definition.isEnabled(selectedChanges)
             }
-            override fun actionPerformed(e: AnActionEvent) = definition.action(selectedChanges)
+            override fun actionPerformed(e: AnActionEvent) {
+                if (isAlive()) definition.action(selectedChanges)
+            }
             override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.EDT
         }
     }
@@ -183,6 +192,7 @@ internal class ChangesTreeClickHandler(
         // Install our custom context menu handler
         tree.addMouseListener(object : PopupHandler() {
             override fun invokePopup(comp: Component?, x: Int, y: Int) {
+                if (!isAlive()) return
                 if (!ToolWindowSettingsProvider.isContextMenuEnabled()) return
 
                 val path = TreeUtil.getPathForLocation(tree, x, y)?.takeIf { changeAt(it) != null } ?: return
