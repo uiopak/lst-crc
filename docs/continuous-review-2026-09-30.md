@@ -270,12 +270,23 @@ All paths below are under `src/main/kotlin/com/github/uiopak/lstcrc` unless note
   `build/continuous-review-production-artifact.log`.
 - Final validation is repeated after the encoding follow-up. Initial UI runs
   36782715804 and 36782718779 were cancelled so the corrected sources can run
-  both suites. Final run links and results follow after completion.
+  both suites.
 - Final `check compileTestKotlin compileUiTestKotlin -PincludeTestBridge=true`
   passed with 164 tests, zero failures/errors, the wrapper guard and coverage
   verification. Production coverage is 1,674 covered / 2,358 total lines,
   70.9924%. Log: `build/continuous-review-final-check-encoding.log`.
 - Reaudited all 245 test methods; each has exactly one reverse capability mapping.
+- Final `buildPlugin verifyPluginStructure verifyPlugin` passed for the corrected
+  artifact. All six IDEs listed above are compatible. The archive contains zero
+  UI test classes, Java 21 class major 65, version 0.0.21 and since-build 251.
+  Logs: `build/continuous-review-final-production-verifier.log` and
+  `build/continuous-review-final-production-artifact.log`.
+- Full CI runs use corrected code commit `c974e885e933ddf48bc6128826f23ac64c8383dd`:
+  [Remote Robot on Linux, Windows and macOS](https://github.com/uiopak/lst-crc/actions/runs/36784623062)
+  and [Starter UI plus performance on Linux](https://github.com/uiopak/lst-crc/actions/runs/36784626117).
+  The final outcomes and standard PR checks are recorded in
+  [PR #104](https://github.com/uiopak/lst-crc/pull/104). Subsequent documentation
+  commits preserve all production, test, build and workflow inputs.
 
 ## Final review passes
 
