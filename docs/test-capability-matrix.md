@@ -192,6 +192,7 @@
 | `C3.1`, `C5.1` | Unsaved restoration of target text removes content-only changes on clean or modified disk state | `GitServiceLineStatsTest.testUnsavedRevertOnCleanDiskDoesNotCreateAChange`, `GitServiceLineStatsTest.testUnsavedRevertRemovesADiskContentChange`, `GitServiceLineStatsTest.testUnsavedRevertRemovesAContentChangeWithLineStatsDisabled` |
 | `C3.1`, `C5.1` | Restored text preserves file modes, physical line endings and byte-order marks that still differ | `GitServiceLineStatsTest.testUnsavedRevertPreservesAFileModeChange`, `GitServiceLineStatsTest.testUnsavedRevertPreservesChangedLineEndings`, `GitServiceLineStatsTest.testUnsavedRevertPreservesAnAddedByteOrderMark` |
 | `C3.1`, `C5.1` | UTF-16 restoration uses the file charset and BOM when checking the target blob | `GitServiceLineStatsTest.testUnsavedRevertOfUtf16ContentRemovesTheContentChange` |
+| `C3.1`, `C5.1` | Restored leading U+FEFF text stays distinct from the file BOM; BOM-producing encoders do not duplicate it | `GitServiceLineStatsTest.testUnsavedRevertPreservesLeadingBomTextCharacter`, `GitServiceLineStatsTest.testUnsavedRevertWithBomProducingEncoderRemovesContentChange` |
 
 ## Notes
 

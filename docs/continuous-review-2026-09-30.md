@@ -220,6 +220,18 @@ All paths below are under `src/main/kotlin/com/github/uiopak/lstcrc` unless note
 - After fix: All 39 Git comparison, overlay and line-stat tests pass, including
   line-stats-disabled, mode, CRLF, BOM and UTF-16 cases. Log:
   `build/continuous-review-unsaved-revert-green.log`.
+- Encoding follow-up: `testUnsavedRevertPreservesLeadingBomTextCharacter` found
+  that the initial byte reconstruction mistook leading U+FEFF text for an
+  encoder-generated BOM. The real UTF-16LE fixture expected zero changes but got
+  one. The BOM-producing encoder guard already passed. Command: `gradlew test
+  --tests '*GitServiceLineStatsTest.testUnsavedRevertPreservesLeadingBomTextCharacter'
+  --tests '*GitServiceLineStatsTest.testUnsavedRevertWithBomProducingEncoderRemovesContentChange'`.
+  Log: `build/continuous-review-leading-bom-red.log`.
+- Corrected BOM detection by inspecting encoded neutral text independently of
+  document content. This preserves literal leading U+FEFF characters and avoids
+  duplicating a BOM produced by the charset encoder. All 41 Git tests pass,
+  including both encoding guards. Log: `build/continuous-review-leading-bom-green.log`.
+  This follow-up restarted the final review passes and both full UI workflows.
 
 ### F8: Widget truncation split supplementary characters
 
@@ -242,30 +254,54 @@ All paths below are under `src/main/kotlin/com/github/uiopak/lstcrc` unless note
 
 ## Final validation
 
-- `gradlew check compileTestKotlin compileUiTestKotlin -PincludeTestBridge=true`
+- Before the encoding follow-up, `gradlew check compileTestKotlin compileUiTestKotlin -PincludeTestBridge=true`
   passed with 162 unit/service tests, zero failures, the wrapper guard and Kover
   verification. Both UI suites compile. Production line coverage is 70.9677%.
   Log: `build/continuous-review-final-check.log`.
-- Audited all 243 test methods in the unit, Remote Robot and Starter sources:
+- Before the encoding follow-up, audited all 243 test methods in the unit, Remote Robot and Starter sources:
   each appears exactly once in `test-to-capability-map.md`.
 - `git diff --check` passed. Refetched `origin/main`; it remains at baseline
   `231c49a`.
-- Production packaging, structure, six-IDE compatibility and CI results follow
-  after validation completes.
+- The initial production package and structure check passed. Its six-IDE
+  verifier reported compatibility with 2025.1.7.2, 2025.2.6.3, 2025.3.6.1,
+  2026.1.5, 2026.2.3 and preview 263.5701.42. The production archive had no UI
+  test classes, version 0.0.21, since-build 251 and Java 21 class major 65.
+  Logs: `build/continuous-review-production-verifier.log` and
+  `build/continuous-review-production-artifact.log`.
+- Final validation is repeated after the encoding follow-up. Initial UI runs
+  36782715804 and 36782718779 were cancelled so the corrected sources can run
+  both suites. Final run links and results follow after completion.
+- Final `check compileTestKotlin compileUiTestKotlin -PincludeTestBridge=true`
+  passed with 164 tests, zero failures/errors, the wrapper guard and coverage
+  verification. Production coverage is 1,674 covered / 2,358 total lines,
+  70.9924%. Log: `build/continuous-review-final-check-encoding.log`.
+- Reaudited all 245 test methods; each has exactly one reverse capability mapping.
 
 ## Final review passes
 
-- Final pass A, after F8: reviewed the complete production diff and regression
+- Initial final pass A, after F8: reviewed the complete production diff and regression
   tests. Rechecked raw Git blob/mode records, preserved formatting and rename/new
   identity, nested ownership, snapshot copies, obsolete error rejection,
   cancellation handling, browser/click disposal routes, Unicode boundaries and
   build gates. No further actionable findings.
-- Final pass B: traced edit-only/full reloads through target resolution, the
+- Initial final pass B: traced edit-only/full reloads through target resolution, the
   active-diff snapshot, scopes, browser updates and native/visual gutters.
   Confirmed that removing an equal-text change retains repository context and
   comparison bases. Revisited switch/error/close ordering, pending gutter
   generations, HEAD/settings behavior, UI bridge/reflection callers and source
   set boundaries. No further actionable findings.
-- All production areas were reviewed. Two consecutive final passes after the
-  last fix found no actionable issues. Validation failures that require code
-  changes will restart this final-pass count.
+- All production areas were reviewed. The later F7 encoding boundary test found
+  a defect in byte reconstruction, so those passes no longer satisfy the final
+  completion count. Two clean passes after that correction are required.
+- Final pass A, after the encoding correction: reviewed byte reconstruction and
+  both new fixtures alongside the complete production diff. Neutral encoder
+  probing preserves literal U+FEFF and mandatory BOMs; charset, line endings,
+  mode eligibility, hash failures and cancellation retain their behavior.
+  Snapshot, error, lifetime and Unicode fixes remain coherent. No actionable
+  findings.
+- Final pass B, after the encoding correction: revisited the complete unsaved
+  overlay-to-snapshot-to-browser/scope/gutter flow, target switching and disposal
+  ordering, metadata-only changes, renamed/new paths and settings. Checked
+  production/test source boundaries and all UI reflection callers. No actionable
+  findings. The two consecutive clean final passes are complete; a later code
+  failure would restart them.

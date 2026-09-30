@@ -18,6 +18,8 @@ Location: `src/test/kotlin/com/github/uiopak/lstcrc/{gutters,listeners,scopes,se
 | `GitServiceLineStatsTest.testUnsavedRevertPreservesChangedLineEndings` | `C3.1`, `C5.1` | Restoring logical target text retains physical line endings that still differ from the target blob. |
 | `GitServiceLineStatsTest.testUnsavedRevertPreservesAnAddedByteOrderMark` | `C3.1`, `C5.1` | Restoring logical target text retains a byte-order mark that differs from the target blob. |
 | `GitServiceLineStatsTest.testUnsavedRevertOfUtf16ContentRemovesTheContentChange` | `C3.1`, `C5.1` | Restored UTF-16 editor text hashes with its charset and BOM and removes the content-only change. |
+| `GitServiceLineStatsTest.testUnsavedRevertPreservesLeadingBomTextCharacter` | `C3.1`, `C5.1` | A leading U+FEFF text character stays distinct from the file BOM when restored content is checked against Git. |
+| `GitServiceLineStatsTest.testUnsavedRevertWithBomProducingEncoderRemovesContentChange` | `C3.1`, `C5.1` | An encoder that emits its own BOM does not receive a duplicate file BOM. |
 | `ChangesTreeClickHandlerTest.testQueuedClickDoesNotRunAfterHandlerDisposal` | `C4.1`, `C5.1` | Closing the handler after a mouse click but before EDT dispatch discards its queued action. |
 | `ChangesTreeClickHandlerTest.testQueuedClickRunsWhileHandlerIsAlive` | `C4.1` | The same configured click still runs once while its handler is alive. |
 | `LstCrcChangesBrowserTest.testQueuedRefreshDoesNotUpdateDisposedBrowser` | `C3.12`, `C5.1` | Closing a browser before queued diff application leaves its snapshot unchanged. |

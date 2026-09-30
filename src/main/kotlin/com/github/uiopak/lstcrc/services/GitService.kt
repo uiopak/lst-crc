@@ -353,9 +353,12 @@ class GitService(private val project: Project) {
         val relativePath = FileUtil.getRelativePath(repo.root.path, file.path, '/') ?: return false
         val bytes = ApplicationManager.getApplication().runReadAction<ByteArray> {
             val separator = FileDocumentManager.getInstance().getLineSeparator(file, project)
-            val encoded = StringUtil.convertLineSeparators(revision.content, separator).toByteArray(file.charset)
+            val charset = file.charset
+            val encoded = StringUtil.convertLineSeparators(revision.content, separator).toByteArray(charset)
             val bom = file.bom
-            if (bom == null || encoded.take(bom.size).toByteArray().contentEquals(bom)) encoded else bom + encoded
+            // Detect an encoder-generated BOM independently of a leading U+FEFF text character.
+            val encoderAddsBom = bom != null && "\u0000".toByteArray(charset).take(bom.size).toByteArray().contentEquals(bom)
+            if (bom == null || encoderAddsBom) encoded else bom + encoded
         }
         return try {
             runSilentGit(project, repo.root, GitCommand.HASH_OBJECT, arrayOf("--path=$relativePath", "--stdin"), bytes)

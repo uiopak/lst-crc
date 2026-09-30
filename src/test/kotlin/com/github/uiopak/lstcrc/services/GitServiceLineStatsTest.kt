@@ -366,14 +366,22 @@ class GitServiceLineStatsTest : LstCrcTestCase() {
 
     fun testUnsavedRevertOfUtf16ContentRemovesTheContentChange() = assertUnsavedRevert(diskChanged = true, modeChanged = false, charset = Charsets.UTF_16LE)
 
-    private fun assertUnsavedRevert(diskChanged: Boolean, modeChanged: Boolean, preserveLineEndings: Boolean = false, preserveBom: Boolean = false, includeLineStats: Boolean = true, charset: java.nio.charset.Charset = Charsets.UTF_8) {
+    fun testUnsavedRevertPreservesLeadingBomTextCharacter() = assertUnsavedRevert(
+        diskChanged = true, modeChanged = false, charset = Charsets.UTF_16LE, targetText = "\uFEFFalpha\nbeta\ngamma\n"
+    )
+
+    fun testUnsavedRevertWithBomProducingEncoderRemovesContentChange() = assertUnsavedRevert(
+        diskChanged = true, modeChanged = false, charset = Charsets.UTF_16
+    )
+
+    private fun assertUnsavedRevert(diskChanged: Boolean, modeChanged: Boolean, preserveLineEndings: Boolean = false, preserveBom: Boolean = false, includeLineStats: Boolean = true, charset: java.nio.charset.Charset = Charsets.UTF_8, targetText: String = "alpha\nbeta\ngamma\n") {
         val repoPath = Files.createTempDirectory("lstcrc-unsaved-revert-")
         var document: com.intellij.openapi.editor.Document? = null
         try {
             initializeTrackedStatsGitRepo(repoPath)
             // Keep text and physical line endings identical to the target for the content-only cases.
             val charsetBom = if (charset == Charsets.UTF_16LE) byteArrayOf(0xff.toByte(), 0xfe.toByte()) else byteArrayOf()
-            Files.write(repoPath.resolve("Main.txt"), charsetBom + "alpha\nbeta\ngamma\n".toByteArray(charset))
+            Files.write(repoPath.resolve("Main.txt"), charsetBom + targetText.toByteArray(charset))
             runGit(repoPath, "add", "Main.txt")
             runGit(repoPath, "commit", "-m", "LF revert fixture")
             if (diskChanged) {
@@ -391,8 +399,12 @@ class GitServiceLineStatsTest : LstCrcTestCase() {
             val liveDocument = FileDocumentManager.getInstance().getDocument(file)!!
             document = liveDocument
             WriteCommandAction.runWriteCommandAction(project) {
+                if (charset == Charsets.UTF_16) {
+                    file.charset = charset
+                    assertEquals("The fixture must exercise a BOM-producing encoder", charset, file.charset)
+                }
                 liveDocument.setText("intermediate unsaved text\n")
-                liveDocument.setText("alpha\nbeta\ngamma\n")
+                liveDocument.setText(targetText)
             }
             assertTrue("The fixture must exercise an unsaved document", FileDocumentManager.getInstance().isFileModified(file))
             val repo = java.lang.reflect.Proxy.newProxyInstance(
