@@ -23,19 +23,27 @@ Location: `src/test/kotlin/com/github/uiopak/lstcrc/{gutters,listeners,scopes,se
 | `GitServiceLineStatsTest.testCalculateLineStatsForSingleLineReplacement` | `C3.10` | A replaced line counts as one added and one removed. |
 | `GitServiceLineStatsTest.testCalculateLineStatsForNewFileContent` | `C3.10` | A new file counts all its lines as added. |
 | `GitServiceLineStatsTest.testCalculateLineStatsForDeletedFileContent` | `C3.10` | A deleted file counts all its lines as removed. |
+| `GitServiceLineStatsTest.testLineStatsContentFailureDoesNotDiscardOtherFiles` | `C3.10`, `C5.1` | A content-read failure omits that file's counts while other files still receive stats. |
+| `GitServiceLineStatsTest.testUnavailableRevisionTextDoesNotCountAsAnEmptyFile` | `C3.10` | A present revision with unavailable text gets no counts, rather than false additions or deletions. |
+| `GitServiceLineStatsTest.testLineStatsContentCancellationIsPropagated` | `C5.1` | Line-stat fallback propagates platform and coroutine cancellation. |
+| `GitServiceLineStatsTest.testTrackedBinaryDiffDoesNotGetFallbackLineStats` | `C3.10` | Binary entries stay in the disk changes without content reads or fallback line counts, even when their content is readable text. |
 | `GitServiceLineStatsTest.testTrackedLineStatsDiffArgsIgnoreLineEndingOnlyChurn` | `C3.10` | `git diff --numstat` is run with `--ignore-cr-at-eol`. |
 | `GitServiceLineStatsTest.testTrackedDiffArgsAcceptBranchNamedLikeAFolder` | `C1.2` | A branch named like a folder (`docs`) is compared, not read as a path. |
 | `GitServiceLineStatsTest.testRevisionExistsOnlyForResolvableTargets` | `C2.5` | Only a target git cannot resolve counts as missing. |
 | `GitServiceLineStatsTest.testCreateLiveDocumentContentRevisionReadsLatestUnsavedDocumentText` | `C3.8` | The unsaved-overlay revision reads the editor's current text. |
 | `GitServiceLineStatsTest.testCreateLiveDocumentContentRevisionAllowsBackgroundThreadAccess` | `C3.8` | The unsaved-overlay revision can be read off the EDT. |
 | `GitServiceLineStatsTest.testLiveDocumentContentRevisionsAreEqualOnlyForTheSameText` | `C3.8` | Two loads of the same unsaved text are equal; different text is not. |
+| `GitServiceLineStatsTest.testUnsavedEditOfAddedFileIncludesLiveTextAndLineStats` | `C3.8`, `C3.10` | New files overlay the latest unsaved text and line counts without loading target content. |
 | `GitServiceLineStatsTest.testUnsavedEditOfMovedFileIsComparedWithItsOldPath` | `C3.8` | Regression: an unsaved edit of a moved file is compared with the old path's content in the target. |
+| `GitServiceLineStatsTest.testUnsavedOverlayCancellationIsPropagated` | `C3.8`, `C5.1` | Unsaved-document target loading propagates platform and coroutine cancellation through both error handlers. |
 | `GitServiceOverlayMergeTest.testPreservesNewChangeTypeWhenUnsavedOverlayIsApplied` | `C3.8` | Unsaved edits to a new file keep it `NEW`/`ADDED`. |
 | `GitServiceOverlayMergeTest.testKeepsModificationOverlayForNonNewFiles` | `C3.8` | Unsaved edits to other files stay modifications. |
-| `GitServiceOverlayMergeTest.testTrackedAddedPathsSkipsUntrackedAndModifiedFiles` | `C3.8` | Only files `git diff` reports as added skip the target-content lookup. |
-| `GitServiceOverlayMergeTest.testUntrackedChangesKeepBackslashesInFileNames` | `C3.11` | `git ls-files -z` paths are not unescaped. |
+| `GitServiceOverlayMergeTest.testNewFilePathsIncludesAddedAndUntrackedFiles` | `C3.8`, `C3.11` | Added and untracked files both overlay live text without a before-revision lookup. |
+| `GitServiceOverlayMergeTest.testPreservesUntrackedStatusWhenUnsavedOverlayIsApplied` | `C3.8`, `C3.11` | Unsaved edits keep an untracked file's `UNKNOWN` status. |
+| `GitServiceOverlayMergeTest.testUntrackedChangesKeepBackslashesInFileNames` | `C3.11` | On Unix, `git ls-files -z` paths are not unescaped. Windows cannot represent these file names. |
 | `GitServiceOverlayMergeTest.testUntrackedChangesKeepFileNamesMadeOfSpaces` | `C3.11` | An untracked file whose name is only spaces is kept. |
 | `GitServiceOverlayMergeTest.testParseTrackedDiffKeepsTabsInNumstatPaths` | `C3.10` | A tab in a `--numstat -z` path stays part of the path, so the file keeps its line stats. |
+| `GitServiceOverlayMergeTest.testParseTrackedDiffKeepsNewlinesAtTheEndOfNumstatPaths` | `C3.10` | Newlines in or at the end of a file name stay part of the numstat path, while Git's section separator is skipped. |
 | `GitServiceOverlayMergeTest.testParseTrackedDiffReadsRawAndNumstatRecordsIncludingRenames` | `C3.1`, `C3.10` | `git diff --raw --numstat -z` output becomes changes and line stats, renames included, and moved files map to their old path. |
 | `LstCrcActionVisibilityTest.testShowRepoComparisonInfoActionHiddenOnHeadAndVisibleForComparisonTab` | `C2.3` | Repo-comparison toolbar action is hidden on `HEAD` and shown on comparison tabs. |
 | `LstCrcActionVisibilityTest.testRepoComparisonPopupShowsRepositoryAndTargetNamesWithUnderscores` | `C1.5`, `C2.3` | The repository popup lists each repository and its target, sorted, with underscores. |
@@ -84,10 +92,13 @@ Location: `src/test/kotlin/com/github/uiopak/lstcrc/{gutters,listeners,scopes,se
 | `ProjectActiveDiffDataServiceTest.testAcceptsHeadUpdateWhenHeadTabIsSelected` | `C1.1`, `C5.1` | `HEAD` results are applied while the `HEAD` tab is selected. |
 | `ProjectActiveDiffDataServiceTest.testRejectsStaleUpdateWhenSelectedBranchDoesNotMatch` | `C5.1` | Results for a tab that is no longer selected are dropped. |
 | `ProjectActiveDiffDataServiceTest.testRejectsUpdateWhenTheTabIsSwitchedBeforeItIsApplied` | `C5.1` | A result sent from a background thread is dropped when the tab changes before it is applied. |
+| `ProjectActiveDiffDataServiceTest.testRejectsUpdateWhenRepositoryTargetChangesBeforeItIsApplied` | `C2.3`, `C5.1` | A queued result is rejected after a repository override changes in the same tab; the new target's result is accepted. |
 | `ProjectActiveDiffDataServiceTest.testRejectsHeadUpdateWhileComparisonTabIsSelected` | `C5.1` | `HEAD` results are dropped while a comparison tab is selected. |
 | `ProjectActiveDiffDataServiceTest.testUpdateActiveDiffWithIdenticalSnapshotBypassesNotification` | `C5.1` | Identical data does not re-notify listeners. |
 | `ProjectActiveDiffDataServiceTest.testSamePathsWithNewUnsavedContentPublishesNewChanges` | `C3.8`, `C5.1` | New unsaved content on the same paths is published; the same content is not. |
 | `ProjectActiveDiffDataServiceTest.testNewUnsavedContentOfTheSameFilesKeepsFileStatuses` | `C5.1` | Regression: new unsaved text of the same files does not reset file statuses; a file joining a scope does. |
+| `ProjectActiveDiffDataServiceTest.testSwitchingComparisonTabsWithSameScopesKeepsFileStatuses` | `C3.7`, `C5.1` | A target-name change with the same scope membership publishes the comparison without resetting statuses; a changed category still resets them. |
+| `ProjectActiveDiffDataServiceTest.testHeadSwitchOnlyResetsFileStatusesWhenScopeMembershipChanges` | `C3.7`, `C4.7` | Switching to and from `HEAD` resets statuses only when `Include HEAD in scopes` changes effective membership. |
 | `ProjectActiveDiffDataServiceTest.testMovedFileIsLookedUpByItsOldPathInTheTarget` | `C3.7` | Regression: the gutter of a moved file compares with its old path in the target. |
 | `RepoNodeRendererTest.testAddedLineStatsUseBuiltInSuccessForeground` | `C3.10` | Added counts use the theme's success color. |
 | `RepoNodeRendererTest.testRemovedLineStatsUseBuiltInErrorAttributes` | `C3.10` | Removed counts use the theme's error color. |
@@ -110,15 +121,33 @@ Location: `src/test/kotlin/com/github/uiopak/lstcrc/{gutters,listeners,scopes,se
 | `ToolWindowStateServicePersistenceTest.testUpdateTabAliasIgnoresMissingTabAndUnchangedAlias` | `C1.5`, `C5.2` | Missing tabs and unchanged aliases are ignored. |
 | `ToolWindowStateServicePersistenceTest.testUpdateTabComparisonMapIgnoresMissingTabAndUnchangedMap` | `C5.2` | Missing tabs and unchanged overrides are ignored. |
 | `ToolWindowStateServicePersistenceTest.testUpdateTabRepoComparisonRemovesOverrideWhenTargetMatchesDefault` | `C2.3` | Choosing the tab's own target removes the override. |
+| `ToolWindowStateServicePersistenceTest.testMissingBranchFailureDoesNotOverwriteANewerRepositoryTarget` | `C2.3`, `C2.5` | A failure for an old target does not reset a newer override to `HEAD`. |
+| `ToolWindowStateServicePersistenceTest.testMissingBranchRepairPreservesNewerOverridesInOtherRepositories` | `C2.3`, `C2.5` | Repair resets only targets still missing and preserves other overrides changed during the load. |
 | `VcsChangeListenerTest.testHandleDocumentChangeTriggersRefreshForRepositoryFiles` | `C5.1` | Edits to repository files trigger one debounced refresh. |
 | `VcsChangeListenerTest.testHandleDocumentChangeIgnoresNonRepositoryFiles` | `C5.1` | Edits outside repositories are ignored. |
 | `VcsChangeListenerTest.testHandleDocumentChangeDoesNotBlockOnRepositoryCheck` | `C5.1` | The repository check never blocks the editing thread. |
 | `VcsChangeListenerTest.testDocumentEditsAloneRequestEditOnlyRefreshWhileVcsEventsRequestFullRefresh` | `C5.1` | A burst of edits alone requests an edit-only refresh; a VCS event in the burst makes it a full refresh. |
+| `VcsChangeListenerTest.testVcsEventSurvivesABurstWhileRepositoryCheckIsBusy` | `C5.1` | A VCS event remains a full-refresh requirement amid a large edit burst while file resolution is blocked. |
+| `VcsChangeListenerTest.testDocumentSaveSurvivesABurstWhileRepositoryCheckIsBusy` | `C5.1` | A save's full-refresh requirement survives later edits while file resolution is blocked. |
+| `VcsChangeListenerTest.testRepositoryEditSurvivesABurstOfForeignDocumentEdits` | `C5.1` | Events from other projects cannot discard a pending repository-file edit. |
+| `VcsChangeListenerTest.testForeignDocumentSaveDoesNotForceAFullRefresh` | `C5.1` | An unrelated project's save does not turn this project's edit-only refresh into a disk reload. |
 | `VisualTrackerManagerBehaviorTest.testUnderlyingTrackerReportsInsertedRangeForPartialInsertionAgainstExistingBase` | `C3.7` | A partial insertion is an inserted range. |
 | `VisualTrackerManagerBehaviorTest.testUnderlyingTrackerReportsInitialInsertedRangeForWholeNewFileAgainstEmptyBase` | `C3.7` | A new file against an empty base is one inserted range. |
 | `VisualTrackerManagerBehaviorTest.testStandaloneTrackerInstallsGutterHighlightersForWholeNewFile` | `C3.7`, `C4.8` | The standalone tracker for a new file draws gutter markers. |
-| `VisualTrackerManagerBehaviorTest.testVisualTrackerManagerCleanupOnTrackerRemoved` | `C3.7` | Visual trackers are released with the native tracker. |
+| `VisualTrackerManagerBehaviorTest.testDisposingManagerReleasesExistingTracker` | `C3.7` | Disposal releases an initialized visual tracker, with its existence checked before disposal. |
 | `VisualTrackerManagerBehaviorTest.testStandaloneTrackerIsReleasedWhenItsLastEditorCloses` | `C3.7` | A standalone tracker is released when its file's last editor closes. |
+| `VisualTrackerManagerBehaviorTest.testGutterContentCancellationIsPropagated` | `C3.7`, `C5.1` | Gutter target-content reads propagate platform and coroutine cancellation instead of returning fallback content. |
+| `VisualTrackerManagerBehaviorTest.testCancelledGutterLoadCanBeRetried` | `C3.7` | A cancelled gutter load clears its reservation so the same target can be loaded again. |
+| `VisualTrackerManagerBehaviorTest.testSwitchingTargetsWithIdenticalTextKeepsGutterMarkers` | `C3.7` | Different commits with identical file text keep the same tracker, base and installed highlighters without a base reset. |
+| `VisualTrackerManagerBehaviorTest.testSwitchingTargetsWithDifferentTextUpdatesGutterRanges` | `C3.7` | Different target text updates the base and moves the gutter range even when file classification and line counts stay the same. |
+| `VisualTrackerManagerBehaviorTest.testOlderGutterRefreshCannotReplaceNewerComparison` | `C3.7`, `C5.1` | A resolved older target delivered after newer content cannot replace the current gutter base. |
+| `VisualTrackerManagerBehaviorTest.testOlderDisabledGutterRefreshCannotRemoveNewerMarkers` | `C3.7`, `C4.8` | A delayed disabled-setting decision cannot release the tracker retained by a newer enabled refresh. |
+| `VisualTrackerManagerBehaviorTest.testClosingEditorPreventsPendingRefreshFromCreatingTracker` | `C3.7` | A resolved refresh delivered after the last file editor closes cannot create a tracker. |
+| `VisualTrackerManagerBehaviorTest.testDisposingManagerPreventsPendingRefreshFromCreatingTracker` | `C3.7` | A resolved refresh delivered after manager disposal cannot recreate a tracker. |
+| `VisualTrackerManagerBehaviorTest.testGutterRefreshIgnoresEditorsOutsideFileEditorManager` | `C3.7` | A full refresh tracks an open file while skipping a preview editor for a file outside the project's file editors. |
+| `VisualTrackerManagerBehaviorTest.testRefreshDuringPendingBaseLoadStillInitializesTracker` | `C3.7`, `C5.1` | A newer refresh for the same target does not strand an unfinished base-load reservation or leave the tracker uninitialized. |
+| `VisualTrackerManagerBehaviorTest.testEditorSelectionKeepsPendingRefreshOfOtherOpenFiles` | `C3.7`, `C5.1` | Switching editor focus during a full refresh still updates both open files. |
+| `VisualTrackerManagerBehaviorTest.testRepositoryRefreshKeepsPendingUpdatesOfOtherOpenFiles` | `C3.7`, `C5.1` | A repository event arriving during a settings refresh carries its pending updates of all open files. |
 | `VisualTrackerManagerBehaviorTest.testRepositoryChangeRechecksTheTrackersOfVisibleEditors` | `C3.7` | Regression: a repository change re-checks the trackers of visible editors even when the diff data is unchanged. |
 | `VisualTrackerManagerBehaviorTest.testIncludeHeadToggleRechecksTrackers` | `C4.7`, `C3.7` | Regression: toggling `Include HEAD in scopes` re-checks the trackers at once. |
 | `VisualTrackerManagerBehaviorTest.testGutterToggleFromAnotherProjectRechecksThisProjectsTrackers` | `C4.8`, `C4.9` | Regression: a gutter setting changed outside this project's menu re-checks this project's trackers. |

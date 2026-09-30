@@ -64,6 +64,7 @@ This document lists each current `src/main` file separately and explains why it 
 
 ### VcsChangeListener.kt
 - Role: The only source of automatic refreshes. It listens to `ChangeListManager` updates, `GitRepository.GIT_REPO_CHANGE`, document saves and document edits in repository files, and turns bursts of them into one refresh after a 300 ms debounce (a coroutine `Flow`). If the burst held only document edits it asks for an edit-only refresh, which reuses the last git result; any other event makes it a full refresh.
+- Pending work: Keeps affected files and full-reload flags outside the conflated wakeup flow. A burst cannot drop a save or VCS event; repeated pending edits share a repository check, and other projects' files remain filtered out.
 - Depends on: `ChangeListManager`, `EditorFactory` document events, `FileDocumentManagerListener` (saves), the Git repository topic, `ToolWindowStateService`, and `GitService` (to check whether an edited file is in a repository, off the EDT).
 - Connected to: The refresh pipeline in `ToolWindowStateService`.
 - Why it exists: Local edits, saves, external changes, checkouts and commits all need to refresh the comparison, but typing must not run git on every keystroke.
@@ -84,12 +85,13 @@ This document lists each current `src/main` file separately and explains why it 
 
 ### GitService.kt
 - Role: Sole Git and Git4Idea integration boundary for repository discovery, change loading, revision content, and branch snapshots. It keeps the last on-disk diff per repository, which edit-only refreshes reuse, and overlays unsaved documents (a moved file against its old path). A failed `git diff` is reported as a missing target only when `git rev-parse` cannot resolve it. Its `runSilentGit` runs the plugin's own git commands without echoing them to the VCS console.
+- Cancellation: Revision-content reads and unsaved-overlay construction propagate platform and coroutine cancellation.
 - Depends on: Git4Idea, low-level Git commands, VCS `Change` models, and plugin state types such as `TabInfo`.
 - Connected to: `ToolWindowStateService`, `VisualTrackerManager`, settings code, and branch-selection flows.
 - Why it exists: Centralizing all Git logic keeps the rest of the plugin from depending directly on IntelliJ VCS internals.
 
 ### GitDiffParsing.kt
-- Role: `GitService`'s pure helpers: the `git diff` options (ending in `--` so a branch named like a folder is not read as a path), parsing `git diff --raw [--numstat] -z` and `git ls-files -z` output, the unsaved-overlay merge rule, moved-file source paths and in-process line counts.
+- Role: `GitService`'s pure helpers: the `git diff` options (ending in `--` so a branch named like a folder is not read as a path), lazy parsing of `git diff --raw [--numstat] -z` fields (preserving tabs and trailing newlines in paths), parsing `git ls-files -z` output, the unsaved-overlay merge rule, moved-file source paths and in-process line counts.
 - Depends on: VCS `Change` models and `GitContentRevision`.
 - Connected to: `GitService`, `ProjectActiveDiffDataService` (moved-file paths) and the unit tests, which call these functions directly.
 - Why it exists: Keeps the parsing testable without a repository and `GitService` focused on orchestration.
@@ -108,6 +110,7 @@ This document lists each current `src/main` file separately and explains why it 
 
 ### ProjectActiveDiffDataService.kt
 - Role: Active-diff cache storing categorized file sets and comparison context for the selected tab.
+- Status refreshes: Reset file statuses and editor tab colors only when effective scope membership changes, accounting for categorized paths and the HEAD-scope setting. A new target still publishes the active comparison.
 - Depends on: `FileStatusManager`, `FileEditorManager`, and the plugin message bus.
 - Connected to: `ToolWindowStateService`, scopes, renderers, `VisualTrackerManager`, and any UI that consumes the active comparison.
 - Why it exists: The plugin needs one shared cache so every surface reads the same active diff instead of recomputing Git state.
@@ -142,6 +145,8 @@ This document lists each current `src/main` file separately and explains why it 
 
 ### VisualTrackerManager.kt
 - Role: Intercepts line-status tracking and renders active-comparison gutter markers against the selected diff target.
+- Content loads: Propagate cancellation and clear failed or cancelled load reservations by identity, keeping retries possible without evicting newer work for the same target. Initialized trackers keep their base and highlighters when a new target contains identical file text.
+- Refresh ordering: Generations reject obsolete background decisions and content results. A completed base remains reusable across refreshes; older unfinished loads remain retryable. Newer requests carry any unfinished refresh of all open files. Updates use this project's open file editors and check file-open state and manager lifetime again on the EDT.
 - Depends on: `ProjectActiveDiffDataService`, `GitService`, `ToolWindowSettingsProvider`, and line-status tracker APIs.
 - Connected to: Editor gutter state, diff-change notifications, settings changes, and active file lookups. Diff-data and settings changes re-check every open editor; switching editor tabs only re-checks the selected editor of each split, since hidden editors are checked when they are selected. A moved file's base content is loaded from its old path. A standalone tracker (for a file the platform does not track) is released when the file's last editor closes.
 - Why it exists: The plugin's comparison target can differ from `HEAD`, so the standard gutter behavior is not sufficient.

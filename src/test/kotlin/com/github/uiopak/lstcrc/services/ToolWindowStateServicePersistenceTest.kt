@@ -275,4 +275,54 @@ class ToolWindowStateServicePersistenceTest : LstCrcTestCase() {
             service.state.openTabs.first().comparisonMap
         )
     }
+
+    fun testMissingBranchFailureDoesNotOverwriteANewerRepositoryTarget() {
+        val service = project.service<ToolWindowStateService>()
+        val root = com.intellij.testFramework.LightVirtualFile("repo-a")
+        val loadedTab = TabInfo("feature", comparisonMap = mapOf(root.path to "missing"))
+        service.loadState(ToolWindowState(openTabs = listOf(loadedTab)))
+        service.updateTabRepoComparison("feature", root.path, "fixed", triggerRefresh = false)
+
+        applyBranchFailures(service, loadedTab, mapOf(repository(root) to "missing"))
+
+        assertEquals(mapOf(root.path to "fixed"), service.state.openTabs.single().comparisonMap)
+    }
+
+    fun testMissingBranchRepairPreservesNewerOverridesInOtherRepositories() {
+        val service = project.service<ToolWindowStateService>()
+        val brokenRoot = com.intellij.testFramework.LightVirtualFile("broken")
+        val fixedRoot = com.intellij.testFramework.LightVirtualFile("fixed")
+        val otherRoot = com.intellij.testFramework.LightVirtualFile("other")
+        val loadedTab = TabInfo("feature", comparisonMap = mapOf(brokenRoot.path to "missing", fixedRoot.path to "missing"))
+        service.loadState(ToolWindowState(openTabs = listOf(loadedTab)))
+        service.updateTabRepoComparison("feature", fixedRoot.path, "fixed-target", triggerRefresh = false)
+        service.updateTabRepoComparison("feature", otherRoot.path, "other-target", triggerRefresh = false)
+
+        applyBranchFailures(service, loadedTab, mapOf(repository(brokenRoot) to "missing", repository(fixedRoot) to "missing"))
+
+        assertEquals(
+            mapOf(brokenRoot.path to "HEAD", fixedRoot.path to "fixed-target", otherRoot.path to "other-target"),
+            service.state.openTabs.single().comparisonMap
+        )
+    }
+
+    private fun applyBranchFailures(service: ToolWindowStateService, tab: TabInfo, failures: Map<git4idea.repo.GitRepository, String>) {
+        ToolWindowStateService::class.java.getDeclaredMethod("handleBranchFailures", TabInfo::class.java, Map::class.java).apply {
+            isAccessible = true
+        }.invoke(service, tab, failures)
+    }
+
+    private fun repository(root: com.intellij.openapi.vfs.VirtualFile): git4idea.repo.GitRepository =
+        java.lang.reflect.Proxy.newProxyInstance(
+            git4idea.repo.GitRepository::class.java.classLoader,
+            arrayOf(git4idea.repo.GitRepository::class.java)
+        ) { proxy, method, args ->
+            when (method.name) {
+                "getRoot" -> root
+                "hashCode" -> System.identityHashCode(proxy)
+                "equals" -> proxy === args?.firstOrNull()
+                "toString" -> root.path
+                else -> null
+            }
+        } as git4idea.repo.GitRepository
 }

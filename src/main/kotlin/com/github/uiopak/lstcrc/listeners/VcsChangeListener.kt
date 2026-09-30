@@ -27,7 +27,6 @@ import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.filter
-import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.concurrent.atomic.AtomicBoolean
@@ -67,16 +66,16 @@ class VcsChangeListener internal constructor(
         refreshAfterDocumentEdit = { project.service<ToolWindowStateService>().refreshAfterDocumentEdit() }
     )
 
-    /** One trigger: [file] is the edited or saved document (null for VCS events); [full] asks for a full reload. */
-    private data class RefreshSignal(val file: VirtualFile?, val full: Boolean)
-
     private val logger = thisLogger()
-    private val refreshSignals = MutableSharedFlow<RefreshSignal>(
-        extraBufferCapacity = 64,
+    // Only wakeups may be dropped. The work they describe is accumulated separately until checked.
+    private val refreshSignals = MutableSharedFlow<Unit>(
+        replay = 1,
         onBufferOverflow = BufferOverflow.DROP_OLDEST
     )
+    private val pendingFileSignals = linkedMapOf<VirtualFile, Boolean>()
+    private var pendingVcsRefresh = false // guarded by pendingFileSignals
 
-    /** True once the debounced collector below listens; signals sent before that are dropped. For unit tests. */
+    /** True once the debounced collector below listens. For unit tests. */
     internal val isCollectingSignals: Boolean
         get() = refreshSignals.subscriptionCount.value > 0
 
@@ -92,9 +91,7 @@ class VcsChangeListener internal constructor(
 
         coroutineScope.launch {
             refreshSignals
-                .filter { signal -> signal.file == null || withContext(Dispatchers.IO) { isRepositoryFile(signal.file) } }
-                // Recorded before the debounce, which keeps only the last signal of a burst.
-                .onEach { signal -> if (signal.full) fullRefreshPending.set(true) }
+                .filter { collectPendingSignals() }
                 .debounce(REFRESH_DEBOUNCE)
                 .collect {
                     if (project.isDisposed) return@collect
@@ -107,18 +104,18 @@ class VcsChangeListener internal constructor(
 
     override fun repositoryChanged(repository: GitRepository) {
         logger.debug { "VCS_CHANGE_LISTENER: repositoryChanged() detected for '${repository.root.name}', triggering refresh." }
-        refreshSignals.tryEmit(RefreshSignal(null, full = true))
+        queueRefresh(null, full = true)
     }
 
     override fun changeListUpdateDone() {
         logger.debug { "VCS_CHANGE_LISTENER: changeListUpdateDone() detected, triggering refresh." }
-        refreshSignals.tryEmit(RefreshSignal(null, full = true))
+        queueRefresh(null, full = true)
     }
 
     /** A save writes the document to disk, so the next refresh must run `git diff` again. */
     override fun beforeDocumentSaving(document: Document) {
         val file = FileDocumentManager.getInstance().getFile(document) ?: return
-        refreshSignals.tryEmit(RefreshSignal(file, full = true))
+        queueRefresh(file, full = true)
     }
 
     override fun documentChanged(event: DocumentEvent) {
@@ -129,7 +126,42 @@ class VcsChangeListener internal constructor(
         file ?: return
 
         logger.debug { "VCS_CHANGE_LISTENER: documentChanged() detected for '${file.path}', queueing refresh." }
-        refreshSignals.tryEmit(RefreshSignal(file, full = false))
+        queueRefresh(file, full = false)
+    }
+
+    /** Keeps every affected file and remembers saves even when later edits share the same file. */
+    private fun queueRefresh(file: VirtualFile?, full: Boolean) {
+        synchronized(pendingFileSignals) {
+            if (file == null) {
+                pendingVcsRefresh = true
+            } else {
+                pendingFileSignals[file] = full || pendingFileSignals[file] == true
+            }
+        }
+        refreshSignals.tryEmit(Unit)
+    }
+
+    /** Checks each distinct pending file off the editing thread; foreign project saves cannot force a reload. */
+    private suspend fun collectPendingSignals(): Boolean {
+        val (files, full) = synchronized(pendingFileSignals) {
+            val batch = pendingFileSignals.toMap() to pendingVcsRefresh
+            pendingFileSignals.clear()
+            pendingVcsRefresh = false
+            batch
+        }
+        var needsRefresh = full
+        if (full) fullRefreshPending.set(true)
+        if (files.isNotEmpty()) {
+            withContext(Dispatchers.IO) {
+                files.forEach { (file, saved) ->
+                    if (isRepositoryFile(file)) {
+                        needsRefresh = true
+                        if (saved) fullRefreshPending.set(true)
+                    }
+                }
+            }
+        }
+        return needsRefresh
     }
 
     override fun dispose() {

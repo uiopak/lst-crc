@@ -4,6 +4,13 @@ import com.intellij.openapi.command.WriteCommandAction
 import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.vfs.LocalFileSystem
 import com.github.uiopak.lstcrc.testsupport.LstCrcTestCase
+import com.intellij.openapi.vcs.FileStatus
+import com.intellij.openapi.vcs.VcsException
+import com.intellij.openapi.vcs.changes.Change
+import com.intellij.openapi.vcs.changes.ContentRevision
+import com.intellij.vcsUtil.VcsUtil
+import git4idea.GitRevisionNumber
+import java.lang.reflect.InvocationTargetException
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.concurrent.CompletableFuture
@@ -44,6 +51,78 @@ class GitServiceLineStatsTest : LstCrcTestCase() {
 
         assertEquals(0, stats.addedLines)
         assertEquals(2, stats.removedLines)
+    }
+
+    fun testLineStatsContentFailureDoesNotDiscardOtherFiles() {
+        val failed = Change(
+            contentRevision("/repo/Failed.txt") { throw VcsException("Unable to read revision") },
+            contentRevision("/repo/Failed.txt") { "changed\n" },
+            FileStatus.MODIFIED
+        )
+        val added = Change(null, contentRevision("/repo/Added.txt") { "first\nsecond\n" }, FileStatus.ADDED)
+
+        assertEquals(mapOf(ChangeLineStatsKey.from(added) to ChangeLineStats(2, 0)), fallbackLineStats(listOf(failed, added)))
+    }
+
+    fun testUnavailableRevisionTextDoesNotCountAsAnEmptyFile() {
+        val unavailableBefore = Change(
+            contentRevision("/repo/Before.txt") { null },
+            contentRevision("/repo/Before.txt") { "text\n" },
+            FileStatus.MODIFIED
+        )
+        val unavailableAfter = Change(
+            contentRevision("/repo/After.txt") { "text\n" },
+            contentRevision("/repo/After.txt") { null },
+            FileStatus.MODIFIED
+        )
+
+        assertEmpty(fallbackLineStats(listOf(unavailableBefore, unavailableAfter)).entries)
+    }
+
+    fun testLineStatsContentCancellationIsPropagated() {
+        val cancellations = listOf(
+            com.intellij.openapi.progress.ProcessCanceledException(),
+            kotlinx.coroutines.CancellationException("Refresh cancelled")
+        )
+        cancellations.forEach { cancellation ->
+            val cancelled = Change(null, contentRevision("/repo/Cancelled.txt") { throw cancellation }, FileStatus.ADDED)
+            assertThrows(cancellation.javaClass) {
+                fallbackLineStats(listOf(cancelled))
+            }
+        }
+    }
+
+    fun testTrackedBinaryDiffDoesNotGetFallbackLineStats() {
+        val root = myFixture.tempDirFixture.findOrCreateDir("repo")
+        val output = listOf(":000000 100644 0000000 1111111 A", "Binary.dat", "-\t-\tBinary.dat", "").joinToString("\u0000")
+        val parsed = parseTrackedDiff(project, root, GitRevisionNumber("HEAD"), output)
+        var contentReads = 0
+        val binaryChange = parsed.changes.single()
+        val tracked = parsed.copy(changes = listOf(Change(
+            binaryChange.beforeRevision,
+            contentRevision(binaryChange.afterRevision!!.file.path) { contentReads++; "Binary-marked text\n" },
+            binaryChange.fileStatus
+        )))
+        val repo = java.lang.reflect.Proxy.newProxyInstance(
+            git4idea.repo.GitRepository::class.java.classLoader,
+            arrayOf(git4idea.repo.GitRepository::class.java)
+        ) { _, method, _ ->
+            when (method.name) {
+                "getRoot" -> root
+                "isFresh" -> false
+                else -> error("Unexpected repository access: ${method.name}")
+            }
+        } as git4idea.repo.GitRepository
+        val keyClass = GitService::class.java.declaredClasses.single { it.simpleName == "DiskChangesKey" }
+        val key = keyClass.getDeclaredConstructor(String::class.java, Boolean::class.javaPrimitiveType, Boolean::class.javaPrimitiveType)
+            .apply { isAccessible = true }.newInstance("HEAD", true, false)
+        val disk = GitService::class.java.getDeclaredMethod("buildDiskChanges", git4idea.repo.GitRepository::class.java, keyClass, LoadedChanges::class.java)
+            .apply { isAccessible = true }.invoke(GitService(project), repo, key, tracked)
+        val loaded = disk.javaClass.getDeclaredMethod("getLoaded").apply { isAccessible = true }.invoke(disk) as LoadedChanges
+
+        assertEquals(1, loaded.changes.size)
+        assertEmpty(loaded.lineStatsByChange.entries)
+        assertEquals("Git's binary entry must not load content for fallback stats", 0, contentReads)
     }
 
     fun testTrackedLineStatsDiffArgsIgnoreLineEndingOnlyChurn() {
@@ -142,6 +221,62 @@ class GitServiceLineStatsTest : LstCrcTestCase() {
         assertEquals("alphaX\nbetaY\n", content)
     }
 
+    fun testUnsavedEditOfAddedFileIncludesLiveTextAndLineStats() {
+        val root = myFixture.tempDirFixture.findOrCreateDir("repo")
+        val file = myFixture.addFileToProject("repo/Added.txt", "disk\n").virtualFile
+        val document = FileDocumentManager.getInstance().getDocument(file)!!
+        val repo = java.lang.reflect.Proxy.newProxyInstance(
+            git4idea.repo.GitRepository::class.java.classLoader,
+            arrayOf(git4idea.repo.GitRepository::class.java)
+        ) { _, method, _ ->
+            if (method.name == "getRoot") root else error("A new file must not load target content: ${method.name}")
+        } as git4idea.repo.GitRepository
+        val service = GitService(project)
+
+        WriteCommandAction.runWriteCommandAction(project) { document.setText("first\nsecond\n") }
+        val first = service.collectUnsavedDocumentChanges(repo, "HEAD", setOf(file.path), emptyMap()).single()
+
+        assertNull(first.beforeRevision)
+        assertEquals(com.intellij.openapi.vcs.FileStatus.ADDED, first.fileStatus)
+        assertEquals("first\nsecond\n", first.afterRevision!!.content)
+        assertEquals(ChangeLineStats(2, 0), calculateLineStats("", first.afterRevision!!.content!!))
+
+        WriteCommandAction.runWriteCommandAction(project) { document.setText("first\nsecond\nthird\n") }
+        val second = service.collectUnsavedDocumentChanges(repo, "HEAD", setOf(file.path), emptyMap()).single()
+
+        assertEquals("first\nsecond\nthird\n", second.afterRevision!!.content)
+        assertFalse(first.afterRevision == second.afterRevision)
+        assertEquals(ChangeLineStats(3, 0), calculateLineStats("", second.afterRevision!!.content!!))
+    }
+
+    fun testUnsavedOverlayCancellationIsPropagated() {
+        val root = myFixture.tempDirFixture.findOrCreateDir("repo")
+        val file = myFixture.addFileToProject("repo/Cancelled.txt", "base\n").virtualFile
+        val document = FileDocumentManager.getInstance().getDocument(file)!!
+        WriteCommandAction.runWriteCommandAction(project) { document.setText("unsaved\n") }
+        val cancellations = listOf(
+            com.intellij.openapi.progress.ProcessCanceledException(),
+            kotlinx.coroutines.CancellationException("Overlay cancelled")
+        )
+
+        cancellations.forEach { cancellation ->
+            val repo = java.lang.reflect.Proxy.newProxyInstance(
+                git4idea.repo.GitRepository::class.java.classLoader,
+                arrayOf(git4idea.repo.GitRepository::class.java)
+            ) { _, method, _ ->
+                when (method.name) {
+                    "getRoot" -> root
+                    "getCurrentRevision" -> throw cancellation
+                    else -> error("Unexpected repository access: ${method.name}")
+                }
+            } as git4idea.repo.GitRepository
+
+            assertThrows(cancellation.javaClass) {
+                GitService(project).collectUnsavedDocumentChanges(repo, "HEAD", emptySet(), emptyMap())
+            }
+        }
+    }
+
     // Regression (round five): an unsaved edit of a moved file was compared with the file's new path, which the
     // target doesn't have, so its line stats never followed the text (and git show failed on every refresh).
     fun testUnsavedEditOfMovedFileIsComparedWithItsOldPath() {
@@ -177,6 +312,24 @@ class GitServiceLineStatsTest : LstCrcTestCase() {
         } finally {
             document?.let { doc -> WriteCommandAction.runWriteCommandAction(project) { FileDocumentManager.getInstance().reloadFromDisk(doc) } }
             repoPath.toFile().deleteRecursively()
+        }
+    }
+
+    private fun contentRevision(path: String, load: () -> String?): ContentRevision = object : ContentRevision {
+        override fun getFile() = VcsUtil.getFilePath(path, false)
+        override fun getRevisionNumber() = GitRevisionNumber("test")
+        override fun getContent() = load()
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun fallbackLineStats(changes: List<Change>): Map<ChangeLineStatsKey, ChangeLineStats> {
+        val method = GitService::class.java.getDeclaredMethod("buildLineStats", List::class.java, Map::class.java, Set::class.java, Set::class.java)
+            .apply { isAccessible = true }
+        return try {
+            method.invoke(GitService(project), changes, emptyMap<ChangeLineStatsKey, ChangeLineStats>(), emptySet<ChangeLineStatsKey>(), emptySet<ChangeLineStatsKey>())
+                as Map<ChangeLineStatsKey, ChangeLineStats>
+        } catch (e: InvocationTargetException) {
+            throw e.targetException
         }
     }
 

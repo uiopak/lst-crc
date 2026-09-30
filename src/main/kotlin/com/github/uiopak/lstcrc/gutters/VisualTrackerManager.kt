@@ -17,7 +17,6 @@ import com.intellij.openapi.diagnostic.debug
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.editor.Document
 import com.intellij.openapi.editor.ex.MarkupModelEx
-import com.intellij.openapi.editor.EditorFactory
 import com.intellij.openapi.editor.impl.DocumentMarkupModel
 import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.fileEditor.FileEditorManager
@@ -25,6 +24,8 @@ import com.intellij.openapi.fileEditor.FileEditorManagerEvent
 import com.intellij.openapi.fileEditor.FileEditorManagerListener
 import com.intellij.openapi.fileEditor.TextEditor
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.progress.ProcessCanceledException
+import com.intellij.openapi.util.text.StringUtil
 
 import com.intellij.openapi.vcs.FileStatusManager
 import com.intellij.openapi.vcs.VcsException
@@ -39,12 +40,16 @@ import git4idea.repo.GitRepository
 import git4idea.repo.GitRepositoryChangeListener
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.coroutines.CoroutineContext
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.atomic.AtomicReference
 
 private val VISIBLE_MODE = LocalLineStatusTracker.Mode(
     isVisible = true,
@@ -75,13 +80,22 @@ class VisualTrackerManager(
     private val logger = thisLogger()
     private val visualTrackers = ConcurrentHashMap<Document, SimpleLocalLineStatusTracker>()
     private val updateJobs = ConcurrentHashMap<Document, Job>()
+    private val disposed = AtomicBoolean(false)
+    private val refreshGeneration = AtomicLong()
+    // A newer visible-only request must carry any unfinished full refresh; identity protects newer requests.
+    private val pendingFullRefresh = AtomicReference<Any?>()
+
+    // Identity keeps an older failed load from clearing a newer load for the same revision and path.
+    private class RevisionLoad(val key: Pair<String, String>, val generation: Long) {
+        @Volatile var loaded = false
+    }
 
     /**
      * The target revision and path each visual tracker's base content was loaded for (or is loading).
      * Lets tab switches and edit-driven refreshes skip `git show` when nothing relevant changed.
      * Cleared on any repository change, because a branch or HEAD may now point elsewhere.
      */
-    private val loadedRevisions = ConcurrentHashMap<Document, Pair<String, String>>()
+    private val loadedRevisions = ConcurrentHashMap<Document, RevisionLoad>()
 
     fun init() {
         val busConnection = project.messageBus.connect(this)
@@ -108,7 +122,8 @@ class VisualTrackerManager(
         busConnection.subscribe(FileEditorManagerListener.FILE_EDITOR_MANAGER, object : FileEditorManagerListener {
             // Only the editors on screen need a check now; others are checked when they are selected.
             override fun selectionChanged(event: FileEditorManagerEvent) {
-                refreshAllTrackers(visibleOnly = true)
+                // Keep a pending comparison/settings refresh of the other open editors valid.
+                refreshAllTrackers(visibleOnly = true, invalidatePending = false)
             }
 
             // A standalone tracker has no native tracker whose removal would release it.
@@ -125,8 +140,9 @@ class VisualTrackerManager(
      * data changed, which it may not (same files, same line stats) even though the target moved.
      */
     internal fun onRepositoryChanged() {
+        refreshGeneration.incrementAndGet()
         loadedRevisions.clear()
-        refreshAllTrackers(visibleOnly = true)
+        refreshAllTrackers(visibleOnly = true, invalidatePending = false)
     }
 
     /**
@@ -137,8 +153,9 @@ class VisualTrackerManager(
     fun settingsChanged() {
         logger.debug { "VISUAL_TRACKER: Gutter marker setting changed. Refreshing trackers and file statuses." }
         refreshAllTrackers()
+        val generation = refreshGeneration.get()
         ApplicationManager.getApplication().invokeLater {
-            if (!project.isDisposed) FileStatusManager.getInstance(project).fileStatusesChanged()
+            if (isCurrentRefresh(generation)) FileStatusManager.getInstance(project).fileStatusesChanged()
         }
     }
 
@@ -181,38 +198,49 @@ class VisualTrackerManager(
      *
      * With [visibleOnly], only the selected editor of each split is checked.
      */
-    private fun refreshAllTrackers(visibleOnly: Boolean = false) {
-        if (project.isDisposed) return
+    private fun refreshAllTrackers(visibleOnly: Boolean = false, invalidatePending: Boolean = true) {
+        if (disposed.get() || project.isDisposed) return
+        if (!visibleOnly) pendingFullRefresh.set(Any())
+        val generation = if (invalidatePending) refreshGeneration.incrementAndGet() else refreshGeneration.get()
 
         ApplicationManager.getApplication().invokeLater {
-            if (project.isDisposed) return@invokeLater
+            if (!isCurrentRefresh(generation)) return@invokeLater
 
-            val editors = if (visibleOnly) {
-                FileEditorManager.getInstance(project).selectedEditors.filterIsInstance<TextEditor>().map { it.editor }
+            val fullRefresh = pendingFullRefresh.get()
+            val fileEditorManager = FileEditorManager.getInstance(project)
+            val editors = if (visibleOnly && fullRefresh == null) {
+                fileEditorManager.selectedEditors
             } else {
-                EditorFactory.getInstance().allEditors.toList()
+                fileEditorManager.allEditors
             }
-            val documents = editors.map { it.document }.distinct()
+            val documents = editors.filterIsInstance<TextEditor>().filterNot { it.editor.isDisposed }
+                .map { it.editor.document }.distinct()
             val gutterEnabled = ToolWindowSettingsProvider.isGutterMarkersEnabled()
             coroutineScope.launch(dispatchers.background) {
                 documents.forEach { document ->
-                    refreshTracker(document, gutterEnabled)
+                    if (!isCurrentRefresh(generation)) return@launch
+                    refreshTracker(document, gutterEnabled, generation)
+                }
+                if (fullRefresh != null && isCurrentRefresh(generation)) {
+                    pendingFullRefresh.compareAndSet(fullRefresh, null)
                 }
             }
         }
     }
 
     private fun maybeInterceptTracker(nativeTracker: LocalLineStatusTracker<*>) {
-        if (!ToolWindowSettingsProvider.isGutterMarkersEnabled()) return
+        if (disposed.get() || !ToolWindowSettingsProvider.isGutterMarkersEnabled()) return
 
         val file = nativeTracker.virtualFile
         if (nativeTracker !is PartialLocalLineStatusTracker) return
+        val generation = refreshGeneration.get()
 
         coroutineScope.launch(dispatchers.background) {
             val targetRevision = resolveTargetRevision(file) ?: return@launch
             withContext(dispatchers.ui) {
-                if (!project.isDisposed) {
-                    performInterception(nativeTracker, targetRevision)
+                if (canApplyRefresh(file, generation) &&
+                    LineStatusTrackerManager.getInstance(project).getLineStatusTracker(nativeTracker.document) === nativeTracker) {
+                    performInterception(nativeTracker, targetRevision, generation)
                 }
             }
         }
@@ -220,20 +248,22 @@ class VisualTrackerManager(
 
     private suspend fun refreshTracker(
         document: Document,
-        gutterEnabled: Boolean
+        gutterEnabled: Boolean,
+        generation: Long
     ) {
-        val nativeTracker = LineStatusTrackerManager.getInstance(project).getLineStatusTracker(document) as? LocalLineStatusTracker<*>
-        val file = nativeTracker?.virtualFile ?: FileDocumentManager.getInstance().getFile(document) ?: return
+        val file = FileDocumentManager.getInstance().getFile(document) ?: return
         val targetRevision = if (gutterEnabled) resolveTargetRevision(file) else null
 
         withContext(dispatchers.ui) {
-            if (project.isDisposed) return@withContext
+            if (!canApplyRefresh(file, generation)) return@withContext
+            // The native tracker may have been replaced while the target was resolved off the EDT.
+            val nativeTracker = LineStatusTrackerManager.getInstance(project).getLineStatusTracker(document) as? LocalLineStatusTracker<*>
 
             if (targetRevision != null) {
                 if (nativeTracker != null) {
-                    performInterception(nativeTracker, targetRevision)
+                    performInterception(nativeTracker, targetRevision, generation)
                 } else {
-                    ensureVisualTracker(document, file, targetRevision)
+                    ensureVisualTracker(document, file, targetRevision, generation)
                 }
             } else {
                 if (nativeTracker != null) {
@@ -248,6 +278,13 @@ class VisualTrackerManager(
             }
         }
     }
+
+    private fun isCurrentRefresh(generation: Long): Boolean =
+        !disposed.get() && !project.isDisposed && refreshGeneration.get() == generation
+
+    /** Checked on the EDT, immediately before installing, releasing or hiding a tracker. */
+    private fun canApplyRefresh(file: VirtualFile, generation: Long): Boolean =
+        isCurrentRefresh(generation) && file.isValid && FileEditorManager.getInstance(project).isFileOpen(file)
 
     /** Releases [file]'s visual tracker when the platform does not track the file (after its last editor closed). */
     internal fun releaseStandaloneTracker(file: VirtualFile) {
@@ -288,7 +325,7 @@ class VisualTrackerManager(
         return targetRevision
     }
 
-    private fun performInterception(nativeTracker: LocalLineStatusTracker<*>, targetRevision: String) {
+    private fun performInterception(nativeTracker: LocalLineStatusTracker<*>, targetRevision: String, generation: Long) {
         val file = nativeTracker.virtualFile
 
         // 1. Hide Native Tracker (Idempotent)
@@ -298,7 +335,7 @@ class VisualTrackerManager(
             detectWhitespaceChangedLines = false
         )
 
-        ensureVisualTracker(nativeTracker.document, file, targetRevision)
+        ensureVisualTracker(nativeTracker.document, file, targetRevision, generation)
     }
 
     /**
@@ -306,6 +343,16 @@ class VisualTrackerManager(
      * Skips the git lookup when that revision is already loaded or loading.
      */
     internal fun ensureVisualTracker(document: Document, file: VirtualFile, targetRevision: String) {
+        ensureVisualTracker(document, file, targetRevision, refreshGeneration.get())
+    }
+
+    private fun ensureVisualTracker(
+        document: Document,
+        file: VirtualFile,
+        targetRevision: String,
+        generation: Long
+    ) {
+        if (!isCurrentRefresh(generation)) return
         val visualTracker = visualTrackers.computeIfAbsent(document) {
             logger.debug { "VISUAL_TRACKER: Creating visual tracker for ${file.name}" }
             val tracker = SimpleLocalLineStatusTracker.createTracker(project, document, file)
@@ -316,22 +363,32 @@ class VisualTrackerManager(
         // A moved file is compared with its old path, which is where the target has it.
         val pathInTarget = project.service<ProjectActiveDiffDataService>().pathInTarget(file.path)
         val loadKey = targetRevision to pathInTarget
-        if (loadedRevisions.put(document, loadKey) == loadKey) return
+        val revisionLoad = RevisionLoad(loadKey, generation)
+        val activeLoad = loadedRevisions.compute(document) { _, current ->
+            current?.takeIf { it.key == loadKey && (it.loaded || it.generation == generation) } ?: revisionLoad
+        }
+        if (activeLoad !== revisionLoad) return
 
         updateJobs.remove(document)?.cancel()
-        updateJobs[document] = coroutineScope.launch {
-            try {
-                val content = loadTargetContent(file, targetRevision, pathInTarget)
-                if (content == null) loadedRevisions.remove(document, loadKey)
-                val baseContent = content ?: readActionBlocking { document.text }
-                withContext(dispatchers.ui) {
-                    if (visualTrackers[document] === visualTracker) {
+        val job = coroutineScope.launch {
+            val content = loadTargetContent(file, targetRevision, pathInTarget)
+            if (content == null) loadedRevisions.remove(document, revisionLoad)
+            val baseContent = content ?: readActionBlocking { document.text }
+            withContext(dispatchers.ui) {
+                if (isCurrentRefresh(generation) && visualTrackers[document] === visualTracker) {
+                    // Setting even identical text freezes the tracker and refreshes its highlighters.
+                    if (!visualTracker.isInitialized || !StringUtil.equals(visualTracker.vcsDocument.immutableCharSequence, baseContent)) {
                         visualTracker.setBaseRevision(baseContent)
                     }
+                    revisionLoad.loaded = content != null
                 }
-            } finally {
-                updateJobs.remove(document, coroutineContext[Job])
             }
+        }
+        updateJobs[document] = job
+        // Also runs when cancellation happens before the coroutine body starts, or it completes before assignment.
+        job.invokeOnCompletion { failure ->
+            if (failure != null || !revisionLoad.loaded) loadedRevisions.remove(document, revisionLoad)
+            updateJobs.remove(document, job)
         }
     }
 
@@ -349,6 +406,10 @@ class VisualTrackerManager(
         return withContext(dispatchers.io) {
             try {
                 gitService.getFileContentForRevision(revision, file, pathInTarget)
+            } catch (e: ProcessCanceledException) {
+                throw e
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 // The file does not exist in the target revision: compare against empty content.
                 if (isFileMissingInRevision(e)) {
@@ -363,6 +424,9 @@ class VisualTrackerManager(
     }
 
     override fun dispose() {
+        if (!disposed.compareAndSet(false, true)) return
+        refreshGeneration.incrementAndGet()
+        pendingFullRefresh.set(null)
         updateJobs.values.forEach { it.cancel() }
         updateJobs.clear()
         loadedRevisions.clear()

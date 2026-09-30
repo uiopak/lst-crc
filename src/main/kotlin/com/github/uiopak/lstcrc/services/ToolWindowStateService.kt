@@ -169,28 +169,24 @@ class ToolWindowStateService(private val project: Project, val coroutineScope: C
      * expected not to exist in all repositories in a multi-repo project.
      */
     private fun handleBranchFailures(tabInfo: TabInfo, failures: Map<GitRepository, String>) {
+        val currentTab = myState.openTabs.find { it.branchName == tabInfo.branchName } ?: return
         // Filter out failures that are likely commit hashes, as they are not "errors" in the same
-        // way a missing branch name is. It's expected a commit hash might not exist in all repos.
-        val actualBranchFailures = failures.filter { (_, failedRevision) ->
-            !isCommitHash(failedRevision)
+        // way a missing branch name is. Also ignore targets changed while this load was running.
+        val actualBranchFailures = failures.filter { (repo, failedRevision) ->
+            !isCommitHash(failedRevision) &&
+                (currentTab.comparisonMap[repo.root.path] ?: currentTab.branchName) == failedRevision
         }
 
         if (actualBranchFailures.isEmpty()) {
-            logger.debug { "Handling branch failures: All failures were for commit hashes, taking no action. Original failures: $failures" }
+            logger.debug { "Handling branch failures: No current branch targets failed. Original failures: $failures" }
             return
         }
 
         logger.warn("Handling branch failures for tab '${tabInfo.branchName}'. Actual branch failures: $actualBranchFailures")
-        // Reset a repository to HEAD when the failed revision was its explicit override, or the tab's own
-        // branch that it used implicitly.
-        val resetRoots = actualBranchFailures.mapNotNull { (repo, failedRevision) ->
-            val root = repo.root.path
-            val effectiveTarget = tabInfo.comparisonMap[root] ?: tabInfo.branchName
-            root.takeIf { effectiveTarget == failedRevision }
-        }
+        val resetRoots = actualBranchFailures.keys.map { it.root.path }
 
         if (resetRoots.isNotEmpty()) {
-            val newComparisonMap = tabInfo.comparisonMap + resetRoots.associateWith { HEAD }
+            val newComparisonMap = currentTab.comparisonMap + resetRoots.associateWith { HEAD }
             logger.debug { "Tab '${tabInfo.branchName}' config updated due to missing branches. New map: $newComparisonMap" }
             // Update the state, but do NOT trigger another refresh to avoid loops within this call stack.
             updateTabComparisonMap(tabInfo.branchName, newComparisonMap, triggerRefresh = false)
@@ -206,7 +202,7 @@ class ToolWindowStateService(private val project: Project, val coroutineScope: C
             }
         }
 
-        showBranchNotFoundNotification(tabInfo, actualBranchFailures)
+        showBranchNotFoundNotification(currentTab, actualBranchFailures)
     }
 
     private fun showBranchNotFoundNotification(tabInfo: TabInfo, failures: Map<GitRepository, String>) {
