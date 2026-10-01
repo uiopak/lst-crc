@@ -10,6 +10,15 @@ Location: `src/test/kotlin/com/github/uiopak/lstcrc/{gutters,listeners,scopes,se
 
 | Test | Capability IDs | What it checks |
 | --- | --- | --- |
+| `GitServicePerformanceTest.testRefreshesReusePreparedDiskWork` | `C3.8`, `C3.10`, `C5.1` | Real-repository edit-only refreshes reuse disk indexes and categorization, recompute counts only for edited files, and run no new Git diff. Timings and EDT allocations are report-only. |
+| `GitServicePerformanceTest.testPreparedResultsInvalidateForTargetsSettingsAndDiskReloads` | `C2.3`, `C2.5`, `C3.10`, `C3.11`, `C5.1` | Cached work is replaced for targets, settings and full reloads; missing targets retry while identical edit-only loads reuse results. |
+| `GitServicePerformanceTest.testTypingBurstSharesOneQueuedLoadAndPreparedResult` | `C5.1` | Two hundred queued edit requests share one subsequent load without repeating Git or categorization. |
+| `DiffComputationPerformanceTest.testAddedAndDeletedLineStatsSkipTheDiffEngine` | `C3.10` | Empty-side line counts preserve trailing-line and line-ending semantics with zero diff-engine calls. |
+| `DiffComputationPerformanceTest.testEqualLineStatsSkipTheDiffEngine` | `C3.10` | Equal normalized text returns zero counts without invoking the diff engine. |
+| `DiffComputationPerformanceTest.testChangedLineStatsStillUsesTheDiffEngine` | `C3.10` | Real text changes still invoke the platform diff engine and produce correct counts. |
+| `DiffComputationPerformanceTest.testDuplicateDiskPathsKeepLastChangeAndStats` | `C3.1`, `C3.10` | Cached disk results keep the last change and its counts when paths repeat. |
+| `DiffComputationPerformanceTest.testUnchangedSnapshotSkipsPerChangeComparison` | `C5.1` | Reapplying the identical comparison reads zero change entries on the EDT. |
+| `DiffComputationPerformanceTest.testReportLargeLineStatsWork` | `C3.10` | Reports time and allocation for large added, deleted, equal and modified texts without timing assertions. |
 | `GitServiceLineStatsTest.testUnsavedOverlayUsesOnlyTheOwningNestedRepository` | `C2.3`, `C5.1` | An unsaved file in a registered nested root is overlaid only by its owning repository. |
 | `GitServiceLineStatsTest.testUnsavedRevertOnCleanDiskDoesNotCreateAChange` | `C3.1`, `C5.1` | Editing and restoring a clean file to target text leaves no changed entry or counts. |
 | `GitServiceLineStatsTest.testUnsavedRevertRemovesADiskContentChange` | `C3.1`, `C5.1` | Unsaved text that restores the target replaces the disk modification with a clean comparison. |

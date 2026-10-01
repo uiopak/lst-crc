@@ -2,15 +2,18 @@ package com.github.uiopak.lstcrc.services
 
 import com.intellij.diff.comparison.ComparisonManager
 import com.intellij.diff.comparison.ComparisonPolicy
+import com.intellij.diff.fragments.LineFragment
 import com.intellij.openapi.progress.DumbProgressIndicator
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.text.StringUtil
 import com.intellij.openapi.vcs.FilePath
 import com.intellij.openapi.vcs.FileStatus
 import com.intellij.openapi.vcs.changes.Change
+import com.intellij.openapi.vcs.changes.ChangesUtil
 import com.intellij.openapi.vfs.VirtualFile
 import git4idea.GitContentRevision
 import git4idea.GitRevisionNumber
+import org.jetbrains.annotations.TestOnly
 
 // Pure helpers of GitService: git diff options, parsing its output and the change lists built from it.
 
@@ -172,15 +175,46 @@ internal fun mergeUnsavedOverlayChange(existingChange: Change?, unsavedChange: C
     return unsavedChange
 }
 
-internal fun calculateLineStats(beforeContent: String, afterContent: String): ChangeLineStats {
+/** Preserve the overlay's last-change-wins rule when a cached disk result needs no unsaved overlay. */
+internal fun deduplicateDiskChanges(loaded: LoadedChanges): LoadedChanges {
+    val byPath = LinkedHashMap<FilePath, Change>()
+    loaded.changes.forEach { byPath[ChangesUtil.getFilePath(it)] = it }
+    if (byPath.size == loaded.changes.size) return loaded
+    val changes = byPath.values.toList()
+    val keys = changes.mapTo(HashSet(), ChangeLineStatsKey::from)
+    return loaded.copy(changes = changes, lineStatsByChange = loaded.lineStatsByChange.filterKeys { it in keys })
+}
+
+internal fun calculateLineStats(beforeContent: String, afterContent: String): ChangeLineStats =
+    calculateLineStatsWithComparison(beforeContent, afterContent) { before, after ->
+        ComparisonManager.getInstance().compareLines(
+            before,
+            after,
+            ComparisonPolicy.DEFAULT,
+            DumbProgressIndicator.INSTANCE
+        ).toList()
+    }
+
+/** Counts diff-engine calls without replacing the platform comparison service. */
+@TestOnly
+internal fun calculateLineStatsForTest(
+    beforeContent: String,
+    afterContent: String,
+    compare: (String, String) -> List<LineFragment>
+): ChangeLineStats = calculateLineStatsWithComparison(beforeContent, afterContent, compare)
+
+private fun calculateLineStatsWithComparison(
+    beforeContent: String,
+    afterContent: String,
+    compare: (String, String) -> List<LineFragment>
+): ChangeLineStats {
     val normalizedBeforeContent = StringUtil.convertLineSeparators(beforeContent)
     val normalizedAfterContent = StringUtil.convertLineSeparators(afterContent)
-    val fragments = ComparisonManager.getInstance().compareLines(
-        normalizedBeforeContent,
-        normalizedAfterContent,
-        ComparisonPolicy.DEFAULT,
-        DumbProgressIndicator.INSTANCE
-    ).toList()
+    if (normalizedBeforeContent == normalizedAfterContent) return ChangeLineStats(0, 0)
+    fun lines(text: String): Int = text.count { it == '\n' } + if (text.endsWith('\n')) 0 else 1
+    if (normalizedBeforeContent.isEmpty()) return ChangeLineStats(lines(normalizedAfterContent), 0)
+    if (normalizedAfterContent.isEmpty()) return ChangeLineStats(0, lines(normalizedBeforeContent))
+    val fragments = compare(normalizedBeforeContent, normalizedAfterContent)
     return ChangeLineStats(
         addedLines = fragments.sumOf { it.endLine2 - it.startLine2 },
         removedLines = fragments.sumOf { it.endLine1 - it.startLine1 }
