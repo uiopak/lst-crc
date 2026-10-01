@@ -48,6 +48,11 @@ import java.util.concurrent.ConcurrentHashMap
 @Service(Service.Level.PROJECT)
 class GitService(private val project: Project) {
 
+    companion object {
+        internal const val GIT_DIFF_WORK = "git diff"
+        internal const val CATEGORIZATION_WORK = "categorization"
+    }
+
     private val logger = thisLogger()
     private val revisionContentCache = RevisionContentCache()
 
@@ -56,7 +61,10 @@ class GitService(private val project: Project) {
     @Volatile
     private var workObserverForTest: ((String, Int) -> Unit)? = null
 
-    /** Uses real test repositories and counts load work without modifying the platform registry. */
+    /**
+     * Supplies repositories only to comparison loads; public repository discovery still uses the platform registry.
+     * Observes Git diff invocations and categorized entries. Tests clear both overrides in `finally`.
+     */
     @TestOnly
     internal fun setLoadObserverForTest(repositories: List<GitRepository>?, observer: ((String, Int) -> Unit)? = null) {
         repositoriesForTest = repositories
@@ -83,14 +91,13 @@ class GitService(private val project: Project) {
      * A repository's changes before unsaved edits are overlaid: tracked changes against the target,
      * untracked files, and their line stats. [overlayTarget] is the revision unsaved edits compare to.
      */
-    private inner class DiskChanges(
+    private data class DiskChanges(
         val key: DiskChangesKey,
         val loaded: LoadedChanges,
         val overlayTarget: String
     ) {
         val withoutUnsaved: LoadedChanges by lazy { deduplicateDiskChanges(loaded) }
         val indexes: DiskFileIndexes by lazy {
-            workObserverForTest?.invoke("overlay indexes", loaded.changes.size)
             DiskFileIndexes(
                 newFilePaths(loaded.changes),
                 movedSourcePaths(loaded.changes),
@@ -127,7 +134,7 @@ class GitService(private val project: Project) {
     internal fun getRepositoryForFile(file: VirtualFile): GitRepository? =
         GitRepositoryManager.getInstance(project).getRepositoryForFile(file)
 
-    fun getRepositories(): List<GitRepository> = repositoriesForTest ?: GitRepositoryManager.getInstance(project).repositories
+    fun getRepositories(): List<GitRepository> = GitRepositoryManager.getInstance(project).repositories
 
     /**
      * Gets the "primary" repository for the project. This is useful for context where a single
@@ -181,7 +188,7 @@ class GitService(private val project: Project) {
         beforeLoadForTest?.let { beforeLoad ->
             withContext(dispatcher) { beforeLoad(tabInfo) }
         }
-        val repositories = getRepositories()
+        val repositories = repositoriesForTest ?: getRepositories()
         val profileName = tabInfo?.branchName ?: HEAD
 
         logger.debug { "getChanges called for profile: $profileName" }
@@ -327,7 +334,7 @@ class GitService(private val project: Project) {
 
     /** Runs `git diff` in [repo] and returns its stdout, throwing [VcsException] on failure. */
     private fun runGitDiff(repo: GitRepository, vararg params: String): String {
-        workObserverForTest?.invoke("git diff", 1)
+        workObserverForTest?.invoke(GIT_DIFF_WORK, 1)
         return runSilentGit(project, repo.root, GitCommand.DIFF, *params).getOutputOrThrow()
     }
 
@@ -337,7 +344,7 @@ class GitService(private val project: Project) {
         comparisonContext: Map<String, String>,
         lineStatsByChange: Map<ChangeLineStatsKey, ChangeLineStats>
     ): CategorizedChanges {
-        workObserverForTest?.invoke("categorization", allChanges.size)
+        workObserverForTest?.invoke(CATEGORIZATION_WORK, allChanges.size)
         val created = LinkedHashSet<VirtualFile>()
         val modified = LinkedHashSet<VirtualFile>()
         val moved = LinkedHashSet<VirtualFile>()
@@ -392,7 +399,6 @@ class GitService(private val project: Project) {
             restored
         }
         if (!diskChanges.key.includeLineStats) return LoadedChanges(allChanges, emptyMap())
-        workObserverForTest?.invoke("line stats", unsavedChanges.size)
         val lineStats = LinkedHashMap(diskChanges.withoutUnsaved.lineStatsByChange)
         for (change in unsavedChanges) {
             val key = ChangeLineStatsKey.from(change)
@@ -404,7 +410,6 @@ class GitService(private val project: Project) {
     }
 
     private fun loadUntrackedChanges(repo: GitRepository): List<Change> {
-        workObserverForTest?.invoke("git ls-files", 1)
         val result = runSilentGit(project, repo.root, GitCommand.LS_FILES, "--others", "--exclude-standard", "-z")
 
         if (result.exitCode != 0) {
@@ -432,24 +437,12 @@ class GitService(private val project: Project) {
             if (bom == null || encoderAddsBom) encoded else bom + encoded
         }
         return try {
-            workObserverForTest?.invoke("git restored content", 1)
             runSilentGit(project, repo.root, GitCommand.HASH_OBJECT, arrayOf("--path=$relativePath", "--stdin"), bytes)
                 .getOutputOrThrow().trim().startsWith(targetBlob)
         } catch (e: VcsException) {
             logger.debug(e) { "Could not verify restored unsaved content for '${file.path}'." }
             false
         }
-    }
-
-    private fun overlayUnsavedDocumentChanges(
-        baseChanges: List<Change>,
-        unsavedChanges: List<Change>
-    ): List<Change> {
-        workObserverForTest?.invoke("overlay path lookups", baseChanges.size)
-        // FilePath equality follows the file system's case sensitivity.
-        val mergedChanges = LinkedHashMap<FilePath, Change>()
-        baseChanges.forEach { change -> mergedChanges[ChangesUtil.getFilePath(change)] = change }
-        return overlayUnsavedDocumentChanges(mergedChanges, unsavedChanges)
     }
 
     private fun overlayUnsavedDocumentChanges(
@@ -476,7 +469,6 @@ class GitService(private val project: Project) {
         forceRecompute: Set<ChangeLineStatsKey>,
         knownKeys: Set<ChangeLineStatsKey> = emptySet()
     ): Map<ChangeLineStatsKey, ChangeLineStats> {
-        workObserverForTest?.invoke("line stats", changes.size)
         val lineStats = linkedMapOf<ChangeLineStatsKey, ChangeLineStats>()
         val keyedChanges = changes.map { ChangeLineStatsKey.from(it) to it }
         val keys = keyedChanges.mapTo(HashSet()) { it.first }
@@ -613,11 +605,9 @@ class GitService(private val project: Project) {
     private fun loadRevisionText(repo: GitRepository, revision: String, relativePath: String, charset: Charset): String {
         val commitHash = resolveCommitHash(repo, revision)
             ?: run {
-                workObserverForTest?.invoke("git target content", 1)
                 return loadRevisionTextContent(project, repo.root, revision, relativePath, charset)
             }
         return revisionContentCache.get(repo.root.path, commitHash, relativePath, charset) {
-            workObserverForTest?.invoke("git target content", 1)
             loadRevisionTextContent(project, repo.root, commitHash, relativePath, charset)
         }
     }

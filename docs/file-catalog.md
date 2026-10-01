@@ -89,14 +89,14 @@ This document lists each current `src/main` file separately and explains why it 
 - Cancellation: Revision-content reads and unsaved-overlay construction propagate platform and coroutine cancellation.
 - Cached work: Disk results retain lazily prepared overlay path indexes. Edit-only loads without overlays reuse their categorized result; overlays recalculate line counts only for edited files. Target/settings changes and full reloads replace cached work.
 - Testing: The internal `setBeforeLoadForTest` hook controls load timing and failures on the load dispatcher. Refresh tests clear it in `finally` and do not access private platform repository fields.
-- Performance tests: `setLoadObserverForTest` supplies real repositories and counts Git commands and prepared work without altering the platform repository registry.
+- Performance tests: `setLoadObserverForTest` supplies real repositories only to comparison loads, leaving public repository discovery unchanged. It counts Git diff invocations and categorized entries using constants; tests clear the hook in `finally`.
 - Depends on: Git4Idea, low-level Git commands, VCS `Change` models, and plugin state types such as `TabInfo`.
 - Connected to: `ToolWindowStateService`, `VisualTrackerManager`, settings code, and branch-selection flows.
 - Why it exists: Centralizing all Git logic keeps the rest of the plugin from depending directly on IntelliJ VCS internals.
 
 ### GitDiffParsing.kt
 - Role: `GitService`'s pure helpers: the `git diff` options (ending in `--` so a branch named like a folder is not read as a path), lazy parsing of `git diff --raw [--numstat] -z` fields (preserving tabs and trailing newlines in paths), parsing `git ls-files -z` output, the unsaved-overlay merge rule, moved-file source paths and in-process line counts.
-- Cached disk results preserve the overlay's last-change-wins path rule. Equal normalized text and empty-side line counts skip the diff engine; a test-only comparator seam counts its calls.
+- Cached disk results preserve the overlay's last-change-wins path rule. Equal normalized text skips the diff engine; empty-side comparisons use it to preserve blank-line and newline semantics. A test-only comparator seam counts its calls, and regression tests compare additions and deletions with the normalized platform-engine result.
 - Depends on: VCS `Change` models and `GitContentRevision`.
 - Connected to: `GitService`, `ProjectActiveDiffDataService` (moved-file paths) and the unit tests, which call these functions directly.
 - Why it exists: Keeps the parsing testable without a repository and `GitService` focused on orchestration.
@@ -122,7 +122,6 @@ This document lists each current `src/main` file separately and explains why it 
 - Why it exists: The plugin needs one shared cache so every surface reads the same active diff instead of recomputing Git state.
 
 ### ToolWindowStateService.kt
-- Testing: `setGitServiceForTest` isolates refresh-count tests from automatic loads through the project service, using a real `GitService` and repository.
 - State reads: Selected-tab and display-name lookups return defensive snapshots, including independent comparison maps. Scalar branch-name reads capture one state without allocating a tab snapshot.
 - Load errors: The EDT checks the selected tab and root targets before logging or clearing cached data, so obsolete failures cannot blank a newer comparison. Cancellation still fails the refresh future without clearing the cache.
 - Role: Main orchestration service for tab state, refresh sequencing, persistence (`gitTabsIdeaPluginState.xml`), and missing-branch notifications. It merges concurrent refresh requests into one coroutine cycle and always pushes real changes into `ProjectActiveDiffDataService`, regardless of the `Include HEAD in scopes` setting.

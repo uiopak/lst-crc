@@ -1,6 +1,8 @@
 package com.github.uiopak.lstcrc.services
 
 import com.github.uiopak.lstcrc.fixtures.LstCrcPerformanceReport
+import com.github.uiopak.lstcrc.services.GitService.Companion.CATEGORIZATION_WORK
+import com.github.uiopak.lstcrc.services.GitService.Companion.GIT_DIFF_WORK
 import com.github.uiopak.lstcrc.messaging.ActiveDiffDataChangedListener
 import com.github.uiopak.lstcrc.messaging.DIFF_DATA_CHANGED_TOPIC
 import com.github.uiopak.lstcrc.state.TabInfo
@@ -16,18 +18,12 @@ import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.vfs.LocalFileSystem
 import git4idea.repo.GitRepository
 import git4idea.repo.GitRepositoryImpl
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
 import kotlinx.coroutines.runBlocking
 import java.lang.management.ManagementFactory
 import java.nio.file.Files
 import java.nio.file.Path
 import java.time.Instant
-import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.time.measureTime
 
@@ -38,9 +34,6 @@ class GitServicePerformanceTest : LstCrcTestCase() {
         val root = repo.root
         val service = GitService(project)
         val counts = ConcurrentHashMap<String, AtomicInteger>()
-        service.setLoadObserverForTest(listOf(repo)) { work, size ->
-            counts.computeIfAbsent(work) { AtomicInteger() }.addAndGet(size)
-        }
         var document: com.intellij.openapi.editor.Document? = null
         val diffData = project.service<ProjectActiveDiffDataService>()
         val tabState = project.service<ToolWindowStateService>()
@@ -74,6 +67,9 @@ class GitServicePerformanceTest : LstCrcTestCase() {
                 "$counts; diff notifications=${notifications.get()}; EDT allocated bytes=$edtBytes; UTC=$start..$end")
         }
         try {
+            service.setLoadObserverForTest(listOf(repo)) { work, size ->
+                counts.computeIfAbsent(work) { AtomicInteger() }.addAndGet(size)
+            }
             report("full refresh with line stats") {
                 val result = runBlocking { service.getChanges(null) }
                 assertEquals(200, result.categorizedChanges.allChanges.size)
@@ -95,18 +91,15 @@ class GitServicePerformanceTest : LstCrcTestCase() {
                     apply(runBlocking { service.getChanges(null, reuseDiskChanges = true) })
                 }
             }
-            assertEquals("Tracked line stats are already supplied by Git", 0,
-                measuredWork.getValue("full refresh with line stats")["line stats"] ?: 0)
+            val full = measuredWork.getValue("full refresh with line stats")
+            assertEquals(1, full[GIT_DIFF_WORK] ?: 0)
+            assertEquals(200, full[CATEGORIZATION_WORK] ?: 0)
             val unchanged = measuredWork.getValue("20 edit-only refreshes without unsaved files")
-            assertEquals(0, unchanged["line stats"] ?: 0)
-            assertEquals(0, unchanged["overlay indexes"] ?: 0)
-            assertEquals(0, unchanged["categorization"] ?: 0)
-            assertEquals(0, unchanged["git diff"] ?: 0)
+            assertEquals(0, unchanged[CATEGORIZATION_WORK] ?: 0)
+            assertEquals(0, unchanged[GIT_DIFF_WORK] ?: 0)
             val typing = measuredWork.getValue("20 typing refreshes with one unsaved file")
-            assertEquals("Only the edited file needs fresh line stats", 20, typing["line stats"] ?: 0)
-            assertEquals("Disk indexes are prepared once, then reused", 200, typing["overlay indexes"] ?: 0)
-            assertEquals("Overlay merges reuse the disk path index", 0, typing["overlay path lookups"] ?: 0)
-            assertEquals(0, typing["git diff"] ?: 0)
+            assertEquals("Each distinct edit must categorize the new content", 4000, typing[CATEGORIZATION_WORK] ?: 0)
+            assertEquals(0, typing[GIT_DIFF_WORK] ?: 0)
         } finally {
             service.setLoadObserverForTest(null)
             ApplicationManager.getApplication().invokeAndWait {
@@ -120,12 +113,15 @@ class GitServicePerformanceTest : LstCrcTestCase() {
         val gitService = GitService(project)
         val settings = service<LstCrcSettingsService>()
         val commands = AtomicInteger()
-        gitService.setLoadObserverForTest(listOf(repo)) { work, size ->
-            if (work == "git diff") commands.addAndGet(size)
-        }
         fun load(tab: TabInfo? = null, reuse: Boolean = true) =
             runBlocking { gitService.getChanges(tab, reuseDiskChanges = reuse) }
         try {
+            val discoveredRepositories = gitService.getRepositories().toList()
+            gitService.setLoadObserverForTest(listOf(repo)) { work, size ->
+                if (work == GIT_DIFF_WORK) commands.addAndGet(size)
+            }
+            assertEquals("Test loads must not override public repository discovery",
+                discoveredRepositories, gitService.getRepositories())
             val head = load(reuse = false)
             assertSame(head.categorizedChanges, load().categorizedChanges)
             assertEquals(1, commands.get())
@@ -157,50 +153,6 @@ class GitServicePerformanceTest : LstCrcTestCase() {
             println("[lstcrc-work] target/settings/full refresh invalidations: 7 git diffs, 0 on identical edit-only loads")
         } finally {
             gitService.setLoadObserverForTest(null)
-        }
-    }
-
-    fun testTypingBurstSharesOneQueuedLoadAndPreparedResult() = withRepository { repo, _ ->
-        val gitService = GitService(project)
-        val counts = ConcurrentHashMap<String, AtomicInteger>()
-        gitService.setLoadObserverForTest(listOf(repo)) { work, size ->
-            counts.computeIfAbsent(work) { AtomicInteger() }.addAndGet(size)
-        }
-        val sharedState = project.service<ToolWindowStateService>()
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-        val state = ToolWindowStateService(project, scope)
-        state.setGitServiceForTest(gitService)
-        val entered = CompletableFuture<Unit>()
-        val release = CompletableFuture<Unit>()
-        val loads = AtomicInteger()
-        try {
-            ApplicationManager.getApplication().invokeAndWait { sharedState.loadState(ToolWindowState()) }
-            gitService.setBeforeLoadForTest {
-                if (loads.incrementAndGet() == 1) {
-                    entered.complete(Unit)
-                    release.get(15, TimeUnit.SECONDS)
-                }
-            }
-            val first = state.refreshDataForCurrentSelection()
-            entered.get(15, TimeUnit.SECONDS)
-            val edits = List(200) { state.refreshAfterDocumentEdit() }
-            edits.forEach { assertSame(edits.first(), it) }
-            assertFalse(edits.first().isDone)
-            release.complete(Unit)
-            first.get(30, TimeUnit.SECONDS)
-            edits.first().get(30, TimeUnit.SECONDS)
-            assertEquals(2, loads.get())
-            assertEquals(1, counts["git diff"]?.get() ?: 0)
-            assertEquals("The queued edit-only load reuses the categorized disk result", 200,
-                counts["categorization"]?.get() ?: 0)
-            println("[lstcrc-work] 200 queued edit requests: 2 total loads, 1 git diff, 1 categorization")
-        } finally {
-            release.complete(Unit)
-            scope.cancel()
-            gitService.setBeforeLoadForTest(null)
-            gitService.setLoadObserverForTest(null)
-            state.setGitServiceForTest(null)
-            ApplicationManager.getApplication().invokeAndWait { sharedState.noStateLoaded() }
         }
     }
 

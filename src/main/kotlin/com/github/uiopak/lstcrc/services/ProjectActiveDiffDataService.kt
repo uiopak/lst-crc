@@ -138,13 +138,13 @@ class ProjectActiveDiffDataService(private val project: Project) : Disposable {
      * keeps its paths but carries new content, and the tree must show (and diff) the new `Change`.
      */
     private fun CategorizedChanges.sameAs(other: CategorizedChanges): Boolean =
-        this === other || this == other && allChanges.indices.all { i ->
+        this === other || (this == other && allChanges.indices.all { i ->
             val change = allChanges[i]
             val otherChange = other.allChanges[i]
             change.beforeRevision == otherChange.beforeRevision &&
                 change.afterRevision == otherChange.afterRevision &&
                 change.fileStatus == otherChange.fileStatus
-        }
+        })
 
     fun clearActiveDiff() {
         onEdt { replaceSnapshot(ActiveDiffSnapshot.EMPTY) }

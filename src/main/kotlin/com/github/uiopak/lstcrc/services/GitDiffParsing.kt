@@ -211,9 +211,7 @@ private fun calculateLineStatsWithComparison(
     val normalizedBeforeContent = StringUtil.convertLineSeparators(beforeContent)
     val normalizedAfterContent = StringUtil.convertLineSeparators(afterContent)
     if (normalizedBeforeContent == normalizedAfterContent) return ChangeLineStats(0, 0)
-    fun lines(text: String): Int = text.count { it == '\n' } + if (text.endsWith('\n')) 0 else 1
-    if (normalizedBeforeContent.isEmpty()) return ChangeLineStats(lines(normalizedAfterContent), 0)
-    if (normalizedAfterContent.isEmpty()) return ChangeLineStats(0, lines(normalizedBeforeContent))
+    // Empty text participates as a blank line; only the diff engine preserves its matching and newline semantics.
     val fragments = compare(normalizedBeforeContent, normalizedAfterContent)
     return ChangeLineStats(
         addedLines = fragments.sumOf { it.endLine2 - it.startLine2 },

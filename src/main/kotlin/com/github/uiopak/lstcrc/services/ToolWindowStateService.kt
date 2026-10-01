@@ -26,7 +26,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import org.jetbrains.annotations.TestOnly
 import java.util.concurrent.CompletableFuture
 
 /**
@@ -54,15 +53,6 @@ class ToolWindowStateService(private val project: Project, val coroutineScope: C
     private var refreshRunning = false
     /** True while a queued request needs a full reload; see [refreshAfterDocumentEdit]. */
     private var fullReloadQueued = true
-
-    @Volatile
-    private var gitServiceForTest: GitService? = null
-
-    /** Isolates controlled refreshes from the project service's automatic VCS refreshes. */
-    @TestOnly
-    internal fun setGitServiceForTest(gitService: GitService?) {
-        gitServiceForTest = gitService
-    }
 
     override fun getState(): ToolWindowState {
         logger.debug { "getState() called. Current state: $myState" }
@@ -148,7 +138,7 @@ class ToolWindowStateService(private val project: Project, val coroutineScope: C
     private suspend fun loadDataForTab(tabInfo: TabInfo?, reuseDiskChanges: Boolean) {
         val profileName = tabInfo?.branchName ?: HEAD
         logger.debug { "DATA_FLOW: Initiating data load for profile: '$profileName'" }
-        val gitService = gitServiceForTest ?: project.service<GitService>()
+        val gitService = project.service<GitService>()
         val diffDataService = project.service<ProjectActiveDiffDataService>()
 
         try {

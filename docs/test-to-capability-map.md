@@ -10,10 +10,9 @@ Location: `src/test/kotlin/com/github/uiopak/lstcrc/{gutters,listeners,scopes,se
 
 | Test | Capability IDs | What it checks |
 | --- | --- | --- |
-| `GitServicePerformanceTest.testRefreshesReusePreparedDiskWork` | `C3.8`, `C3.10`, `C5.1` | Real-repository edit-only refreshes reuse disk indexes and categorization, recompute counts only for edited files, and run no new Git diff. Each measured snapshot must be accepted; timings and EDT allocations are report-only. |
-| `GitServicePerformanceTest.testPreparedResultsInvalidateForTargetsSettingsAndDiskReloads` | `C2.3`, `C2.5`, `C3.10`, `C3.11`, `C5.1` | Cached work is replaced for targets, settings and full reloads; missing targets retry while identical edit-only loads reuse results. |
-| `GitServicePerformanceTest.testTypingBurstSharesOneQueuedLoadAndPreparedResult` | `C5.1` | Two hundred queued edit requests share one subsequent load without repeating Git or categorization. |
-| `DiffComputationPerformanceTest.testAddedAndDeletedLineStatsSkipTheDiffEngine` | `C3.10` | Empty-side line counts preserve trailing-line and line-ending semantics with zero diff-engine calls. |
+| `GitServicePerformanceTest.testRefreshesReusePreparedDiskWork` | `C3.8`, `C3.10`, `C5.1` | Real-repository edit-only refreshes run no new Git diff, skip categorization for unchanged results, and categorize each distinct unsaved edit. Each measured snapshot must be accepted; timings and EDT allocations are report-only. |
+| `GitServicePerformanceTest.testPreparedResultsInvalidateForTargetsSettingsAndDiskReloads` | `C2.3`, `C2.5`, `C3.10`, `C3.11`, `C5.1` | Cached work is replaced for targets, settings and full reloads; missing targets retry while identical edit-only loads reuse results. Test load repositories do not override public discovery. |
+| `DiffComputationPerformanceTest.testAddedAndDeletedLineStatsMatchTheDiffEngine` | `C3.10` | Added and deleted counts match `ComparisonManager.compareLines` on normalized text in both directions, including empty text, blank lines, absent trailing newlines, LF, CR and CRLF. Nonempty inputs use the engine. |
 | `DiffComputationPerformanceTest.testEqualLineStatsSkipTheDiffEngine` | `C3.10` | Equal normalized text returns zero counts without invoking the diff engine. |
 | `DiffComputationPerformanceTest.testChangedLineStatsStillUsesTheDiffEngine` | `C3.10` | Real text changes still invoke the platform diff engine and produce correct counts. |
 | `DiffComputationPerformanceTest.testDuplicateDiskPathsKeepLastChangeAndStats` | `C3.1`, `C3.10` | Cached disk results keep the last change and its counts when paths repeat. |

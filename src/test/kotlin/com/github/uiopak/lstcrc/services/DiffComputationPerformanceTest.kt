@@ -7,6 +7,7 @@ import com.intellij.diff.comparison.ComparisonManager
 import com.intellij.diff.comparison.ComparisonPolicy
 import com.intellij.openapi.components.service
 import com.intellij.openapi.progress.DumbProgressIndicator
+import com.intellij.openapi.util.text.StringUtil
 import com.intellij.openapi.vcs.FileStatus
 import com.intellij.openapi.vcs.changes.Change
 import com.intellij.vcsUtil.VcsUtil
@@ -15,20 +16,30 @@ import java.lang.management.ManagementFactory
 import kotlin.time.measureTime
 
 class DiffComputationPerformanceTest : LstCrcTestCase() {
-    fun testAddedAndDeletedLineStatsSkipTheDiffEngine() {
-        for ((text, lines) in listOf("" to 0, "one" to 1, "one\n" to 1, "\n" to 1,
-            "one\n\n" to 2, "one\r\ntwo\r\n" to 2, "one\rtwo" to 2)) {
-            val expectedAdded = ChangeLineStats(lines, 0)
-            val expectedDeleted = ChangeLineStats(0, lines)
+    fun testAddedAndDeletedLineStatsMatchTheDiffEngine() {
+        fun engineStats(before: String, after: String): ChangeLineStats {
+            val fragments = ComparisonManager.getInstance().compareLines(
+                StringUtil.convertLineSeparators(before), StringUtil.convertLineSeparators(after),
+                ComparisonPolicy.DEFAULT, DumbProgressIndicator.INSTANCE
+            )
+            return ChangeLineStats(
+                fragments.sumOf { it.endLine2 - it.startLine2 },
+                fragments.sumOf { it.endLine1 - it.startLine1 }
+            )
+        }
+        for (text in listOf("", "one", "one\n", "\n", "one\n\n", "one\rtwo",
+            "\r\n", "one\r\ntwo", "one\r\ntwo\r\n", "single line without a newline")) {
             var calls = 0
             fun stats(before: String, after: String) = calculateLineStatsForTest(before, after) { a, b ->
                 calls++
                 ComparisonManager.getInstance().compareLines(a, b, ComparisonPolicy.DEFAULT, DumbProgressIndicator.INSTANCE)
             }
-            assertEquals(expectedAdded, stats("", text))
-            assertEquals(expectedDeleted, stats(text, ""))
+            val sample = text.replace("\r", "\\r").replace("\n", "\\n")
+            assertEquals("Empty before: $sample", engineStats("", text), stats("", text))
+            assertEquals("Empty after: $sample", engineStats(text, ""), stats(text, ""))
             println("[lstcrc-work] empty-side diff-engine calls=$calls for ${text.length} characters")
-            assertEquals("Empty-side counts do not need a diff algorithm", 0, calls)
+            assertEquals("Nonempty additions and deletions must use the engine's line semantics",
+                if (text.isEmpty()) 0 else 2, calls)
         }
     }
 
