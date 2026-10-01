@@ -5,11 +5,15 @@
 LST-CRC is an IntelliJ Platform plugin that keeps one active Git comparison in sync across a dedicated changes tool window, IDE named scopes, search scopes, a status bar widget, and custom gutter overlays.
 
 <!-- Plugin description -->
-LST-CRC adds a comparison-focused Git workflow to the IDE.
+LST-CRC compares your Git working tree with `HEAD`, a branch, or a commit selected in Git Log. The selected tool-window tab defines the active comparison.
 
-With it, you can compare the current working tree against `HEAD`, branches, or specific revisions in a dedicated tool window, keep multiple comparison tabs open, and expose the active comparison through IDE scopes, search scopes, a status bar widget, and custom gutter markers.
+- Keep multiple comparison tabs with aliases and separate targets for each repository. Tabs and targets survive IDE restarts.
+- Browse created, modified, moved and deleted files, open diffs, and optionally show added and removed line counts.
+- Follow changes as you type, including unsaved edits and optional untracked files.
+- Use comparison scopes in Find/Search and for editor tab colors, and show changes against the selected target in the editor gutter.
+- Switch comparisons from the status bar.
 
-The plugin is built for branch-heavy and multi-repository work where the current question is not only "what changed from HEAD?" but "what changed against this exact branch or revision target?"
+To use scopes and custom gutters on the `HEAD` tab, enable **Include HEAD tab changes in file scopes** in the tool-window settings. Requires the IDE's Git integration.
 <!-- Plugin description end -->
 
 ## Highlights

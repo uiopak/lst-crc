@@ -70,9 +70,12 @@ jobs:
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "pluginVerifierHomeDir=~/.pluginVerifier" >> $GITHUB_OUTPUT
           
-          echo "changelog<<EOF" >> $GITHUB_OUTPUT
-          echo "$CHANGELOG" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+          DELIMITER="CHANGELOG_$RANDOM$RANDOM$RANDOM"
+          {
+            printf 'changelog<<%s\n' "$DELIMITER"
+            printf '%s\n' "$CHANGELOG"
+            printf '%s\n' "$DELIMITER"
+          } >> "$GITHUB_OUTPUT"
 
       # Build plugin
       - name: Build plugin
@@ -244,7 +247,7 @@ jobs:
   # If accepted and published, the release workflow would be triggered
   releaseDraft:
     name: Release draft
-    if: github.event_name != 'pull_request'
+    if: github.event_name != 'pull_request' && needs.build.outputs.changelog != ''
     needs: [ build, test, inspectCode, verify ]
     runs-on: ubuntu-latest
     permissions:
@@ -275,11 +278,12 @@ jobs:
       - name: Create Release Draft
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.build.outputs.version }}
+          CHANGELOG: ${{ needs.build.outputs.changelog }}
+          RELEASE_TARGET: ${{ github.sha }}
         run: |
-          gh release create "v${{ needs.build.outputs.version }}" \
+          gh release create "v$VERSION" \
             --draft \
-            --title "v${{ needs.build.outputs.version }}" \
-            --notes "$(cat << 'EOM'
-          ${{ needs.build.outputs.changelog }}
-          EOM
-          )"
+            --target "$RELEASE_TARGET" \
+            --title "v$VERSION" \
+            --notes "$CHANGELOG"
