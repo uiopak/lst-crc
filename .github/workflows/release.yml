@@ -5,7 +5,7 @@
 name: Release
 on:
   release:
-    types: [prereleased, released]
+    types: [published]
 
 jobs:
 
@@ -46,15 +46,17 @@ jobs:
       - name: Export Properties
         id: properties
         shell: bash
+        env:
+          RELEASE_NOTES: ${{ github.event.release.body }}
         run: |
-          CHANGELOG="$(cat << 'EOM' | sed -e 's/^[[:space:]]*$//g' -e '/./,$!d'
-          ${{ github.event.release.body }}
-          EOM
-          )"
-          
-          echo "changelog<<EOF" >> $GITHUB_OUTPUT
-          echo "$CHANGELOG" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+          CHANGELOG="$(printf '%s\n' "$RELEASE_NOTES" | sed -e 's/^[[:space:]]*$//g' -e '/./,$!d')"
+          DELIMITER="CHANGELOG_$RANDOM$RANDOM$RANDOM"
+
+          {
+            printf 'changelog<<%s\n' "$DELIMITER"
+            printf '%s\n' "$CHANGELOG"
+            printf '%s\n' "$DELIMITER"
+          } >> "$GITHUB_OUTPUT"
 
       # Update the Unreleased section with the current release note
       - name: Patch Changelog
