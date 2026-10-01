@@ -20,6 +20,14 @@ This file lists refactoring opportunities in `src/main` that were checked agains
 
 ## Done
 
+- Selected-tab and display-name lookups now return independent snapshots, so callers cannot mutate persisted tab state through them. Two regression tests cover changes to the returned comparison maps.
+- An old load failure could clear a newer comparison. Failures now verify the selected tab and repository targets before reporting an error or clearing data. Two controlled-order regression tests cover this; cancellation and genuine current-error guards preserve the existing behavior.
+- Browser and click-handler callbacks now check tab disposal as well as project disposal. Queued-click and queued-refresh tests failed before the fix. Revision-source cancellation also has two regressions that failed before the fix, plus a genuine-error reporting guard; all 23 browser and click-handler tests pass afterward.
+- Wrapper regeneration defaults to the running Gradle version, with no separate version property or verification gate. Kover enforces the measured production coverage baseline with a 66% floor; only UI test support is excluded from reports.
+- Unsaved overlays now stay within their owning nested repository. Restoring target text removes content-only changes on clean or modified disk state, while real Git blob checks preserve mode, encoding, BOM and line-ending differences. Three regressions failed before the fixes; all 39 Git tests pass afterward, including UTF-16 and disabled line-stat coverage. The silent command setup is shared by commands with and without stdin.
+- Status-widget truncation preserves supplementary characters such as emoji. A boundary regression failed before the fix; all six widget tests pass afterward, including exact-limit names and full tooltips.
+- The encoding follow-up also preserves a leading U+FEFF text character separately from the file BOM. The initial byte check failed this case; the corrected encoding check passes all 41 Git tests and preserves encoders that emit their own BOM.
+
 - The fifth review pass, completed 2026-09-30, focused on gutter refresh ordering and tracker lifetime:
   - An older background decision could run on the EDT after a newer refresh, replacing its comparison base or releasing its tracker using an obsolete disabled setting. Refresh generations now reject older decisions and content results. Completed bases remain reusable, and obsolete unfinished loads can be replaced or retried.
   - A decision resolved before an editor closed or the manager was disposed could recreate a tracker afterward. The apply step now checks both lifetimes; disposal also invalidates queued work. Native trackers are looked up again when applying a refresh, and native-add callbacks verify that their tracker is still current before hiding it.

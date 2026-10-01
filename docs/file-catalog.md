@@ -84,8 +84,10 @@ This document lists each current `src/main` file separately and explains why it 
 ## Core Services
 
 ### GitService.kt
+- Unsaved restoration: Nested-root ownership prevents duplicate overlays. Equal live and target text removes an entry only when it has no disk change, or its modes match and its saved editor bytes match Git's target blob. Line endings, charset, BOM and Git filters stay part of that check.
 - Role: Sole Git and Git4Idea integration boundary for repository discovery, change loading, revision content, and branch snapshots. It keeps the last on-disk diff per repository, which edit-only refreshes reuse, and overlays unsaved documents (a moved file against its old path). A failed `git diff` is reported as a missing target only when `git rev-parse` cannot resolve it. Its `runSilentGit` runs the plugin's own git commands without echoing them to the VCS console.
 - Cancellation: Revision-content reads and unsaved-overlay construction propagate platform and coroutine cancellation.
+- Testing: The internal `setBeforeLoadForTest` hook controls load timing and failures on the load dispatcher. Refresh tests clear it in `finally` and do not access private platform repository fields.
 - Depends on: Git4Idea, low-level Git commands, VCS `Change` models, and plugin state types such as `TabInfo`.
 - Connected to: `ToolWindowStateService`, `VisualTrackerManager`, settings code, and branch-selection flows.
 - Why it exists: Centralizing all Git logic keeps the rest of the plugin from depending directly on IntelliJ VCS internals.
@@ -116,6 +118,8 @@ This document lists each current `src/main` file separately and explains why it 
 - Why it exists: The plugin needs one shared cache so every surface reads the same active diff instead of recomputing Git state.
 
 ### ToolWindowStateService.kt
+- State reads: Selected-tab and display-name lookups return defensive snapshots, including independent comparison maps. Scalar branch-name reads capture one state without allocating a tab snapshot.
+- Load errors: The EDT checks the selected tab and root targets before logging or clearing cached data, so obsolete failures cannot blank a newer comparison. Cancellation still fails the refresh future without clearing the cache.
 - Role: Main orchestration service for tab state, refresh sequencing, persistence (`gitTabsIdeaPluginState.xml`), and missing-branch notifications. It merges concurrent refresh requests into one coroutine cycle and always pushes real changes into `ProjectActiveDiffDataService`, regardless of the `Include HEAD in scopes` setting.
 - Depends on: `PersistentStateComponent`, `GitService`, `ProjectActiveDiffDataService`, notifications, and `SingleRepoBranchSelectionDialog` (the repair action).
 - Connected to: Almost every runtime surface, especially the factory, widget, actions, and active-diff consumers. The browser is not updated directly; it reacts to `DIFF_DATA_CHANGED_TOPIC`.
@@ -172,12 +176,14 @@ This document lists each current `src/main` file separately and explains why it 
 - Why it exists: Branch selection is a real workflow of its own and needs a reusable, testable UI component.
 
 ### LstCrcChangesBrowser.kt
+- Lifetime and errors: Queued work checks browser disposal before updating or opening editors. Revision loading propagates platform cancellation and quietly stops coroutine cancellation in the platform pool; genuine errors still show a warning. Its private loader returns the pool future for deterministic completion checks in tests.
 - Role: Main per-tab changes browser. It subscribes to `DIFF_DATA_CHANGED_TOPIC`, rebuilds the tree while keeping the viewport, defines the change actions (diff, source, project tree), colors deleted rows, reuses open diff tabs (only while the target points to the same commit), and exposes `*ForTest` hooks for the UI tests.
 - Depends on: `AsyncChangesBrowserBase`, tree models, `ToolWindowSettingsProvider`, `ProjectActiveDiffDataService`, diff APIs, `RepoNodeRenderer`, `ExpandNewNodesStateStrategy`, and `ChangesTreeClickHandler`.
 - Connected to: `ToolWindowHelper`, `MyToolWindowFactory`, `ToolWindowSettingsProvider` (view rebuilds), and the UI tests.
 - Why it exists: It is the primary user-facing comparison UI and the place where active diff data becomes an interactive tree.
 
 ### ChangesTreeClickHandler.kt
+- Lifetime: Disposal cancels delayed clicks and makes queued actions, keyboard handlers and context menus inactive.
 - Role: Mouse, Enter-key and context-menu handling of a browser's tree. Runs the configured action for each button, waiting for the double-click delay (a coroutine) when a double-click action is also set.
 - Depends on: `ToolWindowSettingsProvider` and the browser's action definitions.
 - Connected to: `LstCrcChangesBrowser`, which owns and disposes it and delegates `configuredActionForClickForTest` to it.
@@ -191,6 +197,7 @@ This document lists each current `src/main` file separately and explains why it 
 
 ### LstCrcStatusWidget.kt
 - Role: Status-bar widget plus its co-located factory class. `plugin.xml` registers the factory, and the factory creates the runtime widget instance. The widget shows the selected comparison tab label or alias and provides a popup for switching or adding tabs.
+- Long labels use an ellipsis without splitting UTF-16 surrogate pairs; the tooltip retains the full label.
 - Depends on: Status-bar APIs, message-bus subscriptions, `ToolWindowStateService`, `ToolWindowHelper`, and settings.
 - Connected to: `plugin.xml`, startup refreshes, status-bar UI, and UI test bridge reads.
 - Why it exists: It gives users lightweight access to the plugin without forcing the tool window to be visible.

@@ -85,7 +85,11 @@ class LstCrcStatusWidget(private val project: Project) : StatusBarWidget, Status
         if (!isComparisonTab) return label
         val prefix = if (ToolWindowSettingsProvider.isShowWidgetContext()) LstCrcBundle.message("widget.context.prefix") else ""
         // Long names are cut with an ellipsis, so a cut name is not mistaken for the whole one; the tooltip has it all.
-        val shownLabel = if (label.length > MAX_LABEL_LENGTH) label.take(MAX_LABEL_LENGTH - 1) + "\u2026" else label
+        val shownLabel = if (label.length > MAX_LABEL_LENGTH) {
+            var end = MAX_LABEL_LENGTH - 1
+            if (Character.isSurrogatePair(label[end - 1], label[end])) end--
+            label.take(end) + "\u2026"
+        } else label
         return prefix + shownLabel
     }
 

@@ -10,6 +10,22 @@ Location: `src/test/kotlin/com/github/uiopak/lstcrc/{gutters,listeners,scopes,se
 
 | Test | Capability IDs | What it checks |
 | --- | --- | --- |
+| `GitServiceLineStatsTest.testUnsavedOverlayUsesOnlyTheOwningNestedRepository` | `C2.3`, `C5.1` | An unsaved file in a registered nested root is overlaid only by its owning repository. |
+| `GitServiceLineStatsTest.testUnsavedRevertOnCleanDiskDoesNotCreateAChange` | `C3.1`, `C5.1` | Editing and restoring a clean file to target text leaves no changed entry or counts. |
+| `GitServiceLineStatsTest.testUnsavedRevertRemovesADiskContentChange` | `C3.1`, `C5.1` | Unsaved text that restores the target replaces the disk modification with a clean comparison. |
+| `GitServiceLineStatsTest.testUnsavedRevertRemovesAContentChangeWithLineStatsDisabled` | `C3.1`, `C3.10`, `C5.1` | Restoring target text also removes a disk modification while line-stat computation is disabled. |
+| `GitServiceLineStatsTest.testUnsavedRevertPreservesAFileModeChange` | `C3.1`, `C5.1` | Equal editor text does not hide a tracked executable-mode change. |
+| `GitServiceLineStatsTest.testUnsavedRevertPreservesChangedLineEndings` | `C3.1`, `C5.1` | Restoring logical target text retains physical line endings that still differ from the target blob. |
+| `GitServiceLineStatsTest.testUnsavedRevertPreservesAnAddedByteOrderMark` | `C3.1`, `C5.1` | Restoring logical target text retains a byte-order mark that differs from the target blob. |
+| `GitServiceLineStatsTest.testUnsavedRevertOfUtf16ContentRemovesTheContentChange` | `C3.1`, `C5.1` | Restored UTF-16 editor text hashes with its charset and BOM and removes the content-only change. |
+| `GitServiceLineStatsTest.testUnsavedRevertPreservesLeadingBomTextCharacter` | `C3.1`, `C5.1` | A leading U+FEFF text character stays distinct from the file BOM when restored content is checked against Git. |
+| `GitServiceLineStatsTest.testUnsavedRevertWithBomProducingEncoderRemovesContentChange` | `C3.1`, `C5.1` | An encoder that emits its own BOM does not receive a duplicate file BOM. |
+| `ChangesTreeClickHandlerTest.testQueuedClickDoesNotRunAfterHandlerDisposal` | `C4.1`, `C5.1` | Closing the handler after a mouse click but before EDT dispatch discards its queued action. |
+| `ChangesTreeClickHandlerTest.testQueuedClickRunsWhileHandlerIsAlive` | `C4.1` | The same configured click still runs once while its handler is alive. |
+| `LstCrcChangesBrowserTest.testQueuedRefreshDoesNotUpdateDisposedBrowser` | `C3.12`, `C5.1` | Closing a browser before queued diff application leaves its snapshot unchanged. |
+| `LstCrcChangesBrowserTest.testPlatformCancelledRevisionOpenDoesNotShowLoadingError` | `C3.4`, `C5.1` | Platform cancellation aborts source opening without a warning or partial editor. |
+| `LstCrcChangesBrowserTest.testCoroutineCancelledRevisionOpenDoesNotShowLoadingError` | `C3.4`, `C5.1` | Coroutine cancellation in the platform pool stops source opening quietly. |
+| `LstCrcChangesBrowserTest.testFailedRevisionOpenStillShowsLoadingError` | `C3.4`, `C5.1` | A genuine revision-content error still shows a warning and does not open a partial file. |
 | `BranchSelectionPanelTest.testFilterSelectsFirstMatchingBranchFromStableSnapshot` | `C2.1` | Typing a filter keeps matching branches and selects the first match. |
 | `BranchSelectionPanelTest.testFilterMatchingAFolderSelectsItsFirstBranch` | `C2.1` | A filter matching a folder or category selects its first branch, so Enter has a branch to add. |
 | `BranchSelectionPanelTest.testEnterSubmitsSelectedBranch` | `C2.1` | Enter on the selected branch submits it. |
@@ -83,6 +99,7 @@ Location: `src/test/kotlin/com/github/uiopak/lstcrc/{gutters,listeners,scopes,se
 | `LstCrcStatusWidgetTest.testPopupShowsTabNamesWithUnderscoresAsTyped` | `C1.5` | The widget popup shows branch names and aliases with underscores. |
 | `LstCrcStatusWidgetTest.testGetTextReturnsHeadWhenHeadIsSelectedEvenIfWidgetContextEnabled` | `C1.1` | The widget shows `HEAD` on the `HEAD` tab, without the context prefix. |
 | `LstCrcStatusWidgetTest.testGetTextUsesAliasPrefixAndTruncationForSelectedTab` | `C1.5`, `C4.5` | The widget shows the alias and the optional prefix, cuts long names with an ellipsis, and its tooltip has the whole name. |
+| `LstCrcStatusWidgetTest.testTruncatedAliasKeepsSupplementaryCharactersWhole` | `C1.5`, `C4.5` | Truncation never splits a supplementary character; a name exactly at the limit stays whole and the tooltip retains the full alias. |
 | `LstCrcStatusWidgetTest.testGetTextFallsBackToPluginNameForInvalidSelectedTabIndex` | `C5.3` | An out-of-range selected index falls back to the plugin name. |
 | `LstCrcStatusWidgetTest.testPluginXmlStatusWidgetFactoryIdMatchesWidgetConstant` | `C4.5` | The widget id in `plugin.xml` matches the code. |
 | `MyToolWindowFactoryTest.testOnlyTheHeadTabSelectsHead` | `C1.1`, `C2.1` | Only the HEAD tab selects HEAD; the "Select Branch" tab keeps the current comparison. |
@@ -108,6 +125,10 @@ Location: `src/test/kotlin/com/github/uiopak/lstcrc/{gutters,listeners,scopes,se
 | `RepoNodeRendererTest.testAggregateLineStatsForFolderNodeSumsDescendantChanges` | `C3.10` | Folder rows sum their descendants. |
 | `RepoNodeRendererTest.testAggregateLineStatsForFolderNodeReturnsNullWithoutDescendantChanges` | `C3.10` | Folders without counted changes show no counts. |
 | `ToolWindowStateServiceRefreshTest.testJoinedRefreshLoadsTheSelectionMadeBeforeTheRequest` | `C5.1` | A joined refresh has loaded the state from before the request. |
+| `ToolWindowStateServiceRefreshTest.testObsoleteTabLoadFailureKeepsPreviouslyLoadedComparison` | `C5.1` | A controlled old-tab failure preserves the currently selected comparison and is not reported as its error. |
+| `ToolWindowStateServiceRefreshTest.testObsoleteRepositoryTargetFailureKeepsPreviouslyLoadedComparison` | `C2.3`, `C5.1` | A controlled failure after a root's target changes preserves its newer comparison. |
+| `ToolWindowStateServiceRefreshTest.testPlatformCancellationKeepsActiveDiffAndFailsRefreshFuture` | `C5.1` | Platform cancellation fails the refresh future without clearing cached changes or logging a loading error. |
+| `ToolWindowStateServiceRefreshTest.testCurrentLoadFailureStillClearsActiveDiff` | `C5.1` | A failure for the current comparison still logs an error and clears the active diff. |
 | `ToolWindowStateServiceRefreshTest.testRemovingTheSelectedTabLoadsTheTabBeforeIt` | `C1.4` | Closing the selected tab loads the tab before it, or `HEAD` for the first tab. |
 | `ToolWindowStateServicePersistenceTest.testAddTabDeduplicatesAndRemoveTabKeepsOtherTabs` | `C5.2` | Adding an existing tab is a no-op; removing one keeps the others. |
 | `ToolWindowStateServicePersistenceTest.testAddTabAtAPositionKeepsTheSelectedTab` | `C1.4`, `C5.2` | A tab added at a position lands there and the selected tab stays selected. |
@@ -115,6 +136,8 @@ Location: `src/test/kotlin/com/github/uiopak/lstcrc/{gutters,listeners,scopes,se
 | `ToolWindowStateServicePersistenceTest.testRemoveTabSelectsTheTabBeforeTheRemovedSelectedTab` | `C5.2` | Removing the selected tab selects the tab before it, as the tool window does. |
 | `ToolWindowStateServicePersistenceTest.testRemoveTabShiftsSelectedIndexWhenEarlierTabIsRemoved` | `C5.2` | Removing an earlier tab keeps the same tab selected. |
 | `ToolWindowStateServicePersistenceTest.testLoadStateAndGetStateDefensivelyCopyNestedTabState` | `C5.2` | Loaded and returned state are defensive copies. |
+| `ToolWindowStateServicePersistenceTest.testSelectedTabInfoCannotMutateStoredComparisonTargets` | `C2.3`, `C5.2` | Mutating or replacing the selected-tab lookup's map cannot bypass persisted target updates. |
+| `ToolWindowStateServicePersistenceTest.testDisplayNameLookupCannotMutateStoredComparisonTargets` | `C2.3`, `C5.2` | A display-name lookup returns an independent tab and comparison map. |
 | `ToolWindowStateServicePersistenceTest.testNoStateLoadedResetsToHeadSelectionSemantics` | `C1.1`, `C5.3` | With no saved state the `HEAD` tab is selected. |
 | `ToolWindowStateServicePersistenceTest.testUpdateTabComparisonMapCopiesOverridesWithoutRefreshWhenDisabled` | `C2.3`, `C5.2` | Overrides are copied and stored without a refresh when asked. |
 | `ToolWindowStateServicePersistenceTest.testUpdateTabAliasUpdatesMatchingTabAndLeavesOtherTabsUntouched` | `C1.5`, `C5.2` | An alias update changes only its tab. |

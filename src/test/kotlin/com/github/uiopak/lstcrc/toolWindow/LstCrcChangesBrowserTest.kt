@@ -368,6 +368,57 @@ class LstCrcChangesBrowserTest : LstCrcTestCase() {
         }
     }
 
+    fun testQueuedRefreshDoesNotUpdateDisposedBrowser() {
+        val browser = createBrowser()
+        onEdt {
+            LstCrcChangesBrowser::class.java.getDeclaredMethod("displayChanges", CategorizedChanges::class.java, String::class.java)
+                .apply { isAccessible = true }.invoke(browser, categorizedChanges(changeCount = 2), "feature")
+            Disposer.dispose(browser)
+        }
+        flushUiEvents()
+        assertEmpty(browser.currentChangeFileNamesSnapshot())
+    }
+
+    fun testPlatformCancelledRevisionOpenDoesNotShowLoadingError() =
+        assertCancelledRevisionOpen(com.intellij.openapi.progress.ProcessCanceledException())
+
+    fun testCoroutineCancelledRevisionOpenDoesNotShowLoadingError() =
+        assertCancelledRevisionOpen(kotlinx.coroutines.CancellationException("Revision opening cancelled"))
+
+    fun testFailedRevisionOpenStillShowsLoadingError() =
+        assertRevisionOpenFailure(IllegalStateException("Revision content unavailable"), expectedWarnings = 1)
+
+    private fun assertCancelledRevisionOpen(cancellation: RuntimeException) = assertRevisionOpenFailure(cancellation, expectedWarnings = 0)
+
+    private fun assertRevisionOpenFailure(failure: RuntimeException, expectedWarnings: Int) {
+        val browser = createBrowser()
+        val openedBefore = com.intellij.openapi.fileEditor.FileEditorManager.getInstance(project).openFiles.toList()
+        val revision = object : ContentRevision {
+            override fun getFile() = VcsUtil.getFilePath("${project.basePath}/Cancelled.txt", false)
+            override fun getRevisionNumber(): VcsRevisionNumber = com.intellij.openapi.vcs.history.VcsRevisionNumber.NULL
+            override fun getContent(): String = throw failure
+        }
+        var warnings = 0
+        val previousDialog = com.intellij.openapi.ui.TestDialogManager.setTestDialog {
+            warnings++
+            com.intellij.openapi.ui.Messages.OK
+        }
+        try {
+            val load = LstCrcChangesBrowser::class.java.getDeclaredMethod("openRevisionSource", ContentRevision::class.java)
+                .apply { isAccessible = true }.invoke(browser, revision) as java.util.concurrent.Future<*>
+            try {
+                load.get(15, java.util.concurrent.TimeUnit.SECONDS)
+            } catch (e: java.util.concurrent.ExecutionException) {
+                assertSame(failure, e.cause)
+            }
+            flushUiEvents()
+            assertEquals("Only content-loading errors should show a warning", expectedWarnings, warnings)
+            assertEquals(openedBefore, com.intellij.openapi.fileEditor.FileEditorManager.getInstance(project).openFiles.toList())
+        } finally {
+            com.intellij.openapi.ui.TestDialogManager.setTestDialog(previousDialog)
+        }
+    }
+
     private fun withBrowserFixture(testBody: BrowserFixture.() -> Unit) {
         val parentDisposable = Disposer.newDisposable()
 

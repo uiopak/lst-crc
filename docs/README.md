@@ -12,3 +12,8 @@ Internal documentation for the plugin code in `src/main`. Build commands, the ru
 Keep these in step with the code: a new file needs a catalog entry, a new capability needs an ID and tests, and a new or renamed test needs a row in the test map.
 
 The IDE Starter test bridge lives in `src/testBridge` (`LstCrcUiTestBridge.kt`) and is only compiled into the plugin for Starter tasks, or when `-PincludeTestBridge=true` is set.
+
+`check` enforces at least 66% production line coverage through `koverVerify`.
+The floor comes from the 66.7% baseline before the continuous review. Reports
+exclude the Starter tests and UI bridge, which are test support rather than
+production plugin code. Both UI suites still run independently in CI.

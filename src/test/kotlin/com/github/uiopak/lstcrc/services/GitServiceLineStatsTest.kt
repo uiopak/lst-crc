@@ -277,6 +277,37 @@ class GitServiceLineStatsTest : LstCrcTestCase() {
         }
     }
 
+    fun testUnsavedOverlayUsesOnlyTheOwningNestedRepository() {
+        val outerRoot = myFixture.tempDirFixture.findOrCreateDir("nested-overlay")
+        val nestedRoot = myFixture.tempDirFixture.findOrCreateDir("nested-overlay/child")
+        val outerFile = myFixture.addFileToProject("nested-overlay/Outer.txt", "disk\n").virtualFile
+        val nestedFile = myFixture.addFileToProject("nested-overlay/child/Inner.txt", "disk\n").virtualFile
+        fun repo(root: com.intellij.openapi.vfs.VirtualFile): git4idea.repo.GitRepository = java.lang.reflect.Proxy.newProxyInstance(
+            git4idea.repo.GitRepository::class.java.classLoader, arrayOf(git4idea.repo.GitRepository::class.java)
+        ) { _, method, _ ->
+            when (method.name) {
+                "getRoot" -> root
+                "getVcs" -> git4idea.GitVcs.getInstance(project)
+                else -> error("New-file overlay must not access target content: ${method.name}")
+            }
+        } as git4idea.repo.GitRepository
+        val outerRepo = repo(outerRoot)
+        val nestedRepo = repo(nestedRoot)
+        val registry = project.getService(com.intellij.dvcs.repo.VcsRepositoryManager::class.java)
+        registry.addExternalRepository(nestedRoot, nestedRepo)
+        val documents = listOf(outerFile, nestedFile).map { FileDocumentManager.getInstance().getDocument(it)!! }
+        try {
+            WriteCommandAction.runWriteCommandAction(project) { documents.forEach { it.setText("unsaved\n") } }
+            val service = GitService(project)
+            val newPaths = setOf(outerFile.path, nestedFile.path)
+            assertEquals(listOf(outerFile.path), service.collectUnsavedDocumentChanges(outerRepo, "outer-target", newPaths, emptyMap()).map { it.afterRevision!!.file.path })
+            assertEquals(listOf(nestedFile.path), service.collectUnsavedDocumentChanges(nestedRepo, "inner-target", newPaths, emptyMap()).map { it.afterRevision!!.file.path })
+        } finally {
+            registry.removeExternalRepository(nestedRoot)
+            WriteCommandAction.runWriteCommandAction(project) { documents.forEach { FileDocumentManager.getInstance().reloadFromDisk(it) } }
+        }
+    }
+
     // Regression (round five): an unsaved edit of a moved file was compared with the file's new path, which the
     // target doesn't have, so its line stats never followed the text (and git show failed on every refresh).
     fun testUnsavedEditOfMovedFileIsComparedWithItsOldPath() {
@@ -319,6 +350,92 @@ class GitServiceLineStatsTest : LstCrcTestCase() {
         override fun getFile() = VcsUtil.getFilePath(path, false)
         override fun getRevisionNumber() = GitRevisionNumber("test")
         override fun getContent() = load()
+    }
+
+    fun testUnsavedRevertOnCleanDiskDoesNotCreateAChange() = assertUnsavedRevert(diskChanged = false, modeChanged = false)
+
+    fun testUnsavedRevertRemovesADiskContentChange() = assertUnsavedRevert(diskChanged = true, modeChanged = false)
+
+    fun testUnsavedRevertRemovesAContentChangeWithLineStatsDisabled() = assertUnsavedRevert(diskChanged = true, modeChanged = false, includeLineStats = false)
+
+    fun testUnsavedRevertPreservesAFileModeChange() = assertUnsavedRevert(diskChanged = true, modeChanged = true)
+
+    fun testUnsavedRevertPreservesChangedLineEndings() = assertUnsavedRevert(diskChanged = true, modeChanged = false, preserveLineEndings = true)
+
+    fun testUnsavedRevertPreservesAnAddedByteOrderMark() = assertUnsavedRevert(diskChanged = true, modeChanged = false, preserveBom = true)
+
+    fun testUnsavedRevertOfUtf16ContentRemovesTheContentChange() = assertUnsavedRevert(diskChanged = true, modeChanged = false, charset = Charsets.UTF_16LE)
+
+    fun testUnsavedRevertPreservesLeadingBomTextCharacter() = assertUnsavedRevert(
+        diskChanged = true, modeChanged = false, charset = Charsets.UTF_16LE, targetText = "\uFEFFalpha\nbeta\ngamma\n"
+    )
+
+    fun testUnsavedRevertWithBomProducingEncoderRemovesContentChange() = assertUnsavedRevert(
+        diskChanged = true, modeChanged = false, charset = Charsets.UTF_16
+    )
+
+    private fun assertUnsavedRevert(diskChanged: Boolean, modeChanged: Boolean, preserveLineEndings: Boolean = false, preserveBom: Boolean = false, includeLineStats: Boolean = true, charset: java.nio.charset.Charset = Charsets.UTF_8, targetText: String = "alpha\nbeta\ngamma\n") {
+        val repoPath = Files.createTempDirectory("lstcrc-unsaved-revert-")
+        var document: com.intellij.openapi.editor.Document? = null
+        try {
+            initializeTrackedStatsGitRepo(repoPath)
+            // Keep text and physical line endings identical to the target for the content-only cases.
+            val charsetBom = if (charset == Charsets.UTF_16LE) byteArrayOf(0xff.toByte(), 0xfe.toByte()) else byteArrayOf()
+            Files.write(repoPath.resolve("Main.txt"), charsetBom + targetText.toByteArray(charset))
+            runGit(repoPath, "add", "Main.txt")
+            runGit(repoPath, "commit", "-m", "LF revert fixture")
+            if (diskChanged) {
+                val text = if (preserveLineEndings) "disk modification\r\n" else "disk modification\n"
+                val prefix = if (preserveBom) byteArrayOf(0xef.toByte(), 0xbb.toByte(), 0xbf.toByte()) else charsetBom
+                Files.write(repoPath.resolve("Main.txt"), prefix + text.toByteArray(charset))
+            }
+            if (modeChanged) {
+                runGit(repoPath, "config", "core.filemode", "false")
+                runGit(repoPath, "update-index", "--chmod=+x", "Main.txt")
+            }
+            val head = runGit(repoPath, "rev-parse", "HEAD").trim()
+            val root = LocalFileSystem.getInstance().refreshAndFindFileByNioFile(repoPath)!!
+            val file = LocalFileSystem.getInstance().refreshAndFindFileByNioFile(repoPath.resolve("Main.txt"))!!
+            val liveDocument = FileDocumentManager.getInstance().getDocument(file)!!
+            document = liveDocument
+            WriteCommandAction.runWriteCommandAction(project) {
+                if (charset == Charsets.UTF_16) {
+                    file.charset = charset
+                    assertEquals("The fixture must exercise a BOM-producing encoder", charset, file.charset)
+                }
+                liveDocument.setText("intermediate unsaved text\n")
+                liveDocument.setText(targetText)
+            }
+            assertTrue("The fixture must exercise an unsaved document", FileDocumentManager.getInstance().isFileModified(file))
+            val repo = java.lang.reflect.Proxy.newProxyInstance(
+                git4idea.repo.GitRepository::class.java.classLoader, arrayOf(git4idea.repo.GitRepository::class.java)
+            ) { _, method, _ ->
+                when (method.name) {
+                    "getRoot" -> root
+                    "getCurrentRevision" -> head
+                    "isFresh" -> false
+                    "update" -> Unit
+                    "getBranches" -> git4idea.branch.GitBranchesCollection(emptyMap(), emptyMap(), emptyList())
+                    else -> error("Unexpected repository access: ${method.name}")
+                }
+            } as git4idea.repo.GitRepository
+            val loaded = CompletableFuture.supplyAsync {
+                GitService::class.java.getDeclaredMethod("loadChanges", git4idea.repo.GitRepository::class.java, String::class.java,
+                    Boolean::class.javaPrimitiveType, Map::class.java, Boolean::class.javaPrimitiveType)
+                    .apply { isAccessible = true }.invoke(GitService(project), repo, "HEAD", includeLineStats, null, false) as LoadedChanges
+            }.get(20, TimeUnit.SECONDS)
+            val preservesMetadata = modeChanged || preserveLineEndings || preserveBom
+            assertEquals(if (preservesMetadata) 1 else 0, loaded.changes.size)
+            if (preservesMetadata) {
+                assertEquals(FileStatus.MODIFIED, loaded.changes.single().fileStatus)
+                assertEquals(ChangeLineStats(0, 0), loaded.lineStatsByChange[ChangeLineStatsKey.from(loaded.changes.single())])
+            } else {
+                assertTrue(loaded.lineStatsByChange.isEmpty())
+            }
+        } finally {
+            document?.let { WriteCommandAction.runWriteCommandAction(project) { FileDocumentManager.getInstance().reloadFromDisk(it) } }
+            repoPath.toFile().deleteRecursively()
+        }
     }
 
     @Suppress("UNCHECKED_CAST")

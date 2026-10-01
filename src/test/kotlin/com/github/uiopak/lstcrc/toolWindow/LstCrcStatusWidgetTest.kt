@@ -79,6 +79,27 @@ class LstCrcStatusWidgetTest : LstCrcTestCase() {
         assertEquals(LstCrcBundle.message("plugin.name.short"), widget.getText())
     }
 
+    fun testTruncatedAliasKeepsSupplementaryCharactersWhole() {
+        val stateService = project.service<ToolWindowStateService>()
+        val widget = LstCrcStatusWidget(project)
+        val aliasAtLimit = "a".repeat(18) + "\uD83D\uDE00"
+        val longAlias = aliasAtLimit + "z"
+        val prefix = LstCrcBundle.message("widget.context.prefix")
+
+        setShowWidgetContext(true)
+        stateService.loadState(
+            ToolWindowState(openTabs = listOf(TabInfo(branchName = "feature", alias = longAlias)), selectedTabIndex = 0)
+        )
+
+        assertEquals(prefix + "a".repeat(18) + "\u2026", widget.getText())
+        assertTrue(widget.getTooltipText(), widget.getTooltipText().contains(longAlias))
+
+        stateService.loadState(
+            ToolWindowState(openTabs = listOf(TabInfo(branchName = "feature", alias = aliasAtLimit)), selectedTabIndex = 0)
+        )
+        assertEquals(prefix + aliasAtLimit, widget.getText())
+    }
+
     fun testPluginXmlStatusWidgetFactoryIdMatchesWidgetConstant() {
         val pluginXml = javaClass.classLoader.getResourceAsStream("META-INF/plugin.xml")
             ?.bufferedReader()

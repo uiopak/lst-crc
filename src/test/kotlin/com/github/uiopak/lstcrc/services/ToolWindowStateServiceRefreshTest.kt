@@ -3,10 +3,23 @@ package com.github.uiopak.lstcrc.services
 import com.github.uiopak.lstcrc.state.TabInfo
 import com.github.uiopak.lstcrc.state.ToolWindowState
 import com.github.uiopak.lstcrc.testsupport.LstCrcTestCase
+import com.github.uiopak.lstcrc.testsupport.categorizedChanges
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.service
+import com.intellij.openapi.progress.ProcessCanceledException
+import com.intellij.openapi.vfs.VirtualFile
+import com.intellij.testFramework.LoggedErrorProcessor
+import kotlinx.coroutines.CoroutineExceptionHandler
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import java.util.concurrent.CompletableFuture
+import java.util.concurrent.ExecutionException
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 
 class ToolWindowStateServiceRefreshTest : LstCrcTestCase() {
 
@@ -65,6 +78,128 @@ class ToolWindowStateServiceRefreshTest : LstCrcTestCase() {
         service.removeTab("feature-a")
         assertTrue(service.isHeadSelected())
         assertActiveBranchBecomes(diffData, "HEAD")
+    }
+
+    fun testPlatformCancellationKeepsActiveDiffAndFailsRefreshFuture() {
+        val profile = TabInfo("feature")
+        val cancelled = ProcessCanceledException()
+        withControlledLoadFailure(profile, profile, cancelled) { service, future, release, file, loggedErrors ->
+            release.complete(Unit)
+            val failure = try {
+                future.get(15, TimeUnit.SECONDS)
+                fail("A cancelled refresh must fail its future")
+                error("unreachable")
+            } catch (e: ExecutionException) {
+                e.cause
+            } catch (e: java.util.concurrent.CancellationException) {
+                e.cause ?: e
+            }
+            assertSame(cancelled, failure)
+            assertEquals("feature", project.service<ProjectActiveDiffDataService>().activeBranchName)
+            assertEquals(listOf(file), project.service<ProjectActiveDiffDataService>().createdFiles)
+            assertEquals("Cancellation must not be logged as a loading error", 0, loggedErrors.get())
+            assertEquals("feature", service.getSelectedTabBranchName())
+        }
+    }
+
+    fun testObsoleteTabLoadFailureKeepsPreviouslyLoadedComparison() {
+        assertObsoleteLoadFailureKeepsComparison(TabInfo("feature-a"), TabInfo("feature-b"))
+    }
+
+    fun testObsoleteRepositoryTargetFailureKeepsPreviouslyLoadedComparison() {
+        lateinit var root: String
+        ApplicationManager.getApplication().invokeAndWait {
+            root = myFixture.tempDirFixture.findOrCreateDir("controlled-load").path
+        }
+        assertObsoleteLoadFailureKeepsComparison(
+            TabInfo("feature", comparisonMap = mapOf(root to "old-target")),
+            TabInfo("feature", comparisonMap = mapOf(root to "new-target"))
+        )
+    }
+
+    fun testCurrentLoadFailureStillClearsActiveDiff() {
+        val profile = TabInfo("feature")
+        withControlledLoadFailure(profile, profile, IllegalStateException("Controlled loading failure")) { _, future, release, _, loggedErrors ->
+            release.complete(Unit)
+            future.get(15, TimeUnit.SECONDS)
+            assertNull(project.service<ProjectActiveDiffDataService>().activeBranchName)
+            assertEquals(1, loggedErrors.get())
+        }
+    }
+
+    private fun assertObsoleteLoadFailureKeepsComparison(loading: TabInfo, selected: TabInfo) {
+        withControlledLoadFailure(loading, selected, IllegalStateException("Controlled loading failure")) { _, future, release, file, loggedErrors ->
+            release.complete(Unit)
+            future.get(15, TimeUnit.SECONDS)
+            assertEquals(selected.branchName, project.service<ProjectActiveDiffDataService>().activeBranchName)
+            assertEquals(listOf(file), project.service<ProjectActiveDiffDataService>().createdFiles)
+            assertEquals(
+                selected.comparisonMap[file.parent.path] ?: selected.branchName,
+                project.service<ProjectActiveDiffDataService>().activeComparisonContext[file.parent.path]
+            )
+            assertEquals("An obsolete failure must not be reported for the current selection", 0, loggedErrors.get())
+        }
+    }
+
+    /** Hold a GitService load at its test hook, then fail it after changing the selection. */
+    private fun withControlledLoadFailure(
+        loading: TabInfo,
+        selected: TabInfo,
+        failure: RuntimeException,
+        test: (ToolWindowStateService, CompletableFuture<Unit>, CompletableFuture<Unit>, VirtualFile, AtomicInteger) -> Unit
+    ) {
+        val app = ApplicationManager.getApplication()
+        lateinit var file: VirtualFile
+        app.invokeAndWait { file = myFixture.addFileToProject("controlled-load/Changed.txt", "content\n").virtualFile }
+        val entered = CompletableFuture<TabInfo?>()
+        val release = CompletableFuture<Unit>()
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default + CoroutineExceptionHandler { _, _ -> })
+        val service = ToolWindowStateService(project, scope)
+        val sharedState = project.service<ToolWindowStateService>()
+        fun select(profile: TabInfo) {
+            val state = ToolWindowState(listOf(profile), 0)
+            service.loadState(state)
+            sharedState.loadState(state)
+        }
+        app.invokeAndWait {
+            select(selected)
+            project.service<ProjectActiveDiffDataService>().updateActiveDiff(
+                selected.branchName,
+                categorizedChanges(createdFiles = listOf(file)).copy(
+                    comparisonContext = mapOf(file.parent.path to (selected.comparisonMap[file.parent.path] ?: selected.branchName))
+                )
+            )
+            select(loading)
+        }
+
+        val gitService = project.service<GitService>()
+        val loggedErrors = AtomicInteger()
+        val errorProcessor = LoggedErrorProcessor.executeWith(object : LoggedErrorProcessor() {
+            override fun processError(category: String, message: String, details: Array<String>, t: Throwable?): Set<Action> {
+                if (category == "#com.github.uiopak.lstcrc.services.ToolWindowStateService" && message.startsWith("DATA_FLOW: Error loading changes")) {
+                    loggedErrors.incrementAndGet()
+                    return Action.NONE
+                }
+                return super.processError(category, message, details, t)
+            }
+        })
+        try {
+            gitService.setBeforeLoadForTest { tabInfo ->
+                entered.complete(tabInfo)
+                release.get(15, TimeUnit.SECONDS)
+                throw failure
+            }
+            val future = service.refreshDataForCurrentSelection()
+            assertEquals(loading, entered.get(15, TimeUnit.SECONDS))
+            app.invokeAndWait { select(selected) }
+            test(service, future, release, file, loggedErrors)
+        } finally {
+            release.complete(Unit)
+            scope.cancel()
+            gitService.setBeforeLoadForTest(null)
+            errorProcessor.close()
+            app.invokeAndWait { sharedState.noStateLoaded() }
+        }
     }
 
     /** Waits for [expected] to become the active comparison without asking for a refresh (which would load it anyway). */

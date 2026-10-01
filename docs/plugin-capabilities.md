@@ -112,6 +112,7 @@ LST-CRC is an IntelliJ Platform plugin for comparing the current working tree ag
 
 - `C4.1` Configurable click actions.
 	- Single, double, middle, and right click interactions can be mapped to source, diff, project-view, or no-op behaviors.
+	- Queued actions are discarded when their comparison tab is disposed.
 	- Opening the diff for a selection that already has an open diff tab reuses that tab. For a file with unsaved edits the tab is reused only while the unsaved text is the same; after more typing a new diff opens with the current text.
 	- A diff tab is also reused only while the comparison target points to the same commit. After a fetch, commit or checkout moves it, opening the diff again replaces the old tab with one showing the current target content.
 	- Ctrl/Shift+click (Cmd/Shift+click on macOS) builds a multi-selection and runs no click action. A click on a change that is already selected keeps the selection, so the context menu and Enter act on every selected change.
@@ -123,7 +124,7 @@ LST-CRC is an IntelliJ Platform plugin for comparing the current working tree ag
 	- Users can show or hide the tool-window title independently of the rest of the UI.
 - `C4.5` Status widget context prefix.
 	- The widget can optionally show the `LST-CRC:` context prefix before the active tab label.
-	- Tab names longer than 20 characters are cut with an ellipsis; the widget's tooltip shows the whole name.
+	- Long tab names are cut with an ellipsis within a 20 UTF-16-unit limit, preserving whole supplementary characters such as emoji. The widget's tooltip shows the whole name.
 - `C4.6` Context-label visibility settings.
 	- Context labels are configurable separately for single-repo tabs, multi-repo tabs, and revision/commit tabs.
 	- The multi-repo label toggle is distinct from the single-repo label toggle.
@@ -141,6 +142,9 @@ LST-CRC is an IntelliJ Platform plugin for comparing the current working tree ag
 ### C5. Lifecycle, persistence, and failure handling
 
 - `C5.1` Automatic refresh.
+	- Unsaved overlays respect repository ownership for nested roots. Restoring target text removes content-only changes, including disk modifications, while retaining changed modes, line endings or byte-order marks.
+	- Browser callbacks verify that the tab is still alive before applying queued refreshes or opening revision-backed files.
+	- Cancellation during revision-source loading stops the request without an error warning or a partial editor. Genuine loading errors still show a warning.
 	- Startup plus changelist, repository and document listeners keep the active comparison synchronized with local and repository changes.
 	- Refresh covers unsaved edits, saves, external file changes, branch changes, and repository-level updates, debounced so typing does not run git on every keystroke.
 	- A burst of unsaved edits alone reuses the last git result and only overlays the edited documents; saves and VCS or repository events reload the comparison from disk.
@@ -148,7 +152,9 @@ LST-CRC is an IntelliJ Platform plugin for comparing the current working tree ag
 	- Revision-content and unsaved-overlay loading propagate platform and coroutine cancellation.
 	- File statuses and editor tab colours are reset only when a file joins or leaves a scope (or the tab changes), not when only the unsaved text of the listed files changes.
 	- Async diff application rejects stale results whose tab or per-repository targets no longer match the selection, checked when the result is applied.
+	- Delayed load failures also check the selected tab and repository targets before clearing cached data or reporting an error. Cancellation preserves cached data and fails the refresh future; genuine current load errors still clear the diff.
 - `C5.2` Persistent project UI state.
+	- State reads and tab lookups return independent comparison maps; changing returned objects cannot silently change stored targets.
 	- Open tabs, the selected tab, aliases, and per-repository comparison overrides survive IDE restart.
 	- Alias state and per-root overrides survive restart together.
 	- Tab add/remove and alias update operations preserve distinct tab identities and avoid unnecessary duplicate state.

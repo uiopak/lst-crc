@@ -131,6 +131,7 @@
 | `C4.3` | Double-click delay defers single-click execution | `LstCrcSettingsUiTest.testAdditionalClickSettings`, `LstCrcSettingsStarterUiTest.testAdditionalClickSettings` |
 | `C4.4` | Tool-window title visibility toggles correctly | `LstCrcSettingsUiTest.testTreePresentationAndTitleSettings`, `LstCrcSettingsStarterUiTest.testTreePresentationAndTitleSettings` |
 | `C4.5` | Widget context prefix follows the visibility setting | `LstCrcInteractionUiTest.testTabRenameUpdatesWidgetContext`, `LstCrcInteractionStarterUiTest.testTabRenameUpdatesWidgetContext`, `LstCrcStatusWidgetTest.testGetTextUsesAliasPrefixAndTruncationForSelectedTab` |
+| `C4.5` | Truncated aliases preserve whole supplementary characters and the full tooltip | `LstCrcStatusWidgetTest.testTruncatedAliasKeepsSupplementaryCharactersWhole` |
 | `C4.5` | The widget id in `plugin.xml` matches the code | `LstCrcStatusWidgetTest.testPluginXmlStatusWidgetFactoryIdMatchesWidgetConstant` |
 | `C4.6` | Single-repo context-label setting path | `LstCrcSettingsUiTest.testTreePresentationAndTitleSettings`, `LstCrcSettingsStarterUiTest.testTreePresentationAndTitleSettings` |
 | `C4.6` | Multi-repo context-label setting path | `LstCrcMultiRootStarterUiTest.testMultiRootComparisonOverrideAppliesOnlyToSelectedRepository` |
@@ -157,6 +158,11 @@
 | `C5.1` | Startup waits for the first diff load, survives its failure and stops on cancellation | `PluginStartupActivityTest.testInitialDiffLoadPropagatesCancellation`, `PluginStartupActivityTest.testInitialDiffLoadFailureDoesNotStopStartup` |
 | `C5.1` | Line-stat content failures skip only the affected counts; cancellation still propagates | `GitServiceLineStatsTest.testLineStatsContentFailureDoesNotDiscardOtherFiles`, `GitServiceLineStatsTest.testLineStatsContentCancellationIsPropagated` |
 | `C5.1` | A refresh request completes only after a load that started after it, even while other refreshes run | `ToolWindowStateServiceRefreshTest.testJoinedRefreshLoadsTheSelectionMadeBeforeTheRequest` |
+| `C5.1` | Delayed load failures preserve the selected tab and repository targets | `ToolWindowStateServiceRefreshTest.testObsoleteTabLoadFailureKeepsPreviouslyLoadedComparison`, `ToolWindowStateServiceRefreshTest.testObsoleteRepositoryTargetFailureKeepsPreviouslyLoadedComparison` |
+| `C4.1`, `C5.1` | Queued clicks run for a live handler and are discarded after tab disposal | `ChangesTreeClickHandlerTest.testQueuedClickDoesNotRunAfterHandlerDisposal`, `ChangesTreeClickHandlerTest.testQueuedClickRunsWhileHandlerIsAlive` |
+| `C3.12`, `C5.1` | A refresh queued before tab disposal cannot update the closed browser | `LstCrcChangesBrowserTest.testQueuedRefreshDoesNotUpdateDisposedBrowser` |
+| `C3.4`, `C5.1` | Revision-opening cancellation neither warns nor opens a partial file; genuine content errors still warn | `LstCrcChangesBrowserTest.testPlatformCancelledRevisionOpenDoesNotShowLoadingError`, `LstCrcChangesBrowserTest.testCoroutineCancelledRevisionOpenDoesNotShowLoadingError`, `LstCrcChangesBrowserTest.testFailedRevisionOpenStillShowsLoadingError` |
+| `C5.1` | Platform cancellation preserves cached data and fails the refresh future; a current load error still clears data | `ToolWindowStateServiceRefreshTest.testPlatformCancellationKeepsActiveDiffAndFailsRefreshFuture`, `ToolWindowStateServiceRefreshTest.testCurrentLoadFailureStillClearsActiveDiff` |
 | `C5.1` | A checkout and local modify/add/delete/rename on a real repository update the comparison to match git | `LstCrcRealRepositoryUiTest.testCheckoutAndLocalEditsUpdateComparison`, `LstCrcRealRepositoryStarterUiTest.testCheckoutAndLocalEditsUpdateComparison` |
 | `C5.1` | Refresh responds during branch-repair flow | `LstCrcInteractionStarterUiTest.testMissingBranchComparisonTargetRecoversToHeadAndShowsWarning` |
 | `C5.1` | Active-diff updates apply for `HEAD` only when `HEAD` semantics are selected | `ProjectActiveDiffDataServiceTest.testAcceptsHeadUpdateWhenHeadTabIsSelected` |
@@ -165,6 +171,7 @@
 | `C5.1` | Active-diff updates reject old repository targets even when the selected tab stays the same | `ProjectActiveDiffDataServiceTest.testRejectsUpdateWhenRepositoryTargetChangesBeforeItIsApplied` |
 | `C5.1` | Identical data does not re-notify listeners | `ProjectActiveDiffDataServiceTest.testUpdateActiveDiffWithIdenticalSnapshotBypassesNotification` |
 | `C5.2` | Persisted tab state is defensively copied | `ToolWindowStateServicePersistenceTest.testLoadStateAndGetStateDefensivelyCopyNestedTabState` |
+| `C2.3`, `C5.2` | Selected-tab and display-name lookups cannot mutate stored repository targets | `ToolWindowStateServicePersistenceTest.testSelectedTabInfoCannotMutateStoredComparisonTargets`, `ToolWindowStateServicePersistenceTest.testDisplayNameLookupCannotMutateStoredComparisonTargets` |
 | `C5.2` | Alias and repo-override state persists across restart | `LstCrcMultiRootStarterUiTest.testTabsAliasesAndRepoOverridesRestoreAfterRestart`, `ToolWindowStateServicePersistenceTest.testUpdateTabComparisonMapCopiesOverridesWithoutRefreshWhenDisabled` |
 | `C5.2` | Adding tabs deduplicates branch identities and removing one tab preserves others | `ToolWindowStateServicePersistenceTest.testAddTabDeduplicatesAndRemoveTabKeepsOtherTabs` |
 | `C5.2` | Removing a tab keeps a sensible selection | `ToolWindowStateServicePersistenceTest.testRemoveTabClampsSelectedIndexWhenSelectedTabIsRemoved`, `ToolWindowStateServicePersistenceTest.testRemoveTabSelectsTheTabBeforeTheRemovedSelectedTab`, `ToolWindowStateServicePersistenceTest.testRemoveTabShiftsSelectedIndexWhenEarlierTabIsRemoved` |
@@ -176,6 +183,16 @@
 | `C5.5` | Linked worktrees register as distinct comparison roots | `LstCrcMultiRootStarterUiTest.testLinkedWorktreeBranchSwitchRefreshesActiveComparison` |
 | `C5.5` | Switching a linked worktree branch refreshes only that root's diff contribution | `LstCrcMultiRootStarterUiTest.testLinkedWorktreeBranchSwitchRefreshesActiveComparison` |
 | `C5.5` | Switching the primary worktree branch keeps the linked worktree's changes | `LstCrcMultiRootStarterUiTest.testPrimaryWorktreeBranchSwitchPreservesLinkedWorktreeDiffContribution` |
+
+### Unsaved comparison ownership and restoration
+
+| Capability ID | Case / decision path | Primary coverage |
+| --- | --- | --- |
+| `C2.3`, `C5.1` | Unsaved nested-root files belong only to that root's overlay | `GitServiceLineStatsTest.testUnsavedOverlayUsesOnlyTheOwningNestedRepository` |
+| `C3.1`, `C5.1` | Unsaved restoration of target text removes content-only changes on clean or modified disk state | `GitServiceLineStatsTest.testUnsavedRevertOnCleanDiskDoesNotCreateAChange`, `GitServiceLineStatsTest.testUnsavedRevertRemovesADiskContentChange`, `GitServiceLineStatsTest.testUnsavedRevertRemovesAContentChangeWithLineStatsDisabled` |
+| `C3.1`, `C5.1` | Restored text preserves file modes, physical line endings and byte-order marks that still differ | `GitServiceLineStatsTest.testUnsavedRevertPreservesAFileModeChange`, `GitServiceLineStatsTest.testUnsavedRevertPreservesChangedLineEndings`, `GitServiceLineStatsTest.testUnsavedRevertPreservesAnAddedByteOrderMark` |
+| `C3.1`, `C5.1` | UTF-16 restoration uses the file charset and BOM when checking the target blob | `GitServiceLineStatsTest.testUnsavedRevertOfUtf16ContentRemovesTheContentChange` |
+| `C3.1`, `C5.1` | Restored leading U+FEFF text stays distinct from the file BOM; BOM-producing encoders do not duplicate it | `GitServiceLineStatsTest.testUnsavedRevertPreservesLeadingBomTextCharacter`, `GitServiceLineStatsTest.testUnsavedRevertWithBomProducingEncoderRemovesContentChange` |
 
 ## Notes
 

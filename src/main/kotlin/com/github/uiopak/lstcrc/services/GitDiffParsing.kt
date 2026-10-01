@@ -20,7 +20,9 @@ private const val IGNORE_CR_AT_EOL_PARAM = "--ignore-cr-at-eol"
 /** Changes of one repository and the line stats known for them. */
 internal data class LoadedChanges(
     val changes: List<Change>,
-    val lineStatsByChange: Map<ChangeLineStatsKey, ChangeLineStats>
+    val lineStatsByChange: Map<ChangeLineStatsKey, ChangeLineStats>,
+    /** Target blobs for ordinary modifications with unchanged file modes. */
+    val contentOnlyBlobIds: Map<String, String> = emptyMap()
 ) {
     companion object {
         val EMPTY = LoadedChanges(emptyList(), emptyMap())
@@ -42,6 +44,7 @@ internal fun parseTrackedDiff(project: Project, repoRoot: VirtualFile, targetRev
     fun after(path: FilePath) = GitContentRevision.createRevision(path, null, project)
 
     val changes = mutableListOf<Change>()
+    val contentOnlyBlobIds = mutableMapOf<String, String>()
     val stats = mutableListOf<Pair<ChangeLineStatsKey, ChangeLineStats?>>()
     val fields = output.splitToSequence('\u0000').iterator()
     while (fields.hasNext()) {
@@ -50,6 +53,10 @@ internal fun parseTrackedDiff(project: Project, repoRoot: VirtualFile, targetRev
         if (field.startsWith(':')) {
             val status = field.substringAfterLast(' ').firstOrNull()
             val first = if (fields.hasNext()) fields.next() else break
+            val header = field.removePrefix(":").split(' ')
+            if (status == 'M' && header.size >= 5 && header[0] == header[1]) {
+                contentOnlyBlobIds[path(first).path] = header[2]
+            }
             changes += when (status) {
                 'A' -> Change(null, after(path(first)), FileStatus.ADDED)
                 'D' -> Change(before(path(first)), null, FileStatus.DELETED)
@@ -77,7 +84,7 @@ internal fun parseTrackedDiff(project: Project, repoRoot: VirtualFile, targetRev
         val removedLines = tokens[1].toIntOrNull()
         stats += key to if (addedLines != null && removedLines != null) ChangeLineStats(addedLines, removedLines) else null
     }
-    return LoadedChanges(changes, matchLineStats(changes, stats))
+    return LoadedChanges(changes, matchLineStats(changes, stats), contentOnlyBlobIds)
 }
 
 /**

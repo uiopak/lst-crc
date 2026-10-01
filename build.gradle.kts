@@ -228,9 +228,22 @@ kover {
     }
 
     reports {
+        filters {
+            excludes {
+                // These are UI test support, compiled as extra source sets or temporarily included in main.
+                classes("com.github.uiopak.lstcrc.testing.*", "com.github.uiopak.lstcrc.starter.*")
+            }
+        }
         total {
             xml {
                 onCheck = true
+            }
+            verify {
+                onCheck = true
+                rule {
+                    // The production baseline before this review was 66.7% line coverage.
+                    minBound(66)
+                }
             }
         }
     }
@@ -543,10 +556,6 @@ tasks {
                 ) { (pid, commandLine) -> "PID $pid ($commandLine)" }
             }
         }
-    }
-
-    wrapper {
-        gradleVersion = providers.gradleProperty("gradleVersion").get()
     }
 
     publishPlugin {
