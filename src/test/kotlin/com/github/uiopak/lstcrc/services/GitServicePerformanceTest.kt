@@ -43,6 +43,9 @@ class GitServicePerformanceTest : LstCrcTestCase() {
         }
         var document: com.intellij.openapi.editor.Document? = null
         val diffData = project.service<ProjectActiveDiffDataService>()
+        val tabState = project.service<ToolWindowStateService>()
+        val previousTabState = tabState.state
+        ApplicationManager.getApplication().invokeAndWait { tabState.loadState(ToolWindowState()) }
         val notifications = AtomicInteger()
         project.messageBus.connect(testRootDisposable).subscribe(DIFF_DATA_CHANGED_TOPIC, ActiveDiffDataChangedListener {
             notifications.incrementAndGet()
@@ -55,6 +58,8 @@ class GitServicePerformanceTest : LstCrcTestCase() {
                 val before = threadBean.getThreadAllocatedBytes(Thread.currentThread().threadId())
                 diffData.updateActiveDiff("HEAD", result.categorizedChanges)
                 edtBytes += threadBean.getThreadAllocatedBytes(Thread.currentThread().threadId()) - before
+                assertSame("The measured snapshot must be accepted by the selected tab",
+                    result.categorizedChanges, diffData.categorizedChanges)
             }
         }
         fun report(step: String, action: () -> Unit) {
@@ -106,6 +111,7 @@ class GitServicePerformanceTest : LstCrcTestCase() {
             service.setLoadObserverForTest(null)
             ApplicationManager.getApplication().invokeAndWait {
                 document?.let { FileDocumentManager.getInstance().reloadFromDisk(it) }
+                tabState.loadState(previousTabState)
             }
         }
     }

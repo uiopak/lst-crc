@@ -1,6 +1,7 @@
 package com.github.uiopak.lstcrc.services
 
 import com.github.uiopak.lstcrc.fixtures.LstCrcPerformanceReport
+import com.github.uiopak.lstcrc.state.ToolWindowState
 import com.github.uiopak.lstcrc.testsupport.LstCrcTestCase
 import com.intellij.diff.comparison.ComparisonManager
 import com.intellij.diff.comparison.ComparisonPolicy
@@ -80,11 +81,19 @@ class DiffComputationPerformanceTest : LstCrcTestCase() {
         }
         val changes = CategorizedChanges(counted, emptyList(), emptyList(), emptyList(), emptyList(), emptyMap(), emptyMap())
         val service = project.service<ProjectActiveDiffDataService>()
-        service.updateActiveDiff("HEAD", changes)
-        reads = 0
-        repeat(20) { service.updateActiveDiff("HEAD", changes) }
-        println("[lstcrc-work] unchanged-snapshot change reads=$reads for 20 x 200 changes")
-        assertEquals("An identical immutable comparison needs no per-change checks", 0, reads)
+        val tabState = project.service<ToolWindowStateService>()
+        val previousTabState = tabState.state
+        try {
+            tabState.loadState(ToolWindowState())
+            service.updateActiveDiff("HEAD", changes)
+            assertSame("Rejecting an update must not make the work counter pass", changes, service.categorizedChanges)
+            reads = 0
+            repeat(20) { service.updateActiveDiff("HEAD", changes) }
+            println("[lstcrc-work] unchanged-snapshot change reads=$reads for 20 x 200 changes")
+            assertEquals("An identical immutable comparison needs no per-change checks", 0, reads)
+        } finally {
+            tabState.loadState(previousTabState)
+        }
     }
 
     fun testReportLargeLineStatsWork() {
