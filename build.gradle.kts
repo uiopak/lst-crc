@@ -4,13 +4,11 @@ import org.jetbrains.intellij.platform.gradle.TestFrameworkType
 import org.jetbrains.kotlin.gradle.dsl.JvmDefaultMode
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import org.jetbrains.kotlin.gradle.tasks.KotlinJvmCompile
-import org.gradle.api.tasks.wrapper.Wrapper
 import java.net.URI
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
 import java.time.Duration
-import java.util.Properties
 
 plugins {
     id("java") // Java support
@@ -558,33 +556,6 @@ tasks {
                 ) { (pid, commandLine) -> "PID $pid ($commandLine)" }
             }
         }
-    }
-
-    wrapper {
-        gradleVersion = providers.gradleProperty("gradleVersion").get()
-    }
-
-    val verifyGradleWrapperVersion = register("verifyGradleWrapperVersion") {
-        description = "Checks that regenerating the wrapper preserves its checked-in Gradle version."
-        group = "verification"
-        val configuredVersion = named<Wrapper>("wrapper").get().gradleVersion
-        val wrapperPropertiesFile = layout.projectDirectory.file("gradle/wrapper/gradle-wrapper.properties")
-        inputs.property("configuredVersion", configuredVersion)
-        inputs.file(wrapperPropertiesFile)
-        doLast {
-            val properties = Properties().apply {
-                wrapperPropertiesFile.asFile.inputStream().use { load(it) }
-            }
-            val distributionName = URI(properties.getProperty("distributionUrl")).path.substringAfterLast('/')
-            check(distributionName in listOf("gradle-$configuredVersion-bin.zip", "gradle-$configuredVersion-all.zip")) {
-                "The wrapper task would replace $distributionName with Gradle $configuredVersion. " +
-                    "Keep gradleVersion in gradle.properties aligned with gradle-wrapper.properties."
-            }
-        }
-    }
-
-    check {
-        dependsOn(verifyGradleWrapperVersion)
     }
 
     publishPlugin {

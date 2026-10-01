@@ -36,6 +36,7 @@ import git4idea.commands.GitCommandResult
 import git4idea.commands.GitLineHandler
 import git4idea.repo.GitRepository
 import git4idea.repo.GitRepositoryManager
+import org.jetbrains.annotations.TestOnly
 import java.nio.charset.Charset
 import java.util.concurrent.ConcurrentHashMap
 
@@ -49,6 +50,15 @@ class GitService(private val project: Project) {
 
     private val logger = thisLogger()
     private val revisionContentCache = RevisionContentCache()
+
+    @Volatile
+    private var beforeLoadForTest: ((TabInfo?) -> Unit)? = null
+
+    /** Controls load timing and failures in tests without accessing platform repository internals. */
+    @TestOnly
+    internal fun setBeforeLoadForTest(beforeLoad: ((TabInfo?) -> Unit)?) {
+        beforeLoadForTest = beforeLoad
+    }
 
     /** What decides a repository's changes on disk, apart from the files themselves. */
     private data class DiskChangesKey(
@@ -128,6 +138,9 @@ class GitService(private val project: Project) {
         reuseDiskChanges: Boolean = false,
         dispatcher: CoroutineDispatcher = Dispatchers.IO
     ): GetChangesResult {
+        beforeLoadForTest?.let { beforeLoad ->
+            withContext(dispatcher) { beforeLoad(tabInfo) }
+        }
         val repositories = getRepositories()
         val profileName = tabInfo?.branchName ?: HEAD
 

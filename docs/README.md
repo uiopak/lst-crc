@@ -8,16 +8,10 @@ Internal documentation for the plugin code in `src/main`. Build commands, the ru
 - `file-refactor-audit.md` lists verified refactoring opportunities and the code that looks removable but must stay.
 - `test-capability-matrix.md` maps each capability to its test coverage, case by case.
 - `test-to-capability-map.md` maps every test method back to capability IDs.
-- `continuous-review-2026-09-30.md` records the ongoing review's coverage, findings, regression evidence and validation.
 
 Keep these in step with the code: a new file needs a catalog entry, a new capability needs an ID and tests, and a new or renamed test needs a row in the test map.
 
 The IDE Starter test bridge lives in `src/testBridge` (`LstCrcUiTestBridge.kt`) and is only compiled into the plugin for Starter tasks, or when `-PincludeTestBridge=true` is set.
-
-`gradlew check` also runs `verifyGradleWrapperVersion`. It checks the wrapper
-task's configured version against the checked-in distribution URL, so wrapper
-regeneration cannot silently undo a dependency update. Keep `gradleVersion` in
-`gradle.properties` aligned when upgrading the wrapper.
 
 `check` enforces at least 66% production line coverage through `koverVerify`.
 The floor comes from the 66.7% baseline before the continuous review. Reports

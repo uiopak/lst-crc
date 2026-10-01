@@ -4,15 +4,11 @@ import com.github.uiopak.lstcrc.state.TabInfo
 import com.github.uiopak.lstcrc.state.ToolWindowState
 import com.github.uiopak.lstcrc.testsupport.LstCrcTestCase
 import com.github.uiopak.lstcrc.testsupport.categorizedChanges
-import com.intellij.dvcs.repo.Repository
-import com.intellij.dvcs.repo.VcsRepositoryManager
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.service
 import com.intellij.openapi.progress.ProcessCanceledException
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.testFramework.LoggedErrorProcessor
-import git4idea.GitVcs
-import git4idea.repo.GitRepository
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -24,8 +20,6 @@ import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
-import java.util.concurrent.locks.ReentrantReadWriteLock
-import kotlin.concurrent.withLock
 
 class ToolWindowStateServiceRefreshTest : LstCrcTestCase() {
 
@@ -147,7 +141,7 @@ class ToolWindowStateServiceRefreshTest : LstCrcTestCase() {
         }
     }
 
-    /** Hold a real GitService load in repository.update(), then deliver its failure after changing the selection. */
+    /** Hold a GitService load at its test hook, then fail it after changing the selection. */
     private fun withControlledLoadFailure(
         loading: TabInfo,
         selected: TabInfo,
@@ -157,7 +151,7 @@ class ToolWindowStateServiceRefreshTest : LstCrcTestCase() {
         val app = ApplicationManager.getApplication()
         lateinit var file: VirtualFile
         app.invokeAndWait { file = myFixture.addFileToProject("controlled-load/Changed.txt", "content\n").virtualFile }
-        val entered = CompletableFuture<Unit>()
+        val entered = CompletableFuture<TabInfo?>()
         val release = CompletableFuture<Unit>()
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default + CoroutineExceptionHandler { _, _ -> })
         val service = ToolWindowStateService(project, scope)
@@ -178,31 +172,7 @@ class ToolWindowStateServiceRefreshTest : LstCrcTestCase() {
             select(loading)
         }
 
-        val repo = java.lang.reflect.Proxy.newProxyInstance(
-            GitRepository::class.java.classLoader, arrayOf(GitRepository::class.java)
-        ) { proxy, method, args ->
-            when (method.name) {
-                "getRoot" -> file.parent
-                "getVcs" -> GitVcs.getInstance(project)
-                "getProject" -> project
-                "update" -> {
-                    entered.complete(Unit)
-                    release.get(15, TimeUnit.SECONDS)
-                    throw failure
-                }
-                "hashCode" -> System.identityHashCode(proxy)
-                "equals" -> proxy === args?.firstOrNull()
-                "toString" -> "Controlled repository"
-                else -> error("Unexpected repository call: ${method.name}")
-            }
-        } as GitRepository
-        val registry = project.service<VcsRepositoryManager>()
-        val lock = VcsRepositoryManager::class.java.getDeclaredField("REPO_LOCK").apply { isAccessible = true }
-            .get(registry) as ReentrantReadWriteLock
-        @Suppress("UNCHECKED_CAST")
-        val repositories = VcsRepositoryManager::class.java.getDeclaredField("repositories").apply { isAccessible = true }
-            .get(registry) as MutableMap<VirtualFile, Repository>
-        val previous = lock.writeLock().withLock { repositories.put(file.parent, repo) }
+        val gitService = project.service<GitService>()
         val loggedErrors = AtomicInteger()
         val errorProcessor = LoggedErrorProcessor.executeWith(object : LoggedErrorProcessor() {
             override fun processError(category: String, message: String, details: Array<String>, t: Throwable?): Set<Action> {
@@ -214,16 +184,19 @@ class ToolWindowStateServiceRefreshTest : LstCrcTestCase() {
             }
         })
         try {
+            gitService.setBeforeLoadForTest { tabInfo ->
+                entered.complete(tabInfo)
+                release.get(15, TimeUnit.SECONDS)
+                throw failure
+            }
             val future = service.refreshDataForCurrentSelection()
-            entered.get(15, TimeUnit.SECONDS)
+            assertEquals(loading, entered.get(15, TimeUnit.SECONDS))
             app.invokeAndWait { select(selected) }
             test(service, future, release, file, loggedErrors)
         } finally {
             release.complete(Unit)
             scope.cancel()
-            lock.writeLock().withLock {
-                if (previous == null) repositories.remove(file.parent) else repositories[file.parent] = previous
-            }
+            gitService.setBeforeLoadForTest(null)
             errorProcessor.close()
             app.invokeAndWait { sharedState.noStateLoaded() }
         }

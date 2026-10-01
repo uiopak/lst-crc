@@ -51,11 +51,13 @@ import com.intellij.ui.render.RenderingHelper
 import com.intellij.ui.treeStructure.Tree
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.tree.TreeModelAdapter
+import kotlinx.coroutines.CancellationException
 import java.awt.BorderLayout
 import java.awt.Color
 import java.awt.Point
 import java.awt.event.ComponentAdapter
 import java.awt.event.ComponentEvent
+import java.util.concurrent.Future
 import javax.swing.JComponent
 import javax.swing.JPanel
 import javax.swing.JViewport
@@ -63,8 +65,6 @@ import javax.swing.event.TreeModelListener
 import javax.swing.plaf.basic.BasicTreeUI
 import javax.swing.tree.DefaultMutableTreeNode
 import javax.swing.tree.TreePath
-import java.util.concurrent.Future
-import kotlinx.coroutines.CancellationException
 
 /**
  * The main UI part for displaying the tree of file changes for a specific branch comparison.
@@ -337,6 +337,7 @@ class LstCrcChangesBrowser(
                 }
             }
         }
+
     @Suppress("unused")
     fun viewerTree(): Tree = viewer
 

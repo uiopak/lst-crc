@@ -87,6 +87,7 @@ This document lists each current `src/main` file separately and explains why it 
 - Unsaved restoration: Nested-root ownership prevents duplicate overlays. Equal live and target text removes an entry only when it has no disk change, or its modes match and its saved editor bytes match Git's target blob. Line endings, charset, BOM and Git filters stay part of that check.
 - Role: Sole Git and Git4Idea integration boundary for repository discovery, change loading, revision content, and branch snapshots. It keeps the last on-disk diff per repository, which edit-only refreshes reuse, and overlays unsaved documents (a moved file against its old path). A failed `git diff` is reported as a missing target only when `git rev-parse` cannot resolve it. Its `runSilentGit` runs the plugin's own git commands without echoing them to the VCS console.
 - Cancellation: Revision-content reads and unsaved-overlay construction propagate platform and coroutine cancellation.
+- Testing: The internal `setBeforeLoadForTest` hook controls load timing and failures on the load dispatcher. Refresh tests clear it in `finally` and do not access private platform repository fields.
 - Depends on: Git4Idea, low-level Git commands, VCS `Change` models, and plugin state types such as `TabInfo`.
 - Connected to: `ToolWindowStateService`, `VisualTrackerManager`, settings code, and branch-selection flows.
 - Why it exists: Centralizing all Git logic keeps the rest of the plugin from depending directly on IntelliJ VCS internals.
