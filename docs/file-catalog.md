@@ -87,13 +87,16 @@ This document lists each current `src/main` file separately and explains why it 
 - Unsaved restoration: Nested-root ownership prevents duplicate overlays. Equal live and target text removes an entry only when it has no disk change, or its modes match and its saved editor bytes match Git's target blob. Line endings, charset, BOM and Git filters stay part of that check.
 - Role: Sole Git and Git4Idea integration boundary for repository discovery, change loading, revision content, and branch snapshots. It keeps the last on-disk diff per repository, which edit-only refreshes reuse, and overlays unsaved documents (a moved file against its old path). A failed `git diff` is reported as a missing target only when `git rev-parse` cannot resolve it. Its `runSilentGit` runs the plugin's own git commands without echoing them to the VCS console.
 - Cancellation: Revision-content reads and unsaved-overlay construction propagate platform and coroutine cancellation.
+- Cached work: Disk results retain lazily prepared overlay path indexes. Edit-only loads without overlays reuse their categorized result; overlays recalculate line counts only for edited files. Target/settings changes and full reloads replace cached work.
 - Testing: The internal `setBeforeLoadForTest` hook controls load timing and failures on the load dispatcher. Refresh tests clear it in `finally` and do not access private platform repository fields.
+- Performance tests: `setLoadObserverForTest` supplies real repositories only to comparison loads, leaving public repository discovery unchanged. It counts Git diff invocations and categorized entries using constants; tests clear the hook in `finally`.
 - Depends on: Git4Idea, low-level Git commands, VCS `Change` models, and plugin state types such as `TabInfo`.
 - Connected to: `ToolWindowStateService`, `VisualTrackerManager`, settings code, and branch-selection flows.
 - Why it exists: Centralizing all Git logic keeps the rest of the plugin from depending directly on IntelliJ VCS internals.
 
 ### GitDiffParsing.kt
 - Role: `GitService`'s pure helpers: the `git diff` options (ending in `--` so a branch named like a folder is not read as a path), lazy parsing of `git diff --raw [--numstat] -z` fields (preserving tabs and trailing newlines in paths), parsing `git ls-files -z` output, the unsaved-overlay merge rule, moved-file source paths and in-process line counts.
+- Cached disk results preserve the overlay's last-change-wins path rule. Equal normalized text skips the diff engine; empty-side comparisons use it to preserve blank-line and newline semantics. A test-only comparator seam counts its calls, and regression tests compare additions and deletions with the normalized platform-engine result.
 - Depends on: VCS `Change` models and `GitContentRevision`.
 - Connected to: `GitService`, `ProjectActiveDiffDataService` (moved-file paths) and the unit tests, which call these functions directly.
 - Why it exists: Keeps the parsing testable without a repository and `GitService` focused on orchestration.
@@ -112,6 +115,7 @@ This document lists each current `src/main` file separately and explains why it 
 
 ### ProjectActiveDiffDataService.kt
 - Role: Active-diff cache storing categorized file sets and comparison context for the selected tab.
+- Identical categorized results skip per-change revision comparisons on the EDT; fresh revisions still participate in equality and notification checks.
 - Status refreshes: Reset file statuses and editor tab colors only when effective scope membership changes, accounting for categorized paths and the HEAD-scope setting. A new target still publishes the active comparison.
 - Depends on: `FileStatusManager`, `FileEditorManager`, and the plugin message bus.
 - Connected to: `ToolWindowStateService`, scopes, renderers, `VisualTrackerManager`, and any UI that consumes the active comparison.
